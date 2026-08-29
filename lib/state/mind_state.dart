@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -102,6 +103,8 @@ class MindState extends ChangeNotifier {
         // ค่าที่บันทึกไว้เสีย ปล่อยให้ใช้ค่าตั้งต้นแทน ดีกว่าแอปเปิดไม่ขึ้น
       }
     }
+    _bubbleEnabled = p.getBool('bubbleEnabled') ?? true;
+    _bubbleSeconds = p.getInt('bubbleSeconds') ?? 5;
     _voiceEnabled = p.getBool('voiceEnabled') ?? true;
     _autoAnswer = p.getBool('autoAnswer') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
@@ -422,6 +425,80 @@ class MindState extends ChangeNotifier {
   Future<void> previewVoice([VoiceChannel channel = VoiceChannel.chat]) =>
       _speakIfEnabled(effectiveFlirt.flirtSample, channel: channel);
 
+  // ═══ ฟองคำพูดเหนือหัวเธอ ═══════════════════════════════
+  //
+  // ฟองนี้ลอยทับตัวเธอ ถ้าค้างไว้ตลอดก็บังหน้าเธอตลอด
+  // จึงให้จางหายเองหลังอ่านทัน แล้วคืนจอให้เธอ
+  bool _bubbleEnabled = true;
+  bool get bubbleEnabled => _bubbleEnabled;
+
+  /// 0 = ค้างไว้ไม่หาย
+  int _bubbleSeconds = 5;
+  int get bubbleSeconds => _bubbleSeconds;
+
+  static const bubbleSecondChoices = <int>[0, 3, 5, 8, 12, 20];
+
+  bool _bubbleShown = false;
+  Timer? _bubbleTimer;
+
+  /// ฟองควรโผล่ตอนนี้ไหม
+  ///
+  /// ซ่อนระหว่างพูดด้วย เพราะตอนพูดกล้องดึงเข้าเป็นระยะ bust
+  /// หัวเธอจะขึ้นมาสูงจนฟองไปคร่อมหน้าพอดี
+  bool get bubbleVisible => _bubbleEnabled && _bubbleShown && !_speaking;
+
+  void setBubbleEnabled(bool v) {
+    _bubbleEnabled = v;
+    _save('bubbleEnabled', v);
+    if (!v) {
+      _bubbleTimer?.cancel();
+      _bubbleShown = false;
+    }
+    _notify();
+  }
+
+  void setBubbleSeconds(int v) {
+    _bubbleSeconds = v;
+    _save('bubbleSeconds', v);
+    // ตั้งเวลาใหม่ทันทีถ้าฟองโผล่อยู่ ผู้ใช้จะได้เห็นผลของค่าที่เพิ่งเลือก
+    if (_bubbleShown) _startBubbleCountdown();
+    _notify();
+  }
+
+  /// เรียกเมื่อเธอเพิ่งพูดอะไรใหม่
+  ///
+  /// **นาฬิกาเริ่มนับตอนฟองโผล่จริง ไม่ใช่ตอนข้อความมาถึง**
+  /// เพราะระหว่างเธอพูด ฟองถูกซ่อนอยู่ (กล้องดึงเข้าใกล้ ฟองจะคร่อมหน้า)
+  /// ถ้านับตั้งแต่ข้อความมา พอเธอพูดจบ 6 วิ นาฬิกา 5 วิก็หมดไปแล้ว
+  /// ผลคือฟองไม่เคยโผล่ให้เห็นเลยสักครั้ง — เจอตอนทดสอบบนเครื่องจริง
+  void _armBubble() {
+    _bubbleTimer?.cancel();
+    if (!_bubbleEnabled) {
+      _bubbleShown = false;
+      return;
+    }
+    _bubbleShown = true;
+    _startBubbleCountdown();
+  }
+
+  void _startBubbleCountdown() {
+    _bubbleTimer?.cancel();
+    // ยังพูดอยู่ = ฟองยังไม่โผล่ ยังไม่ต้องนับ
+    // จะถูกเรียกอีกทีตอนพูดจบ
+    if (_speaking || !_bubbleShown || _bubbleSeconds <= 0) return;
+    _bubbleTimer = Timer(Duration(seconds: _bubbleSeconds), () {
+      _bubbleShown = false;
+      _notify();
+    });
+  }
+
+  /// แตะที่ตัวเธอเพื่อเรียกฟองกลับมาอ่านซ้ำ
+  void showBubbleAgain() {
+    if (!_bubbleEnabled || bubbleText.isEmpty) return;
+    _armBubble();
+    _notify();
+  }
+
   bool _speaking = false;
 
   /// กำลังพูดอยู่ไหม
@@ -467,6 +544,8 @@ class MindState extends ChangeNotifier {
     } finally {
       // ต้องปลดเสมอ ไม่งั้นฟองจะหายถาวรถ้าเล่นเสียงพัง
       _speaking = false;
+      // ฟองเพิ่งโผล่ตอนนี้ ค่อยเริ่มนับถอยหลัง
+      _startBubbleCountdown();
       _notify();
     }
   }
@@ -523,6 +602,8 @@ class MindState extends ChangeNotifier {
   String _cannedReply() => mode.isWork ? s.cannedWork : s.cannedLove;
 
   void _push(ChatMessage m) {
+    // ฟองแสดงเฉพาะสิ่งที่ **เธอ** พูด ข้อความของเราไม่ต้องมีฟองเหนือหัวเธอ
+    if (m.fromHer) _armBubble();
     _messages.add(m);
     _context.add(m);
     if (_messages.length > _historyLimit) {
@@ -545,6 +626,7 @@ class MindState extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _bubbleTimer?.cancel();
     _openai.close();
     _speech.dispose();
     if (hasLocalBrain) _lazyLocal!.dispose();

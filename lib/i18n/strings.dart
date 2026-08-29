@@ -149,6 +149,29 @@ class S {
         'Meeting at 3pm… eat something first, or I will sulk.');
   }
 
+  // ═══ ฟองคำพูด ══════════════════════════════════════════
+  String get bubbleTitle => _('ฟองคำพูดเหนือหัวเธอ', 'Speech bubble');
+  String get bubbleEnabled => _('ให้มีฟองคำพูด', 'Show the speech bubble');
+  String get bubbleHint => _(
+        'ฟองลอยทับตัวเธอ ถ้าค้างไว้ตลอดก็บังหน้าเธอตลอด',
+        'It floats over her — left up permanently, it covers her face permanently',
+      );
+  String get bubbleDuration => _('จางหายหลังจาก', 'Fade out after');
+  String get bubbleStay => _('ค้างไว้', 'Keep it');
+  String bubbleSeconds(int s) => _('$s วิ', '${s}s');
+  String get bubbleStayNote => _(
+        'ฟองจะค้างอยู่จนกว่าเธอจะพูดใหม่ — บังหน้าเธอตลอดเวลา',
+        'The bubble stays until she speaks again — covering her face the whole time',
+      );
+  String bubbleFadeNote(int s) => _(
+        'อ่านได้ $s วินาทีแล้วจางหาย แตะที่ตัวเธอเพื่อเรียกกลับมาอ่านซ้ำ',
+        'Readable for $s seconds, then fades. Tap her to bring it back.',
+      );
+  String get bubbleOffNote => _(
+        'ไม่มีฟอง — อ่านข้อความได้จากแผงแชทข้างล่างอย่างเดียว',
+        'No bubble — read her replies in the chat panel below instead',
+      );
+
   // ═══ หน้าตั้งค่า ═══════════════════════════════════════
   String get settingsTitle => _('บุคลิกและเสียง', 'Personality and voice');
   String get language => _('ภาษา', 'Language');

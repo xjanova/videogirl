@@ -125,8 +125,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           return Stack(
             clipBehavior: Clip.none,
             children: [
+              // แตะที่ตัวเธอเพื่อเรียกฟองที่จางไปแล้วกลับมาอ่านซ้ำ
+              // ไม่งั้นข้อความที่พลาดไปจะอ่านได้แค่ในแผงแชทข้างล่างเท่านั้น
               Positioned.fill(
-                child: MindAvatarView(controller: widget.avatar, mode: mode),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: state.showBubbleAgain,
+                  child: MindAvatarView(controller: widget.avatar, mode: mode),
+                ),
               ),
 
               // วงแหวนเรืองรอบตัวเธอ ขยายออกแล้วจาง
@@ -163,13 +169,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 Positioned(
                   left: w * _bubbleLeft,
                   top: h * _bubbleTop,
-                  child: AnimatedOpacity(
-                    opacity: state.speaking ? 0 : 1,
-                    duration: const Duration(milliseconds: 260),
-                    curve: Curves.easeOut,
-                    child: SpeechBubble(
-                      text: bubble,
-                      maxWidth: w * _bubbleMaxWidth,
+                  // IgnorePointer ตอนจาง ไม่งั้นฟองที่มองไม่เห็นยังกินการแตะอยู่
+                  // แล้วแตะตัวเธอเพื่อเรียกฟองกลับจะไม่ทำงานในบริเวณนั้น
+                  child: IgnorePointer(
+                    ignoring: !state.bubbleVisible,
+                    child: AnimatedOpacity(
+                      opacity: state.bubbleVisible ? 1 : 0,
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOut,
+                      child: SpeechBubble(
+                        text: bubble,
+                        maxWidth: w * _bubbleMaxWidth,
+                      ),
                     ),
                   ),
                 ),

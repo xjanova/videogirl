@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../ai/brain_provider.dart';
+import '../i18n/strings.dart';
 import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
 import '../ai/openai_config.dart';
@@ -67,6 +68,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _modeCard(state, mode),
             const SizedBox(height: 11),
             _flirtCard(state, mode),
+            const SizedBox(height: 11),
+            _bubbleCard(state, mode),
             const SizedBox(height: 11),
             _brainCard(state, mode),
             const SizedBox(height: 11),
@@ -203,6 +206,98 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 7),
           const Text('ตัวอย่างน้ำเสียงที่ระดับนี้ · ในโหมดงานจะลดลงอัตโนมัติ',
               style: TextStyle(fontSize: 10.5, color: MindColors.ink50)),
+        ],
+      ),
+    );
+  }
+
+  // ── ฟองคำพูด ────────────────────────────────────────────
+  Widget _bubbleCard(MindState state, MindMode mode) {
+    final t = S.of(context);
+    return _card(
+      mode: mode,
+      label: t.bubbleTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 3,
+                  children: [
+                    Text(t.bubbleEnabled,
+                        style: const TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    Text(t.bubbleHint,
+                        style: const TextStyle(
+                            fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                  ],
+                ),
+              ),
+              _toggle(
+                on: state.bubbleEnabled,
+                mode: mode,
+                onTap: () => state.setBubbleEnabled(!state.bubbleEnabled),
+              ),
+            ],
+          ),
+          if (!state.bubbleEnabled) ...[
+            const SizedBox(height: 8),
+            Text(t.bubbleOffNote,
+                style: const TextStyle(
+                    fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+          ] else ...[
+            const SizedBox(height: 14),
+            Text(t.bubbleDuration,
+                style: mindMono(
+                    size: 10, color: mode.accent, letterSpacing: .1)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                for (final sec in MindState.bubbleSecondChoices)
+                  GestureDetector(
+                    onTap: () => state.setBubbleSeconds(sec),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 13, vertical: 7),
+                      decoration: BoxDecoration(
+                        gradient:
+                            state.bubbleSeconds == sec ? mode.gradient : null,
+                        color: state.bubbleSeconds == sec
+                            ? null
+                            : MindColors.glass80,
+                        borderRadius: BorderRadius.circular(MindRadius.pill),
+                        border: Border.all(
+                            color: MindColors.glassBorder, width: 1),
+                      ),
+                      child: Text(
+                        sec == 0 ? t.bubbleStay : t.bubbleSeconds(sec),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: state.bubbleSeconds == sec
+                              ? Colors.white
+                              : MindColors.ink60,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              state.bubbleSeconds == 0
+                  ? t.bubbleStayNote
+                  : t.bubbleFadeNote(state.bubbleSeconds),
+              style: const TextStyle(
+                  fontSize: 10.5, height: 1.5, color: MindColors.ink55),
+            ),
+          ],
         ],
       ),
     );
