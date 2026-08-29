@@ -109,6 +109,13 @@ obj/
 !/bootstrap/cache/.gitignore
 
 # ============================================================
+#  Avatar pack — ยืมจาก BrainX ห้ามขึ้น git เด็ดขาด
+#  คลิปเป็นของ Mixamo (อนุญาตให้ใช้ในงาน ไม่อนุญาตให้แจกไฟล์ต่อ)
+#  และ repo นี้เป็น public — เหตุผลเดียวกับที่ BrainX ไม่ commit
+# ============================================================
+assets/avatar/model/
+
+# ============================================================
 #  Media / Model — ไฟล์ใหญ่ ถ้าจำเป็นค่อยเปิด Git LFS
 # ============================================================
 *.mp4
@@ -138,3 +145,26 @@ obj/
 # ============================================================
 *.local
 .claude/settings.local.json
+
+# handoff bundle ต้นฉบับ (เก็บไว้ในเครื่อง ไม่ต้องขึ้น git)
+*.zip
+
+# ============================================================
+#  Flutter / Android — เพิ่มหลัง flutter create
+# ============================================================
+*.iml
+.flutter-plugins*
+/build/
+android/.gradle/
+android/local.properties
+android/.cxx/
+android/app/debug/
+android/app/profile/
+android/app/release/
+android/gradle-wrapper.jar.sha256
+**/android/**/gradle-wrapper.jar
+.gradle/
+# .metadata และ pubspec.lock ต้อง commit — อย่าใส่ที่นี่
+
+# Kotlin incremental build ทิ้ง log ไว้ ไม่ใช่ซอร์ส
+android/.kotlin/

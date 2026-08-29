@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0d1024;font-family:"IBM Plex Sans Thai",system-ui,sans-serif}
+a{color:#4fe3a0}a:hover{color:#8af3c4}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(255,255,255,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 22px}
+.dv-tid{font:500 10px "IBM Plex Mono",monospace;padding:3px 7px;background:#4fe3a0;color:#08110c;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 "IBM Plex Sans Thai",sans-serif;color:#dbe5f0}
+.dv-opts{display:flex;flex-wrap:wrap;gap:30px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:500 10.5px "IBM Plex Mono",monospace;padding:3px 7px;background:rgba(255,255,255,.10);color:#dbe5f0;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11.5px/1.3 "IBM Plex Sans Thai",sans-serif;color:rgba(219,229,240,.55)}
+.dv-opt:target .dv-oid{background:#4fe3a0;color:#08110c}
+.dv-next{margin:24px 0 0;font:12px/1.6 "IBM Plex Sans Thai",sans-serif;color:rgba(219,229,240,.45)}
+.dv-turn *::-webkit-scrollbar{width:0;height:0}
+.dv-turn *{scrollbar-width:none}
+@keyframes mindPulse{0%,100%{opacity:.35}50%{opacity:.9}}
+@keyframes mindRing{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.7);opacity:0}}
+@keyframes mindCaret{0%,100%{opacity:0}50%{opacity:1}}
+@keyframes mindWave{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+</style></helmet>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Mind · โครงการใช้งานหลัก (Android) — อิงจาก BrainX assistant-window</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a"><div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>หน้าหลัก — อวาตาร์เต็มจอ แชทเป็นกระจกลอยทับ (กดที่ตัวเธอเพื่อเปิด/ปิดแชท)</div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" width="{{ 380 }}" height="{{ 800 }}" hint-size="380px,800px">
+<div style="min-height:100%;display:flex;flex-direction:column;background:radial-gradient(120% 90% at 34% 24%,#1a2150 0%,#101538 62%,#0a0d22 100%);color:#dbe5f0;position:relative;font-size:13px">
+  <div style="display:flex;align-items:center;gap:10px;padding:12px 14px 8px">
+    <span style="font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.16em;color:{{ accent }}">MINDE</span>
+    <span style="flex:1;font-size:11px;color:rgba(219,229,240,.6)">{{ statusLine }}</span>
+    <div onClick="{{ toggleMode }}" style="display:flex;gap:2px;padding:2px;border-radius:99px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.10);cursor:pointer">
+      <span style="padding:3px 9px;border-radius:99px;font-size:10.5px;background:{{ workPillBg }};color:{{ workPillFg }}">งาน</span>
+      <span style="padding:3px 9px;border-radius:99px;font-size:10.5px;background:{{ lovePillBg }};color:{{ lovePillFg }}">ส่วนตัว</span>
+    </div>
+  </div>
+
+  <div style="flex:1;position:relative;display:flex;align-items:flex-end;justify-content:center;padding:0 0 6px;min-height:300px">
+    <div style="position:absolute;inset:14px 46px 6px 10px;border-radius:16px;border:1px dashed rgba(255,255,255,.16);background:repeating-linear-gradient(135deg,rgba(255,255,255,.05) 0 8px,rgba(255,255,255,0) 8px 16px);display:flex;align-items:flex-end;justify-content:center;padding-bottom:12px">
+      <span style="font:400 10px 'IBM Plex Mono',monospace;color:rgba(219,229,240,.42);letter-spacing:.06em">VRM avatar · minde.vrm · full body</span>
+    </div>
+    <div style="position:absolute;left:96px;top:38px;width:132px;height:132px;border-radius:50%;border:1px solid {{ accentSoft }};animation:mindRing 2.8s ease-out infinite"></div>
+    <div style="position:absolute;left:120px;top:14px;max-width:200px;padding:9px 12px;border-radius:14px;background:rgba(18,26,60,.92);border:1px solid {{ accentSoft }};box-shadow:0 6px 26px rgba(0,0,0,.45);font-size:12px;line-height:1.5">
+      {{ bubbleText }}
+      <span style="position:absolute;left:22px;bottom:-7px;width:12px;height:12px;transform:rotate(45deg);background:rgba(18,26,60,.92);border-right:1px solid rgba(255,255,255,.14);border-bottom:1px solid rgba(255,255,255,.14)"></span>
+    </div>
+  </div>
+
+  <div style="position:relative;z-index:2;display:flex;flex-direction:column;gap:8px;padding:14px 12px 12px;background:linear-gradient(to top,rgba(9,13,38,.94) 0%,rgba(9,13,38,.88) 66%,rgba(9,13,38,0) 100%);backdrop-filter:blur(18px) saturate(1.25)">
+    <sc-for list="{{ messages }}" as="m" hint-placeholder-count="3">
+      <div style="max-width:86%;padding:7px 11px;border-radius:12px;font-size:12.5px;line-height:1.55;align-self:{{ m.align }};background:{{ m.bg }};border:1px solid {{ m.border }};color:{{ m.fg }}">{{ m.text }}</div>
+    </sc-for>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:2px">
+      <sc-for list="{{ chips }}" as="c" hint-placeholder-count="3">
+        <span onClick="{{ c.send }}" style="padding:5px 10px;border-radius:99px;font-size:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(219,229,240,.8);cursor:pointer" style-hover="background:rgba(255,255,255,.12)">{{ c.label }}</span>
+      </sc-for>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;padding-top:2px">
+      <div onClick="{{ toggleMic }}" style="width:36px;height:36px;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;background:{{ micBg }};border:1px solid {{ micBorder }};color:{{ micFg }}">◉</div>
+      <input value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="พิมพ์ หรือกดไมค์…" style="flex:1;min-width:0;height:36px;border-radius:10px;padding:0 11px;font:inherit;font-size:12.5px;color:#dbe5f0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);outline:none">
+      <div onClick="{{ sendDraft }}" style="width:36px;height:36px;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;color:#08110c;background:{{ accent }}">➤</div>
+    </div>
+  </div>
+</div>
+</x-import></div>
+
+<div class="dv-opt" id="1b"><div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>สายเข้า — เธอรับแทน ถอดเสียงสด แทรกสายได้ตลอด</div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" width="{{ 380 }}" height="{{ 800 }}" hint-size="380px,800px">
+<div style="min-height:100%;display:flex;flex-direction:column;background:radial-gradient(120% 80% at 50% 8%,#1a2150 0%,#101538 60%,#0a0d22 100%);color:#dbe5f0;font-size:13px">
+  <div style="padding:16px 16px 10px;display:flex;align-items:center;gap:10px">
+    <span style="width:7px;height:7px;border-radius:50%;background:#f87171;animation:mindPulse 1.2s ease-in-out infinite"></span>
+    <span style="font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#f87171">สายเข้า · เธอรับแทนอยู่</span>
+    <span style="margin-left:auto;font:400 11px 'IBM Plex Mono',monospace;color:rgba(219,229,240,.55)">01:12</span>
+  </div>
+  <div style="margin:0 14px;padding:14px;border-radius:16px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10);display:flex;gap:12px;align-items:center">
+    <div style="width:48px;height:48px;border-radius:50%;flex:none;border:1px dashed rgba(255,255,255,.2);background:repeating-linear-gradient(135deg,rgba(255,255,255,.06) 0 6px,transparent 6px 12px)"></div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:15px;font-weight:500">คุณวิชัย ธนกิจ</div>
+      <div style="font-size:11.5px;color:rgba(219,229,240,.55)">ฝ่ายจัดซื้อ · บจก. สยามเทค · 081-234-5678</div>
+    </div>
+    <div style="display:flex;gap:2px;align-items:flex-end;height:26px">
+      <span style="width:3px;height:100%;background:#4fe3a0;border-radius:2px;animation:mindWave .8s ease-in-out infinite"></span>
+      <span style="width:3px;height:100%;background:#4fe3a0;border-radius:2px;animation:mindWave .8s ease-in-out .15s infinite"></span>
+      <span style="width:3px;height:100%;background:#4fe3a0;border-radius:2px;animation:mindWave .8s ease-in-out .3s infinite"></span>
+      <span style="width:3px;height:100%;background:#4fe3a0;border-radius:2px;animation:mindWave .8s ease-in-out .45s infinite"></span>
+    </div>
+  </div>
+  <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:16px 14px 8px;overflow:hidden">
+    <div style="font:400 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:rgba(219,229,240,.4)">ถอดเสียงสด · TH</div>
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="align-self:flex-start;max-width:88%;padding:8px 11px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.10);font-size:12.5px;line-height:1.55"><span style="font-size:10px;color:rgba(219,229,240,.5);display:block">คุณวิชัย</span>สวัสดีครับ ขอสายคุณเอกหน่อยครับ เรื่องใบเสนอราคา</div>
+      <div style="align-self:flex-end;max-width:88%;padding:8px 11px;border-radius:12px;background:rgba(79,227,160,.18);border:1px solid rgba(79,227,160,.32);color:#dcffe9;font-size:12.5px;line-height:1.55"><span style="font-size:10px;color:rgba(220,255,233,.6);display:block">มินเดะ</span>สวัสดีค่ะ ตอนนี้คุณเอกติดประชุมอยู่ค่ะ เรื่องใบเสนอราคาเลขที่เท่าไหร่ดีคะ เดี๋ยวมินเดะจดไว้ให้</div>
+      <div style="align-self:flex-start;max-width:88%;padding:8px 11px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.10);font-size:12.5px;line-height:1.55"><span style="font-size:10px;color:rgba(219,229,240,.5);display:block">คุณวิชัย</span>QT-2609 ครับ อยากทราบว่าปรับราคาได้ไหม<span style="display:inline-block;width:1px;height:12px;background:#4fe3a0;margin-left:3px;vertical-align:-2px;animation:mindCaret 1s step-end infinite"></span></div>
+    </div>
+    <div style="margin-top:auto;padding:11px 12px;border-radius:12px;background:rgba(79,227,160,.08);border:1px solid rgba(79,227,160,.20);font-size:11.5px;line-height:1.6;color:rgba(219,229,240,.8)">
+      <span style="font:400 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#4fe3a0;display:block;margin-bottom:4px">กำลังจับประเด็น</span>
+      ใบเสนอราคา QT-2609 · ขอต่อรองราคา · ต้องการคำตอบภายในพรุ่งนี้
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px;padding:12px 14px 18px">
+    <div style="display:flex;align-items:center;justify-content:center;gap:9px;height:50px;border-radius:14px;background:#4fe3a0;color:#08110c;font-size:14px;font-weight:600">แทรกสาย — พูดเอง</div>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)">ให้เธอคุยต่อ</div>
+      <div style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;background:rgba(248,113,113,.14);border:1px solid rgba(248,113,113,.34);color:#fecaca">วางสาย</div>
+    </div>
+    <div style="text-align:center;font-size:10.5px;color:rgba(219,229,240,.4)">วางสายแล้วเธอจะสรุปเป็นโน้ตและเด้งเตือนให้อัตโนมัติ</div>
+  </div>
+</div>
+</x-import></div>
+
+<div class="dv-opt" id="1c"><div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>โทรออกแทนเรา — สั่งเป้าหมาย แล้วดูเธอทำงาน</div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" width="{{ 380 }}" height="{{ 800 }}" hint-size="380px,800px">
+<div style="min-height:100%;display:flex;flex-direction:column;background:radial-gradient(120% 80% at 50% 8%,#1a2150 0%,#101538 60%,#0a0d22 100%);color:#dbe5f0;font-size:13px">
+  <div style="padding:16px 16px 12px;display:flex;align-items:center;gap:10px">
+    <span style="font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4fe3a0">กำลังโทรแทนคุณ</span>
+    <span style="margin-left:auto;font:400 11px 'IBM Plex Mono',monospace;color:rgba(219,229,240,.55)">00:24</span>
+  </div>
+  <div style="margin:0 14px 14px;padding:14px;border-radius:16px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10)">
+    <div style="font-size:15px;font-weight:500;margin-bottom:2px">คุณต้น (ทีมออกแบบ)</div>
+    <div style="font-size:11.5px;color:rgba(219,229,240,.55)">089-777-1042</div>
+  </div>
+  <div style="margin:0 14px 14px;padding:13px 14px;border-radius:14px;background:rgba(79,227,160,.09);border:1px solid rgba(79,227,160,.22)">
+    <div style="font:400 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#4fe3a0;margin-bottom:6px">เป้าหมายที่คุณสั่งไว้</div>
+    <div style="font-size:13px;line-height:1.6">เลื่อนนัดรีวิวงานจาก พุธ 10:00 เป็น พฤหัส 14:00 — ถ้าไม่ว่างให้เสนอ ศุกร์เช้า</div>
+  </div>
+  <div style="display:flex;gap:0;padding:0 14px 16px;align-items:center">
+    <sc-for list="{{ callSteps }}" as="s" hint-placeholder-count="3">
+      <div style="flex:1;display:flex;flex-direction:column;gap:6px;align-items:center">
+        <span style="width:9px;height:9px;border-radius:50%;background:{{ s.dot }}"></span>
+        <span style="font-size:10.5px;color:{{ s.fg }};text-align:center">{{ s.label }}</span>
+      </div>
+    </sc-for>
+  </div>
+  <div style="flex:1;min-height:0;padding:0 14px;display:flex;flex-direction:column;gap:9px">
+    <div style="font:400 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:rgba(219,229,240,.4)">ถอดเสียงสด</div>
+    <div style="align-self:flex-end;max-width:88%;padding:8px 11px;border-radius:12px;background:rgba(79,227,160,.18);border:1px solid rgba(79,227,160,.32);color:#dcffe9;font-size:12.5px;line-height:1.55"><span style="font-size:10px;color:rgba(220,255,233,.6);display:block">มินเดะ</span>สวัสดีค่ะคุณต้น มินเดะโทรแทนคุณเอกนะคะ พอจะเลื่อนรีวิวเป็นพฤหัสบ่ายสองได้ไหมคะ</div>
+    <div style="align-self:flex-start;max-width:88%;padding:8px 11px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.10);font-size:12.5px;line-height:1.55"><span style="font-size:10px;color:rgba(219,229,240,.5);display:block">คุณต้น</span>บ่ายสองติดอยู่ครับ บ่ายสามได้ไหม<span style="display:inline-block;width:1px;height:12px;background:#4fe3a0;margin-left:3px;vertical-align:-2px;animation:mindCaret 1s step-end infinite"></span></div>
+    <div style="margin-top:6px;padding:10px 12px;border-radius:12px;border:1px dashed rgba(255,255,255,.18);font-size:11.5px;line-height:1.6;color:rgba(219,229,240,.7)">
+      เธอกำลังขออนุมัตินอกเป้าหมาย: <span style="color:#dbe5f0">พฤหัส 15:00</span> — ตอบกลับใน 8 วิ ไม่งั้นเธอจะขอเวลาไปเช็กก่อน
+      <div style="display:flex;gap:8px;margin-top:9px">
+        <span style="flex:1;text-align:center;padding:8px;border-radius:10px;background:#4fe3a0;color:#08110c;font-size:12px;font-weight:600">ตกลง</span>
+        <span style="flex:1;text-align:center;padding:8px;border-radius:10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);font-size:12px">ไม่เอา</span>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;padding:16px 14px 18px">
+    <div style="flex:1;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)">ฟังเงียบ ๆ</div>
+    <div style="flex:1;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;background:#4fe3a0;color:#08110c">แทรกสาย</div>
+    <div style="width:52px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:15px;background:rgba(248,113,113,.14);border:1px solid rgba(248,113,113,.34);color:#fecaca">✕</div>
+  </div>
+</div>
+</x-import></div>
+
+<div class="dv-opt" id="1d"><div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>เมล — เธอสรุปกล่องเช้านี้ แล้วร่างคำตอบรออนุมัติ</div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" width="{{ 380 }}" height="{{ 800 }}" hint-size="380px,800px">
+<div style="min-height:100%;display:flex;flex-direction:column;background:linear-gradient(180deg,#141a3e 0%,#0b0f28 42%);color:#dbe5f0;font-size:13px">
+  <div style="padding:18px 16px 14px">
+    <div style="font-size:19px;font-weight:600;letter-spacing:-.01em">กล่องเมลเช้านี้</div>
+    <div style="font-size:11.5px;color:rgba(219,229,240,.55);margin-top:3px">24 ฉบับ · เธอคัดให้เหลือ 3 ที่ต้องตอบ · อ่านให้ฟังได้</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px;padding:0 14px">
+    <div style="padding:13px 14px;border-radius:14px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10);display:flex;gap:11px">
+      <span style="width:7px;height:7px;border-radius:50%;background:#f87171;margin-top:6px;flex:none"></span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13.5px;font-weight:500">สยามเทค — ขอต่อรองราคา QT-2609</div>
+        <div style="font-size:11.5px;line-height:1.6;color:rgba(219,229,240,.6);margin-top:3px">ขอส่วนลด 7% แลกกับสั่งเพิ่มเป็น 500 ชุด ต้องการคำตอบก่อนศุกร์</div>
+      </div>
+    </div>
+
+    <div style="padding:14px;border-radius:14px;background:rgba(79,227,160,.07);border:1px solid rgba(79,227,160,.24)">
+      <div style="display:flex;gap:11px;margin-bottom:11px">
+        <span style="width:7px;height:7px;border-radius:50%;background:#4fe3a0;margin-top:6px;flex:none"></span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13.5px;font-weight:500">คุณนภา — เลื่อนส่งไฟล์อาร์ตเวิร์ก</div>
+          <div style="font-size:11.5px;line-height:1.6;color:rgba(219,229,240,.6);margin-top:3px">ขอเลื่อนจากศุกร์เป็นจันทร์ เพราะรอไฟล์จากลูกค้า</div>
+        </div>
+      </div>
+      <div style="font:400 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#4fe3a0;margin-bottom:6px">ร่างคำตอบของเธอ</div>
+      <div style="padding:11px 12px;border-radius:11px;background:rgba(9,13,38,.55);border:1px solid rgba(255,255,255,.08);font-size:12.5px;line-height:1.7">สวัสดีค่ะคุณนภา<br>เลื่อนเป็นวันจันทร์ได้ค่ะ แต่รบกวนส่งภายในเช้าวันจันทร์นะคะ เพราะทีมต้องรีวิวก่อนส่งโรงพิมพ์บ่ายวันเดียวกัน<br>ขอบคุณค่ะ</div>
+      <div style="display:flex;gap:7px;margin-top:11px">
+        <span style="flex:1;text-align:center;padding:9px;border-radius:10px;background:#4fe3a0;color:#08110c;font-size:12px;font-weight:600">ส่งเลย</span>
+        <span style="flex:1;text-align:center;padding:9px;border-radius:10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);font-size:12px">แก้ก่อน</span>
+        <span style="width:44px;text-align:center;padding:9px 0;border-radius:10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);font-size:13px">♪</span>
+      </div>
+    </div>
+
+    <div style="padding:13px 14px;border-radius:14px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10);display:flex;gap:11px">
+      <span style="width:7px;height:7px;border-radius:50%;background:rgba(219,229,240,.35);margin-top:6px;flex:none"></span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13.5px;font-weight:500">HR — ยืนยันวันลาพักร้อน</div>
+        <div style="font-size:11.5px;line-height:1.6;color:rgba(219,229,240,.6);margin-top:3px">รอกดยืนยัน 12–14 ก.ย. เธอกดให้ได้ถ้าคุณสั่ง</div>
+      </div>
+    </div>
+  </div>
+  <div style="margin:16px 14px 0;padding:12px 14px;border-radius:14px;border:1px dashed rgba(255,255,255,.16);font-size:11.5px;line-height:1.6;color:rgba(219,229,240,.6)">
+    อีก 21 ฉบับเธอจัดเป็น <span style="color:#dbe5f0">อ่านทีหลัง</span> — ข่าวสาร 12 · ใบเสร็จ 6 · สแปม 3
+  </div>
+  <div style="margin-top:auto;padding:14px;display:flex;gap:8px">
+    <div style="flex:1;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)">ให้เธออ่านสรุปให้ฟัง</div>
+    <div style="width:52px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:16px;background:{{ accent }};color:#08110c">✎</div>
+  </div>
+</div>
+</x-import></div>
+
+<div class="dv-opt" id="1e"><div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>นัดประชุม — เธอหาช่องว่างร่วม แล้วรอคุณยืนยัน</div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" width="{{ 380 }}" height="{{ 800 }}" hint-size="380px,800px">
+<div style="min-height:100%;display:flex;flex-direction:column;background:linear-gradient(180deg,#141a3e 0%,#0b0f28 42%);color:#dbe5f0;font-size:13px">
+  <div style="padding:18px 16px 6px">
+    <div style="font-size:19px;font-weight:600">พฤหัสบดี 3 ก.ย.</div>
+    <div style="font-size:11.5px;color:rgba(219,229,240,.55);margin-top:3px">เธอเช็กปฏิทินคุณ + คุณต้น + คุณนภา แล้ว</div>
+  </div>
+  <div style="flex:1;display:flex;gap:10px;padding:16px 16px 8px">
+    <div style="display:flex;flex-direction:column;justify-content:space-between;font:400 10px 'IBM Plex Mono',monospace;color:rgba(219,229,240,.38);padding-top:2px">
+      <span>09</span><span>11</span><span>13</span><span>15</span><span>17</span>
+    </div>
+    <div style="flex:1;position:relative;border-left:1px solid rgba(255,255,255,.08);padding-left:10px;display:flex;flex-direction:column;gap:6px">
+      <div style="height:56px;border-radius:10px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10);padding:8px 10px;font-size:11.5px">Daily standup<div style="color:rgba(219,229,240,.5);font-size:10.5px">09:00–09:30</div></div>
+      <div style="height:46px"></div>
+      <div style="height:70px;border-radius:10px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10);padding:8px 10px;font-size:11.5px">ลูกค้า สยามเทค<div style="color:rgba(219,229,240,.5);font-size:10.5px">11:00–12:00</div></div>
+      <div style="height:52px"></div>
+      <div style="border-radius:10px;background:rgba(79,227,160,.14);border:1px solid #4fe3a0;padding:10px;font-size:12px">
+        <div style="font:400 9.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#4fe3a0;margin-bottom:3px">เธอเสนอ</div>
+        รีวิวงานออกแบบ<div style="color:rgba(219,229,240,.7);font-size:10.5px;margin-top:2px">15:00–15:30 · Google Meet</div>
+      </div>
+      <div style="height:32px"></div>
+    </div>
+  </div>
+  <div style="padding:0 16px 6px;display:flex;gap:6px;flex-wrap:wrap">
+    <span style="padding:5px 10px;border-radius:99px;font-size:11px;background:rgba(79,227,160,.14);border:1px solid rgba(79,227,160,.3);color:#dcffe9">คุณต้น ✓ ว่าง</span>
+    <span style="padding:5px 10px;border-radius:99px;font-size:11px;background:rgba(79,227,160,.14);border:1px solid rgba(79,227,160,.3);color:#dcffe9">คุณนภา ✓ ว่าง</span>
+    <span style="padding:5px 10px;border-radius:99px;font-size:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(219,229,240,.7)">+ เพิ่มคน</span>
+  </div>
+  <div style="margin:14px;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);font-size:11.5px;line-height:1.7;color:rgba(219,229,240,.75)">
+    <span style="font:400 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#4fe3a0;display:block;margin-bottom:5px">เธอจะทำต่อ</span>
+    ส่งคำเชิญพร้อมลิงก์ Meet · แนบวาระ 3 ข้อจากแชทเมื่อวาน · เตือนคุณ 10 นาทีก่อนเริ่ม
+  </div>
+  <div style="padding:0 14px 18px;display:flex;gap:8px">
+    <div style="flex:1;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;background:#4fe3a0;color:#08110c">ยืนยันและส่งคำเชิญ</div>
+    <div style="width:100px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)">หาเวลาอื่น</div>
+  </div>
+</div>
+</x-import></div>
+
+<div class="dv-opt" id="1f"><div class="dv-olabel"><a class="dv-oid" href="#1f">1f</a>ไทม์ไลน์ — วันนี้เธอทำอะไรให้บ้าง (ย้อนกลับได้ทุกอย่าง)</div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" width="{{ 380 }}" height="{{ 800 }}" hint-size="380px,800px">
+<div style="min-height:100%;display:flex;flex-direction:column;background:linear-gradient(180deg,#141a3e 0%,#0b0f28 42%);color:#dbe5f0;font-size:13px">
+  <div style="padding:18px 16px 14px">
+    <div style="font-size:19px;font-weight:600">วันนี้เธอทำให้ 14 อย่าง</div>
+    <div style="display:flex;gap:14px;margin-top:8px;font-size:11.5px;color:rgba(219,229,240,.6)">
+      <span>รับสาย <span style="color:#4fe3a0">3</span></span><span>ส่งเมล <span style="color:#4fe3a0">5</span></span><span>นัด <span style="color:#4fe3a0">2</span></span><span>รอคุณ <span style="color:#f0c674">4</span></span>
+    </div>
+  </div>
+  <div style="padding:0 16px;display:flex;flex-direction:column">
+    <sc-for list="{{ timeline }}" as="t" hint-placeholder-count="6">
+      <div style="display:flex;gap:12px">
+        <div style="display:flex;flex-direction:column;align-items:center;width:14px;flex:none">
+          <span style="width:8px;height:8px;border-radius:50%;background:{{ t.dot }};margin-top:5px"></span>
+          <span style="flex:1;width:1px;background:rgba(255,255,255,.10)"></span>
+        </div>
+        <div style="flex:1;min-width:0;padding-bottom:16px">
+          <div style="display:flex;gap:8px;align-items:baseline">
+            <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:rgba(219,229,240,.45)">{{ t.time }}</span>
+            <span style="font-size:13px;font-weight:500">{{ t.title }}</span>
+          </div>
+          <div style="font-size:11.5px;line-height:1.6;color:rgba(219,229,240,.6);margin-top:2px">{{ t.detail }}</div>
+          <div style="font-size:11px;color:{{ t.actionColor }};margin-top:5px">{{ t.action }}</div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+  <div style="margin:6px 14px 18px;padding:12px 14px;border-radius:14px;border:1px dashed rgba(255,255,255,.16);font-size:11.5px;line-height:1.6;color:rgba(219,229,240,.6)">
+    ทุกอย่างที่เธอทำแทน จะขึ้นที่นี่ก่อนเสมอ — กด <span style="color:#dbe5f0">ย้อนกลับ</span> ได้ภายใน 24 ชม.
+  </div>
+</div>
+</x-import></div>
+
+<div class="dv-opt" id="1g"><div class="dv-olabel"><a class="dv-oid" href="#1g">1g</a>ตั้งค่าบุคลิก — สลับโหมดงาน/ส่วนตัว, ระดับการจีบ, เสียง</div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" width="{{ 380 }}" height="{{ 800 }}" hint-size="380px,800px">
+<div style="min-height:100%;display:flex;flex-direction:column;background:linear-gradient(180deg,#141a3e 0%,#0b0f28 42%);color:#dbe5f0;font-size:13px">
+  <div style="padding:18px 16px 14px"><div style="font-size:19px;font-weight:600">บุคลิกและเสียง</div></div>
+  <div style="padding:0 14px;display:flex;flex-direction:column;gap:14px">
+    <div>
+      <div style="font:400 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:rgba(219,229,240,.45);margin-bottom:8px">โหมด</div>
+      <div style="display:flex;gap:6px;padding:3px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)">
+        <span style="flex:1;text-align:center;padding:9px;border-radius:9px;font-size:12.5px;background:rgba(79,227,160,.2);color:#dcffe9">งาน</span>
+        <span style="flex:1;text-align:center;padding:9px;border-radius:9px;font-size:12.5px;color:rgba(219,229,240,.7)">ส่วนตัว</span>
+        <span style="flex:1;text-align:center;padding:9px;border-radius:9px;font-size:12.5px;color:rgba(219,229,240,.7)">อัตโนมัติ</span>
+      </div>
+      <div style="font-size:11px;color:rgba(219,229,240,.5);margin-top:7px;line-height:1.6">อัตโนมัติ = ในเวลางานเธอเป็นเลขาฯ หลังสองทุ่มและวันหยุดเธอเป็นตัวเอง</div>
+    </div>
+
+    <div style="padding:14px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+        <span style="font-size:13px">ระดับการแซว / จีบ</span>
+        <span style="font:400 11px 'IBM Plex Mono',monospace;color:#f2a2bd">60</span>
+      </div>
+      <div style="height:5px;border-radius:99px;background:rgba(255,255,255,.10);position:relative">
+        <div style="position:absolute;inset:0 40% 0 0;border-radius:99px;background:linear-gradient(90deg,#4fe3a0,#f2a2bd)"></div>
+        <div style="position:absolute;left:60%;top:50%;transform:translate(-50%,-50%);width:16px;height:16px;border-radius:50%;background:#f2a2bd;box-shadow:0 2px 8px rgba(0,0,0,.5)"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:rgba(219,229,240,.45);margin-top:8px"><span>ทางการล้วน</span><span>หวานจัด</span></div>
+      <div style="margin-top:11px;padding:10px 12px;border-radius:10px;background:rgba(242,162,189,.10);border:1px solid rgba(242,162,189,.24);font-size:12px;line-height:1.65">“ประชุมบ่ายสามนะคะ… อย่าลืมกินข้าวก่อนด้วยล่ะ เดี๋ยวมินเดะงอน”</div>
+      <div style="font-size:10.5px;color:rgba(219,229,240,.4);margin-top:6px">ตัวอย่างน้ำเสียงที่ระดับนี้ · ในโหมดงานจะลดลงอัตโนมัติ</div>
+    </div>
+
+    <div style="border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);overflow:hidden">
+      <sc-for list="{{ settingRows }}" as="r" hint-placeholder-count="5">
+        <div style="display:flex;align-items:center;gap:12px;padding:13px 14px;border-bottom:1px solid rgba(255,255,255,.06)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px">{{ r.label }}</div>
+            <div style="font-size:11px;color:rgba(219,229,240,.5);margin-top:2px">{{ r.hint }}</div>
+          </div>
+          <div style="width:40px;height:23px;flex:none;border-radius:99px;position:relative;background:{{ r.trackBg }};border:1px solid {{ r.trackBorder }}">
+            <span style="position:absolute;top:2px;left:{{ r.knobLeft }};width:17px;height:17px;border-radius:50%;background:{{ r.knobBg }}"></span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="padding:14px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;gap:12px">
+      <div style="width:44px;height:44px;border-radius:12px;flex:none;border:1px dashed rgba(255,255,255,.2);background:repeating-linear-gradient(135deg,rgba(255,255,255,.06) 0 6px,transparent 6px 12px)"></div>
+      <div style="flex:1"><div style="font-size:13px">เสียง: มินเดะ — นุ่ม ช้าเล็กน้อย</div><div style="font-size:11px;color:rgba(219,229,240,.5);margin-top:2px">คำลงท้าย ค่ะ · สรรพนาม มินเดะ</div></div>
+      <span style="font-size:11.5px;color:#4fe3a0">ฟัง</span>
+    </div>
+  </div>
+  <div style="height:20px"></div>
+</div>
+</x-import></div>
+
+<div class="dv-opt" id="1h"><div class="dv-olabel"><a class="dv-oid" href="#1h">1h</a>Always-on — ล็อกสกรีน, ฟองลอย, และแจ้งเตือนถาวรตอนทำงานเบื้องหลัง</div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" width="{{ 380 }}" height="{{ 800 }}" hint-size="380px,800px">
+<div style="min-height:100%;display:flex;flex-direction:column;background:radial-gradient(120% 70% at 70% 12%,#1c2456 0%,#0f1434 58%,#080b1e 100%);color:#dbe5f0;font-size:13px;position:relative;overflow:hidden">
+  <div style="padding:34px 18px 0;text-align:center">
+    <div style="font-size:13px;color:rgba(219,229,240,.55)">ศุกร์ 29 ส.ค.</div>
+    <div style="font-size:66px;font-weight:500;line-height:1.05;letter-spacing:-.02em">09:41</div>
+  </div>
+  <div style="margin:22px 14px 0;padding:14px;border-radius:18px;background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(12px);display:flex;gap:12px;align-items:center">
+    <div style="width:46px;height:46px;border-radius:14px;flex:none;border:1px dashed rgba(255,255,255,.22);background:repeating-linear-gradient(135deg,rgba(255,255,255,.07) 0 6px,transparent 6px 12px);position:relative">
+      <span style="position:absolute;right:-2px;bottom:-2px;width:11px;height:11px;border-radius:50%;background:#4fe3a0;border:2px solid #0f1434"></span>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13px;font-weight:500">มินเดะกำลังรับสายให้อยู่</div>
+      <div style="font-size:11.5px;color:rgba(219,229,240,.6);margin-top:2px">คุณวิชัย · 01:12 · เรื่องใบเสนอราคา</div>
+    </div>
+    <span style="padding:7px 12px;border-radius:99px;background:#4fe3a0;color:#08110c;font-size:11.5px;font-weight:600">แทรก</span>
+  </div>
+  <div style="margin:10px 14px 0;padding:13px 14px;border-radius:16px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10);display:flex;gap:11px;align-items:center">
+    <span style="font:400 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:rgba(219,229,240,.45)">MIND</span>
+    <div style="flex:1;font-size:11.5px;line-height:1.5;color:rgba(219,229,240,.75)">ทำงานอยู่เบื้องหลัง · เช้านี้จัดการไปแล้ว 6 อย่าง</div>
+  </div>
+
+  <div style="flex:1"></div>
+
+  <div style="position:absolute;right:16px;bottom:150px;width:62px;height:62px;border-radius:50%;border:1px dashed rgba(255,255,255,.25);background:radial-gradient(circle at 40% 35%,rgba(79,227,160,.28),rgba(15,20,52,.9));box-shadow:0 10px 30px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center">
+    <span style="font:400 8.5px 'IBM Plex Mono',monospace;color:rgba(219,229,240,.6);text-align:center;line-height:1.3">VRM<br>bust</span>
+    <span style="position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(79,227,160,.4);animation:mindRing 2.6s ease-out infinite"></span>
+  </div>
+  <div style="position:absolute;right:88px;bottom:162px;max-width:170px;padding:9px 12px;border-radius:14px;background:rgba(18,26,60,.94);border:1px solid rgba(79,227,160,.3);font-size:11.5px;line-height:1.5">แตะฟองเพื่อคุยได้เลย ไม่ต้องเปิดแอป</div>
+
+  <div style="margin:0 14px 18px;padding:12px 14px;border-radius:14px;border:1px dashed rgba(255,255,255,.16);font-size:11px;line-height:1.7;color:rgba(219,229,240,.55)">
+    <span style="font:400 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:rgba(219,229,240,.45);display:block;margin-bottom:5px">ข้อจำกัด Android ที่ต้องออกแบบเผื่อ</span>
+    ต้องมี foreground service + แจ้งเตือนถาวร · ขอสิทธิ์ overlay สำหรับฟองลอย · ต้องปิด battery optimization ไม่งั้นเธอโดนฆ่าตอนหน้าจอดับ · CallScreeningService สำหรับรับสายแทน
+  </div>
+</div>
+</x-import></div>
+
+</div>
+<p class="dv-next">ลองบอกต่อได้: “ทำ <a class="dv-oid" href="#1a">1a</a> ให้เป็นโหมดส่วนตัวด้วย” · “ขอ 3 แบบของวิธีแสดงอารมณ์เธอ” · “ขอหน้าออนบอร์ดดิ้ง + ขอสิทธิ์”</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accentWork&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#4fe3a0&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#4fe3a0&quot;,&quot;#5bc8f5&quot;,&quot;#c9b6ff&quot;,&quot;#f0c674&quot;],&quot;section&quot;:&quot;สี&quot;},&quot;accentLove&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#f2a2bd&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#f2a2bd&quot;,&quot;#f0a882&quot;,&quot;#d6a8f5&quot;,&quot;#f78ca0&quot;],&quot;section&quot;:&quot;สี&quot;}}">
+class Component extends DCLogic {
+  state = {
+    mode: 'work',
+    mic: false,
+    draft: '',
+    msgs: [
+      { who: 'her', text: 'อรุณสวัสดิ์ค่ะ เช้านี้มีเมล 24 ฉบับ มินเดะคัดให้เหลือ 3 ที่ต้องตอบนะคะ' },
+      { who: 'me', text: 'บ่ายนี้ว่างไหม' },
+      { who: 'her', text: 'บ่ายว่างตั้งแต่ 14:00 ค่ะ แต่คุณต้นขอเลื่อนรีวิวมาบ่ายสาม จะให้มินเดะโทรไปคุยให้ไหมคะ' },
+    ],
+  };
+
+  get accent() { return this.state.mode === 'work' ? (this.props.accentWork ?? '#4fe3a0') : (this.props.accentLove ?? '#f2a2bd'); }
+
+  send = (text) => {
+    const t = (text || '').trim();
+    if (!t) return;
+    const reply = this.state.mode === 'work'
+      ? 'รับทราบค่ะ มินเดะจัดการให้แล้วจะสรุปกลับมานะคะ'
+      : 'ได้เลยค่ะ… แต่ขอค่าจ้างเป็นคำชมสักคำนะคะ 😌';
+    this.setState(s => ({ draft: '', msgs: [...s.msgs, { who: 'me', text: t }, { who: 'her', text: reply }].slice(-6) }));
+  };
+
+  renderVals() {
+    const work = this.state.mode === 'work';
+    const accent = this.accent;
+    const chipLabels = work
+      ? ['สรุปเมลเช้านี้', 'นัดรีวิวบ่ายนี้', 'โทรหาคุณต้น']
+      : ['วันนี้เป็นไงบ้าง', 'เล่าอะไรให้ฟังหน่อย', 'คิดถึงไหม'];
+
+    return {
+      accent,
+      accentSoft: work ? 'rgba(79,227,160,.34)' : 'rgba(242,162,189,.34)',
+      statusLine: work ? 'ออนไลน์ · โหมดงาน · ฟังอยู่' : 'ออนไลน์ · โหมดส่วนตัว · ฟังอยู่',
+      bubbleText: work ? 'คุณต้นขอเลื่อนรีวิวเป็นบ่ายสามค่ะ' : 'วันนี้ยิ้มน้อยไปนะคะ เล่าให้ฟังหน่อยสิ',
+      toggleMode: () => this.setState(s => ({ mode: s.mode === 'work' ? 'love' : 'work' })),
+      workPillBg: work ? 'rgba(79,227,160,.22)' : 'transparent',
+      workPillFg: work ? '#dcffe9' : 'rgba(219,229,240,.6)',
+      lovePillBg: work ? 'transparent' : 'rgba(242,162,189,.22)',
+      lovePillFg: work ? 'rgba(219,229,240,.6)' : '#ffe3ee',
+      messages: this.state.msgs.map(m => m.who === 'me'
+        ? { text: m.text, align: 'flex-end', bg: 'rgba(255,255,255,.10)', border: 'rgba(255,255,255,.14)', fg: '#dbe5f0' }
+        : { text: m.text, align: 'flex-start', bg: work ? 'rgba(79,227,160,.14)' : 'rgba(242,162,189,.14)', border: work ? 'rgba(79,227,160,.28)' : 'rgba(242,162,189,.28)', fg: '#dbe5f0' }),
+      chips: chipLabels.map(label => ({ label, send: () => this.send(label) })),
+      draft: this.state.draft,
+      onDraft: (e) => this.setState({ draft: e.target.value }),
+      onKey: (e) => { if (e.key === 'Enter') this.send(this.state.draft); },
+      sendDraft: () => this.send(this.state.draft),
+      toggleMic: () => this.setState(s => ({ mic: !s.mic })),
+      micBg: this.state.mic ? 'rgba(248,113,113,.24)' : 'rgba(255,255,255,.06)',
+      micBorder: this.state.mic ? '#f87171' : 'rgba(255,255,255,.14)',
+      micFg: this.state.mic ? '#fecaca' : accent,
+
+      callSteps: [
+        { label: 'ต่อสาย', dot: '#4fe3a0', fg: 'rgba(219,229,240,.75)' },
+        { label: 'กำลังคุย', dot: '#4fe3a0', fg: '#dbe5f0' },
+        { label: 'สรุปให้คุณ', dot: 'rgba(255,255,255,.22)', fg: 'rgba(219,229,240,.4)' },
+      ],
+
+      timeline: [
+        { time: '08:12', title: 'สรุปกล่องเมลเช้า', detail: '24 ฉบับ → 3 ที่ต้องตอบ · ร่างคำตอบไว้ 2', dot: '#4fe3a0', action: 'ดูร่าง', actionColor: '#4fe3a0' },
+        { time: '09:05', title: 'รับสายแทน — คุณวิชัย', detail: 'ใบเสนอราคา QT-2609 ขอต่อรอง 7% · จดไว้แล้ว', dot: '#4fe3a0', action: 'ฟังเสียง · อ่านสรุป', actionColor: '#4fe3a0' },
+        { time: '09:40', title: 'ส่งเมลตอบคุณนภา', detail: 'อนุมัติเลื่อนอาร์ตเวิร์กเป็นวันจันทร์เช้า', dot: '#4fe3a0', action: 'ย้อนกลับ (เหลือ 23 ชม.)', actionColor: 'rgba(219,229,240,.5)' },
+        { time: '10:20', title: 'โทรออก — คุณต้น', detail: 'เลื่อนรีวิวเป็นพฤหัส 15:00 · เขาตอบตกลง', dot: '#4fe3a0', action: 'ดูบทสนทนา', actionColor: '#4fe3a0' },
+        { time: '11:15', title: 'รอคุณอนุมัติ', detail: 'ส่วนลด QT-2609 เกินอำนาจที่ตั้งไว้ (สูงสุด 5%)', dot: '#f0c674', action: 'ตัดสินใจตอนนี้', actionColor: '#f0c674' },
+        { time: '12:00', title: 'เตือนกินข้าว', detail: 'เธอปิดแจ้งเตือนงานให้ 45 นาที', dot: 'rgba(242,162,189,.85)', action: '', actionColor: 'transparent' },
+      ],
+
+      settingRows: [
+        { label: 'รับสายอัตโนมัติ', hint: 'เฉพาะเบอร์ในสมุดโทรศัพท์ · สายแปลกให้คัดกรองก่อน', on: true },
+        { label: 'สรุปเมลตอนเช้า 08:00', hint: 'อ่านให้ฟังตอนคุณขึ้นรถได้', on: true },
+        { label: 'ให้เธอส่งเมลเองได้', hint: 'เฉพาะที่ตอบตามแม่แบบ · เรื่องเงินต้องขออนุมัติเสมอ', on: false },
+        { label: 'Always-on (ทำงานเบื้องหลัง)', hint: 'ต้องปิด battery optimization ให้แอปนี้', on: true },
+        { label: 'ฟองลอยบนหน้าจออื่น', hint: 'ต้องให้สิทธิ์ Display over other apps', on: true },
+      ].map(r => ({
+        label: r.label, hint: r.hint,
+        trackBg: r.on ? 'rgba(79,227,160,.28)' : 'rgba(255,255,255,.07)',
+        trackBorder: r.on ? 'rgba(79,227,160,.5)' : 'rgba(255,255,255,.14)',
+        knobBg: r.on ? '#4fe3a0' : 'rgba(219,229,240,.5)',
+        knobLeft: r.on ? '20px' : '2px',
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

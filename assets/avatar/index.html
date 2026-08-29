@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>minde</title>
+
+<!--
+  หน้านี้คือเวทีของมินเดะ ไม่ใช่ UI — Flutter วาด UI ทั้งหมดทับข้างบนอีกที
+  พื้นหลังต้องโปร่งจริง (renderer สร้างด้วย alpha:true อยู่แล้ว) ไม่งั้นจะบังก้อนแสง
+
+  เครื่องยนต์ยกมาจาก xjanova/BrainX → BrainX.Client/wwwroot/universe
+  แก้ที่นั่นแล้วค่อยซิงก์กลับมา อย่าแก้แยกสองที่
+-->
+
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/three.module.js",
+  "@pixiv/three-vrm": "./vendor/three-vrm/three-vrm.module.min.js"
+} }
+</script>
+
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<script type="module">
+import { Avatar } from './avatar.js';
+
+const stage = document.getElementById('stage');
+
+/** ส่งสถานะกลับฝั่ง Flutter — เงียบไว้ถ้าไม่ได้รันในแอป (เช่นเปิดดูใน Chrome) */
+const post = (type, data = {}) => {
+  try {
+    window.flutter_inappwebview?.callHandler('minde', { type, ...data });
+  } catch (_) { /* เปิดนอกแอปอยู่ ไม่ต้องทำอะไร */ }
+};
+
+let avatar = null;
+
+try {
+  // โมเดลกับคลิปไม่ได้อยู่ใน git (ดู THIRD_PARTY.md) แอปจะวางไว้ใต้ ./model/
+  // ตอนรันครั้งแรก ถ้ายังไม่มี ให้ Flutter ขึ้นกรอบ placeholder ตามดีไซน์แทน
+  avatar = new Avatar(stage, { base: './model/', model: 'minde.vrm' });
+  await avatar.loaded;
+  post('ready');
+} catch (err) {
+  post('error', { message: String(err?.message ?? err) });
+}
+
+/**
+ * เล่นเสียงจากไบต์ที่ Flutter ส่งมาเป็น base64
+ *
+ * ทำไมต้องเป็น Blob ไม่ใช่ URL ของ OpenAI ตรง ๆ:
+ * lipsync.js ต่อ createMediaElementSource() เข้ากับ AnalyserNode เพื่ออ่านคลื่นเสียง
+ * ถ้าเสียงมาจากคนละ origin โดยไม่มี CORS header ที่ถูกต้อง WebAudio จะถือว่า
+ * "tainted" แล้วป้อนศูนย์ให้ analyser — เสียงดังปกติ แต่ปากไม่ขยับเลย
+ * และไม่มี error ที่ไหนบอก · blob: เป็น same-origin เสมอ จึงไม่มีปัญหานี้
+ */
+async function speakBytes(b64, mime) {
+  if (!avatar) return false;
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'audio/mpeg' }));
+  try {
+    return await avatar.speak(url);
+  } finally {
+    // ปล่อยทันทีที่เล่นจบ ไม่งั้นคุยยาว ๆ จะสะสมไฟล์เสียงไว้ในหน่วยความจำทั้งหมด
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** API ที่ฝั่ง Flutter เรียกผ่าน evaluateJavascript */
+window.minde = {
+  mood:  (m)   => avatar?.setMood(m),
+  speak: (url) => avatar?.speak(url),
+  speakBytes,
+  stop:  ()    => avatar?.stop(),
+  sit:   ()    => avatar?.sit(),
+  stand: ()    => avatar?.stand(),
+  /** 'bust' ตอนคุย · 'full' ตอนยืนเฉย ๆ */
+  frame: (n)   => avatar?.framing?.set(n),
+};
+
+// WebView ถูกย่อ/ขยายตอนคีย์บอร์ดเด้ง ถ้าไม่ resize เธอจะยืดผิดสัดส่วน
+addEventListener('resize', () => avatar?.resize(innerWidth, innerHeight));
+</script>
+</body>
+</html>
