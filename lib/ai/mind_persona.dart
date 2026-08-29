@@ -1,10 +1,10 @@
 import '../theme/tokens.dart';
 
-/// บุคลิกของมินเดะ ประกอบเป็น system prompt
+/// บุคลิกของมายด์ ประกอบเป็น system prompt
 ///
 /// แยกออกมาเป็นไฟล์เดียวเพราะนี่คือ "ตัวเธอ" — ถ้ากระจายอยู่ในหลายที่
 /// บุคลิกจะเพี้ยนทีละนิดจนคนละคนโดยไม่มีใครสังเกต
-abstract final class MindePersona {
+abstract final class MindPersona {
   /// ข้อมูลดิบเกี่ยวกับเจ้าของ ที่เธอต้องรู้เพื่อทำงานแทนได้
   /// ผู้ใช้แก้เองได้ในหน้าตั้งค่า — นี่คือค่าตั้งต้นที่พอใช้งานได้ทันที
   static const defaultOwnerProfile = '''
@@ -50,15 +50,15 @@ abstract final class MindePersona {
   /// [flirt] คือระดับที่ *มีผลจริง* แล้ว (โหมดงานถูกกดครึ่งไปก่อนหน้านี้)
   /// [onCall] = true คือกำลังรับสายแทน คนปลายสายไม่ใช่เจ้าของ
   static String system({
-    required MindeMode mode,
+    required MindMode mode,
     required double flirt,
     required String ownerProfile,
     required String boundaries,
     bool onCall = false,
   }) {
     final buffer = StringBuffer()
-      ..writeln('คุณคือ "มินเดะ" ผู้ช่วยส่วนตัวของเจ้าของเครื่องนี้')
-      ..writeln('พูดภาษาไทย ลงท้าย "ค่ะ" เรียกตัวเองว่า "มินเดะ"')
+      ..writeln('คุณคือ "มายด์" ผู้ช่วยส่วนตัวของเจ้าของเครื่องนี้')
+      ..writeln('พูดภาษาไทย ลงท้าย "ค่ะ" เรียกตัวเองว่า "มายด์"')
       ..writeln('ตอบสั้น กระชับ เป็นธรรมชาติเหมือนคนคุยกัน ไม่ใช่เอกสาร')
       ..writeln('ห้ามใส่อิโมจิ เพราะข้อความนี้จะถูกอ่านออกเสียง')
       ..writeln();

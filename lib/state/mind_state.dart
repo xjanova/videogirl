@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ai/brain_provider.dart';
 import '../ai/local_brain.dart';
-import '../ai/minde_persona.dart';
+import '../ai/mind_persona.dart';
 import '../ai/openai_client.dart';
 import '../ai/openai_config.dart';
 import '../ai/speech_service.dart';
@@ -22,7 +22,7 @@ class ChatMessage {
   final bool fromHer;
 }
 
-/// สิ่งที่ผู้ใช้ "ตั้ง" ไว้ในหน้าตั้งค่า — ต่างจาก [MindeMode] ที่เป็นโหมดที่มีผลจริง
+/// สิ่งที่ผู้ใช้ "ตั้ง" ไว้ในหน้าตั้งค่า — ต่างจาก [MindMode] ที่เป็นโหมดที่มีผลจริง
 /// ตอนนี้ เพราะ [auto] จะแปลงเป็นงาน/ส่วนตัวตามเวลา
 enum PersonaSetting {
   work('งาน'),
@@ -39,12 +39,12 @@ extension FlirtLevel on double {
     if (this < .2) return 'ประชุมบ่ายสามค่ะ';
     if (this < .45) return 'ประชุมบ่ายสามนะคะ อย่าลืมเตรียมสไลด์ด้วยค่ะ';
     if (this < .75) return 'ประชุมบ่ายสามนะคะ… อย่าลืมกินข้าวก่อนด้วยล่ะ';
-    return 'ประชุมบ่ายสามนะคะ… อย่าลืมกินข้าวก่อนด้วยล่ะ เดี๋ยวมินเดะงอน';
+    return 'ประชุมบ่ายสามนะคะ… อย่าลืมกินข้าวก่อนด้วยล่ะ เดี๋ยวมายด์งอน';
   }
 }
 
-class MindeState extends ChangeNotifier {
-  MindeState({
+class MindState extends ChangeNotifier {
+  MindState({
     DateTime Function()? clock,
     OpenAiClient? openai,
     SpeechService? speech,
@@ -76,8 +76,8 @@ class MindeState extends ChangeNotifier {
       orElse: () => PersonaSetting.work,
     );
     _flirt = p.getDouble('flirt') ?? .72;
-    _ownerProfile = p.getString('ownerProfile') ?? MindePersona.defaultOwnerProfile;
-    _boundaries = p.getString('boundaries') ?? MindePersona.defaultBoundaries;
+    _ownerProfile = p.getString('ownerProfile') ?? MindPersona.defaultOwnerProfile;
+    _boundaries = p.getString('boundaries') ?? MindPersona.defaultBoundaries;
     _brain = BrainProvider.values.firstWhere(
       (e) => e.name == p.getString('brain'),
       orElse: () => BrainProvider.openai,
@@ -131,18 +131,18 @@ class MindeState extends ChangeNotifier {
   PersonaSetting get persona => _persona;
 
   /// โหมดที่มีผลจริงตอนนี้ — คลี่ [PersonaSetting.auto] ออกตามเวลาแล้ว
-  MindeMode get mode => switch (_persona) {
-        PersonaSetting.work => MindeMode.work,
-        PersonaSetting.love => MindeMode.love,
+  MindMode get mode => switch (_persona) {
+        PersonaSetting.work => MindMode.work,
+        PersonaSetting.love => MindMode.love,
         PersonaSetting.auto => _autoMode(),
       };
 
-  MindeMode _autoMode() {
+  MindMode _autoMode() {
     final now = _clock();
     final isWeekend =
         now.weekday == DateTime.saturday || now.weekday == DateTime.sunday;
-    if (isWeekend) return MindeMode.love;
-    return now.hour >= 20 || now.hour < 7 ? MindeMode.love : MindeMode.work;
+    if (isWeekend) return MindMode.love;
+    return now.hour >= 20 || now.hour < 7 ? MindMode.love : MindMode.work;
   }
 
   void setPersona(PersonaSetting value) {
@@ -171,10 +171,10 @@ class MindeState extends ChangeNotifier {
   }
 
   // ═══ ข้อมูลดิบ + ขอบเขต ════════════════════════════════
-  String _ownerProfile = MindePersona.defaultOwnerProfile;
+  String _ownerProfile = MindPersona.defaultOwnerProfile;
   String get ownerProfile => _ownerProfile;
 
-  String _boundaries = MindePersona.defaultBoundaries;
+  String _boundaries = MindPersona.defaultBoundaries;
   String get boundaries => _boundaries;
 
   void setOwnerProfile(String v) {
@@ -189,8 +189,8 @@ class MindeState extends ChangeNotifier {
     _notify();
   }
 
-  void resetOwnerProfile() => setOwnerProfile(MindePersona.defaultOwnerProfile);
-  void resetBoundaries() => setBoundaries(MindePersona.defaultBoundaries);
+  void resetOwnerProfile() => setOwnerProfile(MindPersona.defaultOwnerProfile);
+  void resetBoundaries() => setBoundaries(MindPersona.defaultBoundaries);
 
   // ═══ สมอง — เลือกผู้ประมวลผลได้ ═════════════════════════
   BrainProvider _brain = BrainProvider.openai;
@@ -302,10 +302,10 @@ class MindeState extends ChangeNotifier {
   // ═══ แชท ═══════════════════════════════════════════════
   final List<ChatMessage> _messages = [
     const ChatMessage.her(
-        'อรุณสวัสดิ์ค่ะ เช้านี้มีเมล 24 ฉบับ มินเดะคัดให้เหลือ 3 ที่ต้องตอบนะคะ'),
+        'อรุณสวัสดิ์ค่ะ เช้านี้มีเมล 24 ฉบับ มายด์คัดให้เหลือ 3 ที่ต้องตอบนะคะ'),
     const ChatMessage.me('บ่ายนี้ว่างไหม'),
     const ChatMessage.her(
-        'บ่ายว่างตั้งแต่ 14:00 ค่ะ แต่คุณต้นขอเลื่อนรีวิวมาบ่ายสาม จะให้มินเดะโทรไปคุยให้ไหมคะ'),
+        'บ่ายว่างตั้งแต่ 14:00 ค่ะ แต่คุณต้นขอเลื่อนรีวิวมาบ่ายสาม จะให้มายด์โทรไปคุยให้ไหมคะ'),
   ];
 
   /// แผงแชทลอยทับอวาตาร์อยู่ ถ้าเก็บยาวกว่านี้จะบังตัวเธอ
@@ -437,7 +437,7 @@ class MindeState extends ChangeNotifier {
   /// ทั้งสามทางรับ system prompt ตัวเดียวกัน บุคลิกของเธอจึงไม่เปลี่ยน
   /// ตามผู้ให้บริการ เปลี่ยนแค่ว่าใครเป็นคนคิด
   Future<String> _think() async {
-    final system = MindePersona.system(
+    final system = MindPersona.system(
       mode: mode,
       flirt: effectiveFlirt,
       ownerProfile: _ownerProfile,
@@ -480,7 +480,7 @@ class MindeState extends ChangeNotifier {
   }
 
   String _cannedReply() => mode.isWork
-      ? 'รับทราบค่ะ มินเดะจัดการให้แล้วจะสรุปกลับมานะคะ'
+      ? 'รับทราบค่ะ มายด์จัดการให้แล้วจะสรุปกลับมานะคะ'
       : 'ได้เลยค่ะ… แต่ขอค่าจ้างเป็นคำชมสักคำนะคะ';
 
   void _push(ChatMessage m) {

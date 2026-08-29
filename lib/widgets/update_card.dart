@@ -13,7 +13,7 @@ import 'glass.dart';
 class UpdateCard extends StatefulWidget {
   const UpdateCard({super.key, required this.mode});
 
-  final MindeMode mode;
+  final MindMode mode;
 
   @override
   State<UpdateCard> createState() => _UpdateCardState();
@@ -37,16 +37,16 @@ class _UpdateCardState extends State<UpdateCard> {
     final mode = widget.mode;
 
     return GlassPanel(
-      radius: MindeRadius.card,
-      fill: MindeColors.glass62,
-      filter: MindeGlass.light,
-      shadows: MindeShadows.card(),
+      radius: MindRadius.card,
+      fill: MindColors.glass62,
+      filter: MindGlass.light,
+      shadows: MindShadows.card(),
       padding: const EdgeInsets.all(15),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('อัปเดตแอป',
-              style: mindeMono(size: 10, color: mode.accent, letterSpacing: .1)),
+              style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -73,11 +73,11 @@ class _UpdateCardState extends State<UpdateCard> {
               up.stage == UpdateStage.verifying) ...[
             const SizedBox(height: 12),
             ClipRRect(
-              borderRadius: BorderRadius.circular(MindeRadius.pill),
+              borderRadius: BorderRadius.circular(MindRadius.pill),
               child: LinearProgressIndicator(
                 value: up.stage == UpdateStage.verifying ? null : up.progress,
                 minHeight: 5,
-                backgroundColor: MindeColors.ink10,
+                backgroundColor: MindColors.ink10,
                 valueColor: AlwaysStoppedAnimation(mode.accent),
               ),
             ),
@@ -86,7 +86,7 @@ class _UpdateCardState extends State<UpdateCard> {
               up.stage == UpdateStage.verifying
                   ? 'กำลังตรวจว่าไฟล์ตรงกับที่ประกาศไว้…'
                   : 'ดาวน์โหลดแล้ว ${(up.progress * 100).round()}%',
-              style: const TextStyle(fontSize: 10.5, color: MindeColors.ink55),
+              style: const TextStyle(fontSize: 10.5, color: MindColors.ink55),
             ),
           ],
           if (up.stage == UpdateStage.available && up.pending != null) ...[
@@ -100,7 +100,7 @@ class _UpdateCardState extends State<UpdateCard> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   gradient: mode.gradient,
-                  borderRadius: BorderRadius.circular(MindeRadius.control),
+                  borderRadius: BorderRadius.circular(MindRadius.control),
                   boxShadow: [
                     BoxShadow(
                         color: mode.accentSoft,
@@ -143,7 +143,7 @@ class _UpdateCardState extends State<UpdateCard> {
         Text(text,
             style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
         Text('อ่านจาก GitHub Releases · ตรวจ SHA-256 ก่อนติดตั้งทุกครั้ง',
-            style: TextStyle(fontSize: 10.5, color: MindeColors.ink55)),
+            style: TextStyle(fontSize: 10.5, color: MindColors.ink55)),
       ],
     );
   }
@@ -154,9 +154,9 @@ class _UpdateCardState extends State<UpdateCard> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
       decoration: BoxDecoration(
-        color: MindeColors.glass85,
-        borderRadius: BorderRadius.circular(MindeRadius.message),
-        border: Border.all(color: MindeColors.glassBorder, width: 1),
+        color: MindColors.glass85,
+        borderRadius: BorderRadius.circular(MindRadius.message),
+        border: Border.all(color: MindColors.glassBorder, width: 1),
       ),
       child: Text(
         info.notes,

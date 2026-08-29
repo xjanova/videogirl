@@ -75,6 +75,32 @@ class LocalBrain extends ChangeNotifier {
   int _progress = 0;
   int get progress => _progress;
 
+  DateTime? _startedAt;
+  int _bytesPerSecond = 0;
+
+  /// ไบต์ที่โหลดมาแล้ว คำนวณจากเปอร์เซ็นต์ × ขนาดจริงที่รู้อยู่แล้ว
+  /// (ตัวปลั๊กอินคืนมาแค่เปอร์เซ็นต์ ไม่ได้บอกไบต์)
+  int get downloadedBytes => (_variant.bytes * _progress / 100).round();
+
+  /// "1.2 / 2.0 GB" — ผู้ใช้ต้องเห็นว่าเหลืออีกเท่าไหร่ ไม่ใช่แค่เปอร์เซ็นต์ลอย ๆ
+  String get sizeProgressLabel =>
+      '${_gb(downloadedBytes)} / ${_gb(_variant.bytes)} GB';
+
+  /// "4.3 MB/วิ" — ว่างถ้ายังคำนวณไม่ได้
+  String get speedLabel => _bytesPerSecond <= 0
+      ? ''
+      : '${(_bytesPerSecond / 1048576).toStringAsFixed(1)} MB/วิ';
+
+  /// เวลาที่เหลือโดยประมาณ — ว่างถ้ายังเดาไม่ได้
+  String get etaLabel {
+    if (_bytesPerSecond <= 0 || _progress >= 100) return '';
+    final left = (_variant.bytes - downloadedBytes) ~/ _bytesPerSecond;
+    if (left < 60) return 'เหลืออีก ~$left วิ';
+    return 'เหลืออีก ~${(left / 60).ceil()} นาที';
+  }
+
+  static String _gb(int bytes) => (bytes / 1073741824).toStringAsFixed(1);
+
   String? _error;
   String? get error => _error;
 
@@ -120,6 +146,8 @@ class LocalBrain extends ChangeNotifier {
   /// โหลดโมเดลลงเครื่อง — หลาย GB ต้องมีไวไฟและพื้นที่ว่างพอ
   Future<void> download() async {
     _progress = 0;
+    _bytesPerSecond = 0;
+    _startedAt = DateTime.now();
     _set(LocalModelStage.downloading);
     try {
       final stream = FlutterGemmaPlugin.instance.modelManager
@@ -127,6 +155,12 @@ class LocalBrain extends ChangeNotifier {
       await for (final p in stream) {
         if (_disposed) return;
         _progress = p.currentFileProgress;
+
+        // ความเร็วเฉลี่ยตั้งแต่เริ่ม นิ่งกว่าความเร็วชั่วขณะ
+        // ตัวเลขที่กระโดดไปมาทำให้ ETA เชื่อถือไม่ได้และผู้ใช้กังวลเปล่า ๆ
+        final elapsed = DateTime.now().difference(_startedAt!).inSeconds;
+        if (elapsed > 0) _bytesPerSecond = downloadedBytes ~/ elapsed;
+
         notifyListeners();
       }
       _set(LocalModelStage.ready);
@@ -189,7 +223,7 @@ class LocalBrain extends ChangeNotifier {
         modelType: ModelType.gemmaIt,
         fileType: ModelFileType.litertlm,
         preferredBackend: _variant.backend,
-        // มินเดะตอบสั้น แต่ system prompt (ข้อมูลเจ้าของ + ขอบเขต) ยาวพอควร
+        // มายด์ตอบสั้น แต่ system prompt (ข้อมูลเจ้าของ + ขอบเขต) ยาวพอควร
         maxTokens: 4096,
       );
       _loadedSystem = null;

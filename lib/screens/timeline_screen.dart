@@ -16,7 +16,7 @@ class TimelineScreen extends StatelessWidget {
     _Entry('09:05', 'รับสายแทน — คุณวิชัย', 'ใบเสนอราคา QT-2609 ขอต่อรอง 7% · จดไว้แล้ว',
         Color(0xFF7C6CFF), 'ฟังเสียง · อ่านสรุป', Color(0xFF5A4DE0)),
     _Entry('09:40', 'ส่งเมลตอบคุณนภา', 'อนุมัติเลื่อนอาร์ตเวิร์กเป็นวันจันทร์เช้า',
-        Color(0xFF3EC7FF), 'ย้อนกลับ (เหลือ 23 ชม.)', MindeColors.ink50),
+        Color(0xFF3EC7FF), 'ย้อนกลับ (เหลือ 23 ชม.)', MindColors.ink50),
     _Entry('10:20', 'โทรออก — คุณต้น', 'เลื่อนรีวิวเป็นพฤหัส 15:00 · เขาตอบตกลง',
         Color(0xFF00C2A8), 'ดูบทสนทนา', Color(0xFF00A894)),
     _Entry('11:15', 'รอคุณอนุมัติ', 'ส่วนลด QT-2609 เกินอำนาจที่ตั้งไว้ (สูงสุด 5%)',
@@ -35,7 +35,7 @@ class TimelineScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LiquidBackground(
-      gradient: MindeGradients.timeline,
+      gradient: MindGradients.timeline,
       orbs: Orb.timeline,
       child: SafeArea(
         child: Column(
@@ -70,17 +70,17 @@ class TimelineScreen extends StatelessWidget {
 
   Widget _stat(String label, int count) {
     return GlassPanel(
-      radius: MindeRadius.avatarThumb,
-      fill: MindeColors.glass62,
+      radius: MindRadius.avatarThumb,
+      fill: MindColors.glass62,
       padding: const EdgeInsets.symmetric(vertical: 10),
-      shadows: MindeShadows.soft(),
+      shadows: MindShadows.soft(),
       child: Column(
         spacing: 2,
         children: [
           Text('$count',
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
           Text(label,
-              style: const TextStyle(fontSize: 10.5, color: MindeColors.ink55)),
+              style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
         ],
       ),
     );
@@ -107,16 +107,16 @@ class TimelineScreen extends StatelessWidget {
               ),
               if (!last)
                 Expanded(
-                  child: Container(width: 1, color: MindeColors.ink10),
+                  child: Container(width: 1, color: MindColors.ink10),
                 ),
             ],
           ),
           Expanded(
             child: GlassPanel(
               radius: 20,
-              fill: MindeColors.glass62,
-              filter: MindeGlass.light,
-              shadows: MindeShadows.soft(),
+              fill: MindColors.glass62,
+              filter: MindGlass.light,
+              shadows: MindShadows.soft(),
               padding: const EdgeInsets.all(13),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,7 +125,7 @@ class TimelineScreen extends StatelessWidget {
                   Row(
                     spacing: 8,
                     children: [
-                      Text(e.time, style: mindeMono(size: 10.5, color: MindeColors.ink50)),
+                      Text(e.time, style: mindMono(size: 10.5, color: MindColors.ink50)),
                       Expanded(
                         child: Text(e.title,
                             style: const TextStyle(
@@ -135,7 +135,7 @@ class TimelineScreen extends StatelessWidget {
                   ),
                   Text(e.detail,
                       style: const TextStyle(
-                          fontSize: 11.5, height: 1.6, color: MindeColors.ink60)),
+                          fontSize: 11.5, height: 1.6, color: MindColors.ink60)),
                   if (e.action.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),

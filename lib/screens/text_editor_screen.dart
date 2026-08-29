@@ -24,7 +24,7 @@ class TextEditorScreen extends StatefulWidget {
   final String hint;
 
   final String initial;
-  final MindeMode mode;
+  final MindMode mode;
 
   /// คืนค่าตั้งต้นของโรงงาน
   final String Function() onReset;
@@ -109,7 +109,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
       },
       child: Scaffold(
         body: LiquidBackground(
-          gradient: MindeGradients.settings,
+          gradient: MindGradients.settings,
           orbs: Orb.settings,
           child: SafeArea(
             child: Column(
@@ -122,7 +122,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                       IconButton(
                         onPressed: _confirmDiscard,
                         icon: const Icon(Icons.arrow_back_rounded,
-                            color: MindeColors.ink),
+                            color: MindColors.ink),
                       ),
                       Expanded(
                         child: Text(widget.title,
@@ -132,7 +132,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                       TextButton(
                         onPressed: _reset,
                         child: const Text('คืนค่าตั้งต้น',
-                            style: TextStyle(fontSize: 12, color: MindeColors.ink60)),
+                            style: TextStyle(fontSize: 12, color: MindColors.ink60)),
                       ),
                     ],
                   ),
@@ -141,16 +141,16 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: Text(widget.hint,
                       style: const TextStyle(
-                          fontSize: 11.5, height: 1.6, color: MindeColors.ink55)),
+                          fontSize: 11.5, height: 1.6, color: MindColors.ink55)),
                 ),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     child: GlassPanel(
-                      radius: MindeRadius.card,
-                      fill: MindeColors.glass72,
-                      filter: MindeGlass.light,
-                      shadows: MindeShadows.card(),
+                      radius: MindRadius.card,
+                      fill: MindColors.glass72,
+                      filter: MindGlass.light,
+                      shadows: MindShadows.card(),
                       padding: const EdgeInsets.all(14),
                       child: TextField(
                         controller: _text,
@@ -159,10 +159,10 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                         textAlignVertical: TextAlignVertical.top,
                         keyboardType: TextInputType.multiline,
                         style: const TextStyle(
-                            fontSize: 12.5, height: 1.7, color: MindeColors.ink),
+                            fontSize: 12.5, height: 1.7, color: MindColors.ink),
                         decoration: const InputDecoration.collapsed(
                           hintText: 'พิมพ์ที่นี่…',
-                          hintStyle: TextStyle(color: MindeColors.ink45),
+                          hintStyle: TextStyle(color: MindColors.ink45),
                         ),
                         onChanged: (_) => setState(() {}),
                       ),
@@ -181,7 +181,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         gradient: widget.mode.gradient,
-                        borderRadius: BorderRadius.circular(MindeRadius.message),
+                        borderRadius: BorderRadius.circular(MindRadius.message),
                         boxShadow: [
                           BoxShadow(
                               color: widget.mode.accentSoft,

@@ -7,18 +7,18 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../theme/tokens.dart';
 
-/// อารมณ์ที่มินเดะแสดงได้ — ตรงกับ MOOD_EXPRESSION ใน avatar.js
+/// อารมณ์ที่มายด์แสดงได้ — ตรงกับ MOOD_EXPRESSION ใน avatar.js
 /// ถ้าเพิ่มที่นี่ต้องไปเพิ่มใน BrainX ด้วย ไม่งั้นจะตกกลับเป็น neutral เงียบ ๆ
-enum MindeMood { neutral, happy, pleased, concerned, thinking, sorry, alert, angry }
+enum MindMood { neutral, happy, pleased, concerned, thinking, sorry, alert, angry }
 
 /// ระยะกล้อง — 'bust' ตอนคุย, 'full' ตอนยืนเฉย
-enum MindeFraming { bust, full }
+enum MindFraming { bust, full }
 
 /// รีโมตของอวาตาร์ ส่งคำสั่งข้ามไปฝั่ง WebView
 ///
 /// ทุกคำสั่งเงียบไว้ถ้าเวทียังไม่พร้อม เพราะ UI เรียกได้ตลอดเวลา
 /// (ผู้ใช้กดส่งข้อความได้ตั้งแต่วินาทีแรก แต่ VRM 33MB ยังโหลดไม่เสร็จ)
-class MindeAvatarController extends ChangeNotifier {
+class MindAvatarController extends ChangeNotifier {
   InAppWebViewController? _web;
   bool _ready = false;
   String? _error;
@@ -54,7 +54,7 @@ class MindeAvatarController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setMood(MindeMood mood) => _call("window.minde.mood('${mood.name}')");
+  Future<void> setMood(MindMood mood) => _call("window.minde.mood('${mood.name}')");
 
   /// เล่นไฟล์เสียงพร้อมขยับปาก — url ต้องเข้าถึงได้จากฝั่ง WebView
   Future<void> speak(String url) =>
@@ -80,7 +80,7 @@ class MindeAvatarController extends ChangeNotifier {
 
   Future<void> stop() => _call('window.minde.stop()');
 
-  Future<void> setFraming(MindeFraming f) =>
+  Future<void> setFraming(MindFraming f) =>
       _call("window.minde.frame('${f.name}')");
 
   Future<void> _call(String js) async {
@@ -104,30 +104,30 @@ class MindeAvatarController extends ChangeNotifier {
   }
 }
 
-/// เวทีของมินเดะ — WebView โปร่งใสที่มี three-vrm อยู่ข้างใน
+/// เวทีของมายด์ — WebView โปร่งใสที่มี three-vrm อยู่ข้างใน
 ///
 /// ถ้าโมเดลยังไม่มีในเครื่อง จะขึ้นกรอบ placeholder แบบเดียวกับใน artboard
 /// ไม่ใช่จอว่าง เพราะจอว่างทำให้แยกไม่ออกว่า "ยังโหลด" กับ "พัง"
-class MindeAvatarView extends StatefulWidget {
-  const MindeAvatarView({
+class MindAvatarView extends StatefulWidget {
+  const MindAvatarView({
     super.key,
     required this.controller,
     required this.mode,
     this.serverPort = 8747,
   });
 
-  final MindeAvatarController controller;
+  final MindAvatarController controller;
 
   /// ใช้กับสีวงแหวนรอบตัวเธอตอนยังไม่มีโมเดล
-  final MindeMode mode;
+  final MindMode mode;
 
   final int serverPort;
 
   @override
-  State<MindeAvatarView> createState() => _MindeAvatarViewState();
+  State<MindAvatarView> createState() => _MindAvatarViewState();
 }
 
-class _MindeAvatarViewState extends State<MindeAvatarView> {
+class _MindAvatarViewState extends State<MindAvatarView> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -221,7 +221,7 @@ class _MindeAvatarViewState extends State<MindeAvatarView> {
 class _AvatarPlaceholder extends StatelessWidget {
   const _AvatarPlaceholder({required this.mode, required this.failed});
 
-  final MindeMode mode;
+  final MindMode mode;
   final bool failed;
 
   @override
@@ -241,7 +241,7 @@ class _AvatarPlaceholder extends StatelessWidget {
                 fontFamily: 'monospace',
                 fontSize: 10,
                 letterSpacing: .6,
-                color: MindeColors.ink45,
+                color: MindColors.ink45,
               ),
             ),
           ),
@@ -254,7 +254,7 @@ class _AvatarPlaceholder extends StatelessWidget {
 class _DashedStripePainter extends CustomPainter {
   const _DashedStripePainter();
 
-  static const _radius = Radius.circular(MindeRadius.panel);
+  static const _radius = Radius.circular(MindRadius.panel);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -283,7 +283,7 @@ class _DashedStripePainter extends CustomPainter {
     final border = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
-      ..color = MindeColors.ink22;
+      ..color = MindColors.ink22;
     for (final metric in (Path()..addRRect(rrect)).computeMetrics()) {
       var d = 0.0;
       while (d < metric.length) {

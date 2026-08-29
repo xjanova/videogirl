@@ -1,4 +1,4 @@
-# มินเดะ (videogirl)
+# มายด์ (videogirl)
 
 แอป Android — ผู้ช่วยส่วนตัวรูปสาว 3D คุยได้ พูดได้ ขยับปากตามเสียงจริง
 สลับได้ระหว่าง **โหมดงาน** (เลขาฯ) กับ **โหมดส่วนตัว**
@@ -48,7 +48,7 @@ lib/
   ai/          สมอง + เสียง (OpenAI, TTS เครื่อง, บุคลิก)
   avatar/      สะพานไป WebView ที่เรนเดอร์ VRM
   screens/     6 หน้าจอ ถอดจาก artboard
-  state/       MindeState — โหมด แชท ค่าตั้ง
+  state/       MindState — โหมด แชท ค่าตั้ง
   theme/       design token ถอดตรงจาก artboard
   update/      อัปเดตตัวเองจาก GitHub Releases
   widgets/     กระจก ก้อนแสง ชิ้นส่วนใช้ซ้ำ

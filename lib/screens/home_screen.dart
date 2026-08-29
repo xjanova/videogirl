@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../avatar/avatar_view.dart';
-import '../state/minde_state.dart';
+import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/glass.dart';
@@ -13,7 +13,7 @@ import '../widgets/liquid_background.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.avatar});
 
-  final MindeAvatarController avatar;
+  final MindAvatarController avatar;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -39,30 +39,30 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  Future<void> _send(MindeState state) async {
+  Future<void> _send(MindState state) async {
     final text = _draft.text;
     if (text.trim().isEmpty) return;
     _draft.clear();
 
     // เธอหันมาใกล้ ๆ ตอนคุย แล้วถอยกลับเป็นเต็มตัวเมื่อจบ
-    await widget.avatar.setFraming(MindeFraming.bust);
-    await widget.avatar.setMood(MindeMood.thinking);
+    await widget.avatar.setFraming(MindFraming.bust);
+    await widget.avatar.setMood(MindMood.thinking);
 
     await state.send(text);
     if (!mounted) return;
 
-    await widget.avatar.setMood(state.mode.isWork ? MindeMood.pleased : MindeMood.happy);
+    await widget.avatar.setMood(state.mode.isWork ? MindMood.pleased : MindMood.happy);
     if (!mounted) return;
-    await widget.avatar.setFraming(MindeFraming.full);
+    await widget.avatar.setFraming(MindFraming.full);
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<MindeState>();
+    final state = context.watch<MindState>();
     final mode = state.mode;
 
     return LiquidBackground(
-      gradient: MindeGradients.home,
+      gradient: MindGradients.home,
       orbs: Orb.home,
       child: SafeArea(
         child: Column(
@@ -77,17 +77,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // ── หัวจอ ───────────────────────────────────────────────
-  Widget _header(MindeState state, MindeMode mode) {
+  Widget _header(MindState state, MindMode mode) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
       child: Row(
         spacing: 10,
         children: [
-          Text('MINDE', style: mindeMono(size: 11, weight: FontWeight.w600, color: mode.accent, letterSpacing: .16)),
+          Text('MIND', style: mindMono(size: 11, weight: FontWeight.w600, color: mode.accent, letterSpacing: .16)),
           Expanded(
             child: Text(
               mode.statusLine,
-              style: const TextStyle(fontSize: 11, color: MindeColors.ink55),
+              style: const TextStyle(fontSize: 11, color: MindColors.ink55),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -111,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   static const _bubbleTop = 14 / 452;
   static const _bubbleMaxWidth = 210 / 380;
 
-  Widget _stage(MindeState state, MindeMode mode) {
+  Widget _stage(MindState state, MindMode mode) {
     final bubble = state.bubbleText;
 
     return ConstrainedBox(
@@ -126,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             clipBehavior: Clip.none,
             children: [
               Positioned.fill(
-                child: MindeAvatarView(controller: widget.avatar, mode: mode),
+                child: MindAvatarView(controller: widget.avatar, mode: mode),
               ),
 
               // วงแหวนเรืองรอบตัวเธอ ขยายออกแล้วจาง
@@ -181,15 +181,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // ── แผงแชทกระจกล่างสุด ──────────────────────────────────
-  Widget _chatDock(MindeState state, MindeMode mode) {
+  Widget _chatDock(MindState state, MindMode mode) {
     return GlassPanel(
-      margin: const EdgeInsets.fromLTRB(MindeSpace.screenX, 0, MindeSpace.screenX, MindeSpace.screenX),
+      margin: const EdgeInsets.fromLTRB(MindSpace.screenX, 0, MindSpace.screenX, MindSpace.screenX),
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
-      filter: MindeGlass.heavy,
-      shadows: MindeShadows.dock(),
+      filter: MindGlass.heavy,
+      shadows: MindShadows.dock(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: MindeSpace.gap,
+        spacing: MindSpace.gap,
         children: [
           for (final m in state.messages) _message(m, mode),
           Wrap(
@@ -206,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _message(ChatMessage m, MindeMode mode) {
+  Widget _message(ChatMessage m, MindMode mode) {
     return Align(
       alignment: m.fromHer ? Alignment.centerLeft : Alignment.centerRight,
       child: FractionallySizedBox(
@@ -217,20 +217,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               gradient: m.fromHer ? mode.bubbleGradient : null,
-              color: m.fromHer ? null : MindeColors.glass85,
-              borderRadius: BorderRadius.circular(MindeRadius.message),
+              color: m.fromHer ? null : MindColors.glass85,
+              borderRadius: BorderRadius.circular(MindRadius.message),
               border: Border.all(
-                color: m.fromHer ? const Color(0x80FFFFFF) : MindeColors.glassBorder,
+                color: m.fromHer ? const Color(0x80FFFFFF) : MindColors.glassBorder,
                 width: 1,
               ),
-              boxShadow: MindeShadows.soft(),
+              boxShadow: MindShadows.soft(),
             ),
             child: Text(
               m.text,
               style: TextStyle(
                 fontSize: 12.5,
                 height: 1.55,
-                color: m.fromHer ? Colors.white : MindeColors.ink,
+                color: m.fromHer ? Colors.white : MindColors.ink,
               ),
             ),
           ),
@@ -239,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _composer(MindeState state, MindeMode mode) {
+  Widget _composer(MindState state, MindMode mode) {
     return Row(
       spacing: 7,
       children: [
@@ -251,17 +251,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             height: 38,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: state.mic ? const Color(0x33FF5C8A) : MindeColors.glass80,
-              borderRadius: BorderRadius.circular(MindeRadius.control),
+              color: state.mic ? const Color(0x33FF5C8A) : MindColors.glass80,
+              borderRadius: BorderRadius.circular(MindRadius.control),
               border: Border.all(
-                color: state.mic ? const Color(0x66FF5C8A) : MindeColors.glassBorder,
+                color: state.mic ? const Color(0x66FF5C8A) : MindColors.glassBorder,
                 width: 1,
               ),
             ),
             child: Icon(
               state.mic ? Icons.mic_rounded : Icons.mic_none_rounded,
               size: 18,
-              color: state.mic ? const Color(0xFFFF5C8A) : MindeColors.ink60,
+              color: state.mic ? const Color(0xFFFF5C8A) : MindColors.ink60,
             ),
           ),
         ),
@@ -274,24 +274,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               focusNode: _focus,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(state),
-              style: const TextStyle(fontSize: 12.5, color: MindeColors.ink),
+              style: const TextStyle(fontSize: 12.5, color: MindColors.ink),
               decoration: InputDecoration(
                 isDense: true,
                 hintText: 'พิมพ์ หรือกดไมค์…',
-                hintStyle: const TextStyle(fontSize: 12.5, color: MindeColors.ink45),
+                hintStyle: const TextStyle(fontSize: 12.5, color: MindColors.ink45),
                 filled: true,
-                fillColor: MindeColors.glass80,
+                fillColor: MindColors.glass80,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(MindeRadius.control),
+                  borderRadius: BorderRadius.circular(MindRadius.control),
                   borderSide: const BorderSide(color: Color(0xF2FFFFFF), width: 1),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(MindeRadius.control),
+                  borderRadius: BorderRadius.circular(MindRadius.control),
                   borderSide: const BorderSide(color: Color(0xF2FFFFFF), width: 1),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(MindeRadius.control),
+                  borderRadius: BorderRadius.circular(MindRadius.control),
                   borderSide: BorderSide(color: mode.accentSoft, width: 1),
                 ),
               ),
@@ -310,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 gradient: mode.gradient,
-                borderRadius: BorderRadius.circular(MindeRadius.control),
+                borderRadius: BorderRadius.circular(MindRadius.control),
                 boxShadow: [
                   BoxShadow(color: mode.accentSoft, blurRadius: 18, offset: const Offset(0, 6)),
                 ],

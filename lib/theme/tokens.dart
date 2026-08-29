@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 // ─────────────────────────────────────────────────────────────
 //  สีคงที่ — ไม่ขึ้นกับโหมด
 // ─────────────────────────────────────────────────────────────
-abstract final class MindeColors {
+abstract final class MindColors {
   /// สีหมึกหลัก ใช้กับตัวอักษรทุกที่
   static const ink = Color(0xFF23204A);
 
@@ -47,7 +47,7 @@ abstract final class MindeColors {
 // ─────────────────────────────────────────────────────────────
 //  เงา — ทุกเงาในดีไซน์ใช้ฐานสีม่วงเดียวกัน rgb(90,70,180)
 // ─────────────────────────────────────────────────────────────
-abstract final class MindeShadows {
+abstract final class MindShadows {
   static const _base = Color(0xFF5A46B4);
 
   static List<BoxShadow> soft() => [
@@ -83,7 +83,7 @@ abstract final class MindeShadows {
 // ─────────────────────────────────────────────────────────────
 //  มุมโค้ง
 // ─────────────────────────────────────────────────────────────
-abstract final class MindeRadius {
+abstract final class MindRadius {
   static const bubbleTail = 6.0;
   static const control = 14.0;
   static const message = 16.0;
@@ -94,7 +94,7 @@ abstract final class MindeRadius {
   static const pill = 99.0;
 }
 
-abstract final class MindeSpace {
+abstract final class MindSpace {
   static const screenX = 10.0;
   static const cardX = 14.0;
   static const gap = 8.0;
@@ -103,7 +103,7 @@ abstract final class MindeSpace {
 // ─────────────────────────────────────────────────────────────
 //  พื้นหลังไล่สีของแต่ละหน้าจอ (ตรงตาม 2a–2g)
 // ─────────────────────────────────────────────────────────────
-abstract final class MindeGradients {
+abstract final class MindGradients {
   static const home = LinearGradient(
     begin: Alignment(-0.26, -1),
     end: Alignment(0.26, 1),
@@ -156,19 +156,19 @@ abstract final class MindeGradients {
 
 // ─────────────────────────────────────────────────────────────
 //  โหมด งาน / ส่วนตัว — แกนกลางของทั้งแอป
-//  สลับทีเดียวเปลี่ยนทั้งสี ชิปคำถาม และน้ำเสียงที่มินเดะตอบ
+//  สลับทีเดียวเปลี่ยนทั้งสี ชิปคำถาม และน้ำเสียงที่มายด์ตอบ
 // ─────────────────────────────────────────────────────────────
-enum MindeMode {
+enum MindMode {
   work('งาน'),
   love('ส่วนตัว');
 
-  const MindeMode(this.label);
+  const MindMode(this.label);
   final String label;
 
-  bool get isWork => this == MindeMode.work;
+  bool get isWork => this == MindMode.work;
 }
 
-extension MindeModePalette on MindeMode {
+extension MindModePalette on MindMode {
   Color get accent =>
       isWork ? const Color(0xFF00A894) : const Color(0xFFE0357A);
 
@@ -186,7 +186,7 @@ extension MindeModePalette on MindeMode {
       ? const Color(0xFF00C2A8).withValues(alpha: .45)
       : const Color(0xFFFF6FAE).withValues(alpha: .45);
 
-  /// ฟองข้อความฝั่งมินเดะ โปร่งกว่า gradient ปุ่มเล็กน้อย
+  /// ฟองข้อความฝั่งมายด์ โปร่งกว่า gradient ปุ่มเล็กน้อย
   LinearGradient get bubbleGradient => LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -208,14 +208,14 @@ extension MindeModePalette on MindeMode {
       ? const ['สรุปเมลเช้านี้', 'นัดรีวิวบ่ายนี้', 'โทรหาคุณต้น']
       : const ['วันนี้เป็นไงบ้าง', 'เล่าอะไรให้ฟังหน่อย', 'คิดถึงไหม'];
 
-  MindeMode get opposite => isWork ? MindeMode.love : MindeMode.work;
+  MindMode get opposite => isWork ? MindMode.love : MindMode.work;
 }
 
 // ─────────────────────────────────────────────────────────────
 //  ฟิลเตอร์กระจก — CSS ใช้ blur() + saturate() คู่กัน
 //  Flutter ต้อง compose เอง ไม่งั้นจะได้กระจกซีดกว่าดีไซน์
 // ─────────────────────────────────────────────────────────────
-abstract final class MindeGlass {
+abstract final class MindGlass {
   /// blur 14 saturate 1.5 — ฟองคำพูด, การ์ด
   static ImageFilter get light => filter(blur: 14, saturation: 1.5);
 

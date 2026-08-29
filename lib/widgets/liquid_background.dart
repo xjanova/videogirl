@@ -32,9 +32,9 @@ class Orb {
 
   // ชุดก้อนแสงประจำแต่ละหน้าจอ ถอดจาก artboard ตรง ๆ
   static const home = <Orb>[
-    Orb(color: MindeColors.orbPink, diameter: 280, left: -60, top: -70, seconds: 14),
-    Orb(color: MindeColors.orbMint, diameter: 300, right: -100, top: 150, seconds: 18),
-    Orb(color: MindeColors.orbLilac, diameter: 280, left: -60, bottom: 20, seconds: 16),
+    Orb(color: MindColors.orbPink, diameter: 280, left: -60, top: -70, seconds: 14),
+    Orb(color: MindColors.orbMint, diameter: 300, right: -100, top: 150, seconds: 18),
+    Orb(color: MindColors.orbLilac, diameter: 280, left: -60, bottom: 20, seconds: 16),
   ];
 
   static const mail = <Orb>[
@@ -48,8 +48,8 @@ class Orb {
   ];
 
   static const timeline = <Orb>[
-    Orb(color: MindeColors.orbLilac, diameter: 300, right: -80, top: -60, seconds: 15, drifts: false),
-    Orb(color: MindeColors.orbMint, diameter: 300, left: -80, bottom: 0, seconds: 17, drifts: false),
+    Orb(color: MindColors.orbLilac, diameter: 300, right: -80, top: -60, seconds: 15, drifts: false),
+    Orb(color: MindColors.orbMint, diameter: 300, left: -80, bottom: 0, seconds: 17, drifts: false),
   ];
 
   static const settings = <Orb>[

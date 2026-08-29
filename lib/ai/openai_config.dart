@@ -6,7 +6,7 @@
 ///   flutter run --dart-define=OPENAI_API_KEY=sk-...
 ///   flutter build apk --dart-define-from-file=secrets.json
 ///
-/// ถ้าไม่ได้ส่งเข้ามา แอปยังเปิดได้ปกติ แต่มินเดะจะตอบด้วยประโยคสำเร็จรูป
+/// ถ้าไม่ได้ส่งเข้ามา แอปยังเปิดได้ปกติ แต่มายด์จะตอบด้วยประโยคสำเร็จรูป
 /// และไม่มีเสียง (ดู [configured])
 library;
 
@@ -38,7 +38,7 @@ abstract final class OpenAiConfig {
     (id: 'gpt-5.4-mini', label: '5.4 mini', hint: 'เร็วและถูกที่สุด'),
   ];
 
-  /// เสียงของ gpt-4o-mini-tts ที่เข้ากับบุคลิกมินเดะ
+  /// เสียงของ gpt-4o-mini-tts ที่เข้ากับบุคลิกมายด์
   static const voiceChoices = <({String id, String label})>[
     (id: 'coral', label: 'Coral — นุ่ม อบอุ่น'),
     (id: 'shimmer', label: 'Shimmer — ใส ฟังชัด'),

@@ -10,7 +10,7 @@
     <uses-feature android:glEsVersion="0x00030000" android:required="true"/>
 
     <application
-        android:label="มินเดะ"
+        android:label="GigGok"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config">

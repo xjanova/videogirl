@@ -7,30 +7,30 @@ import 'screens/home_screen.dart';
 import 'screens/mail_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/timeline_screen.dart';
-import 'state/minde_state.dart';
+import 'state/mind_state.dart';
 import 'theme/tokens.dart';
 import 'widgets/glass.dart';
 
 /// แถบนำทาง — หมายเหตุ: artboard ไม่มีแถบนี้ (แต่ละหน้าจอเป็น artboard แยกกัน)
 /// เพิ่มเข้ามาเพราะแอปจริงต้องเดินไปมาได้ ถ้าอยากได้แบบอื่นให้กลับไปวางใน
 /// Claude Design แล้วค่อยถอดกลับมา อย่าออกแบบเพิ่มเองที่นี่
-class MindeShell extends StatefulWidget {
-  const MindeShell({super.key});
+class MindShell extends StatefulWidget {
+  const MindShell({super.key});
 
   @override
-  State<MindeShell> createState() => _MindeShellState();
+  State<MindShell> createState() => _MindShellState();
 }
 
-class _MindeShellState extends State<MindeShell> {
+class _MindShellState extends State<MindShell> {
   /// อวาตาร์อยู่ระดับ shell ไม่ใช่ระดับหน้าจอ — ถ้าสร้างใหม่ทุกครั้งที่สลับแท็บ
   /// VRM 33MB จะโหลดใหม่ทุกรอบ และเธอจะรีเซ็ตท่ากลับไปยืนตรงทุกครั้ง
-  final _avatar = MindeAvatarController();
+  final _avatar = MindAvatarController();
 
   int _tab = 0;
   bool _speakerWired = false;
 
   static const _tabs = <({String label, IconData icon})>[
-    (label: 'มินเดะ', icon: Icons.face_retouching_natural_rounded),
+    (label: 'มายด์', icon: Icons.face_retouching_natural_rounded),
     (label: 'เมล', icon: Icons.mail_outline_rounded),
     (label: 'ปฏิทิน', icon: Icons.calendar_today_rounded),
     (label: 'ไทม์ไลน์', icon: Icons.timeline_rounded),
@@ -51,13 +51,13 @@ class _MindeShellState extends State<MindeShell> {
 
     // ต่อทางออกของเสียงเข้ากับปากของเธอ
     // state สังเคราะห์ไบต์มาให้ แล้ว WebView เป็นคนเล่นและอ่านคลื่นไปขยับปาก
-    context.read<MindeState>().speaker =
+    context.read<MindState>().speaker =
         (u) => _avatar.speakBytes(u.bytes, mime: u.mime);
   }
 
   @override
   Widget build(BuildContext context) {
-    final mode = context.select<MindeState, MindeMode>((s) => s.mode);
+    final mode = context.select<MindState, MindMode>((s) => s.mode);
 
     return Scaffold(
       // ให้แผงแชทเลื่อนขึ้นเองตอนคีย์บอร์ดเด้ง ไม่งั้นช่องพิมพ์จะโดนบัง
@@ -77,9 +77,9 @@ class _MindeShellState extends State<MindeShell> {
         child: GlassPanel(
           margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-          radius: MindeRadius.card,
-          filter: MindeGlass.heavy,
-          shadows: MindeShadows.dock(),
+          radius: MindRadius.card,
+          filter: MindGlass.heavy,
+          shadows: MindShadows.dock(),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -91,7 +91,7 @@ class _MindeShellState extends State<MindeShell> {
     );
   }
 
-  Widget _navItem(int index, MindeMode mode) {
+  Widget _navItem(int index, MindMode mode) {
     final selected = index == _tab;
     final tab = _tabs[index];
 
@@ -111,7 +111,7 @@ class _MindeShellState extends State<MindeShell> {
             padding: const EdgeInsets.symmetric(vertical: 7),
             decoration: BoxDecoration(
               gradient: selected ? mode.gradient : null,
-              borderRadius: BorderRadius.circular(MindeRadius.avatarThumb),
+              borderRadius: BorderRadius.circular(MindRadius.avatarThumb),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -120,13 +120,13 @@ class _MindeShellState extends State<MindeShell> {
                 Icon(
                   tab.icon,
                   size: 17,
-                  color: selected ? Colors.white : MindeColors.ink50,
+                  color: selected ? Colors.white : MindColors.ink50,
                 ),
                 Text(
                   tab.label,
                   style: TextStyle(
                     fontSize: 9.5,
-                    color: selected ? Colors.white : MindeColors.ink50,
+                    color: selected ? Colors.white : MindColors.ink50,
                   ),
                 ),
               ],

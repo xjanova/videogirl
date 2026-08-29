@@ -7,6 +7,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'openai_client.dart';
+import 'voice_clone.dart';
 import 'voice_profile.dart';
 
 /// เครื่องสังเคราะห์เสียงที่ให้เลือกได้
@@ -15,10 +16,21 @@ enum TtsEngine {
   openai('OpenAI', 'สมจริงที่สุด สั่งอารมณ์เสียงได้ · มีค่าใช้จ่าย'),
 
   /// เครื่องเสียงของ Android เอง — ฟรี ใช้ได้แม้ไม่มีเน็ต แต่เสียงหุ่นยนต์กว่า
-  device('เครื่อง Android', 'ฟรี ใช้ออฟไลน์ได้ · เสียงหุ่นยนต์กว่า');
+  device('เครื่อง Android', 'ฟรี ใช้ออฟไลน์ได้ · เสียงหุ่นยนต์กว่า'),
+
+  /// เสียงที่โคลนไว้เอง เสิร์ฟจากคอมที่บ้าน
+  ///
+  /// เซิร์ฟเวอร์โคลนเสียงยุคนี้ (F5-TTS, GPT-SoVITS, openedai-speech,
+  /// Kokoro-FastAPI ฯลฯ) ส่วนใหญ่เปิด endpoint เลียนแบบ OpenAI ที่
+  /// `/v1/audio/speech` จึงใช้ client ตัวเดิมได้เลย เปลี่ยนแค่ปลายทาง
+  /// แล้วใช้ชื่อเสียงที่โคลนไว้เป็นค่า `voice`
+  clone('เสียงโคลนของเรา', 'เสียงเราเอง เสิร์ฟจากคอมที่บ้าน · ฟรี · ไม่ออกนอกบ้าน');
 
   const TtsEngine(this.label, this.hint);
   final String label, hint;
+
+  /// ต้องมีคีย์ OpenAI ไหม
+  bool get needsOpenAiKey => this == TtsEngine.openai;
 }
 
 /// เสียงหนึ่งชุดที่พร้อมส่งเข้าปากเธอ
@@ -64,7 +76,24 @@ class SpeechService {
           mime: 'audio/mpeg',
         ),
       TtsEngine.device => await _synthesizeOnDevice(clean),
+
+      // เสียงโคลนอยู่ฝั่งเซิร์ฟเวอร์ ใช้ voice เป็น id ของเสียงที่โคลนไว้
+      TtsEngine.clone => (
+          bytes: await _requireClone().speak(clean, voiceId: profile.voice),
+          mime: 'audio/mpeg',
+        ),
     };
+  }
+
+  /// บริการโคลนเสียง — ฉีดเข้ามาจาก state เมื่อผู้ใช้ตั้งค่าเซิร์ฟเวอร์แล้ว
+  VoiceCloneService? cloneService;
+
+  VoiceCloneService _requireClone() {
+    final c = cloneService;
+    if (c == null || !c.configured) {
+      throw const OpenAiFailure('ยังไม่ได้ตั้งเซิร์ฟเวอร์เสียงโคลน');
+    }
+    return c;
   }
 
   /// เครื่องไหนไม่มีเสียงไทยติดมา ให้รู้ตั้งแต่ตอนเลือกในหน้าตั้งค่า

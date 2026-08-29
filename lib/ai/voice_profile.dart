@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'minde_persona.dart';
+import 'mind_persona.dart';
 import 'speech_service.dart';
 
 /// ช่องทางที่เธอเปล่งเสียง — แต่ละช่องตั้งเสียงและโมเดลแยกกันได้
@@ -75,7 +75,7 @@ class VoiceProfile {
             engine: TtsEngine.openai,
             voice: 'coral',
             model: 'gpt-4o-mini-tts',
-            instructions: MindePersona.defaultVoiceInstructions,
+            instructions: MindPersona.defaultVoiceInstructions,
           ),
 
         // รับสายแทน: คนปลายสายเป็นคนแปลกหน้า ต้องสุภาพ ชัด ไม่หวาน

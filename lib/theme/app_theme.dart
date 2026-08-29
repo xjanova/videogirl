@@ -4,13 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'tokens.dart';
 
 /// ธีมของแอป — artboard ใช้ IBM Plex Sans Thai เป็นตัวเนื้อ
-/// และ IBM Plex Mono กับตัวเลข/ป้ายสถานะ (เวลา, MINDE, ป้าย ร่างคำตอบของเธอ)
-ThemeData mindeTheme() {
+/// และ IBM Plex Mono กับตัวเลข/ป้ายสถานะ (เวลา, MIND, ป้าย ร่างคำตอบของเธอ)
+ThemeData mindTheme() {
   final base = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: MindeColors.violet,
+      seedColor: MindColors.violet,
       brightness: Brightness.light,
     ).copyWith(surface: Colors.transparent),
     // ทุกหน้าจอวาดพื้นหลังไล่สีของตัวเอง Scaffold ต้องไม่ทับ
@@ -20,8 +20,8 @@ ThemeData mindeTheme() {
 
   return base.copyWith(
     textTheme: GoogleFonts.ibmPlexSansThaiTextTheme(base.textTheme).apply(
-      bodyColor: MindeColors.ink,
-      displayColor: MindeColors.ink,
+      bodyColor: MindColors.ink,
+      displayColor: MindColors.ink,
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: Colors.transparent,
@@ -32,10 +32,10 @@ ThemeData mindeTheme() {
 }
 
 /// ตัวอักษรแบบ mono ที่ใช้กับป้ายสถานะ เวลา และหัวข้อตัวพิมพ์ใหญ่
-TextStyle mindeMono({
+TextStyle mindMono({
   double size = 11,
   FontWeight weight = FontWeight.w500,
-  Color color = MindeColors.ink50,
+  Color color = MindColors.ink50,
   double letterSpacing = .12,
 }) =>
     GoogleFonts.ibmPlexMono(

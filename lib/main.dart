@@ -4,7 +4,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 
 import 'shell.dart';
-import 'state/minde_state.dart';
+import 'state/mind_state.dart';
 import 'update/updater.dart';
 import 'theme/app_theme.dart';
 
@@ -35,16 +35,16 @@ Future<void> main() async {
 
   // โหลดค่าที่ผู้ใช้ตั้งไว้ให้เสร็จก่อนวาดจอแรก ไม่งั้นหน้าจอจะกะพริบจาก
   // ค่าเริ่มต้นไปค่าจริง และคนที่ตั้งโหมดส่วนตัวไว้จะเห็นสีเขียวงานแวบหนึ่ง
-  final state = MindeState();
+  final state = MindState();
   await state.load();
 
-  runApp(MindeApp(state: state));
+  runApp(MindApp(state: state));
 }
 
-class MindeApp extends StatelessWidget {
-  const MindeApp({super.key, required this.state});
+class MindApp extends StatelessWidget {
+  const MindApp({super.key, required this.state});
 
-  final MindeState state;
+  final MindState state;
 
   @override
   Widget build(BuildContext context) {
@@ -54,10 +54,10 @@ class MindeApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => Updater()),
       ],
       child: MaterialApp(
-        title: 'มินเดะ',
+        title: 'GigGok',
         debugShowCheckedModeBanner: false,
-        theme: mindeTheme(),
-        home: const MindeShell(),
+        theme: mindTheme(),
+        home: const MindShell(),
       ),
     );
   }

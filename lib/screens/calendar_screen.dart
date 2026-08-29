@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../state/minde_state.dart';
+import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/glass.dart';
@@ -14,10 +14,10 @@ class CalendarScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mode = context.select<MindeState, MindeMode>((s) => s.mode);
+    final mode = context.select<MindState, MindMode>((s) => s.mode);
 
     return LiquidBackground(
-      gradient: MindeGradients.calendar,
+      gradient: MindGradients.calendar,
       orbs: Orb.calendar,
       child: SafeArea(
         child: Column(
@@ -33,7 +33,7 @@ class CalendarScreen extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -.2)),
                   Text('เธอเช็กปฏิทินคุณ + คุณต้น + คุณนภา แล้ว',
-                      style: TextStyle(fontSize: 11.5, color: MindeColors.ink55)),
+                      style: TextStyle(fontSize: 11.5, color: MindColors.ink55)),
                 ],
               ),
             ),
@@ -57,13 +57,13 @@ class CalendarScreen extends StatelessWidget {
   }
 
   /// ช่องที่เธอเสนอ — ใบเดียวที่มีป้ายกำกับและพื้นไล่สี
-  Widget _proposal(MindeMode mode) {
+  Widget _proposal(MindMode mode) {
     final tint = mode.gradient.colors;
 
     return GlassPanel(
-      radius: MindeRadius.card,
+      radius: MindRadius.card,
       padding: const EdgeInsets.all(15),
-      shadows: MindeShadows.card(),
+      shadows: MindShadows.card(),
       gradient: LinearGradient(
         begin: const Alignment(-0.5, -1),
         end: const Alignment(0.5, 1),
@@ -79,17 +79,17 @@ class CalendarScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
             decoration: BoxDecoration(
               gradient: mode.gradient,
-              borderRadius: BorderRadius.circular(MindeRadius.pill),
+              borderRadius: BorderRadius.circular(MindRadius.pill),
             ),
             child: Text('เธอเสนอ',
-                style: mindeMono(size: 9.5, color: Colors.white, letterSpacing: .1)),
+                style: mindMono(size: 9.5, color: Colors.white, letterSpacing: .1)),
           ),
           const SizedBox(height: 10),
           const Text('รีวิวงานออกแบบ',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           const SizedBox(height: 3),
           const Text('15:00–15:30 · Google Meet',
-              style: TextStyle(fontSize: 11.5, color: MindeColors.ink60)),
+              style: TextStyle(fontSize: 11.5, color: MindColors.ink60)),
           const SizedBox(height: 12),
           const Wrap(
             spacing: 7,
@@ -105,7 +105,7 @@ class CalendarScreen extends StatelessWidget {
     );
   }
 
-  Widget _actions(MindeMode mode) {
+  Widget _actions(MindMode mode) {
     return Padding(
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -113,7 +113,7 @@ class CalendarScreen extends StatelessWidget {
         spacing: 8,
         children: [
           Text('เธอจะทำต่อ',
-              style: mindeMono(size: 10, color: MindeColors.ink50, letterSpacing: .1)),
+              style: mindMono(size: 10, color: MindColors.ink50, letterSpacing: .1)),
           Row(
             spacing: 9,
             children: [
@@ -124,7 +124,7 @@ class CalendarScreen extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     gradient: mode.gradient,
-                    borderRadius: BorderRadius.circular(MindeRadius.message),
+                    borderRadius: BorderRadius.circular(MindRadius.message),
                     boxShadow: [
                       BoxShadow(
                           color: mode.accentSoft,
@@ -144,9 +144,9 @@ class CalendarScreen extends StatelessWidget {
                   height: 46,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: MindeColors.glass80,
-                    borderRadius: BorderRadius.circular(MindeRadius.message),
-                    border: Border.all(color: MindeColors.glassBorder, width: 1),
+                    color: MindColors.glass80,
+                    borderRadius: BorderRadius.circular(MindRadius.message),
+                    border: Border.all(color: MindColors.glassBorder, width: 1),
                   ),
                   child: const Text('หาเวลาอื่น', style: TextStyle(fontSize: 12.5)),
                 ),
@@ -169,9 +169,9 @@ class _Slot extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlassPanel(
       radius: 22,
-      fill: MindeColors.glass62,
-      filter: MindeGlass.light,
-      shadows: MindeShadows.soft(),
+      fill: MindColors.glass62,
+      filter: MindGlass.light,
+      shadows: MindShadows.soft(),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       child: Row(
         children: [
@@ -179,7 +179,7 @@ class _Slot extends StatelessWidget {
             child: Text(title,
                 style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
           ),
-          Text(time, style: mindeMono(size: 11, color: MindeColors.ink55)),
+          Text(time, style: mindMono(size: 11, color: MindColors.ink55)),
         ],
       ),
     );
@@ -199,9 +199,9 @@ class _Attendee extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
       decoration: BoxDecoration(
-        color: MindeColors.glass80,
-        borderRadius: BorderRadius.circular(MindeRadius.pill),
-        border: Border.all(color: MindeColors.glassBorder, width: 1),
+        color: MindColors.glass80,
+        borderRadius: BorderRadius.circular(MindRadius.pill),
+        border: Border.all(color: MindColors.glassBorder, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -211,7 +211,7 @@ class _Attendee extends StatelessWidget {
             const Icon(Icons.check_rounded, size: 13, color: Color(0xFF00A894)),
           Text(
             free ? '$name ว่าง' : name,
-            style: const TextStyle(fontSize: 11, color: MindeColors.ink75),
+            style: const TextStyle(fontSize: 11, color: MindColors.ink75),
           ),
         ],
       ),

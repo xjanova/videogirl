@@ -11,9 +11,9 @@ class GlassPanel extends StatelessWidget {
   const GlassPanel({
     super.key,
     required this.child,
-    this.radius = MindeRadius.panel,
-    this.fill = MindeColors.glass55,
-    this.border = MindeColors.glassBorder,
+    this.radius = MindRadius.panel,
+    this.fill = MindColors.glass55,
+    this.border = MindColors.glassBorder,
     this.filter,
     this.shadows,
     this.padding = EdgeInsets.zero,
@@ -76,37 +76,37 @@ class SpeechBubble extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(MindeRadius.bubble),
-            topRight: Radius.circular(MindeRadius.bubble),
-            bottomRight: Radius.circular(MindeRadius.bubble),
-            bottomLeft: Radius.circular(MindeRadius.bubbleTail),
+            topLeft: Radius.circular(MindRadius.bubble),
+            topRight: Radius.circular(MindRadius.bubble),
+            bottomRight: Radius.circular(MindRadius.bubble),
+            bottomLeft: Radius.circular(MindRadius.bubbleTail),
           ),
-          boxShadow: MindeShadows.bubble(),
+          boxShadow: MindShadows.bubble(),
         ),
         child: ClipRRect(
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(MindeRadius.bubble),
-            topRight: Radius.circular(MindeRadius.bubble),
-            bottomRight: Radius.circular(MindeRadius.bubble),
-            bottomLeft: Radius.circular(MindeRadius.bubbleTail),
+            topLeft: Radius.circular(MindRadius.bubble),
+            topRight: Radius.circular(MindRadius.bubble),
+            bottomRight: Radius.circular(MindRadius.bubble),
+            bottomLeft: Radius.circular(MindRadius.bubbleTail),
           ),
           child: BackdropFilter(
-            filter: MindeGlass.light,
+            filter: MindGlass.light,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
-                color: MindeColors.glass72,
-                border: Border.all(color: MindeColors.glassBorder, width: 1),
+                color: MindColors.glass72,
+                border: Border.all(color: MindColors.glassBorder, width: 1),
                 borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(MindeRadius.bubble),
-                  topRight: Radius.circular(MindeRadius.bubble),
-                  bottomRight: Radius.circular(MindeRadius.bubble),
-                  bottomLeft: Radius.circular(MindeRadius.bubbleTail),
+                  topLeft: Radius.circular(MindRadius.bubble),
+                  topRight: Radius.circular(MindRadius.bubble),
+                  bottomRight: Radius.circular(MindRadius.bubble),
+                  bottomLeft: Radius.circular(MindRadius.bubbleTail),
                 ),
               ),
               child: Text(
                 text,
-                style: const TextStyle(fontSize: 12.5, height: 1.55, color: MindeColors.ink),
+                style: const TextStyle(fontSize: 12.5, height: 1.55, color: MindColors.ink),
               ),
             ),
           ),
@@ -129,18 +129,18 @@ class GlassChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(MindeRadius.pill),
+        borderRadius: BorderRadius.circular(MindRadius.pill),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
           decoration: BoxDecoration(
-            color: MindeColors.glass80,
-            borderRadius: BorderRadius.circular(MindeRadius.pill),
-            border: Border.all(color: MindeColors.glassBorder, width: 1),
-            boxShadow: MindeShadows.soft(),
+            color: MindColors.glass80,
+            borderRadius: BorderRadius.circular(MindRadius.pill),
+            border: Border.all(color: MindColors.glassBorder, width: 1),
+            boxShadow: MindShadows.soft(),
           ),
           child: Text(
             label,
-            style: const TextStyle(fontSize: 11, color: MindeColors.ink75),
+            style: const TextStyle(fontSize: 11, color: MindColors.ink75),
           ),
         ),
       ),
@@ -152,7 +152,7 @@ class GlassChip extends StatelessWidget {
 class ModeToggle extends StatelessWidget {
   const ModeToggle({super.key, required this.mode, required this.onToggle});
 
-  final MindeMode mode;
+  final MindMode mode;
   final VoidCallback onToggle;
 
   @override
@@ -165,16 +165,16 @@ class ModeToggle extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
-            color: MindeColors.glass55,
-            borderRadius: BorderRadius.circular(MindeRadius.pill),
-            border: Border.all(color: MindeColors.glassBorderSoft, width: 1),
-            boxShadow: MindeShadows.soft(),
+            color: MindColors.glass55,
+            borderRadius: BorderRadius.circular(MindRadius.pill),
+            border: Border.all(color: MindColors.glassBorderSoft, width: 1),
+            boxShadow: MindShadows.soft(),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             spacing: 2,
             children: [
-              for (final m in MindeMode.values) _pill(m, selected: m == mode),
+              for (final m in MindMode.values) _pill(m, selected: m == mode),
             ],
           ),
         ),
@@ -182,20 +182,20 @@ class ModeToggle extends StatelessWidget {
     );
   }
 
-  Widget _pill(MindeMode m, {required bool selected}) {
+  Widget _pill(MindMode m, {required bool selected}) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         gradient: selected ? m.gradient : null,
-        borderRadius: BorderRadius.circular(MindeRadius.pill),
+        borderRadius: BorderRadius.circular(MindRadius.pill),
       ),
       child: Text(
         m.label,
         style: TextStyle(
           fontSize: 10.5,
-          color: selected ? Colors.white : MindeColors.ink55,
+          color: selected ? Colors.white : MindColors.ink55,
         ),
       ),
     );
