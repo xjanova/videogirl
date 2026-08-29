@@ -26,3 +26,6 @@
 *.vrm  binary
 *.fbx  binary
 *.glb  binary
+# MediaPipe — wasm กับไฟล์โมเดล .task ถ้าปล่อยให้ eol=lf แตะ ไฟล์จะเสียเงียบ ๆ
+*.wasm binary
+*.task binary

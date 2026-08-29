@@ -6,6 +6,18 @@
     <!-- อัปเดตตัวเองจาก GitHub Releases ต้องขอสิทธิ์เปิดตัวติดตั้ง -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
+    <!-- กล้องเชิดหุ่น (motion capture ใบหน้า) — ภาพไม่เคยออกจากเครื่อง
+         ประมวลผลด้วย MediaPipe ในหน้าเว็บ ส่งออกมาแค่ค่าน้ำหนักใบหน้า
+
+         🔴 ปลั๊กอิน WebView **ไม่ได้ขอสิทธิ์ระดับระบบให้** onPermissionRequest
+         ของมันแค่เรียก request.grant() ฝั่งเว็บเท่านั้น ถ้าแอปยังไม่ได้รับสิทธิ์
+         CAMERA จริง getUserMedia จะถูกปฏิเสธโดยที่ฝั่งเว็บเห็นแค่ NotAllowedError
+         ฝั่ง Flutter จึงต้องขอสิทธิ์เองก่อนสั่งเปิดโหมด ดู avatar_view.dart -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- ไม่บังคับ: เครื่องไม่มีกล้องหน้าก็ยังลงแอปได้ แค่ใช้โหมดหุ่นเชิดไม่ได้ -->
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.front" android:required="false"/>
+
     <!-- โมเดล VRM 33MB เรนเดอร์ผ่าน WebGL ถ้าเครื่องไม่มี GL ES 3.0 จะไม่ไหว -->
     <uses-feature android:glEsVersion="0x00030000" android:required="true"/>
 

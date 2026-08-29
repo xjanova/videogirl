@@ -201,7 +201,32 @@ window.minde = {
   stand: ()    => avatar?.stand(),
   /** 'bust' ตอนคุย · 'full' ตอนยืนเฉย ๆ */
   frame: (n)   => avatar?.framing?.set(n),
+
+  // ── กล้องเชิดหุ่น ────────────────────────────────────────
+  // start เป็น async เพราะต้องขอสิทธิ์กล้องกับโหลด wasm 11MB
+  // ฝั่ง Flutter ต้องเรียกด้วย callAsyncJavaScript ไม่ใช่ evaluateJavascript
+  mocapStart:     ()  => avatar?.startMocap() ?? null,
+  mocapStop:      ()  => avatar?.stopMocap() ?? null,
+  mocapCalibrate: ()  => avatar?.recalibrate() ?? null,
+  mocapStatus:    ()  => avatar?.mocapStatus() ?? null,
 };
+
+/**
+ * บอก Flutter เมื่อสถานะกล้อง**เปลี่ยน** ไม่ใช่ให้ Flutter ยิงถามรัวข้ามสะพาน
+ *
+ * ปัดความคืบหน้าเป็นขั้นละ 5% ก่อนเทียบ ไม่งั้นตอนคาลิเบรตค่าจะขยับทุกเฟรม
+ * แล้วเรายิงข้ามสะพาน 30 ครั้งต่อวินาทีเพื่อบอกเรื่องเดียวกัน
+ */
+let mocapSeen = '';
+setInterval(() => {
+  const st = avatar?.mocapStatus?.();
+  if (!st) return;
+  const key = [st.phase, st.active, st.tracking,
+               Math.round(st.progress * 20), st.error ?? ''].join('|');
+  if (key === mocapSeen) return;
+  mocapSeen = key;
+  post('mocap', st);
+}, 150);
 
 // WebView ถูกย่อ/ขยายตอนคีย์บอร์ดเด้ง ถ้าไม่ resize เธอจะยืดผิดสัดส่วน
 addEventListener('resize', () => avatar?.resize(innerWidth, innerHeight));

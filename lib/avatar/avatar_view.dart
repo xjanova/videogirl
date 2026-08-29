@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -16,6 +16,43 @@ enum MindMood { neutral, happy, pleased, concerned, thinking, sorry, alert, angr
 
 /// ระยะกล้อง — 'bust' ตอนคุย, 'full' ตอนยืนเฉย
 enum MindFraming { bust, full }
+
+/// สะพานขอสิทธิ์กล้องระดับระบบ — คู่กับ MainActivity.kt
+///
+/// เขียนเองแทน permission_handler เพราะเวอร์ชันล่าสุดของแพ็กเกจนั้น build ไม่ผ่าน
+/// กับชุด AGP 8.11 / Kotlin 2.2.20 ของโปรเจกต์นี้ · เหตุผลเต็มอยู่ใน MainActivity.kt
+abstract final class MindCameraPermission {
+  static const _ch = MethodChannel('giggok/camera');
+
+  /// 'granted' · 'denied' · 'blocked' (ปฏิเสธถาวร ต้องไปเปิดในตั้งค่าเครื่อง)
+  static Future<String> status() => _ask('status');
+  static Future<String> request() => _ask('request');
+
+  static Future<void> openSettings() async {
+    try {
+      await _ch.invokeMethod<void>('openSettings');
+    } catch (e) {
+      debugPrint('camera: เปิดหน้าตั้งค่าไม่ได้ — $e');
+    }
+  }
+
+  static Future<String> _ask(String method) async {
+    try {
+      return await _ch.invokeMethod<String>(method) ?? 'denied';
+    } catch (e) {
+      // ไม่มีฝั่ง native (เทสต์ / เดสก์ท็อป) — ปล่อยผ่านไปตายที่ getUserMedia
+      // ซึ่งบอกสาเหตุได้ตรงกว่าการเดาแทนมันตรงนี้
+      debugPrint('camera: ถามสิทธิ์ไม่ได้ ($method) — $e');
+      return 'granted';
+    }
+  }
+}
+
+/// สถานะกล้องเชิดหุ่น — ชื่อตรงกับ `phase` ใน mocap.js
+///
+/// `calibrating` ไม่ใช่แค่การโหลด — เป็นช่วงที่คนเชิด**ต้องนั่งนิ่ง**
+/// ให้เก็บค่าฐานของหน้าตัวเอง UI ต้องบอกให้ชัด ไม่ใช่ขึ้นวงกลมหมุนเฉย ๆ
+enum MindMocapPhase { off, starting, calibrating, live, failed }
 
 /// รีโมตของอวาตาร์ ส่งคำสั่งข้ามไปฝั่ง WebView
 ///
@@ -139,6 +176,116 @@ class MindAvatarController extends ChangeNotifier {
     return File('${dir.path}${Platform.pathSeparator}mind_face.png');
   }
 
+  // ── กล้องเชิดหุ่น (motion capture ใบหน้า) ─────────────────
+
+  MindMocapPhase _mocapPhase = MindMocapPhase.off;
+  bool _mocapTracking = false;
+  double _mocapProgress = 0;
+  String? _mocapError;
+  bool _mocapDenied = false;
+  bool _mocapBlocked = false;
+
+  MindMocapPhase get mocapPhase => _mocapPhase;
+
+  /// กำลังใช้กล้องอยู่ (รวมช่วงกำลังเปิดและกำลังคาลิเบรต)
+  bool get mocapOn =>
+      _mocapPhase == MindMocapPhase.starting ||
+      _mocapPhase == MindMocapPhase.calibrating ||
+      _mocapPhase == MindMocapPhase.live;
+
+  /// เจอหน้าในเฟรมล่าสุดไหม — คนอาจลุกออกจากกล้องโดยที่โหมดยังเปิดอยู่
+  bool get mocapTracking => _mocapTracking;
+
+  /// ความคืบหน้าการเก็บค่าฐาน 0..1
+  double get mocapProgress => _mocapProgress;
+
+  /// ข้อความดิบจากฝั่งเว็บ — ของนักพัฒนา ไม่ใช่ของผู้ใช้ อย่าเอาไปโชว์ตรง ๆ
+  String? get mocapError => _mocapError;
+
+  /// ผู้ใช้กดไม่อนุญาตกล้อง
+  bool get mocapDenied => _mocapDenied;
+
+  /// ปฏิเสธถาวร — ขอซ้ำไม่ขึ้นแล้ว ต้องไปเปิดในตั้งค่าของเครื่อง
+  bool get mocapBlocked => _mocapBlocked;
+
+  /// เปิดโหมดหุ่นเชิด
+  ///
+  /// 🔴 ต้องขอสิทธิ์กล้อง**ระดับระบบ**ก่อนเสมอ ปลั๊กอิน WebView ไม่ได้ขอให้
+  /// `onPermissionRequest` ของมันเรียกแค่ `request.grant()` ซึ่งเป็นการอนุญาต
+  /// ในชั้นของเว็บเท่านั้น ถ้าแอปยังไม่มีสิทธิ์จริง `getUserMedia` จะถูกปฏิเสธ
+  /// และฝั่งเว็บเห็นแค่ NotAllowedError ที่อ่านไม่ออกว่าเป็นความผิดของใคร
+  Future<bool> startMocap() async {
+    final web = _web;
+    if (web == null || !_ready) return false;
+    if (mocapOn) return true;
+
+    _mocapError = null;
+    _mocapDenied = false;
+    _mocapBlocked = false;
+    _mocapPhase = MindMocapPhase.starting;
+    notifyListeners();
+
+    if (!await _grantCamera()) {
+      _mocapPhase = MindMocapPhase.off;
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      final result = await web.callAsyncJavaScript(
+        functionBody: 'return await window.minde.mocapStart();',
+      );
+      _readMocap(result?.value);
+      return _mocapPhase != MindMocapPhase.failed;
+    } catch (e) {
+      debugPrint('avatar: เปิดกล้องเชิดหุ่นไม่สำเร็จ — $e');
+      _mocapPhase = MindMocapPhase.failed;
+      _mocapError = '$e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> _grantCamera() async {
+    if (await MindCameraPermission.status() == 'granted') return true;
+
+    final answer = await MindCameraPermission.request();
+    if (answer == 'granted') return true;
+
+    _mocapDenied = true;
+    _mocapBlocked = answer == 'blocked';
+    return false;
+  }
+
+  /// พาผู้ใช้ไปหน้าตั้งค่าของแอปเอง — ใช้ตอนปฏิเสธถาวรจนขอซ้ำไม่ขึ้นแล้ว
+  Future<void> openCameraSettings() => MindCameraPermission.openSettings();
+
+  Future<void> stopMocap() async {
+    await _call('window.minde.mocapStop()');
+    _mocapPhase = MindMocapPhase.off;
+    _mocapTracking = false;
+    _mocapProgress = 0;
+    notifyListeners();
+  }
+
+  /// เก็บค่าฐานใหม่ — เปลี่ยนคนเชิด เปลี่ยนที่นั่ง หรือหน้าเริ่มเพี้ยน
+  Future<void> recalibrateMocap() => _call('window.minde.mocapCalibrate()');
+
+  /// อ่านสถานะที่ฝั่งเว็บส่งมา ทั้งจากค่าที่คืนกลับและจากข้อความ 'mocap'
+  void _readMocap(Object? raw) {
+    if (raw is! Map) return;
+    final phase = '${raw['phase']}';
+    _mocapPhase = MindMocapPhase.values.firstWhere(
+      (p) => p.name == phase,
+      orElse: () => MindMocapPhase.off,
+    );
+    _mocapTracking = raw['tracking'] == true;
+    _mocapProgress = (raw['progress'] as num?)?.toDouble().clamp(0.0, 1.0) ?? 0;
+    final err = raw['error'];
+    _mocapError = err == null ? null : '$err';
+    notifyListeners();
+  }
+
   Future<void> stop() => _call('window.minde.stop()');
 
   Future<void> setFraming(MindFraming f) =>
@@ -250,11 +397,35 @@ class _MindAvatarViewState extends State<MindAvatarView> {
                           debugPrint('avatar: พูดไม่ได้ — ${msg['why']} '
                               '(AudioContext=${msg['ctx']})');
                           widget.controller._onSpeakFailed('${msg['why']}');
+
+                        // หน้าเว็บเป็นคนบอกเมื่อสถานะกล้อง**เปลี่ยน**
+                        // ฝั่งนี้จึงไม่ต้องยิงถามรัว ๆ ข้ามสะพานเอง
+                        case 'mocap':
+                          widget.controller._readMocap(msg);
                       }
                       return null;
                     },
                   );
                 },
+                // กล้องเชิดหุ่นขอ getUserMedia — อนุญาตเฉพาะกล้องเท่านั้น
+                //
+                // สิทธิ์ระดับระบบถูกขอไปแล้วใน startMocap() ตรงนี้เป็นชั้นของ
+                // WebView ล้วน ๆ · กรองให้เหลือเฉพาะกล้องแทนที่จะ grant ทุกอย่าง
+                // ที่ขอมา ไม่ใช่เพราะไม่ไว้ใจหน้านี้ (เสิร์ฟจาก localhost ของเราเอง)
+                // แต่เพราะวันหลังถ้ามีใครเผลอเรียกไมค์ในหน้านั้น มันจะไม่ได้ไมค์ไป
+                // เงียบ ๆ โดยไม่มีใครสังเกต
+                onPermissionRequest: (_, request) async {
+                  final wanted = request.resources
+                      .where((r) => r == PermissionResourceType.CAMERA)
+                      .toList();
+                  return PermissionResponse(
+                    resources: wanted,
+                    action: wanted.isEmpty
+                        ? PermissionResponseAction.DENY
+                        : PermissionResponseAction.GRANT,
+                  );
+                },
+
                 // เฉพาะ main frame เท่านั้นที่ถือว่าพัง
                 //
                 // clips.json อ้างถึง Bored.fbx / Waiting.fbx ที่ไม่เคยโหลดมาจาก

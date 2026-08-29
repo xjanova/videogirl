@@ -107,6 +107,36 @@ class S {
   String get avatarMissing =>
       _('ยังไม่มีโมเดลอวาตาร์ในเครื่อง', 'Avatar model not on this device yet');
 
+  // ═══ กล้องเชิดหุ่น ═════════════════════════════════════
+  String get puppetMode => _('โหมดหุ่นเชิด', 'Puppet mode');
+  String get puppetStart => _('เชิดมายด์ด้วยหน้าคุณ', 'Puppet Mind with your face');
+  String get puppetStop => _('เลิกเชิด', 'Stop puppeteering');
+
+  /// ช่วงเก็บค่าฐาน — ต้องบอกให้ชัดว่า "นิ่ง" ไม่ใช่แค่ "รอ"
+  /// ถ้าขึ้นแค่วงกลมหมุน คนจะขยับหน้าไปเรื่อย แล้วค่าฐานจะเพี้ยนทั้งเซสชัน
+  String get puppetCalibrating =>
+      _('นั่งนิ่ง ๆ หน้าตรงแป๊บนึงนะคะ มายด์กำลังจำหน้าปกติของคุณ',
+        'Hold still and look straight ahead — learning your resting face');
+  String get puppetRecalibrate => _('จำหน้าใหม่', 'Re-learn my face');
+  String get puppetNoFace =>
+      _('มายด์ไม่เห็นหน้าคุณในกล้องค่ะ', "I can't see your face");
+  String get puppetStarting => _('กำลังเปิดกล้อง…', 'Starting the camera…');
+  String get puppetDenied =>
+      _('ต้องอนุญาตให้ใช้กล้องก่อนนะคะ', 'Camera permission is needed');
+  String get puppetBlocked => _(
+        'กล้องถูกปิดไว้ ต้องไปเปิดในตั้งค่าของเครื่องก่อน',
+        'Camera is blocked — turn it on in system settings',
+      );
+  String get puppetFailed =>
+      _('เปิดกล้องไม่สำเร็จค่ะ', "Couldn't start the camera");
+  String get openSettings => _('เปิดตั้งค่า', 'Open settings');
+
+  /// ต้องบอกเสมอที่จุดที่ขอกล้อง ไม่ใช่ซ่อนไว้ในหน้า privacy ที่ไม่มีใครเปิด
+  String get puppetPrivacy => _(
+        'ภาพจากกล้องไม่ออกจากเครื่องนี้ ประมวลผลในแอปแล้วเหลือแค่ค่าการขยับหน้า',
+        'Video never leaves this device — it becomes face movement numbers here',
+      );
+
   // ═══ บทสนทนาตัวอย่าง ═══════════════════════════════════
   String get seedGreeting => _(
         'อรุณสวัสดิ์ค่ะ เช้านี้มีเมล 24 ฉบับ มายด์คัดให้เหลือ 3 ที่ต้องตอบนะคะ',

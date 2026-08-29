@@ -89,3 +89,7 @@ flutter:
     - assets/avatar/vendor/three/jsm/shaders/
     - assets/avatar/vendor/three/jsm/utils/
     - assets/avatar/vendor/vrm-mixamo/
+    # กล้องเชิดหุ่น — bundle + wasm ของ MediaPipe และไฟล์โมเดล .task
+    # โหลดตอนกดเปิดโหมดเท่านั้น แต่ยังต้องประกาศไว้ ไม่งั้นไม่ถูกแพ็กลง APK
+    - assets/avatar/vendor/mediapipe/
+    - assets/avatar/vendor/mediapipe/wasm/

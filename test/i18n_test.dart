@@ -68,6 +68,20 @@ void main() {
         check('flirtSample($lv)', en.flirtSample(lv));
       }
 
+      // กล้องเชิดหุ่น
+      check('puppetMode', en.puppetMode);
+      check('puppetStart', en.puppetStart);
+      check('puppetStop', en.puppetStop);
+      check('puppetCalibrating', en.puppetCalibrating);
+      check('puppetRecalibrate', en.puppetRecalibrate);
+      check('puppetNoFace', en.puppetNoFace);
+      check('puppetStarting', en.puppetStarting);
+      check('puppetDenied', en.puppetDenied);
+      check('puppetBlocked', en.puppetBlocked);
+      check('puppetFailed', en.puppetFailed);
+      check('openSettings', en.openSettings);
+      check('puppetPrivacy', en.puppetPrivacy);
+
       // ฟองคำพูด
       check('bubbleTitle', en.bubbleTitle);
       check('bubbleEnabled', en.bubbleEnabled);
@@ -159,6 +173,8 @@ void main() {
         'brainOnDeviceTradeoff': th.brainOnDeviceTradeoff,
         'updateSource': th.updateSource,
         'mailDraftBody': th.mailDraftBody,
+        'puppetCalibrating': th.puppetCalibrating,
+        'puppetPrivacy': th.puppetPrivacy,
       };
       for (final e in longThai.entries) {
         expect(hasThai(e.value), isTrue,
@@ -175,6 +191,8 @@ void main() {
         'autoAnswer': (th.autoAnswer, en.autoAnswer),
         'errOffline': (th.errOffline, en.errOffline),
         'splashSkip': (th.splashSkip, en.splashSkip),
+        'puppetMode': (th.puppetMode, en.puppetMode),
+        'puppetCalibrating': (th.puppetCalibrating, en.puppetCalibrating),
       };
       for (final e in pairs.entries) {
         expect(e.value.$1, isNot(e.value.$2),

@@ -164,6 +164,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
               ),
 
+              // ปุ่มเชิดหุ่น — อยู่บนเวทีไม่ใช่ในหน้าตั้งค่า เพราะเป็นสวิตช์
+              // ที่คนกดขณะ**มองหน้าเธออยู่** ไม่ใช่ค่าที่ตั้งทิ้งไว้
+              Positioned(
+                right: 10,
+                top: 10,
+                child: _PuppetButton(avatar: widget.avatar, mode: mode),
+              ),
+
+              // แถบบอกสถานะกล้อง — ขึ้นเฉพาะตอนมีอะไรต้องบอกจริง ๆ
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 8,
+                child: _PuppetStatus(avatar: widget.avatar),
+              ),
+
               // ฟองคำพูด — ซ่อนถ้ายังไม่ได้พูดอะไร (ฟองเปล่าดูเสีย)
               // และซ่อนระหว่างที่เธอกำลังพูด เพราะกล้องดึงเข้าเป็น bust
               // ฟองจะไปคร่อมหน้าเธอพอดี ข้อความเดียวกันอยู่ในแผงแชทอยู่แล้ว
@@ -334,5 +350,187 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ),
       ],
     );
+  }
+}
+
+/// ปุ่มกลม ๆ เปิด/ปิดโหมดหุ่นเชิด
+///
+/// เปลี่ยนสีตามสถานะจริงสามขั้น ไม่ใช่แค่ เปิด/ปิด: กำลังคาลิเบรตกับเชิดอยู่จริง
+/// เป็นคนละเรื่องกัน คนกดต้องแยกออกว่าตอนนี้ต้อง**นิ่ง**หรือ**ขยับได้แล้ว**
+class _PuppetButton extends StatefulWidget {
+  const _PuppetButton({required this.avatar, required this.mode});
+
+  final MindAvatarController avatar;
+  final MindMode mode;
+
+  @override
+  State<_PuppetButton> createState() => _PuppetButtonState();
+}
+
+class _PuppetButtonState extends State<_PuppetButton> {
+  bool _busy = false;
+
+  Future<void> _toggle() async {
+    // startMocap เองก็กันซ้ำอยู่แล้ว แต่ระหว่างรอไดอะล็อกสิทธิ์ของระบบ
+    // ปุ่มยังกดได้อยู่ ถ้าไม่กันตรงนี้จะได้ไดอะล็อกซ้อนกันสองอัน
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      if (widget.avatar.mocapOn) {
+        await widget.avatar.stopMocap();
+      } else {
+        await widget.avatar.startMocap();
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    return ListenableBuilder(
+      listenable: widget.avatar,
+      builder: (context, _) {
+        final a = widget.avatar;
+        final live = a.mocapPhase == MindMocapPhase.live;
+        final warming = a.mocapPhase == MindMocapPhase.starting ||
+            a.mocapPhase == MindMocapPhase.calibrating;
+
+        final tint = live
+            ? widget.mode.accent
+            : warming
+                ? MindColors.ink55
+                : MindColors.ink45;
+
+        return Semantics(
+          button: true,
+          toggled: a.mocapOn,
+          label: a.mocapOn ? s.puppetStop : s.puppetStart,
+          child: Tooltip(
+            message: live
+                ? '${s.puppetStop} · ${s.puppetRecalibrate}'
+                : a.mocapOn
+                    ? s.puppetStop
+                    : s.puppetStart,
+            child: GestureDetector(
+              onTap: a.ready ? _toggle : null,
+              // กดค้าง = จำหน้าใหม่ · ไม่ทำเป็นปุ่มแยกเพราะเป็นของที่ใช้นาน ๆ ครั้ง
+              // (เปลี่ยนคนเชิด ย้ายที่นั่ง แสงเปลี่ยน) แต่ตอนต้องใช้ก็ต้องหาเจอ
+              onLongPress: live ? widget.avatar.recalibrateMocap : null,
+              child: GlassPanel(
+                radius: 22,
+                fill: MindColors.glass72,
+                padding: const EdgeInsets.all(9),
+                shadows: MindShadows.soft(),
+                child: Icon(
+                  live
+                      ? Icons.videocam_rounded
+                      : warming
+                          ? Icons.hourglass_top_rounded
+                          : Icons.videocam_off_rounded,
+                  size: 20,
+                  color: a.ready ? tint : MindColors.ink22,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// แถบบอกสถานะกล้อง
+///
+/// เงียบสนิทตอนทุกอย่างปกติ — แถบที่ขึ้นตลอดเวลาคือแถบที่ไม่มีใครอ่าน
+/// ขึ้นเฉพาะตอนที่คนต้อง**ทำอะไรสักอย่าง** หรือตอนที่ของกำลังไม่ทำงาน
+class _PuppetStatus extends StatelessWidget {
+  const _PuppetStatus({required this.avatar});
+
+  final MindAvatarController avatar;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    return ListenableBuilder(
+      listenable: avatar,
+      builder: (context, _) {
+        final (text, progress, action) = _read(s);
+        if (text == null) return const SizedBox.shrink();
+
+        return GlassPanel(
+          radius: 18,
+          fill: MindColors.glass80,
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          shadows: MindShadows.soft(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 8,
+            children: [
+              Text(
+                text,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: MindColors.ink75),
+              ),
+              // คำสัญญาเรื่องกล้องต้องอยู่**ตรงจุดที่กล้องกำลังเปิด** ไม่ใช่
+              // ซ่อนในหน้า privacy ที่ไม่มีใครกดเข้าไปอ่าน
+              if (avatar.mocapOn)
+                Text(
+                  s.puppetPrivacy,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 10, color: MindColors.ink45),
+                ),
+              if (progress != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 4,
+                    backgroundColor: MindColors.ink10,
+                  ),
+                ),
+              if (action != null)
+                Align(
+                  alignment: Alignment.center,
+                  child: TextButton(
+                    onPressed: action.$2,
+                    child: Text(action.$1),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// ข้อความ · ความคืบหน้า · ปุ่มลงมือ — null ทั้งชุดแปลว่าไม่ต้องขึ้นอะไรเลย
+  (String?, double?, (String, VoidCallback)?) _read(S s) {
+    if (avatar.mocapBlocked) {
+      return (s.puppetBlocked, null, (s.openSettings, avatar.openCameraSettings));
+    }
+    if (avatar.mocapDenied) return (s.puppetDenied, null, null);
+
+    switch (avatar.mocapPhase) {
+      case MindMocapPhase.off:
+        return (null, null, null);
+      case MindMocapPhase.starting:
+        return (s.puppetStarting, null, null);
+      case MindMocapPhase.calibrating:
+        // ไม่เห็นหน้า = หลอดจะไม่ขยับเลย ต้องบอกให้รู้ว่าติดตรงไหน ไม่ใช่ปล่อยให้
+        // นั่งนิ่งรอ 0% ไปเรื่อย ๆ โดยเข้าใจว่าเครื่องกำลังคิดอยู่
+        if (!avatar.mocapTracking) {
+          return (s.puppetNoFace, avatar.mocapProgress, null);
+        }
+        return (s.puppetCalibrating, avatar.mocapProgress, null);
+      case MindMocapPhase.failed:
+        return (s.puppetFailed, null, null);
+      case MindMocapPhase.live:
+        // เชิดอยู่แล้วและเห็นหน้าอยู่ = ไม่ต้องบอกอะไร ปุ่มมุมบนบอกไปแล้ว
+        if (avatar.mocapTracking) return (null, null, null);
+        return (s.puppetNoFace, null, null);
+    }
   }
 }

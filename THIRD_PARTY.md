@@ -7,10 +7,22 @@
 | three.js **r169** | `assets/avatar/vendor/three/` | MIT — © three.js authors |
 | @pixiv/three-vrm | `assets/avatar/vendor/three-vrm/` | MIT — © 2019-2026 pixiv Inc. ([LICENSE](assets/avatar/vendor/three-vrm/LICENSE)) |
 | vrm-mixamo (ตัวแมปกระดูก) | `assets/avatar/vendor/vrm-mixamo/` | MIT |
+| MediaPipe Tasks Vision **1.0.1** | `assets/avatar/vendor/mediapipe/` | Apache-2.0 — © Google LLC |
+| โมเดล `face_landmarker.task` (float16 v1) | `assets/avatar/vendor/mediapipe/` | Apache-2.0 — © Google LLC |
 | เครื่องยนต์อวาตาร์ | `assets/avatar/*.js` | ของเจ้าของเอง ยกมาจาก [xjanova/BrainX](https://github.com/xjanova/BrainX) |
 
 three.js ไม่ได้แนบไฟล์ LICENSE มากับ dist ที่คัดลอกมา —
 ต้นฉบับอยู่ที่ https://github.com/mrdoob/three.js/blob/master/LICENSE (MIT)
+
+แพ็กเกจ npm `@mediapipe/tasks-vision` ก็ไม่ได้แนบ LICENSE มาใน tarball เหมือนกัน
+(`package.json` ระบุ `"license": "Apache-2.0"`) ต้นฉบับอยู่ที่
+https://github.com/google-ai-edge/mediapipe/blob/master/LICENSE
+
+**ที่แพ็กมาแค่บางไฟล์:** เอามาเฉพาะ `vision_bundle.mjs` กับ wasm ตัว **SIMD**
+ไม่ได้เอา `vision_wasm_nosimd_internal.*` มาด้วย (อีก ~11MB) เพราะ WebView ของ
+Android ที่รัน WebGL ES 3.0 ได้ตามเงื่อนไขแอปนี้ รองรับ WASM SIMD มานานแล้ว
+จึงต้องประกอบ fileset เองใน `mocap.js` แทนการใช้ `FilesetResolver.forVisionTasks()`
+ซึ่งจะไปขอไฟล์ nosimd แล้วได้ 404 ที่อ่านไม่ออกว่าเกิดอะไรขึ้น
 
 ## **ไม่ได้** อยู่ใน repo นี้ (และห้ามใส่)
 
@@ -41,4 +53,5 @@ flutter pub deps --style=list
 
 ตัวหลักที่ใช้: `flutter_inappwebview` · `flutter_tts` · `google_fonts` · `provider`
 `http` · `crypto` · `convert` · `path_provider` · `shared_preferences`
-`package_info_plus` · `open_filex` — ทั้งหมดเป็น BSD-3 หรือ MIT
+`package_info_plus` · `open_filex` · `video_player` · `permission_handler`
+— ทั้งหมดเป็น BSD-3 หรือ MIT

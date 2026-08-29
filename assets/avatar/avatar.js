@@ -27,6 +27,7 @@ import { Motion } from './motion.js';
 import { Idle } from './idle.js';
 import { LipSync } from './lipsync.js';
 import { Framing } from './framing.js';
+import { FaceMocap } from './mocap.js';
 
 /**
  * Mood -> the VRM expression that carries it, and how much of it.
@@ -51,6 +52,9 @@ const MOOD_EXPRESSION = {
 /** Every expression any mood can use, each named once. */
 const MOOD_EXPRS = [...new Set(
     Object.values(MOOD_EXPRESSION).filter(Boolean).map(([e]) => e))];
+
+/** The gaze expressions. Only the camera writes these, so only it cleans up. */
+const LOOK_EXPRS = ['lookUp', 'lookDown', 'lookLeft', 'lookRight'];
 
 export class Avatar {
     constructor(host, opts = {}) {
@@ -78,6 +82,10 @@ export class Avatar {
         this.scene.add(key, new THREE.AmbientLight(0xbfd4ff, 1.15));
 
         this.lip = new LipSync();
+        // The camera puppet. Nothing is loaded and no permission is asked until
+        // someone calls `start()` — the wasm alone is 11MB and most sessions
+        // never turn this on.
+        this.mocap = new FaceMocap('./vendor/mediapipe/');
         this.clock = new THREE.Clock();
         this._loop = this._loop.bind(this);
         this._t = 0;
@@ -96,6 +104,14 @@ export class Avatar {
             if (typeof VRMUtils[fn] === 'function') { try { VRMUtils[fn](gltf.scene); } catch {} }
         this.vrm = vrm;
         this.scene.add(vrm.scene);
+
+        // Whether this model carries per-eye blinks. Probed ONCE, here, because
+        // `setValue` on a name the model does not have is a silent no-op: drive
+        // `blinkLeft` on a model that only has `blink` and she simply never
+        // blinks again, with nothing anywhere to say why.
+        const em = vrm.expressionManager;
+        this._blinkLR = !!(em?.getExpression?.('blinkLeft')
+                        && em?.getExpression?.('blinkRight'));
 
         this.idle = new Idle(vrm);
         this.framing = new Framing(this.camera, vrm);
@@ -152,6 +168,34 @@ export class Avatar {
     sit() { return this.motion?.sit() ?? false; }
     stand() { return this.motion?.stand() ?? false; }
 
+    // ── the camera puppet ────────────────────────────────────────────────
+    //
+    // `live` and not merely `active` on purpose: while the baseline is being
+    // collected the puppeteer is holding still ON PURPOSE, and a face that
+    // started copying them mid-calibration would bake that copy into the
+    // baseline it is in the middle of measuring.
+    get puppet() {
+        return this.mocap.active && this.mocap.phase === 'live';
+    }
+
+    async startMocap() {
+        await this.mocap.start();
+        return this.mocap.status();
+    }
+
+    stopMocap() {
+        this.mocap.stop();
+        return this.mocap.status();
+    }
+
+    /** Re-measure the resting face — new puppeteer, or the same one moved. */
+    recalibrate() {
+        this.mocap.recalibrate();
+        return this.mocap.status();
+    }
+
+    mocapStatus() { return this.mocap.status(); }
+
     _loop() {
         this._raf = requestAnimationFrame(this._loop);
         const dt = Math.min(0.1, this.clock.getDelta());
@@ -178,11 +222,17 @@ export class Avatar {
         const armsFree = !!this.motion?.gesture
             || (this.motion?.current?.meta.role ?? 'idle') !== 'idle';
         this.lip.update(dt);
+        this.mocap.update(dt, performance.now());
         this.idle.apply(this._t, w, this.lip.speaking ? this.lip.level : 0, dt,
                         onFeet ? 0.82 : 0, armsFree ? 0 : 0.75);
 
         // 3 — face.
         this._face(dt);
+
+        // 3b — the camera, if someone is puppeteering. AFTER idle, which owns
+        // the neck and the head every frame; before vrm.update, so the spring
+        // bones still get the final pose and her hair follows the real turn.
+        if (this.puppet) this.mocap.applyHead(vrm, 0.9);
 
         // 4 — propagate, look-at, spring bones.
         vrm.update(dt);
@@ -204,19 +254,70 @@ export class Avatar {
     _face(dt = 1 / 60) {
         const em = this.vrm?.expressionManager;
         if (!em) return;
+        const k = 1 - Math.exp(-5.2 * dt);
+        const ease = (name, want) => {
+            const cur = em.getValue(name) ?? 0;
+            em.setValue(name, cur + (want - cur) * k);
+        };
+
+        if (this.puppet) {
+            // THE CAMERA WINS, WHOLE FACE. This is a puppet mode: her mouth
+            // belongs to the mouth in front of the lens, not to the waveform,
+            // and her mood belongs to that face too. Letting the audio keep the
+            // visemes here would look like a dub — the lips would move while
+            // she is silent and stay shut while the puppeteer talks.
+            //
+            // Note this feeds the SAME `shape()` the audio path uses. There is
+            // one mouth model in this app, and only where its two numbers come
+            // from changes.
+            const m = this.mocap.mouth();
+            this.lip.shape(m.open, m.spread);
+            this.lip.applyTo(this.vrm);
+
+            const e = this.mocap.emote;
+            ease('happy', e.happy);
+            ease('sad', e.sad);
+            ease('angry', e.angry);
+            ease('surprised', e.surprised);
+
+            const l = this.mocap.look;
+            em.setValue('lookUp', l.up);
+            em.setValue('lookDown', l.down);
+            em.setValue('lookLeft', l.left);
+            em.setValue('lookRight', l.right);
+
+            if (this._blinkLR) {
+                em.setValue('blinkLeft', this.mocap.blinkL);
+                em.setValue('blinkRight', this.mocap.blinkR);
+                // Zeroed, or a model carrying both would blink twice over and
+                // her eyes would never open again.
+                em.setValue('blink', 0);
+            } else {
+                em.setValue('blink', Math.max(this.mocap.blinkL, this.mocap.blinkR));
+            }
+            return;
+        }
+
         this.lip.applyTo(this.vrm);
         const [wantExpr, wantAmt] = MOOD_EXPRESSION[this.mood] ?? [null, 0];
         // A VRoid `happy` closes the eyes and reshapes the mouth, so at full
         // weight it simply eats the visemes. Held back while she is talking —
         // the mood stays legible and the words still land.
         const cap = this.speaking ? 0.45 : 1;
-        const k = 1 - Math.exp(-5.2 * dt);
         for (const expr of MOOD_EXPRS) {
             const cur = em.getValue(expr) ?? 0;
             const want = expr === wantExpr ? wantAmt * cap : 0;
             em.setValue(expr, cur + (want - cur) * k);
         }
         em.setValue('blink', this.idle.blink);
+
+        // The camera's leftovers, walked back to zero. Nothing else in the app
+        // writes these four, so switching the camera off while looking away
+        // would otherwise leave her eyes stuck in that corner for the rest of
+        // the session — a state with no error, no log, and no way back short of
+        // reloading the page.
+        for (const n of LOOK_EXPRS) ease(n, 0);
+        if (this._blinkLR) { ease('blinkLeft', 0); ease('blinkRight', 0); }
     }
 
     resize(w, h) {
@@ -228,6 +329,9 @@ export class Avatar {
     dispose() {
         cancelAnimationFrame(this._raf);
         this.lip.dispose();
+        // Releases the camera. Skipping this leaves the recording light on
+        // after she is gone, which reads as spyware and is fair enough.
+        this.mocap.dispose();
         this.motion?.dispose();
         if (this.vrm) VRMUtils.deepDispose?.(this.vrm.scene);
         this.renderer.dispose();
