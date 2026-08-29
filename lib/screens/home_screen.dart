@@ -98,48 +98,84 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // ── เวทีของเธอ ──────────────────────────────────────────
+  //
+  // artboard วาดบนกรอบ 380×800 ตายตัว ถ้าเอาพิกัดพิกเซลจากตรงนั้นมาใช้ตรง ๆ
+  // บนจอจริง (ทดสอบบน 1080×2340) ฟองคำพูดจะไปคร่อมหน้าเธอ และวงแหวนจะหลุดตำแหน่ง
+  // จึงเก็บเป็น **สัดส่วน** ของเวที แล้วคูณกลับตามขนาดจริงของแต่ละเครื่อง
+  static const _artboardStage = Size(380, 452); // 800 − หัวจอ − แผงแชท
+
+  static const _ringLeft = 92 / 380;
+  static const _ringTop = 44 / 452;
+  static const _ringSize = 136 / 380;
+  static const _bubbleLeft = 112 / 380;
+  static const _bubbleTop = 14 / 452;
+  static const _bubbleMaxWidth = 210 / 380;
+
   Widget _stage(MindeState state, MindeMode mode) {
     final bubble = state.bubbleText;
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 300),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned.fill(
-            child: MindeAvatarView(controller: widget.avatar, mode: mode),
-          ),
+      constraints: BoxConstraints(minHeight: _artboardStage.height * .66),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final w = box.maxWidth;
+          final h = box.maxHeight.isFinite ? box.maxHeight : _artboardStage.height;
+          final ring = w * _ringSize;
 
-          // วงแหวนเรืองรอบตัวเธอ ขยายออกแล้วจาง
-          Positioned(
-            left: 92,
-            top: 44,
-            child: AnimatedBuilder(
-              animation: _ring,
-              builder: (_, _) {
-                final t = _ring.value;
-                return Opacity(
-                  opacity: (.5 * (1 - t)).clamp(0.0, 1.0),
-                  child: Transform.scale(
-                    scale: 1 + .6 * t,
-                    child: Container(
-                      width: 136,
-                      height: 136,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: mode.accentSoft, width: 1.5),
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: MindeAvatarView(controller: widget.avatar, mode: mode),
+              ),
+
+              // วงแหวนเรืองรอบตัวเธอ ขยายออกแล้วจาง
+              Positioned(
+                left: w * _ringLeft,
+                top: h * _ringTop,
+                child: AnimatedBuilder(
+                  animation: _ring,
+                  builder: (_, _) {
+                    final t = _ring.value;
+                    return Opacity(
+                      opacity: (.5 * (1 - t)).clamp(0.0, 1.0),
+                      child: Transform.scale(
+                        scale: 1 + .6 * t,
+                        child: Container(
+                          width: ring,
+                          height: ring,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border:
+                                Border.all(color: mode.accentSoft, width: 1.5),
+                          ),
+                        ),
                       ),
+                    );
+                  },
+                ),
+              ),
+
+              // ฟองคำพูด — ซ่อนถ้ายังไม่ได้พูดอะไร (ฟองเปล่าดูเสีย)
+              // และซ่อนระหว่างที่เธอกำลังพูด เพราะกล้องดึงเข้าเป็น bust
+              // ฟองจะไปคร่อมหน้าเธอพอดี ข้อความเดียวกันอยู่ในแผงแชทอยู่แล้ว
+              if (bubble.isNotEmpty)
+                Positioned(
+                  left: w * _bubbleLeft,
+                  top: h * _bubbleTop,
+                  child: AnimatedOpacity(
+                    opacity: state.speaking ? 0 : 1,
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOut,
+                    child: SpeechBubble(
+                      text: bubble,
+                      maxWidth: w * _bubbleMaxWidth,
                     ),
                   ),
-                );
-              },
-            ),
-          ),
-
-          // ฟองคำพูด — ซ่อนไปเลยถ้าเธอยังไม่ได้พูดอะไร ดีกว่าโชว์ฟองเปล่า
-          if (bubble.isNotEmpty)
-            Positioned(left: 112, top: 14, child: SpeechBubble(text: bubble)),
-        ],
+                ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -340,6 +340,15 @@ class MindeState extends ChangeNotifier {
   /// ไม่ต้องเดาว่าเปลี่ยนแล้วต่างยังไง
   Future<void> previewVoice() => _speakIfEnabled(effectiveFlirt.flirtSample);
 
+  bool _speaking = false;
+
+  /// กำลังพูดอยู่ไหม
+  ///
+  /// ตอนพูด `avatar.speak()` จะดึงกล้องเข้ามาเป็นระยะ bust หัวเธอจะขึ้นมาสูง
+  /// ฟองคำพูดที่ artboard วางไว้สำหรับท่ายืนเต็มตัวจะไปคร่อมหน้าพอดี
+  /// หน้าหลักจึงซ่อนฟองระหว่างนี้ — ข้อความเดียวกันอยู่ในแผงแชทข้างล่างอยู่แล้ว
+  bool get speaking => _speaking;
+
   Future<void> _speakIfEnabled(String text) async {
     final out = speaker;
     if (!_voiceEnabled || out == null) return;
@@ -354,10 +363,16 @@ class MindeState extends ChangeNotifier {
         instructions: _voiceInstructions,
       );
       if (_disposed) return;
+
+      _speaking = true;
+      _notify();
       await out(utterance);
     } on OpenAiFailure catch (e) {
       // เสียงพูดไม่ออกไม่ควรทำให้บทสนทนาพัง — ข้อความยังอยู่ครบ
       _lastError = e.message;
+    } finally {
+      // ต้องปลดเสมอ ไม่งั้นฟองจะหายถาวรถ้าเล่นเสียงพัง
+      _speaking = false;
       _notify();
     }
   }
