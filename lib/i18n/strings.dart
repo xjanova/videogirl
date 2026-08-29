@@ -127,6 +127,8 @@ class S {
   String get packMissing =>
       _('ยังไม่มีในเครื่อง เธอจะขึ้นเป็นกรอบแทน', 'Not here yet — she shows as a placeholder');
   String get packReady => _('พร้อมใช้แล้ว', 'Ready');
+  String get packMissingHint =>
+      _('ไปที่ตั้งค่า → ชุดตัวมายด์ เพื่อโหลด', 'Settings → avatar pack to download');
   String get packDownload => _('โหลดชุด', 'Download pack');
   String get packRemove => _('ลบออกจากเครื่อง', 'Remove from device');
   String get packUrlLabel => _('ที่อยู่ไฟล์ .zip ของชุด', 'URL of the pack .zip');

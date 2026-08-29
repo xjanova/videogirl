@@ -73,6 +73,7 @@ void main() {
       check('packWhy', en.packWhy);
       check('packMissing', en.packMissing);
       check('packReady', en.packReady);
+      check('packMissingHint', en.packMissingHint);
       check('packDownload', en.packDownload);
       check('packRemove', en.packRemove);
       check('packUrlLabel', en.packUrlLabel);

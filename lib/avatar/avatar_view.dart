@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -495,84 +494,63 @@ class _MindAvatarViewState extends State<MindAvatarView> {
   }
 }
 
-/// กรอบประๆ ตรงตาม artboard 2a — inset 16/44/4/12, มุม 26, แถบทแยง 135°
+/// ที่ยืนของเธอตอนยังไม่มีโมเดลในเครื่อง
+///
+/// เดิมเป็นกรอบเส้นประลายทแยงตาม artboard ซึ่งเป็นภาษาของ **wireframe**
+/// ไม่ใช่ของแอปที่ปล่อยจริง · และนี่คือสิ่งแรกที่คนเห็นเมื่อลง APK จาก release
+/// เพราะชุดตัวเธอไม่ได้ฝังมาใน APK (ดู avatar_pack.dart)
+///
+/// ภาพออร่าเจนจาก Magnific (0 เครดิต) แล้วคีย์พื้นขาวออกด้วย ffmpeg ให้เป็น
+/// alpha จริง — `mix-blend-mode` หรือปล่อยพื้นขาวไว้จะเห็นเป็นกล่องสี่เหลี่ยม
+/// ทับพื้นไล่สีของจอ
 class _AvatarPlaceholder extends StatelessWidget {
   const _AvatarPlaceholder({required this.mode, required this.failed});
 
   final MindMode mode;
+
+  /// พังจริง (หาไฟล์ไม่เจอ) ต่างจาก "กำลังโหลดอยู่" — ต้องบอกคนละอย่าง
   final bool failed;
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 16, 44, 4),
-      child: CustomPaint(
-        painter: const _DashedStripePainter(),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Text(
-              failed
-                  ? S.of(context).avatarMissing
-                  : S.of(context).avatarPlaceholder,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 10,
-                letterSpacing: .6,
-                color: MindColors.ink45,
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Opacity(
+              opacity: .78,
+              child: Image.asset(
+                'assets/brand/avatar-aura.png',
+                fit: BoxFit.contain,
+                // ไฟล์หายก็ต้องไม่พังทั้งจอ — เหลือแค่ข้อความข้างล่างก็ยังสื่อได้
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
             ),
           ),
-        ),
+          const SizedBox(height: 10),
+          Text(
+            failed ? s.avatarMissing : s.avatarPlaceholder,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 12.5,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+              color: MindColors.ink60,
+            ),
+          ),
+          if (failed) ...[
+            const SizedBox(height: 4),
+            Text(
+              s.packMissingHint,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 11, color: MindColors.ink45),
+            ),
+          ],
+        ],
       ),
     );
   }
-}
-
-class _DashedStripePainter extends CustomPainter {
-  const _DashedStripePainter();
-
-  static const _radius = Radius.circular(MindRadius.panel);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rrect = RRect.fromRectAndRadius(Offset.zero & size, _radius);
-
-    // repeating-linear-gradient 135° ขาว .55 / .15 สลับทุก 9px
-    canvas.save();
-    canvas.clipRRect(rrect);
-    final stripe = Paint()..color = const Color(0x8CFFFFFF);
-    canvas.drawRRect(rrect, Paint()..color = const Color(0x26FFFFFF));
-    const step = 9 * math.sqrt2; // ระยะตามแนวนอนของแถบเอียง 45°
-    for (var x = -size.height; x < size.width; x += step * 2) {
-      canvas.drawPath(
-        Path()
-          ..moveTo(x, 0)
-          ..lineTo(x + step, 0)
-          ..lineTo(x + step + size.height, size.height)
-          ..lineTo(x + size.height, size.height)
-          ..close(),
-        stripe,
-      );
-    }
-    canvas.restore();
-
-    // เส้นขอบประ 1px
-    final border = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = MindColors.ink22;
-    for (final metric in (Path()..addRRect(rrect)).computeMetrics()) {
-      var d = 0.0;
-      while (d < metric.length) {
-        canvas.drawPath(metric.extractPath(d, math.min(d + 5, metric.length)), border);
-        d += 9;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedStripePainter oldDelegate) => false;
 }
