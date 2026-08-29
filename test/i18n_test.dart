@@ -68,6 +68,23 @@ void main() {
         check('flirtSample($lv)', en.flirtSample(lv));
       }
 
+      // ชุดตัวมายด์
+      check('packTitle', en.packTitle);
+      check('packWhy', en.packWhy);
+      check('packMissing', en.packMissing);
+      check('packReady', en.packReady);
+      check('packDownload', en.packDownload);
+      check('packRemove', en.packRemove);
+      check('packUrlLabel', en.packUrlLabel);
+      check('packDownloading', en.packDownloading);
+      check('packVerifying', en.packVerifying);
+      check('packUnpacking', en.packUnpacking);
+      check('packErrNoUrl', en.packErrNoUrl);
+      check('packErrNetwork', en.packErrNetwork);
+      check('packErrHash', en.packErrHash);
+      check('packErrBadPack', en.packErrBadPack);
+      check('packErrServer', en.packErrServer);
+
       // กล้องเชิดหุ่น
       check('puppetMode', en.puppetMode);
       check('puppetStart', en.puppetStart);
@@ -181,6 +198,8 @@ void main() {
         'mailDraftBody': th.mailDraftBody,
         'puppetCalibrating': th.puppetCalibrating,
         'puppetPrivacy': th.puppetPrivacy,
+        'packWhy': th.packWhy,
+        'calRestClear': th.calRestClear,
       };
       for (final e in longThai.entries) {
         expect(hasThai(e.value), isTrue,

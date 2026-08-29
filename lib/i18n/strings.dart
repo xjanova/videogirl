@@ -114,6 +114,39 @@ class S {
   String get avatarMissing =>
       _('ยังไม่มีโมเดลอวาตาร์ในเครื่อง', 'Avatar model not on this device yet');
 
+  // ═══ ชุดตัวมายด์ (โหลดทีหลัง) ══════════════════════════
+  String get packTitle => _('ชุดตัวมายด์', "Mind's avatar pack");
+
+  /// ต้องอธิบายว่าทำไมไม่ฝังมาให้เลย ไม่งั้นดูเหมือนแอปโหลดไม่ครบ
+  String get packWhy => _(
+        'โมเดลกับคลิปท่าทางไม่ได้ฝังมาในแอป เพราะคลิปเป็นของ Mixamo ที่แจกต่อไม่ได้ '
+        'โหลดครั้งเดียวแล้วอยู่ในเครื่องเลย',
+        'The model and motion clips are not bundled — the clips belong to Mixamo '
+        'and cannot be redistributed. Download once and it stays on this device.',
+      );
+  String get packMissing =>
+      _('ยังไม่มีในเครื่อง เธอจะขึ้นเป็นกรอบแทน', 'Not here yet — she shows as a placeholder');
+  String get packReady => _('พร้อมใช้แล้ว', 'Ready');
+  String get packDownload => _('โหลดชุด', 'Download pack');
+  String get packRemove => _('ลบออกจากเครื่อง', 'Remove from device');
+  String get packUrlLabel => _('ที่อยู่ไฟล์ .zip ของชุด', 'URL of the pack .zip');
+  String get packDownloading => _('กำลังโหลด', 'Downloading');
+  String get packVerifying => _('กำลังตรวจไฟล์', 'Checking the file');
+  String get packUnpacking => _('กำลังแตกไฟล์', 'Unpacking');
+
+  String get packErrNoUrl =>
+      _('ยังไม่ได้ตั้งที่อยู่ของชุด', 'No pack address set yet');
+  String get packErrNetwork =>
+      _('โหลดไม่สำเร็จ ลองใหม่อีกครั้งนะคะ', "Download failed — please try again");
+  String get packErrHash => _(
+        'ไฟล์ไม่ตรงกับที่ประกาศไว้ อาจโหลดมาไม่ครบ',
+        "The file does not match its checksum — it may be incomplete",
+      );
+  String get packErrBadPack =>
+      _('ในไฟล์ไม่มีโมเดล น่าจะแพ็กผิดโครง', 'No model inside — the pack looks wrong');
+  String get packErrServer =>
+      _('เปิดที่เก็บชุดในเครื่องไม่ได้', "Could not open the local pack store");
+
   // ═══ กล้องเชิดหุ่น ═════════════════════════════════════
   String get puppetMode => _('โหมดหุ่นเชิด', 'Puppet mode');
   String get puppetStart => _('เชิดมายด์ด้วยหน้าคุณ', 'Puppet Mind with your face');

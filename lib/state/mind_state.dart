@@ -72,6 +72,7 @@ class MindState extends ChangeNotifier {
     );
     _homeServerUrl = p.getString('homeServerUrl') ?? HomeServerDefaults.baseUrl;
     _homeServerModel = p.getString('homeServerModel') ?? HomeServerDefaults.model;
+    _avatarPackUrl = p.getString('avatarPackUrl') ?? _packUrlDefault;
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
     _realtimeModel = p.getString('realtimeModel') ?? OpenAiConfig.realtimeModel;
 
@@ -261,6 +262,25 @@ class MindState extends ChangeNotifier {
   void setHomeServerModel(String v) {
     _homeServerModel = v.trim();
     _save('homeServerModel', _homeServerModel);
+    _notify();
+  }
+
+  // ═══ ชุดตัวมายด์ ═══════════════════════════════════════
+  //
+  // โมเดล VRM กับคลิปท่าทางไม่ได้ฝังใน APK ที่ CI build (repo เป็น public
+  // และคลิป Mixamo แจกต่อไม่ได้) แอปจึงต้องโหลดเองจากที่ที่เจ้าของตั้งไว้
+  //
+  // ตั้งเป็นค่าที่แก้ในแอปได้ ไม่ใช่ --dart-define อย่างเดียว เพราะจะได้
+  // เปลี่ยนที่เก็บชุดโดยไม่ต้อง build ใหม่ทั้งตัว ค่าตั้งต้นมาจาก dart-define
+  static const _packUrlDefault =
+      String.fromEnvironment('AVATAR_PACK_URL');
+
+  String _avatarPackUrl = _packUrlDefault;
+  String get avatarPackUrl => _avatarPackUrl;
+
+  void setAvatarPackUrl(String v) {
+    _avatarPackUrl = v.trim();
+    _save('avatarPackUrl', _avatarPackUrl);
     _notify();
   }
 

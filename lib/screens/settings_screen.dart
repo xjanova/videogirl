@@ -10,9 +10,11 @@ import '../ai/mind_persona.dart';
 import '../ai/openai_config.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
+import '../avatar/avatar_pack.dart';
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../widgets/buttons.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
 import '../widgets/screen_header.dart';
@@ -87,6 +89,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             _languageCard(state, mode, t),
             const SizedBox(height: MindSpace.md),
+            // วางไว้บนสุด ๆ เพราะถ้ายังไม่มีชุด ผู้ใช้จะเห็นกรอบแทนตัวเธอ
+            // ตั้งแต่เปิดแอป ซึ่งเป็นคำถามแรกที่จะเกิดขึ้นในหัว
+            _avatarPackCard(context, state, mode, t),
+            const SizedBox(height: MindSpace.md),
             if (!OpenAiConfig.configured) _noKeyBanner(),
             _modeCard(state, mode),
             const SizedBox(height: MindSpace.md),
@@ -127,6 +133,117 @@ class _SettingsScreenState extends State<SettingsScreen> {
             UpdateCard(mode: mode),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _avatarPackCard(
+      BuildContext context, MindState state, MindMode mode, S t) {
+    final pack = context.watch<AvatarPack>();
+    final busy = pack.stage == AvatarPackStage.downloading ||
+        pack.stage == AvatarPackStage.verifying ||
+        pack.stage == AvatarPackStage.unpacking;
+
+    final status = switch (pack.stage) {
+      AvatarPackStage.ready => t.packReady,
+      AvatarPackStage.downloading => '${t.packDownloading} · ${pack.sizeLabel}',
+      AvatarPackStage.verifying => t.packVerifying,
+      AvatarPackStage.unpacking => t.packUnpacking,
+      _ => t.packMissing,
+    };
+
+    final err = switch (pack.error) {
+      AvatarPackError.noUrl => t.packErrNoUrl,
+      AvatarPackError.network => t.packErrNetwork,
+      AvatarPackError.hashMismatch => t.packErrHash,
+      AvatarPackError.badPack => t.packErrBadPack,
+      AvatarPackError.noServer => t.packErrServer,
+      null => null,
+    };
+
+    return _card(
+      mode: mode,
+      label: t.packTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                pack.stage == AvatarPackStage.ready
+                    ? Icons.check_circle_rounded
+                    : Icons.download_for_offline_outlined,
+                size: 18,
+                color: pack.stage == AvatarPackStage.ready
+                    ? mode.accent
+                    : MindColors.ink45,
+              ),
+              const SizedBox(width: MindSpace.sm),
+              Expanded(child: Text(status, style: MindType.title)),
+            ],
+          ),
+          const SizedBox(height: MindSpace.sm),
+          Text(t.packWhy, style: MindType.caption),
+          if (busy) ...[
+            const SizedBox(height: MindSpace.md),
+            // ระหว่างแตกไฟล์ไม่รู้ความคืบหน้า ให้แถบวิ่งไปเรื่อย ๆ ดีกว่าแถบ 0%
+            // ที่ค้างนิ่ง ซึ่งอ่านได้ว่าค้างจริง
+            LinearProgressIndicator(
+              value: pack.stage == AvatarPackStage.downloading
+                  ? pack.progress
+                  : null,
+            ),
+          ],
+          if (err != null) ...[
+            const SizedBox(height: MindSpace.sm),
+            Text(err,
+                style: MindType.caption.copyWith(color: const Color(0xFFB4004E))),
+          ],
+          const SizedBox(height: MindSpace.md),
+          MindSectionLabel(t.packUrlLabel),
+          const SizedBox(height: MindSpace.sm),
+          Container(
+            decoration: BoxDecoration(
+              color: MindColors.glass80,
+              borderRadius: BorderRadius.circular(MindRadius.control),
+              border: Border.all(color: MindColors.glassBorder, width: 1),
+            ),
+            child: TextFormField(
+              initialValue: state.avatarPackUrl,
+              enabled: !busy,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              style: MindType.body.copyWith(fontSize: 12.5),
+              decoration: const InputDecoration(hintText: 'https://…'),
+              onChanged: state.setAvatarPackUrl,
+            ),
+          ),
+          const SizedBox(height: MindSpace.md),
+          Row(
+            spacing: MindSpace.sm,
+            children: [
+              Expanded(
+                child: MindButton(
+                  label: t.packDownload,
+                  kind: MindButtonKind.primary,
+                  icon: Icons.download_rounded,
+                  mode: mode,
+                  expand: true,
+                  onTap: busy || state.avatarPackUrl.isEmpty
+                      ? null
+                      : () => pack.download(state.avatarPackUrl),
+                ),
+              ),
+              if (pack.stage == AvatarPackStage.ready)
+                MindIconButton(
+                  icon: Icons.delete_outline_rounded,
+                  tooltip: t.packRemove,
+                  mode: mode,
+                  onTap: busy ? null : pack.remove,
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
