@@ -70,6 +70,7 @@ flutter:
   # Flutter ไม่ไล่โฟลเดอร์ย่อยให้เอง ต้องประกาศทีละชั้น ไม่งั้น three จะ 404 เงียบ ๆ
   assets:
     - assets/avatar/
+    - assets/brand/
     - assets/avatar/model/
     - assets/avatar/vendor/
     - assets/avatar/vendor/three/
