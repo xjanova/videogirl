@@ -122,6 +122,8 @@ assets/avatar/model/*
 #  Media / Model — ไฟล์ใหญ่ ถ้าจำเป็นค่อยเปิด Git LFS
 # ============================================================
 *.mp4
+# ยกเว้น brand asset — วิดีโอ splash ต้องขึ้น git และแพ็กลง APK
+!assets/brand/*.mp4
 *.mov
 *.mkv
 *.avi
