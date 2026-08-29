@@ -41,6 +41,9 @@ void main() {
       check('tabTimeline', en.tabTimeline);
       check('tabSettings', en.tabSettings);
 
+      // หน้าเปิดแอป
+      check('splashSkip', en.splashSkip);
+
       // โหมด
       check('modeWork', en.modeWork);
       check('modeLove', en.modeLove);
@@ -171,6 +174,7 @@ void main() {
         'voiceEnabled': (th.voiceEnabled, en.voiceEnabled),
         'autoAnswer': (th.autoAnswer, en.autoAnswer),
         'errOffline': (th.errOffline, en.errOffline),
+        'splashSkip': (th.splashSkip, en.splashSkip),
       };
       for (final e in pairs.entries) {
         expect(e.value.$1, isNot(e.value.$2),

@@ -97,6 +97,9 @@ class S {
       ? const ['วันนี้เป็นไงบ้าง', 'เล่าอะไรให้ฟังหน่อย', 'คิดถึงไหม']
       : const ['How was your day', 'Tell me something', 'Did you miss me'];
 
+  // ═══ หน้าเปิดแอป ═══════════════════════════════════════
+  String get splashSkip => _('แตะเพื่อข้าม', 'Tap to skip');
+
   // ═══ หน้าหลัก ══════════════════════════════════════════
   String get composerHint => _('พิมพ์ หรือกดไมค์…', 'Type, or tap the mic…');
   String get avatarPlaceholder =>

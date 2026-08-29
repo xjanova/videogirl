@@ -4,7 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 
-import 'shell.dart';
+import 'screens/splash_screen.dart';
 import 'i18n/strings.dart';
 import 'state/mind_state.dart';
 import 'update/updater.dart';
@@ -70,7 +70,7 @@ class MindApp extends StatelessWidget {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-          home: const MindShell(),
+          home: const MindBoot(),
         ),
       ),
     );
