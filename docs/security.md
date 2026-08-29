@@ -61,7 +61,7 @@ pattern นี้เคยทำแล้วใน `aixman` (`resolveUserId()` �
 - **escape ก่อนยัดค่าเข้า JS** และส่ง base64 ผ่าน `arguments` ไม่ใช่ต่อสตริง
   ([avatar_view.dart](../lib/avatar/avatar_view.dart))
 - **ขอบเขตการตอบเขียนแบบ default-deny** — ไม่ได้อนุญาตชัดเจน = ถามเจ้าของก่อน
-  ([minde_persona.dart](../lib/ai/minde_persona.dart))
+  ([minde_persona.dart](../lib/ai/mind_persona.dart))
 
 ## ที่ยังไม่ได้ทำ
 

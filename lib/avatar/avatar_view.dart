@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../theme/tokens.dart';
 
@@ -26,7 +28,7 @@ class MindAvatarController extends ChangeNotifier {
   /// โมเดลโหลดขึ้นเวทีแล้วหรือยัง
   bool get ready => _ready;
 
-  /// ข้อความผิดพลาดจากฝั่ง WebView — ปกติคือหาไฟล์ minde.vrm ไม่เจอ
+  /// ข้อความผิดพลาดจากฝั่ง WebView — ปกติคือหาไฟล์โมเดลอวาตาร์ไม่เจอ
   String? get error => _error;
 
   void _attach(InAppWebViewController web) => _web = web;
@@ -76,6 +78,64 @@ class MindAvatarController extends ChangeNotifier {
     } catch (e) {
       debugPrint('avatar: เล่นเสียงไม่สำเร็จ — $e');
     }
+  }
+
+  // ── รูปหน้าเธอ สำหรับปุ่มกลางแถบนำทาง ────────────────────
+  Uint8List? _faceBytes;
+
+  /// รูปหน้าเธอ — null ถ้ายังถ่ายไม่สำเร็จ ปุ่มจะใช้ไอคอนสำรองแทน
+  ImageProvider? get faceImage =>
+      _faceBytes == null ? null : MemoryImage(_faceBytes!);
+
+  bool _faceTried = false;
+
+  /// ถ่ายรูปหน้าเธอครั้งเดียวแล้วเก็บไว้ในเครื่อง
+  ///
+  /// เก็บลงดิสก์เพราะการถ่ายต้องดึงกล้องเข้ามาเป็นระยะ bust ชั่วขณะ
+  /// ถ้าถ่ายใหม่ทุกครั้งที่เปิดแอป ผู้ใช้จะเห็นกล้องกระตุกโดยไม่รู้สาเหตุ
+  Future<void> ensureFace() async {
+    if (_faceTried || _faceBytes != null) return;
+    _faceTried = true;
+
+    // มีของเก่าอยู่แล้วก็ใช้เลย
+    final cached = await _faceFile();
+    if (await cached.exists()) {
+      final bytes = await cached.readAsBytes();
+      if (bytes.isNotEmpty) {
+        _faceBytes = bytes;
+        notifyListeners();
+        return;
+      }
+    }
+
+    final web = _web;
+    if (web == null || !_ready) {
+      _faceTried = false; // เวทียังไม่พร้อม ไว้ลองใหม่รอบหน้า
+      return;
+    }
+
+    try {
+      final result = await web.callAsyncJavaScript(
+        functionBody: 'return await window.minde.snapshotFace(256);',
+      );
+      final dataUrl = result?.value as String?;
+      if (dataUrl == null || !dataUrl.startsWith('data:image')) return;
+
+      final b64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+      final bytes = base64Decode(b64);
+      if (bytes.isEmpty) return;
+
+      _faceBytes = bytes;
+      await cached.writeAsBytes(bytes, flush: true);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('avatar: ถ่ายรูปหน้าไม่สำเร็จ — $e');
+    }
+  }
+
+  Future<File> _faceFile() async {
+    final dir = await getApplicationSupportDirectory();
+    return File('${dir.path}${Platform.pathSeparator}mind_face.png');
   }
 
   Future<void> stop() => _call('window.minde.stop()');
@@ -169,6 +229,10 @@ class _MindAvatarViewState extends State<MindAvatarView> {
                       switch (msg['type']) {
                         case 'ready':
                           widget.controller._onReady();
+                          // ถ่ายรูปหน้าไว้ใช้เป็นไอคอนปุ่มกลาง หน่วงให้กล้อง
+                          // เข้าที่ก่อน ไม่งั้นจะได้ภาพตอนยังเลื่อนอยู่
+                          Future<void>.delayed(const Duration(seconds: 2),
+                              widget.controller.ensureFace);
                         case 'error':
                           widget.controller._onError('${msg['message']}');
 
@@ -235,7 +299,7 @@ class _AvatarPlaceholder extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: Text(
-              failed ? 'ยังไม่มี minde.vrm ในเครื่อง' : 'VRM avatar · minde.vrm · full body',
+              failed ? 'ยังไม่มีโมเดลอวาตาร์ในเครื่อง' : 'VRM avatar · full body',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'monospace',

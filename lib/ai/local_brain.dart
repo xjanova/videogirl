@@ -10,6 +10,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 
+import 'device_capability.dart';
 import 'openai_client.dart';
 
 /// รุ่นที่เลือกได้ — ทุกตัวเป็น Apache-2.0 โหลดได้โดยไม่ต้องมี token
@@ -67,6 +68,32 @@ enum LocalModelStage { unknown, missing, downloading, ready, failed }
 class LocalBrain extends ChangeNotifier {
   GemmaVariant _variant = GemmaVariant.e2bGpu;
   GemmaVariant get variant => _variant;
+
+  // ── ความสามารถของเครื่อง ─────────────────────────────────
+  DeviceVerdict? _device;
+
+  /// ผลตรวจแรม — null แปลว่ายังไม่ได้ตรวจ
+  DeviceVerdict? get device => _device;
+
+  /// ผู้ใช้เลือกรุ่นเองแล้วหรือยัง
+  /// ถ้าเลือกเองแล้ว การตรวจอัตโนมัติต้องไม่ไปเปลี่ยนทับ
+  bool _userPicked = false;
+
+  /// ตรวจแรมแล้วเลือกรุ่นที่เหมาะให้เอง
+  ///
+  /// เรียกตอนเปิดหน้าตั้งค่า ทำครั้งเดียวพอ แรมของเครื่องไม่เปลี่ยนระหว่างใช้งาน
+  Future<void> detectDevice() async {
+    if (_device != null) return;
+    _device = await DeviceCapability.detect();
+
+    final best = _device!.best;
+    if (!_userPicked && best != null && best != _variant) {
+      await _release();
+      _variant = best;
+    }
+    if (!_disposed) notifyListeners();
+    await refresh();
+  }
 
   LocalModelStage _stage = LocalModelStage.unknown;
   LocalModelStage get stage => _stage;
@@ -126,6 +153,8 @@ class LocalBrain extends ChangeNotifier {
       );
 
   Future<void> selectVariant(GemmaVariant v) async {
+    // ผู้ใช้เลือกเอง = การตรวจอัตโนมัติต้องไม่มาเปลี่ยนทับทีหลัง
+    _userPicked = true;
     if (_variant == v) return;
     await _release(); // โมเดลเดิมยังกินแรมอยู่ ต้องปล่อยก่อนสลับ
     _variant = v;

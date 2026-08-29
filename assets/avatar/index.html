@@ -30,6 +30,7 @@
 <div id="stage"></div>
 
 <script type="module">
+import * as THREE from 'three';
 import { Avatar } from './avatar.js';
 
 const stage = document.getElementById('stage');
@@ -90,8 +91,108 @@ async function speakBytes(b64, mime) {
   }
 }
 
+/**
+ * กรอบสี่เหลี่ยมรอบ "หัว" ของเธอ เป็นพิกเซลบนผืนผ้าใบ
+ *
+ * ใช้ทำรูปหน้าสำหรับปุ่มกลางแถบนำทาง — ต้องคำนวณจากกระดูก head จริง
+ * ไม่ใช่ครอปกลางภาพมั่ว ๆ เพราะ framing.js วางเธอ **เยื้องซ้าย** จากกึ่งกลาง
+ * (กล้อง dolly ออกด้านข้าง) ครอปกลางจะได้ไหล่กับฉากหลังแทนหน้า
+ *
+ * คืน null ถ้าโมเดลยังไม่พร้อม ผู้เรียกต้องเผื่อกรณีนี้เสมอ
+ */
+function headRect() {
+  const vrm = avatar?.vrm, cam = avatar?.camera, ren = avatar?.renderer;
+  if (!vrm || !cam || !ren) return null;
+
+  const head = vrm.humanoid?.getNormalizedBoneNode?.('head')
+            ?? vrm.humanoid?.getRawBoneNode?.('head');
+  if (!head) return null;
+
+  const w = ren.domElement.clientWidth, h = ren.domElement.clientHeight;
+  if (!w || !h) return null;
+
+  const centre = new THREE.Vector3();
+  head.getWorldPosition(centre);
+
+  // ใช้จุดเหนือหัวขึ้นไปเล็กน้อยเป็นตัววัดขนาด จะได้กรอบที่พอดีหน้า
+  // ไม่ว่ากล้องจะอยู่ระยะ bust หรือ full
+  const above = centre.clone().add(new THREE.Vector3(0, 0.16, 0));
+
+  const p = centre.clone().project(cam);
+  const q = above.clone().project(cam);
+
+  const toPx = (v) => ({ x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h });
+  const c = toPx(p), a = toPx(q);
+
+  // ระยะจากกลางหัวถึงเหนือหัว = ครึ่งความสูงของกรอบโดยประมาณ
+  const half = Math.max(24, Math.abs(c.y - a.y) * 1.55);
+
+  return {
+    x: Math.round(c.x - half),
+    y: Math.round(c.y - half),
+    size: Math.round(half * 2),
+    canvasW: w,
+    canvasH: h,
+  };
+}
+
+/**
+ * ถ่ายรูปหน้าเธอเป็น PNG base64 สำหรับใช้เป็นไอคอนปุ่มกลางแถบนำทาง
+ *
+ * ทำไมต้องถ่ายในหน้าเว็บ ไม่ใช่ `takeScreenshot` ของ Android:
+ * ฝั่ง native วาดด้วย View.draw() ลง software Bitmap ซึ่ง **ไม่มีผลของ WebGL**
+ * ที่ถูก composite ด้วย GPU แยกต่างหาก จะได้ภาพโปร่งหรือดำเปล่า ๆ
+ *
+ * ทำไมต้อง render ก่อน toDataURL ในจังหวะเดียวกัน:
+ * renderer สร้างโดยไม่ได้ตั้ง `preserveDrawingBuffer` เบราว์เซอร์จึงล้าง
+ * drawing buffer ทิ้งหลังจบเฟรม อ่านทีหลังจะได้ภาพเปล่า ต้องอ่านทันทีหลังวาด
+ */
+async function snapshotFace(px) {
+  const ren = avatar?.renderer, cam = avatar?.camera, scn = avatar?.scene;
+  if (!ren || !cam || !scn) return null;
+
+  const size = px || 256;
+  const prevFraming = avatar.speaking ? 'bust' : 'full';
+
+  try {
+    // ดึงกล้องเข้ามาใกล้ก่อน แล้วเร่งให้ถึงเป้าทันทีโดยไม่ต้องรอ ease
+    avatar.framing?.set('bust');
+    for (let i = 0; i < 40; i++) avatar.framing?.update(1 / 30, 40);
+
+    // วาดแล้วอ่านในจังหวะเดียวกัน ห้ามมี await คั่น
+    ren.render(scn, cam);
+    const full = ren.domElement.toDataURL('image/png');
+
+    const box = headRect();
+    if (!box) return full;
+
+    // ครอปเฉพาะหัวด้วย canvas ชั่วคราว
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = full; });
+
+    const scaleX = img.width / box.canvasW;
+    const scaleY = img.height / box.canvasH;
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const g = c.getContext('2d');
+    g.drawImage(
+      img,
+      box.x * scaleX, box.y * scaleY, box.size * scaleX, box.size * scaleY,
+      0, 0, size, size,
+    );
+    return c.toDataURL('image/png');
+  } catch (err) {
+    post('snapshot-failed', { why: String(err?.message ?? err) });
+    return null;
+  } finally {
+    avatar.framing?.set(prevFraming);
+  }
+}
+
 /** API ที่ฝั่ง Flutter เรียกผ่าน evaluateJavascript */
 window.minde = {
+  headRect,
+  snapshotFace,
   mood:  (m)   => avatar?.setMood(m),
   speak: (url) => avatar?.speak(url),
   speakBytes,

@@ -49,7 +49,7 @@ jobs:
             echo "::error::ยังไม่ได้ตั้ง secret ANDROID_KEYSTORE_BASE64 — release ที่เซ็นด้วย debug key จะอัปเดตทับไม่ได้"
             exit 1
           fi
-          echo "$KEYSTORE_B64" | base64 -d > android/release.jks
+          echo "$KEYSTORE_B64" | base64 -d > android/app/release.jks
           cat > android/key.properties <<EOF
           storeFile=release.jks
           storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}
@@ -74,15 +74,15 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/minde-$VERSION.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/giggok-$VERSION.apk"
           cd dist
-          sha256sum "minde-$VERSION.apk" > SHA256SUMS.txt
+          sha256sum "giggok-$VERSION.apk" > SHA256SUMS.txt
           cat SHA256SUMS.txt
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/minde-${{ steps.pack.outputs.version }}.apk
+            dist/giggok-${{ steps.pack.outputs.version }}.apk
             dist/SHA256SUMS.txt
           generate_release_notes: true

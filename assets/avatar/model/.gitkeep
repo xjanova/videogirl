@@ -1,0 +1,3 @@
+โฟลเดอร์นี้ต้องมีตัวตนเพื่อให้ flutter analyze ผ่านบน CI
+ไฟล์โมเดลจริงไม่ขึ้น git (ดู ../MODEL.md) แต่ pubspec ประกาศโฟลเดอร์นี้ไว้
+ถ้าลบไฟล์นี้ทิ้ง CI จะพังด้วย asset_directory_does_not_exist

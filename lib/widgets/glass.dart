@@ -12,6 +12,7 @@ class GlassPanel extends StatelessWidget {
     super.key,
     required this.child,
     this.radius = MindRadius.panel,
+    this.shape,
     this.fill = MindColors.glass55,
     this.border = MindColors.glassBorder,
     this.filter,
@@ -23,6 +24,11 @@ class GlassPanel extends StatelessWidget {
 
   final Widget child;
   final double radius;
+
+  /// มุมที่ไม่เท่ากันทั้งสี่ด้าน — ใช้กับแผ่นที่ชนขอบจอ เช่นแถบนำทางล่าง
+  /// ถ้าใส่มา จะทับ [radius] ทั้งดุ้น
+  final BorderRadiusGeometry? shape;
+
   final Color fill;
   final Color? border;
 
@@ -38,13 +44,13 @@ class GlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shape = BorderRadius.circular(radius);
+    final radii = shape ?? BorderRadius.circular(radius);
 
     Widget surface = DecoratedBox(
       decoration: BoxDecoration(
         color: gradient == null ? fill : null,
         gradient: gradient,
-        borderRadius: shape,
+        borderRadius: radii,
         border: border == null ? null : Border.all(color: border!, width: 1),
       ),
       child: Padding(padding: padding, child: child),
@@ -56,8 +62,11 @@ class GlassPanel extends StatelessWidget {
 
     return Container(
       margin: margin,
-      decoration: BoxDecoration(borderRadius: shape, boxShadow: shadows),
-      child: ClipRRect(borderRadius: shape, child: surface),
+      decoration: BoxDecoration(borderRadius: radii, boxShadow: shadows),
+      child: ClipRRect(
+        borderRadius: radii.resolve(Directionality.of(context)),
+        child: surface,
+      ),
     );
   }
 }
