@@ -70,6 +70,41 @@ git push origin v0.2.0
 
 [workflow](../.github/workflows/release.yml) จะ analyze → test → build → ทำแฮช → สร้าง release ให้เอง
 
+## ชุดตัวมายด์ (avatar pack) — ต้องแยกจาก release เสมอ
+
+🔴 **APK ที่ CI build ไม่มีตัวเธออยู่ข้างใน** เพราะ `assets/avatar/model/` ถูก
+`.gitignore` ทั้งโฟลเดอร์ (repo public + คลิป Mixamo แจกต่อไม่ได้ ดู THIRD_PARTY.md)
+ใครลง APK จาก release จะเห็นกรอบ placeholder แทนตัวเธอ จนกว่าจะโหลดชุด
+
+**ห้ามแนบชุดไปกับ GitHub Release** — release เป็น public เท่ากับแจกคลิป Mixamo ต่อ
+
+### ทำไฟล์ชุด
+
+```bash
+cd assets/avatar/model && zip -r ../../../giggok-avatar-pack.zip . -x .gitkeep && cd -
+sha256sum giggok-avatar-pack.zip
+```
+
+โครงในไฟล์ต้องเป็น **ไฟล์วางแบน ๆ ไม่มีโฟลเดอร์ครอบ** — แอปเสิร์ฟจากรากของ
+โฟลเดอร์ที่แตกไว้ ถ้ามีโฟลเดอร์ครอบ `minde.vrm` จะหาไม่เจอ แล้วขึ้นว่าแพ็กผิดโครง
+
+### เอาไปวางที่ไหน
+
+ที่ไหนก็ได้ที่เป็น **HTTPS และเปิดอ่านได้โดยไม่ต้องล็อกอิน** เช่น
+Cloudflare R2 (public bucket) หรือเซิร์ฟเวอร์ในบ้านของเจ้าของ
+
+> อย่าใช้ private GitHub release — ต้องมี token ถึงจะโหลดได้
+> และ token ที่ฝังใน APK คือ token ที่ใครแกะ APK ก็อ่านได้
+
+### ตั้งในแอป
+
+หน้าตั้งค่า → การ์ด **ชุดตัวมายด์** → วาง URL → กดโหลดชุด
+โหลดครั้งเดียวอยู่ในเครื่องเลย · อยากตั้งค่าเริ่มต้นให้ทุกเครื่องก็ใส่ตอน build:
+
+```bash
+flutter build apk --release --dart-define=AVATAR_PACK_URL=https://…/giggok-avatar-pack.zip
+```
+
 ## ทดสอบก่อนปล่อยจริง
 
 1. ลง release ก่อนหน้าลงเครื่องจริง
