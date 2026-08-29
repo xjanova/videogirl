@@ -1,0 +1,140 @@
+# ============================================================
+#  SECRETS — repo นี้เป็น PUBLIC ห้ามหลุดเด็ดขาด
+# ============================================================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+secrets.json
+credentials.json
+service-account*.json
+serviceAccountKey.json
+google-services.json
+GoogleService-Info.plist
+appsettings.*.local.json
+local.settings.json
+*.local.toml
+.dev.vars
+.wrangler/
+key.properties
+firebase-debug.log
+.firebaserc.local
+
+# ============================================================
+#  OS / Editor
+# ============================================================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+*.swp
+*~
+.idea/
+.vs/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# ============================================================
+#  Node / JS
+# ============================================================
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+.output/
+.turbo/
+.parcel-cache/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ============================================================
+#  Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ============================================================
+#  Flutter / Dart
+# ============================================================
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+**/doc/api/
+*.g.dart.bak
+
+# ============================================================
+#  .NET / C#
+# ============================================================
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+*.cache
+[Ll]og/
+[Ll]ogs/
+
+# ============================================================
+#  PHP / Laravel
+# ============================================================
+/vendor/
+/storage/*.key
+/public/storage
+/public/hot
+/bootstrap/cache/*
+!/bootstrap/cache/.gitignore
+
+# ============================================================
+#  Media / Model — ไฟล์ใหญ่ ถ้าจำเป็นค่อยเปิด Git LFS
+# ============================================================
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.wav
+*.psd
+*.ai
+*.blend1
+*.fbx
+*.vrm
+*.safetensors
+*.ckpt
+*.pth
+*.onnx
+*.gguf
+/output/
+/outputs/
+/temp/
+/tmp/
+/cache/
+
+# ============================================================
+#  Local scratch
+# ============================================================
+*.local
+.claude/settings.local.json

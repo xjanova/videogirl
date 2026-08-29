@@ -1,0 +1,28 @@
+# Normalize line endings — ทีมใช้ Windows แต่ CI/Linux ต้องอ่านได้
+* text=auto eol=lf
+
+# Windows-only scripts ต้องเป็น CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+*.sln  text eol=crlf
+
+# Shell scripts ต้องเป็น LF เสมอ
+*.sh   text eol=lf
+
+# Binary — อย่าให้ git แตะ
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.mp4  binary
+*.mov  binary
+*.wav  binary
+*.mp3  binary
+*.vrm  binary
+*.fbx  binary
+*.glb  binary
