@@ -21,17 +21,33 @@ class OpenAiFailure implements Exception {
 typedef Turn = ({bool fromHer, String text});
 
 class OpenAiClient {
-  OpenAiClient({http.Client? httpClient, Duration? timeout})
-      : _http = httpClient ?? http.Client(),
-        _timeout = timeout ?? const Duration(seconds: 30);
+  OpenAiClient({
+    http.Client? httpClient,
+    Duration? timeout,
+    String? baseUrl,
+    String? apiKey,
+  })  : _http = httpClient ?? http.Client(),
+        _timeout = timeout ?? const Duration(seconds: 30),
+        _baseUrl = baseUrl ?? OpenAiConfig.baseUrl,
+        _apiKey = apiKey ?? OpenAiConfig.apiKey;
 
   final http.Client _http;
   final Duration _timeout;
 
+  /// เปลี่ยนปลายทางได้ เพื่อชี้ไปเซิร์ฟเวอร์ในบ้าน (Ollama, llama.cpp, LM Studio)
+  /// ที่พูดภาษาเดียวกับ /v1/chat/completions ของ OpenAI
+  final String _baseUrl;
+
+  /// เซิร์ฟเวอร์ในบ้านส่วนใหญ่ไม่ต้องใช้คีย์ ปล่อยว่างได้
+  final String _apiKey;
+
   Map<String, String> get _headers => {
-        'Authorization': 'Bearer ${OpenAiConfig.apiKey}',
+        if (_apiKey.isNotEmpty) 'Authorization': 'Bearer $_apiKey',
         'Content-Type': 'application/json; charset=utf-8',
       };
+
+  /// ใช้คีย์อยู่ไหม — เซิร์ฟเวอร์ในบ้านไม่ต้องมีคีย์ก็เรียกได้
+  bool get usable => _apiKey.isNotEmpty || _baseUrl != OpenAiConfig.baseUrl;
 
   /// ให้เธอคิดคำตอบ
   ///
@@ -41,7 +57,7 @@ class OpenAiClient {
     required List<Turn> history,
     String? model,
   }) async {
-    if (!OpenAiConfig.configured) {
+    if (!usable) {
       throw const OpenAiFailure('ยังไม่ได้ใส่คีย์ OpenAI ตอน build');
     }
 
@@ -79,18 +95,23 @@ class OpenAiClient {
     required String instructions,
     String? model,
   }) async {
-    if (!OpenAiConfig.configured) {
+    if (!usable) {
       throw const OpenAiFailure('ยังไม่ได้ใส่คีย์ OpenAI ตอน build');
     }
 
     final clean = stripForSpeech(text);
     if (clean.isEmpty) throw const OpenAiFailure('ไม่มีข้อความให้พูด');
 
+    final ttsModel = model ?? OpenAiConfig.ttsModel;
+
     final body = jsonEncode({
-      'model': model ?? OpenAiConfig.ttsModel,
+      'model': ttsModel,
       'voice': voice,
       'input': clean,
-      'instructions': instructions,
+      // ตระกูล tts-1 ไม่รู้จักพารามิเตอร์นี้ ส่งไปจะได้ 400 กลับมา
+      // จึงใส่เฉพาะโมเดลที่รับจริง
+      if (OpenAiConfig.supportsInstructions(ttsModel) && instructions.isNotEmpty)
+        'instructions': instructions,
       'response_format': 'mp3',
     });
 
@@ -101,7 +122,7 @@ class OpenAiClient {
     final http.Response res;
     try {
       res = await _http
-          .post(Uri.parse('${OpenAiConfig.baseUrl}$path'),
+          .post(Uri.parse('$_baseUrl$path'),
               headers: _headers, body: utf8.encode(body))
           .timeout(_timeout);
     } on Exception {

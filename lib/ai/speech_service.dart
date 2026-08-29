@@ -7,7 +7,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'openai_client.dart';
-import 'openai_config.dart';
+import 'voice_profile.dart';
 
 /// เครื่องสังเคราะห์เสียงที่ให้เลือกได้
 enum TtsEngine {
@@ -48,20 +48,19 @@ class SpeechService {
   bool _deviceReady = false;
   int _seq = 0;
 
-  Future<Utterance> synthesize(
-    String text, {
-    required TtsEngine engine,
-    required String voice,
-    required String instructions,
-    String? model,
-  }) async {
+  /// สังเคราะห์เสียงตามโปรไฟล์ของช่องทางนั้น ๆ
+  Future<Utterance> synthesize(String text, {required VoiceProfile profile}) async {
     final clean = OpenAiClient.stripForSpeech(text);
     if (clean.isEmpty) throw const OpenAiFailure('ไม่มีข้อความให้พูด');
 
-    return switch (engine) {
+    return switch (profile.engine) {
       TtsEngine.openai => (
-          bytes: await _openai.speak(clean,
-              voice: voice, instructions: instructions, model: model),
+          bytes: await _openai.speak(
+            clean,
+            voice: profile.voice,
+            instructions: profile.instructions,
+            model: profile.model,
+          ),
           mime: 'audio/mpeg',
         ),
       TtsEngine.device => await _synthesizeOnDevice(clean),
@@ -121,11 +120,4 @@ class SpeechService {
     // อย่าแตะ getter ตรงนี้ ไม่งั้นการปิดแอปจะไปสร้าง FlutterTts ขึ้นมาใหม่
     _lazyTts?.stop();
   }
-}
-
-/// ค่าเริ่มต้นของเสียง เก็บไว้ที่เดียวกับตัวเลือกโมเดล
-abstract final class VoiceDefaults {
-  static const engine = TtsEngine.openai;
-  static const openAiVoice = 'coral';
-  static String get openAiModel => OpenAiConfig.ttsModel;
 }

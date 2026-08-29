@@ -40,10 +40,36 @@ abstract final class OpenAiConfig {
 
   /// เสียงของ gpt-4o-mini-tts ที่เข้ากับบุคลิกมินเดะ
   static const voiceChoices = <({String id, String label})>[
-    (id: 'coral', label: 'Coral — นุ่ม อบอุ่น (ค่าเริ่มต้น)'),
-    (id: 'shimmer', label: 'Shimmer — ใส สดใส'),
-    (id: 'sage', label: 'Sage — สุขุม นิ่ง'),
+    (id: 'coral', label: 'Coral — นุ่ม อบอุ่น'),
+    (id: 'shimmer', label: 'Shimmer — ใส ฟังชัด'),
+    (id: 'sage', label: 'Sage — สุขุม เป็นทางการ'),
     (id: 'nova', label: 'Nova — สดใส กระฉับกระเฉง'),
     (id: 'ballad', label: 'Ballad — ช้า อ่อนโยน'),
   ];
+
+  /// โมเดลเสียงที่บัญชีนี้เรียกได้ (ยืนยันจาก GET /v1/models 2026-08-29)
+  ///
+  /// มีแค่ gpt-4o-mini-tts ที่รับ `instructions` สั่งอารมณ์เสียงได้
+  /// ตระกูล tts-1 เก่ากว่าและไม่รับ จึงเสียคำสั่งน้ำเสียงไปเปล่า ๆ
+  static const ttsChoices = <({String id, String label, String hint})>[
+    (
+      id: 'gpt-4o-mini-tts',
+      label: 'gpt-4o-mini-tts',
+      hint: 'สั่งอารมณ์เสียงได้ · สมจริงที่สุด'
+    ),
+    (id: 'tts-1-hd', label: 'tts-1-hd', hint: 'คมกว่า แต่สั่งอารมณ์ไม่ได้'),
+    (id: 'tts-1', label: 'tts-1', hint: 'เร็วและถูกที่สุด · สั่งอารมณ์ไม่ได้'),
+  ];
+
+  /// โมเดลคุยสด (speech-to-speech) สำหรับตอนรับสาย/โทรออกจริง
+  /// ยังไม่ได้ต่อ — ดู docs/telephony.md
+  static const realtimeChoices = <({String id, String label, String hint})>[
+    (id: 'gpt-realtime-2.1', label: 'Realtime 2.1', hint: 'ดีเลย์ต่ำ คุณภาพสูงสุด'),
+    (id: 'gpt-realtime-2.1-mini', label: 'Realtime 2.1 mini', hint: 'ถูกกว่า เร็วกว่า'),
+    (id: 'gpt-realtime', label: 'Realtime', hint: 'รุ่นก่อนหน้า'),
+  ];
+
+  /// โมเดลที่รับพารามิเตอร์ `instructions` — ตัวอื่นส่งไปก็ไม่มีผล
+  static bool supportsInstructions(String ttsModel) =>
+      ttsModel.startsWith('gpt-4o') || ttsModel.startsWith('gpt-audio');
 }

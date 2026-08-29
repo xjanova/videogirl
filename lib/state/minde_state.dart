@@ -1,10 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../ai/brain_provider.dart';
+import '../ai/local_brain.dart';
 import '../ai/minde_persona.dart';
 import '../ai/openai_client.dart';
 import '../ai/openai_config.dart';
 import '../ai/speech_service.dart';
+import '../ai/voice_profile.dart';
 import '../theme/tokens.dart';
 
 /// ข้อความหนึ่งบรรทัดในแชท
@@ -73,14 +78,27 @@ class MindeState extends ChangeNotifier {
     _flirt = p.getDouble('flirt') ?? .72;
     _ownerProfile = p.getString('ownerProfile') ?? MindePersona.defaultOwnerProfile;
     _boundaries = p.getString('boundaries') ?? MindePersona.defaultBoundaries;
-    _voiceInstructions =
-        p.getString('voiceInstructions') ?? MindePersona.defaultVoiceInstructions;
-    _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
-    _openAiVoice = p.getString('openAiVoice') ?? VoiceDefaults.openAiVoice;
-    _ttsEngine = TtsEngine.values.firstWhere(
-      (e) => e.name == p.getString('ttsEngine'),
-      orElse: () => VoiceDefaults.engine,
+    _brain = BrainProvider.values.firstWhere(
+      (e) => e.name == p.getString('brain'),
+      orElse: () => BrainProvider.openai,
     );
+    _homeServerUrl = p.getString('homeServerUrl') ?? HomeServerDefaults.baseUrl;
+    _homeServerModel = p.getString('homeServerModel') ?? HomeServerDefaults.model;
+    _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
+    _realtimeModel = p.getString('realtimeModel') ?? OpenAiConfig.realtimeModel;
+
+    for (final c in VoiceChannel.values) {
+      final raw = p.getString('voice_${c.name}');
+      if (raw == null) continue;
+      try {
+        _voices[c] = VoiceProfile.fromJson(
+          jsonDecode(raw) as Map<String, dynamic>,
+          VoiceProfile.defaultFor(c),
+        );
+      } on FormatException {
+        // ค่าที่บันทึกไว้เสีย ปล่อยให้ใช้ค่าตั้งต้นแทน ดีกว่าแอปเปิดไม่ขึ้น
+      }
+    }
     _voiceEnabled = p.getBool('voiceEnabled') ?? true;
     _autoAnswer = p.getBool('autoAnswer') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
@@ -174,18 +192,58 @@ class MindeState extends ChangeNotifier {
   void resetOwnerProfile() => setOwnerProfile(MindePersona.defaultOwnerProfile);
   void resetBoundaries() => setBoundaries(MindePersona.defaultBoundaries);
 
+  // ═══ สมอง — เลือกผู้ประมวลผลได้ ═════════════════════════
+  BrainProvider _brain = BrainProvider.openai;
+  BrainProvider get brain => _brain;
+
+  /// สมองที่รันบนมือถือ สร้างเมื่อเลือกใช้จริงเท่านั้น
+  /// (โหลดปลั๊กอินและจอง native handle ตั้งแต่ตอนสร้าง)
+  LocalBrain? _lazyLocal;
+  LocalBrain get localBrain => _lazyLocal ??= LocalBrain();
+
+  /// มี LocalBrain อยู่แล้วไหม — ใช้ตอน dispose จะได้ไม่ไปสร้างขึ้นมาใหม่
+  bool get hasLocalBrain => _lazyLocal != null;
+
+  String _homeServerUrl = HomeServerDefaults.baseUrl;
+  String get homeServerUrl => _homeServerUrl;
+
+  String _homeServerModel = HomeServerDefaults.model;
+  String get homeServerModel => _homeServerModel;
+
+  void setBrain(BrainProvider v) {
+    _brain = v;
+    _save('brain', v.name);
+    _notify();
+    if (v == BrainProvider.onDevice) localBrain.refresh();
+  }
+
+  void setHomeServerUrl(String v) {
+    _homeServerUrl = v.trim();
+    _save('homeServerUrl', _homeServerUrl);
+    _notify();
+  }
+
+  void setHomeServerModel(String v) {
+    _homeServerModel = v.trim();
+    _save('homeServerModel', _homeServerModel);
+    _notify();
+  }
+
   // ═══ เสียงและโมเดล ═════════════════════════════════════
   String _brainModel = OpenAiConfig.brainModel;
   String get brainModel => _brainModel;
 
-  String _openAiVoice = VoiceDefaults.openAiVoice;
-  String get openAiVoice => _openAiVoice;
+  /// เสียงแยกตามช่องทาง — คุยในแอป / รับสายแทน / โทรออก
+  /// บริบทต่างกันจริง จึงไม่ควรใช้เสียงเดียวกันทั้งหมด
+  final Map<VoiceChannel, VoiceProfile> _voices = {
+    for (final c in VoiceChannel.values) c: VoiceProfile.defaultFor(c),
+  };
 
-  TtsEngine _ttsEngine = VoiceDefaults.engine;
-  TtsEngine get ttsEngine => _ttsEngine;
+  VoiceProfile voiceFor(VoiceChannel c) => _voices[c]!;
 
-  String _voiceInstructions = MindePersona.defaultVoiceInstructions;
-  String get voiceInstructions => _voiceInstructions;
+  /// โมเดลคุยสดสำหรับตอนรับสาย/โทรออกจริง (ยังไม่ได้ต่อ — docs/telephony.md)
+  String _realtimeModel = OpenAiConfig.realtimeModel;
+  String get realtimeModel => _realtimeModel;
 
   bool _voiceEnabled = true;
   bool get voiceEnabled => _voiceEnabled;
@@ -196,23 +254,19 @@ class MindeState extends ChangeNotifier {
     _notify();
   }
 
-  void setOpenAiVoice(String v) {
-    _openAiVoice = v;
-    _save('openAiVoice', v);
+  void setRealtimeModel(String v) {
+    _realtimeModel = v;
+    _save('realtimeModel', v);
     _notify();
   }
 
-  void setTtsEngine(TtsEngine v) {
-    _ttsEngine = v;
-    _save('ttsEngine', v.name);
+  void setVoice(VoiceChannel c, VoiceProfile p) {
+    _voices[c] = p;
+    _save('voice_${c.name}', jsonEncode(p.toJson()));
     _notify();
   }
 
-  void setVoiceInstructions(String v) {
-    _voiceInstructions = v;
-    _save('voiceInstructions', v);
-    _notify();
-  }
+  void resetVoice(VoiceChannel c) => setVoice(c, VoiceProfile.defaultFor(c));
 
   void setVoiceEnabled(bool v) {
     _voiceEnabled = v;
@@ -308,20 +362,7 @@ class MindeState extends ChangeNotifier {
 
     String reply;
     try {
-      reply = OpenAiConfig.configured
-          ? await _openai.reply(
-              system: MindePersona.system(
-                mode: mode,
-                flirt: effectiveFlirt,
-                ownerProfile: _ownerProfile,
-                boundaries: _boundaries,
-              ),
-              history: [
-                for (final m in _context) (fromHer: m.fromHer, text: m.text),
-              ],
-              model: _brainModel,
-            )
-          : _cannedReply();
+      reply = await _think();
     } on OpenAiFailure catch (e) {
       _lastError = e.message;
       reply = _cannedReply();
@@ -338,7 +379,8 @@ class MindeState extends ChangeNotifier {
 
   /// ให้เธอพูดตัวอย่างในหน้าตั้งค่า — ผู้ใช้จะได้ยินผลของเสียงที่เลือกทันที
   /// ไม่ต้องเดาว่าเปลี่ยนแล้วต่างยังไง
-  Future<void> previewVoice() => _speakIfEnabled(effectiveFlirt.flirtSample);
+  Future<void> previewVoice([VoiceChannel channel = VoiceChannel.chat]) =>
+      _speakIfEnabled(effectiveFlirt.flirtSample, channel: channel);
 
   bool _speaking = false;
 
@@ -349,31 +391,91 @@ class MindeState extends ChangeNotifier {
   /// หน้าหลักจึงซ่อนฟองระหว่างนี้ — ข้อความเดียวกันอยู่ในแผงแชทข้างล่างอยู่แล้ว
   bool get speaking => _speaking;
 
-  Future<void> _speakIfEnabled(String text) async {
+  Future<void> _speakIfEnabled(String text,
+      {VoiceChannel channel = VoiceChannel.chat}) async {
     final out = speaker;
-    if (!_voiceEnabled || out == null) return;
+    if (!_voiceEnabled) {
+      debugPrint('เสียง: ปิดอยู่ในหน้าตั้งค่า');
+      return;
+    }
+    if (out == null) {
+      debugPrint('เสียง: ยังไม่ได้ต่อทางออกเสียง (speaker == null)');
+      return;
+    }
+    final profile = voiceFor(channel);
     // เครื่อง Android พูดได้แม้ไม่มีคีย์ OpenAI จึงเช็คเฉพาะทางที่ต้องใช้คีย์
-    if (_ttsEngine == TtsEngine.openai && !OpenAiConfig.configured) return;
+    if (profile.engine == TtsEngine.openai && !OpenAiConfig.configured) {
+      debugPrint('เสียง: เลือก OpenAI ไว้แต่ build นี้ไม่มีคีย์');
+      return;
+    }
 
     try {
-      final utterance = await _speech.synthesize(
-        text,
-        engine: _ttsEngine,
-        voice: _openAiVoice,
-        instructions: _voiceInstructions,
-      );
+      debugPrint('เสียง[${channel.name}]: ${profile.engine.name} '
+          '· ${profile.model} · ${profile.voice}');
+      final utterance = await _speech.synthesize(text, profile: profile);
       if (_disposed) return;
 
+      debugPrint('เสียง: ได้ ${utterance.bytes.length} ไบต์ (${utterance.mime}) '
+          'ส่งเข้าเวที');
       _speaking = true;
       _notify();
       await out(utterance);
     } on OpenAiFailure catch (e) {
       // เสียงพูดไม่ออกไม่ควรทำให้บทสนทนาพัง — ข้อความยังอยู่ครบ
+      debugPrint('เสียง: สังเคราะห์ไม่สำเร็จ — ${e.message}');
       _lastError = e.message;
     } finally {
       // ต้องปลดเสมอ ไม่งั้นฟองจะหายถาวรถ้าเล่นเสียงพัง
       _speaking = false;
       _notify();
+    }
+  }
+
+
+  /// ส่งบทสนทนาไปให้ผู้ประมวลผลที่เลือกไว้
+  ///
+  /// ทั้งสามทางรับ system prompt ตัวเดียวกัน บุคลิกของเธอจึงไม่เปลี่ยน
+  /// ตามผู้ให้บริการ เปลี่ยนแค่ว่าใครเป็นคนคิด
+  Future<String> _think() async {
+    final system = MindePersona.system(
+      mode: mode,
+      flirt: effectiveFlirt,
+      ownerProfile: _ownerProfile,
+      boundaries: _boundaries,
+    );
+    final history = [
+      for (final m in _context) (fromHer: m.fromHer, text: m.text),
+    ];
+
+    switch (_brain) {
+      case BrainProvider.openai:
+        if (!OpenAiConfig.configured) return _cannedReply();
+        debugPrint('สมอง: OpenAI $_brainModel');
+        return _openai.reply(system: system, history: history, model: _brainModel);
+
+      case BrainProvider.homeServer:
+        debugPrint('สมอง: เซิร์ฟเวอร์ในบ้าน $_homeServerModel @ $_homeServerUrl');
+        // เซิร์ฟเวอร์ในบ้านพูดภาษาเดียวกับ /v1/chat/completions จึงใช้ client
+        // ตัวเดิมได้ แค่เปลี่ยนปลายทางและไม่ต้องส่งคีย์
+        final home = OpenAiClient(
+          baseUrl: _homeServerUrl,
+          apiKey: '',
+          // โมเดลบนคอมบ้านช้ากว่า OpenAI มาก ให้เวลามากกว่า
+          timeout: const Duration(seconds: 120),
+        );
+        try {
+          return await home.reply(
+            system: system,
+            history: history,
+            model: _homeServerModel,
+          );
+        } finally {
+          home.close();
+        }
+
+      case BrainProvider.onDevice:
+        debugPrint('สมอง: ในเครื่อง ${localBrain.variant.label}');
+        return localBrain.reply(system: system, history: history);
     }
   }
 
@@ -406,6 +508,7 @@ class MindeState extends ChangeNotifier {
     _disposed = true;
     _openai.close();
     _speech.dispose();
+    if (hasLocalBrain) _lazyLocal!.dispose();
     super.dispose();
   }
 }

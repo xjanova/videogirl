@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../ai/brain_provider.dart';
+import '../ai/local_brain.dart';
 import '../ai/minde_persona.dart';
 import '../ai/openai_config.dart';
 import '../ai/speech_service.dart';
+import '../ai/voice_profile.dart';
 import '../state/minde_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -22,6 +25,9 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  /// ช่องทางเสียงที่กำลังตั้งค่าอยู่ในการ์ด "เสียงพูด"
+  VoiceChannel _voiceTab = VoiceChannel.chat;
+
   // สวิตช์ที่ยังไม่มีระบบหลังบ้านรองรับ เก็บไว้ในหน่วยความจำก่อน
   // TODO(permissions): ตัวที่ต้องขอสิทธิ์ Android ต้องผูกกับสถานะสิทธิ์จริง
   // ไม่ใช่ค่าที่ผู้ใช้กดเอง ไม่งั้นเปิดไว้แต่ระบบไม่ให้ = โกหกผู้ใช้
@@ -202,32 +208,225 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ── สมอง ────────────────────────────────────────────────
+  // ── สมอง ─────────────────────────────────
   Widget _brainCard(MindeState state, MindeMode mode) {
     return _card(
       mode: mode,
       label: 'สมองของเธอ',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: 7,
         children: [
-          for (final m in OpenAiConfig.brainChoices)
-            _choiceRow(
-              title: m.label,
-              subtitle: m.hint,
-              trailing: m.id,
-              selected: state.brainModel == m.id,
-              mode: mode,
-              onTap: () => state.setBrainModel(m.id),
+          for (final b in BrainProvider.values)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 7),
+              child: _choiceRow(
+                title: b.label,
+                subtitle: b.summary,
+                selected: state.brain == b,
+                mode: mode,
+                onTap: () => state.setBrain(b),
+              ),
             ),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.all(11),
+            decoration: BoxDecoration(
+              color: MindeColors.glass80,
+              borderRadius: BorderRadius.circular(MindeRadius.control),
+              border: Border.all(color: MindeColors.glassBorder, width: 1),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 9,
+              children: [
+                Icon(
+                  state.brain.leavesDevice
+                      ? Icons.cloud_upload_outlined
+                      : Icons.lock_outline_rounded,
+                  size: 16,
+                  color: state.brain.leavesDevice
+                      ? const Color(0xFFB46A00)
+                      : const Color(0xFF00A894),
+                ),
+                Expanded(
+                  child: Text(
+                    state.brain.tradeoff,
+                    style: const TextStyle(
+                        fontSize: 10.5, height: 1.6, color: MindeColors.ink75),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (state.brain == BrainProvider.openai) ...[
+            const SizedBox(height: 12),
+            Text('โมเดล',
+                style: mindeMono(
+                    size: 9.5, color: MindeColors.ink50, letterSpacing: .1)),
+            const SizedBox(height: 7),
+            for (final m in OpenAiConfig.brainChoices)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: _choiceRow(
+                  title: m.label,
+                  subtitle: m.hint,
+                  trailing: m.id,
+                  selected: state.brainModel == m.id,
+                  mode: mode,
+                  onTap: () => state.setBrainModel(m.id),
+                ),
+              ),
+          ],
+          if (state.brain == BrainProvider.homeServer) ...[
+            const SizedBox(height: 12),
+            _linkRow(
+              title: 'ที่อยู่เซิร์ฟเวอร์',
+              value: state.homeServerUrl,
+              mode: mode,
+              onTap: () => _editText(
+                state: state,
+                mode: mode,
+                title: 'ที่อยู่เซิร์ฟเวอร์ในบ้าน',
+                hint: HomeServerDefaults.hint,
+                value: state.homeServerUrl,
+                onSave: state.setHomeServerUrl,
+                onReset: () => HomeServerDefaults.baseUrl,
+              ),
+            ),
+            const SizedBox(height: 7),
+            _linkRow(
+              title: 'ชื่อโมเดลบนเซิร์ฟเวอร์',
+              value: state.homeServerModel,
+              mode: mode,
+              onTap: () => _editText(
+                state: state,
+                mode: mode,
+                title: 'ชื่อโมเดล',
+                hint: 'ชื่อที่เซิร์ฟเวอร์รู้จัก เช่น gemma4:latest '
+                    'ดูรายชื่อได้ด้วยคำสั่ง ollama list บนคอม',
+                value: state.homeServerModel,
+                onSave: state.setHomeServerModel,
+                onReset: () => HomeServerDefaults.model,
+              ),
+            ),
+          ],
+          if (state.brain == BrainProvider.onDevice) ...[
+            const SizedBox(height: 12),
+            _onDeviceSection(state, mode),
+          ],
         ],
       ),
     );
   }
 
-  // ── เสียง ───────────────────────────────────────────────
+  /// จัดการโมเดล Gemma 4 ที่รันบนมือถือ
+  Widget _onDeviceSection(MindeState state, MindeMode mode) {
+    return ListenableBuilder(
+      listenable: state.localBrain,
+      builder: (context, _) {
+        final lb = state.localBrain;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('รุ่นที่ใช้',
+                style: mindeMono(
+                    size: 9.5, color: MindeColors.ink50, letterSpacing: .1)),
+            const SizedBox(height: 7),
+            for (final v in GemmaVariant.values)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: _choiceRow(
+                  title: v.label,
+                  subtitle: v.hint,
+                  trailing: v.sizeLabel,
+                  selected: lb.variant == v,
+                  mode: mode,
+                  onTap: () => lb.selectVariant(v),
+                ),
+              ),
+            const SizedBox(height: 4),
+            switch (lb.stage) {
+              LocalModelStage.ready => Row(
+                  spacing: 9,
+                  children: [
+                    const Icon(Icons.check_circle_rounded,
+                        size: 16, color: Color(0xFF00A894)),
+                    const Expanded(
+                      child: Text('โหลดลงเครื่องแล้ว พร้อมใช้แบบออฟไลน์',
+                          style: TextStyle(
+                              fontSize: 11, color: MindeColors.ink75)),
+                    ),
+                    GestureDetector(
+                      onTap: lb.remove,
+                      child: const Text('ลบออก',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFE0357A))),
+                    ),
+                  ],
+                ),
+              LocalModelStage.downloading => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(MindeRadius.pill),
+                      child: LinearProgressIndicator(
+                        value: lb.progress / 100,
+                        minHeight: 5,
+                        backgroundColor: MindeColors.ink10,
+                        valueColor: AlwaysStoppedAnimation(mode.accent),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text('กำลังโหลด ${lb.progress}% — ใช้ไวไฟและอย่าปิดแอป',
+                        style: const TextStyle(
+                            fontSize: 10.5, color: MindeColors.ink55)),
+                  ],
+                ),
+              LocalModelStage.failed => Text(
+                  lb.error ?? 'มีบางอย่างผิดพลาด',
+                  style: const TextStyle(
+                      fontSize: 11, height: 1.5, color: Color(0xFFB46A00)),
+                ),
+              _ => GestureDetector(
+                  onTap: lb.download,
+                  child: Container(
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      gradient: mode.gradient,
+                      borderRadius: BorderRadius.circular(MindeRadius.control),
+                      boxShadow: [
+                        BoxShadow(
+                            color: mode.accentSoft,
+                            blurRadius: 20,
+                            offset: const Offset(0, 8)),
+                      ],
+                    ),
+                    child: Text(
+                      'โหลดโมเดลลงเครื่อง · ${lb.variant.sizeLabel}',
+                      style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white),
+                    ),
+                  ),
+                ),
+            },
+          ],
+        );
+      },
+    );
+  }
+
+  // ── เสียง แยกตามช่องทาง ──────────────────────
   Widget _voiceCard(MindeState state, MindeMode mode) {
-    final usingOpenAi = state.ttsEngine == TtsEngine.openai;
+    final channel = _voiceTab;
+    final profile = state.voiceFor(channel);
+    final usingOpenAi = profile.engine == TtsEngine.openai;
+    final canInstruct = OpenAiConfig.supportsInstructions(profile.model);
 
     return _card(
       mode: mode,
@@ -248,8 +447,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-          if (state.voiceEnabled) ...[
-            const SizedBox(height: 12),
+          if (!state.voiceEnabled) ...[
+            const SizedBox(height: 6),
+            const Text('ปิดอยู่ — เธอจะตอบเป็นข้อความอย่างเดียว',
+                style: TextStyle(fontSize: 10.5, color: MindeColors.ink55)),
+          ] else ...[
+            const SizedBox(height: 14),
+
+            // เลือกช่องทางก่อน แล้วค่าทั้งหมดข้างล่างเป็นของช่องนั้น
+            // ไม่รวมเป็นชุดเดียว เพราะคุยกับเจ้าของกับคุยกับคนแปลกหน้า
+            // ต้องการน้ำเสียงคนละแบบจริง ๆ
+            Row(
+              spacing: 6,
+              children: [
+                for (final c in VoiceChannel.values)
+                  Expanded(
+                    child: _segment(
+                      text: c.label,
+                      selected: channel == c,
+                      mode: mode,
+                      onTap: () => setState(() => _voiceTab = c),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(channel.hint,
+                style: const TextStyle(fontSize: 10.5, color: MindeColors.ink55)),
+
+            const SizedBox(height: 14),
+            Text('เครื่องเสียง',
+                style: mindeMono(
+                    size: 9.5, color: MindeColors.ink50, letterSpacing: .1)),
+            const SizedBox(height: 7),
             Row(
               spacing: 7,
               children: [
@@ -257,64 +487,154 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Expanded(
                     child: _segment(
                       text: e.label,
-                      selected: state.ttsEngine == e,
+                      selected: profile.engine == e,
                       mode: mode,
-                      onTap: () => state.setTtsEngine(e),
+                      onTap: () =>
+                          state.setVoice(channel, profile.copyWith(engine: e)),
                     ),
                   ),
               ],
             ),
             const SizedBox(height: 6),
-            Text(state.ttsEngine.hint,
+            Text(profile.engine.hint,
                 style: const TextStyle(fontSize: 10.5, color: MindeColors.ink55)),
+
             if (usingOpenAi) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
+              Text('โมเดลเสียง',
+                  style: mindeMono(
+                      size: 9.5, color: MindeColors.ink50, letterSpacing: .1)),
+              const SizedBox(height: 7),
+              for (final m in OpenAiConfig.ttsChoices)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 7),
+                  child: _choiceRow(
+                    title: m.label,
+                    subtitle: m.hint,
+                    selected: profile.model == m.id,
+                    mode: mode,
+                    onTap: () =>
+                        state.setVoice(channel, profile.copyWith(model: m.id)),
+                  ),
+                ),
+              const SizedBox(height: 7),
+              Text('เสียง',
+                  style: mindeMono(
+                      size: 9.5, color: MindeColors.ink50, letterSpacing: .1)),
+              const SizedBox(height: 7),
               for (final v in OpenAiConfig.voiceChoices)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 7),
                   child: _choiceRow(
                     title: v.label,
-                    selected: state.openAiVoice == v.id,
+                    selected: profile.voice == v.id,
                     mode: mode,
-                    onTap: () => state.setOpenAiVoice(v.id),
+                    onTap: () =>
+                        state.setVoice(channel, profile.copyWith(voice: v.id)),
                   ),
                 ),
-              _linkRow(
-                title: 'น้ำเสียงที่สั่งไว้',
-                value: state.voiceInstructions,
-                mode: mode,
-                onTap: () => _editText(
-                  state: state,
-                  mode: mode,
+              if (canInstruct)
+                _linkRow(
                   title: 'น้ำเสียงที่สั่งไว้',
-                  hint: 'สั่งเป็นภาษาคนได้เลยว่าอยากให้พูดยังไง เช่น "นุ่ม ช้า ยิ้มขณะพูด" '
-                      'ข้อความนี้ส่งให้ gpt-4o-mini-tts โดยตรง ผลชัดกว่าที่คิด',
-                  value: state.voiceInstructions,
-                  onSave: state.setVoiceInstructions,
-                  onReset: () => MindePersona.defaultVoiceInstructions,
+                  value: profile.instructions,
+                  mode: mode,
+                  onTap: () => _editText(
+                    state: state,
+                    mode: mode,
+                    title: 'น้ำเสียง — ${channel.label}',
+                    hint: 'สั่งเป็นภาษาคนได้เลยว่าอยากให้พูดยังไง '
+                        'เช่น "นุ่ม ช้า ยิ้มขณะพูด" '
+                        'ข้อความนี้ส่งให้ ${profile.model} โดยตรง ผลชัดกว่าที่คิด',
+                    value: profile.instructions,
+                    onSave: (v) => state.setVoice(
+                        channel, profile.copyWith(instructions: v)),
+                    onReset: () => VoiceProfile.defaultFor(channel).instructions,
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(11),
+                  decoration: BoxDecoration(
+                    color: const Color(0x22FFAB3D),
+                    borderRadius: BorderRadius.circular(MindeRadius.control),
+                  ),
+                  child: Text(
+                    '${profile.model} ไม่รับคำสั่งน้ำเสียง — '
+                    'เลือก gpt-4o-mini-tts ถ้าอยากสั่งอารมณ์เสียงได้',
+                    style: const TextStyle(
+                        fontSize: 10.5, height: 1.5, color: MindeColors.ink75),
+                  ),
                 ),
+            ],
+
+            if (channel != VoiceChannel.chat) ...[
+              const SizedBox(height: 14),
+              Text('โมเดลคุยสดตอนอยู่ในสาย',
+                  style: mindeMono(
+                      size: 9.5, color: MindeColors.ink50, letterSpacing: .1)),
+              const SizedBox(height: 7),
+              for (final r in OpenAiConfig.realtimeChoices)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 7),
+                  child: _choiceRow(
+                    title: r.label,
+                    subtitle: r.hint,
+                    trailing: r.id,
+                    selected: state.realtimeModel == r.id,
+                    mode: mode,
+                    onTap: () => state.setRealtimeModel(r.id),
+                  ),
+                ),
+              const Text(
+                'ใช้ตอนต่อสายจริงเท่านั้น ยังไม่ได้ต่อ — ดู docs/telephony.md',
+                style: TextStyle(fontSize: 10.5, color: MindeColors.ink55),
               ),
             ],
-            const SizedBox(height: 10),
-            GestureDetector(
-              onTap: state.previewVoice,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 11),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: MindeColors.glass85,
-                  borderRadius: BorderRadius.circular(MindeRadius.control),
-                  border: Border.all(color: MindeColors.glassBorder, width: 1),
+
+            const SizedBox(height: 12),
+            Row(
+              spacing: 8,
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => state.previewVoice(channel),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: MindeColors.glass85,
+                        borderRadius: BorderRadius.circular(MindeRadius.control),
+                        border:
+                            Border.all(color: MindeColors.glassBorder, width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        spacing: 7,
+                        children: [
+                          Icon(Icons.volume_up_rounded,
+                              size: 16, color: mode.accent),
+                          Text('ลองฟัง${channel.label}',
+                              style: const TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  spacing: 7,
-                  children: [
-                    Icon(Icons.volume_up_rounded, size: 16, color: mode.accent),
-                    const Text('ลองฟังเสียง', style: TextStyle(fontSize: 12)),
-                  ],
+                GestureDetector(
+                  onTap: () => state.resetVoice(channel),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: MindeColors.glass85,
+                      borderRadius: BorderRadius.circular(MindeRadius.control),
+                      border:
+                          Border.all(color: MindeColors.glassBorder, width: 1),
+                    ),
+                    child: const Text('คืนค่า', style: TextStyle(fontSize: 12)),
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ],

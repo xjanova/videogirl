@@ -44,6 +44,16 @@ class MindeAvatarController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// เสียงพูดพังไม่ใช่เรื่องเดียวกับเวทีพัง — เธอยังยืนอยู่ได้
+  /// จึงไม่แตะ `_ready` ไม่งั้นจะไปซ่อนตัวเธอทั้งที่ภาพไม่ได้มีปัญหา
+  String? _speakError;
+  String? get speakError => _speakError;
+
+  void _onSpeakFailed(String why) {
+    _speakError = why;
+    notifyListeners();
+  }
+
   Future<void> setMood(MindeMood mood) => _call("window.minde.mood('${mood.name}')");
 
   /// เล่นไฟล์เสียงพร้อมขยับปาก — url ต้องเข้าถึงได้จากฝั่ง WebView
@@ -161,6 +171,20 @@ class _MindeAvatarViewState extends State<MindeAvatarView> {
                           widget.controller._onReady();
                         case 'error':
                           widget.controller._onError('${msg['message']}');
+
+                        // ท่อเสียงพังได้หลายจุดโดยไม่มี error ที่ไหนเลย
+                        // จึงให้ฝั่ง JS รายงานกลับมาทุกครั้ง โดยเฉพาะสถานะ
+                        // AudioContext ซึ่งถ้าเป็น suspended เสียงจะถูกกลืนหาย
+                        case 'speak-start':
+                          debugPrint('avatar: เริ่มพูด ${msg['bytes']} ไบต์ '
+                              '(${msg['mime']}) · AudioContext=${msg['ctx']}');
+                        case 'speak-done':
+                          debugPrint('avatar: พูดจบ done=${msg['done']} '
+                              'AudioContext=${msg['ctx']} level=${msg['level']}');
+                        case 'speak-failed':
+                          debugPrint('avatar: พูดไม่ได้ — ${msg['why']} '
+                              '(AudioContext=${msg['ctx']})');
+                          widget.controller._onSpeakFailed('${msg['why']}');
                       }
                       return null;
                     },

@@ -62,14 +62,28 @@ try {
  * "tainted" แล้วป้อนศูนย์ให้ analyser — เสียงดังปกติ แต่ปากไม่ขยับเลย
  * และไม่มี error ที่ไหนบอก · blob: เป็น same-origin เสมอ จึงไม่มีปัญหานี้
  */
+/** สถานะ AudioContext — 'suspended' คือสาเหตุอันดับหนึ่งที่เสียงเงียบโดยไม่มี error */
+const ctxState = () => avatar?.lip?.ctx?.state ?? 'ยังไม่สร้าง';
+
 async function speakBytes(b64, mime) {
-  if (!avatar) return false;
+  if (!avatar) {
+    post('speak-failed', { why: 'อวาตาร์ยังไม่พร้อม' });
+    return false;
+  }
+
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'audio/mpeg' }));
+
+  post('speak-start', { bytes: bytes.length, mime, ctx: ctxState() });
   try {
-    return await avatar.speak(url);
+    const done = await avatar.speak(url);
+    post('speak-done', { done, ctx: ctxState(), level: avatar.lip?.level ?? -1 });
+    return done;
+  } catch (err) {
+    post('speak-failed', { why: String(err?.message ?? err), ctx: ctxState() });
+    return false;
   } finally {
     // ปล่อยทันทีที่เล่นจบ ไม่งั้นคุยยาว ๆ จะสะสมไฟล์เสียงไว้ในหน่วยความจำทั้งหมด
     URL.revokeObjectURL(url);
