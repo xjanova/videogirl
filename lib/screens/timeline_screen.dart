@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../i18n/strings.dart';
 import '../theme/tokens.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
@@ -10,30 +11,33 @@ import '../widgets/liquid_background.dart';
 class TimelineScreen extends StatelessWidget {
   const TimelineScreen({super.key});
 
-  static const _entries = <_Entry>[
-    _Entry('08:12', 'สรุปกล่องเมลเช้า', '24 ฉบับ → 3 ที่ต้องตอบ · ร่างคำตอบไว้ 2',
-        Color(0xFF00C2A8), 'ดูร่าง', Color(0xFF00A894)),
-    _Entry('09:05', 'รับสายแทน — คุณวิชัย', 'ใบเสนอราคา QT-2609 ขอต่อรอง 7% · จดไว้แล้ว',
-        Color(0xFF7C6CFF), 'ฟังเสียง · อ่านสรุป', Color(0xFF5A4DE0)),
-    _Entry('09:40', 'ส่งเมลตอบคุณนภา', 'อนุมัติเลื่อนอาร์ตเวิร์กเป็นวันจันทร์เช้า',
-        Color(0xFF3EC7FF), 'ย้อนกลับ (เหลือ 23 ชม.)', MindColors.ink50),
-    _Entry('10:20', 'โทรออก — คุณต้น', 'เลื่อนรีวิวเป็นพฤหัส 15:00 · เขาตอบตกลง',
-        Color(0xFF00C2A8), 'ดูบทสนทนา', Color(0xFF00A894)),
-    _Entry('11:15', 'รอคุณอนุมัติ', 'ส่วนลด QT-2609 เกินอำนาจที่ตั้งไว้ (สูงสุด 5%)',
-        Color(0xFFFFAB3D), 'ตัดสินใจตอนนี้', Color(0xFFB46A00)),
-    _Entry('12:00', 'เตือนกินข้าว', 'เธอปิดแจ้งเตือนงานให้ 45 นาที',
-        Color(0xFFFF6FAE), '', Colors.transparent),
-  ];
+  /// เหตุการณ์ตัวอย่าง — เก็บเป็นเมธอดไม่ใช่ const เพราะข้อความเปลี่ยนตามภาษา
+  List<_Entry> _entriesFor(S t) => [
+        _Entry('08:12', t.tl1Title, t.tl1Detail, const Color(0xFF00C2A8),
+            t.tl1Action, const Color(0xFF00A894)),
+        _Entry('09:05', t.tl2Title, t.tl2Detail, const Color(0xFF7C6CFF),
+            t.tl2Action, const Color(0xFF5A4DE0)),
+        _Entry('09:40', t.tl3Title, t.tl3Detail, const Color(0xFF3EC7FF),
+            t.tl3Action, MindColors.ink50),
+        _Entry('10:20', t.tl4Title, t.tl4Detail, const Color(0xFF00C2A8),
+            t.tl4Action, const Color(0xFF00A894)),
+        _Entry('11:15', t.tl5Title, t.tl5Detail, const Color(0xFFFFAB3D),
+            t.tl5Action, const Color(0xFFB46A00)),
+        _Entry('12:00', t.tl6Title, t.tl6Detail, const Color(0xFFFF6FAE), '',
+            Colors.transparent),
+      ];
 
-  static const _stats = <(String, int)>[
-    ('รับสาย', 3),
-    ('ส่งเมล', 5),
-    ('นัด', 2),
-    ('รอคุณ', 4),
-  ];
+  List<(String, int)> _statsFor(S t) => [
+        (t.tlCalls, 3),
+        (t.tlMails, 5),
+        (t.tlMeetings, 2),
+        (t.tlWaiting, 4),
+      ];
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
+    final entries = _entriesFor(t);
     return LiquidBackground(
       gradient: MindGradients.timeline,
       orbs: Orb.timeline,
@@ -41,25 +45,31 @@ class TimelineScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 18, 16, 12),
-              child: Text('วันนี้เธอทำให้ 14 อย่าง',
-                  style: TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -.2)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+              child: Text(t.tlTitle,
+                  style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -.2)),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
                 spacing: 8,
-                children: [for (final s in _stats) Expanded(child: _stat(s.$1, s.$2))],
+                children: [
+                  for (final st in _statsFor(t))
+                    Expanded(child: _stat(st.$1, st.$2)),
+                ],
               ),
             ),
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                itemCount: _entries.length,
+                itemCount: entries.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (_, i) => _row(_entries[i], last: i == _entries.length - 1),
+                itemBuilder: (_, i) =>
+                    _row(entries[i], last: i == entries.length - 1),
               ),
             ),
           ],

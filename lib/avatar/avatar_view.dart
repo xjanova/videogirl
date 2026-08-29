@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../i18n/strings.dart';
 import '../theme/tokens.dart';
 
 /// อารมณ์ที่มายด์แสดงได้ — ตรงกับ MOOD_EXPRESSION ใน avatar.js
@@ -299,7 +300,9 @@ class _AvatarPlaceholder extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: Text(
-              failed ? 'ยังไม่มีโมเดลอวาตาร์ในเครื่อง' : 'VRM avatar · full body',
+              failed
+                  ? S.of(context).avatarMissing
+                  : S.of(context).avatarPlaceholder,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'monospace',

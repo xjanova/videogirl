@@ -158,12 +158,11 @@ abstract final class MindGradients {
 //  โหมด งาน / ส่วนตัว — แกนกลางของทั้งแอป
 //  สลับทีเดียวเปลี่ยนทั้งสี ชิปคำถาม และน้ำเสียงที่มายด์ตอบ
 // ─────────────────────────────────────────────────────────────
+/// โหมดที่มีผลจริง — ป้ายที่ผู้ใช้เห็นอยู่ใน i18n/enum_labels.dart
+/// enum เก็บแค่ตัวตน ไม่เก็บข้อความ ไม่งั้นแปลไม่ได้
 enum MindMode {
-  work('งาน'),
-  love('ส่วนตัว');
-
-  const MindMode(this.label);
-  final String label;
+  work,
+  love;
 
   bool get isWork => this == MindMode.work;
 }
@@ -200,13 +199,6 @@ extension MindModePalette on MindMode {
                 const Color(0xFF7C6CFF).withValues(alpha: .85)
               ],
       );
-
-  String get statusLine =>
-      isWork ? 'ออนไลน์ · โหมดงาน · ฟังอยู่' : 'ออนไลน์ · โหมดส่วนตัว · ฟังอยู่';
-
-  List<String> get chips => isWork
-      ? const ['สรุปเมลเช้านี้', 'นัดรีวิวบ่ายนี้', 'โทรหาคุณต้น']
-      : const ['วันนี้เป็นไงบ้าง', 'เล่าอะไรให้ฟังหน่อย', 'คิดถึงไหม'];
 
   MindMode get opposite => isWork ? MindMode.love : MindMode.work;
 }

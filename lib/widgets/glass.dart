@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../i18n/enum_labels.dart';
+import '../i18n/strings.dart';
 import '../theme/tokens.dart';
 
 /// แผ่นกระจก — พื้นฐานของทุกพื้นผิวในธีม Liquid Glass
@@ -168,7 +170,7 @@ class ModeToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: 'สลับโหมด ตอนนี้โหมด${mode.label}',
+      label: S.of(context).toggleModeHint(mode.labelOf(S.of(context))),
       child: GestureDetector(
         onTap: onToggle,
         child: Container(
@@ -183,7 +185,8 @@ class ModeToggle extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             spacing: 2,
             children: [
-              for (final m in MindMode.values) _pill(m, selected: m == mode),
+              for (final m in MindMode.values)
+                _pill(m, selected: m == mode, label: m.labelOf(S.of(context))),
             ],
           ),
         ),
@@ -191,7 +194,7 @@ class ModeToggle extends StatelessWidget {
     );
   }
 
-  Widget _pill(MindMode m, {required bool selected}) {
+  Widget _pill(MindMode m, {required bool selected, required String label}) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
@@ -201,7 +204,7 @@ class ModeToggle extends StatelessWidget {
         borderRadius: BorderRadius.circular(MindRadius.pill),
       ),
       child: Text(
-        m.label,
+        label,
         style: TextStyle(
           fontSize: 10.5,
           color: selected ? Colors.white : MindColors.ink55,

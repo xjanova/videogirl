@@ -8,14 +8,8 @@ import 'speech_service.dart';
 ///
 /// แยกเพราะบริบทต่างกันจริง: คุยในแอปคือคุยกับเจ้าของ จะหวานแค่ไหนก็ได้
 /// แต่ตอนรับสายคนปลายทางเป็นคนแปลกหน้า ต้องเป็นทางการและฟังชัดเป็นหลัก
-enum VoiceChannel {
-  chat('พูดในแชท', 'ตอนคุยกับเราในแอป'),
-  answer('เสียงตอบรับ', 'ตอนเธอรับสายแทนเรา'),
-  outgoing('โทรออก', 'ตอนเธอโทรหาคนอื่นแทนเรา');
-
-  const VoiceChannel(this.label, this.hint);
-  final String label, hint;
-}
+/// ป้ายที่ผู้ใช้เห็นอยู่ใน i18n/enum_labels.dart — enum เก็บแค่ตัวตน
+enum VoiceChannel { chat, answer, outgoing }
 
 /// เสียงหนึ่งชุดของหนึ่งช่องทาง
 @immutable

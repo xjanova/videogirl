@@ -15,6 +15,8 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../i18n/strings.dart';
+import '../i18n/strings_ai.dart';
 import 'openai_client.dart';
 
 /// เสียงหนึ่งเสียงที่โคลนไว้แล้ว
@@ -40,7 +42,7 @@ class ClonedVoice {
 
   static ClonedVoice fromJson(Map<String, dynamic> j) => ClonedVoice(
         id: '${j['id']}',
-        name: j['name'] as String? ?? 'ไม่มีชื่อ',
+        name: j['name'] as String? ?? '',
         status: j['status'] as String? ?? 'pending',
         seconds: (j['seconds'] as num?)?.toDouble(),
       );
@@ -49,9 +51,16 @@ class ClonedVoice {
 enum CloneStage { idle, recording, uploading, training, ready, failed }
 
 class VoiceCloneService extends ChangeNotifier {
-  VoiceCloneService({http.Client? httpClient, AudioRecorder? recorder})
-      : _http = httpClient ?? http.Client(),
+  VoiceCloneService({
+    http.Client? httpClient,
+    AudioRecorder? recorder,
+    S Function()? strings,
+  })  : _s = strings ?? _thai,
+        _http = httpClient ?? http.Client(),
         _injectedRecorder = recorder;
+
+  final S Function() _s;
+  static S _thai() => const S(AppLang.th);
 
   final http.Client _http;
   final AudioRecorder? _injectedRecorder;
@@ -128,7 +137,7 @@ class VoiceCloneService extends ChangeNotifier {
 
   Future<bool> startRecording() async {
     if (!await _recorder.hasPermission()) {
-      _set(CloneStage.failed, error: 'ต้องอนุญาตให้ใช้ไมโครโฟนก่อน');
+      _set(CloneStage.failed, error: _s().errNeedMic);
       return false;
     }
 
@@ -180,11 +189,11 @@ class VoiceCloneService extends ChangeNotifier {
   Future<ClonedVoice?> upload({required String name}) async {
     final path = _samplePath;
     if (path == null) {
-      _set(CloneStage.failed, error: 'ยังไม่มีตัวอย่างเสียง');
+      _set(CloneStage.failed, error: _s().errNoSample);
       return null;
     }
     if (!configured) {
-      _set(CloneStage.failed, error: 'ยังไม่ได้ตั้งที่อยู่เซิร์ฟเวอร์');
+      _set(CloneStage.failed, error: _s().errNoServer);
       return null;
     }
 
@@ -209,7 +218,7 @@ class VoiceCloneService extends ChangeNotifier {
       await refresh();
       return voice;
     } on Exception {
-      _set(CloneStage.failed, error: 'ส่งตัวอย่างเสียงไม่สำเร็จ');
+      _set(CloneStage.failed, error: _s().errUploadFailed);
       return null;
     }
   }
@@ -249,11 +258,11 @@ class VoiceCloneService extends ChangeNotifier {
   /// พูดด้วยเสียงที่โคลนไว้ — คืน mp3 เป็นไบต์เหมือนเครื่องเสียงตัวอื่น
   Future<Uint8List> speak(String text, {required String voiceId}) async {
     if (!configured) {
-      throw const OpenAiFailure('ยังไม่ได้ตั้งที่อยู่เซิร์ฟเวอร์เสียงโคลน');
+      throw OpenAiFailure(_s().errCloneNotSet);
     }
 
     final clean = OpenAiClient.stripForSpeech(text);
-    if (clean.isEmpty) throw const OpenAiFailure('ไม่มีข้อความให้พูด');
+    if (clean.isEmpty) throw OpenAiFailure(_s().errNothingToSay);
 
     try {
       final res = await _http
@@ -269,26 +278,26 @@ class VoiceCloneService extends ChangeNotifier {
             _readable(res.statusCode, utf8.decode(res.bodyBytes)));
       }
       if (res.bodyBytes.isEmpty) {
-        throw const OpenAiFailure('เซิร์ฟเวอร์ส่งเสียงเปล่ากลับมา');
+        throw OpenAiFailure(_s().errServerEmptyAudio);
       }
       return res.bodyBytes;
     } on OpenAiFailure {
       rethrow;
     } on Exception {
-      throw const OpenAiFailure('ต่อเซิร์ฟเวอร์เสียงโคลนไม่ได้');
+      throw OpenAiFailure(_s().errCloneUnreachable);
     }
   }
 
   String _readable(int status, String body) {
     switch (status) {
       case 401 || 403:
-        return 'ไม่มีสิทธิ์ใช้บริการนี้ ลองล็อกอินใหม่';
+        return _s().errNoPermission;
       case 402:
-        return 'โควตาหมดแล้ว';
+        return _s().errQuotaGone;
       case 413:
-        return 'ไฟล์เสียงใหญ่เกินไป';
+        return _s().errFileTooBig;
       case >= 500:
-        return 'เซิร์ฟเวอร์ขัดข้อง ลองใหม่อีกครั้งนะคะ';
+        return _s().errServerDown;
     }
     try {
       final m = jsonDecode(body) as Map<String, dynamic>;
@@ -297,7 +306,7 @@ class VoiceCloneService extends ChangeNotifier {
     } on Exception {
       // ตอบกลับไม่ใช่ JSON
     }
-    return 'ทำรายการไม่สำเร็จ ($status)';
+    return _s().errRequestFailed(status);
   }
 
   @override

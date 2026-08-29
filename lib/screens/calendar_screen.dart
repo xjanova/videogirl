@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
+import '../i18n/strings.dart';
 import '../theme/tokens.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
@@ -15,6 +16,7 @@ class CalendarScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mode = context.select<MindState, MindMode>((s) => s.mode);
+    final t = S.of(context);
 
     return LiquidBackground(
       gradient: MindGradients.calendar,
@@ -23,17 +25,17 @@ class CalendarScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 18, 16, 14),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 spacing: 3,
                 children: [
-                  Text('พฤหัสบดี 3 ก.ย.',
-                      style: TextStyle(
+                  Text(t.calDate,
+                      style: const TextStyle(
                           fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -.2)),
-                  Text('เธอเช็กปฏิทินคุณ + คุณต้น + คุณนภา แล้ว',
-                      style: TextStyle(fontSize: 11.5, color: MindColors.ink55)),
+                  Text(t.calSubtitle,
+                      style: const TextStyle(fontSize: 11.5, color: MindColors.ink55)),
                 ],
               ),
             ),
@@ -41,15 +43,15 @@ class CalendarScreen extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
                 children: [
-                  const _Slot(title: 'Daily standup', time: '09:00–09:30'),
+                  _Slot(title: t.calStandup, time: '09:00–09:30'),
                   const SizedBox(height: 10),
-                  const _Slot(title: 'ลูกค้า สยามเทค', time: '11:00–12:00'),
+                  _Slot(title: t.calClient, time: '11:00–12:00'),
                   const SizedBox(height: 10),
-                  _proposal(mode),
+                  _proposal(mode, t),
                 ],
               ),
             ),
-            _actions(mode),
+            _actions(mode, t),
           ],
         ),
       ),
@@ -57,7 +59,7 @@ class CalendarScreen extends StatelessWidget {
   }
 
   /// ช่องที่เธอเสนอ — ใบเดียวที่มีป้ายกำกับและพื้นไล่สี
-  Widget _proposal(MindMode mode) {
+  Widget _proposal(MindMode mode, S t) {
     final tint = mode.gradient.colors;
 
     return GlassPanel(
@@ -81,23 +83,23 @@ class CalendarScreen extends StatelessWidget {
               gradient: mode.gradient,
               borderRadius: BorderRadius.circular(MindRadius.pill),
             ),
-            child: Text('เธอเสนอ',
+            child: Text(t.calProposedBadge,
                 style: mindMono(size: 9.5, color: Colors.white, letterSpacing: .1)),
           ),
           const SizedBox(height: 10),
-          const Text('รีวิวงานออกแบบ',
+          Text(t.calReview,
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           const SizedBox(height: 3),
           const Text('15:00–15:30 · Google Meet',
               style: TextStyle(fontSize: 11.5, color: MindColors.ink60)),
           const SizedBox(height: 12),
-          const Wrap(
+          Wrap(
             spacing: 7,
             runSpacing: 7,
             children: [
-              _Attendee('คุณต้น'),
-              _Attendee('คุณนภา'),
-              _Attendee('+ เพิ่มคน', free: false),
+              _Attendee(t.calFree(t.nameTon)),
+              _Attendee(t.calFree(t.nameNapa)),
+              _Attendee(t.calAddPerson, free: false),
             ],
           ),
         ],
@@ -105,14 +107,14 @@ class CalendarScreen extends StatelessWidget {
     );
   }
 
-  Widget _actions(MindMode mode) {
+  Widget _actions(MindMode mode, S t) {
     return Padding(
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         spacing: 8,
         children: [
-          Text('เธอจะทำต่อ',
+          Text(t.calNext,
               style: mindMono(size: 10, color: MindColors.ink50, letterSpacing: .1)),
           Row(
             spacing: 9,
@@ -132,7 +134,7 @@ class CalendarScreen extends StatelessWidget {
                           offset: const Offset(0, 10)),
                     ],
                   ),
-                  child: const Text('ยืนยันและส่งคำเชิญ',
+                  child: Text(t.calConfirm,
                       style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
@@ -148,7 +150,7 @@ class CalendarScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(MindRadius.message),
                     border: Border.all(color: MindColors.glassBorder, width: 1),
                   ),
-                  child: const Text('หาเวลาอื่น', style: TextStyle(fontSize: 12.5)),
+                  child: Text(t.calFindAnother, style: const TextStyle(fontSize: 12.5)),
                 ),
               ),
             ],
@@ -192,6 +194,7 @@ class _Attendee extends StatelessWidget {
   final String name;
 
   /// ว่างตรงกัน = มีเครื่องหมายถูก ถ้าไม่ใช่คน (ปุ่มเพิ่ม) ให้ปิด
+  /// ข้อความเต็มมาจากผู้เรียกแล้ว widget ไม่ต่อคำเอง ไม่งั้นแปลแล้วเรียงผิดไวยากรณ์
   final bool free;
 
   @override
@@ -210,7 +213,7 @@ class _Attendee extends StatelessWidget {
           if (free)
             const Icon(Icons.check_rounded, size: 13, color: Color(0xFF00A894)),
           Text(
-            free ? '$name ว่าง' : name,
+            name,
             style: const TextStyle(fontSize: 11, color: MindColors.ink75),
           ),
         ],

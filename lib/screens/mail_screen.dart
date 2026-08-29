@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
+import '../i18n/strings.dart';
 import '../theme/tokens.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
@@ -15,6 +16,7 @@ class MailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mode = context.select<MindState, MindMode>((s) => s.mode);
+    final t = S.of(context);
 
     return LiquidBackground(
       gradient: MindGradients.mail,
@@ -23,17 +25,20 @@ class MailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 18, 16, 14),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 spacing: 3,
                 children: [
-                  Text('กล่องเมลเช้านี้',
-                      style: TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -.2)),
-                  Text('24 ฉบับ · เธอคัดให้เหลือ 3 ที่ต้องตอบ',
-                      style: TextStyle(fontSize: 11.5, color: MindColors.ink55)),
+                  Text(t.mailTitle,
+                      style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.2)),
+                  Text(t.mailSubtitle,
+                      style: const TextStyle(
+                          fontSize: 11.5, color: MindColors.ink55)),
                 ],
               ),
             ),
@@ -41,55 +46,57 @@ class MailScreen extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
                 children: [
-                  const _MailCard(
-                    dot: Color(0xFFFF5C8A),
-                    title: 'สยามเทค — ขอต่อรองราคา QT-2609',
-                    body: 'ขอส่วนลด 7% แลกกับสั่งเพิ่มเป็น 500 ชุด · ต้องการคำตอบก่อนศุกร์',
+                  _MailCard(
+                    dot: const Color(0xFFFF5C8A),
+                    title: t.mail1Title,
+                    body: t.mail1Body,
                   ),
                   const SizedBox(height: 11),
-                  _DraftCard(mode: mode),
+                  _DraftCard(mode: mode, t: t),
                   const SizedBox(height: 11),
-                  const _MailCard(
-                    dot: Color(0x4023204A),
-                    title: 'HR — ยืนยันวันลาพักร้อน',
-                    body: 'รอกดยืนยัน 12–14 ก.ย. เธอกดให้ได้ถ้าคุณสั่ง',
+                  _MailCard(
+                    dot: const Color(0x4023204A),
+                    title: t.mail3Title,
+                    body: t.mail3Body,
                     glow: false,
                   ),
                   const SizedBox(height: 14),
-                  _laterNote(),
+                  _laterNote(t),
                 ],
               ),
             ),
-            _actions(mode),
+            _actions(mode, t),
           ],
         ),
       ),
     );
   }
 
-  Widget _laterNote() {
+  Widget _laterNote(S t) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(MindRadius.avatarThumb),
         border: Border.all(color: MindColors.ink22, width: 1),
       ),
-      child: const Text.rich(
+      child: Text.rich(
         TextSpan(
-          style: TextStyle(fontSize: 11.5, height: 1.6, color: MindColors.ink60),
+          style: const TextStyle(
+              fontSize: 11.5, height: 1.6, color: MindColors.ink60),
           children: [
-            TextSpan(text: 'อีก 21 ฉบับเธอจัดเป็น '),
+            TextSpan(text: t.mailLaterNote1),
             TextSpan(
-                text: 'อ่านทีหลัง',
-                style: TextStyle(color: MindColors.ink, fontWeight: FontWeight.w600)),
-            TextSpan(text: ' — ข่าวสาร 12 · ใบเสร็จ 6 · สแปม 3'),
+                text: t.mailLaterNote2,
+                style: const TextStyle(
+                    color: MindColors.ink, fontWeight: FontWeight.w600)),
+            TextSpan(text: t.mailLaterNote3),
           ],
         ),
       ),
     );
   }
 
-  Widget _actions(MindMode mode) {
+  Widget _actions(MindMode mode, S t) {
     return Padding(
       padding: const EdgeInsets.all(14),
       child: Row(
@@ -104,7 +111,8 @@ class MailScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(MindRadius.message),
                 border: Border.all(color: MindColors.glassBorder, width: 1),
               ),
-              child: const Text('ให้เธออ่านสรุปให้ฟัง', style: TextStyle(fontSize: 12.5)),
+              child: Text(t.mailReadAloud,
+                  style: const TextStyle(fontSize: 12.5)),
             ),
           ),
           Container(
@@ -200,9 +208,10 @@ class _Dot extends StatelessWidget {
 
 /// การ์ดร่างคำตอบ — ใบเดียวในจอที่ใช้พื้นไล่สีแทนกระจกใส
 class _DraftCard extends StatelessWidget {
-  const _DraftCard({required this.mode});
+  const _DraftCard({required this.mode, required this.t});
 
   final MindMode mode;
+  final S t;
 
   @override
   Widget build(BuildContext context) {
@@ -231,15 +240,16 @@ class _DraftCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 6),
                 child: _Dot(color: tint.first),
               ),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   spacing: 3,
                   children: [
-                    Text('คุณนภา — เลื่อนส่งไฟล์อาร์ตเวิร์ก',
-                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
-                    Text('ขอเลื่อนจากศุกร์เป็นจันทร์ เพราะรอไฟล์จากลูกค้า',
-                        style: TextStyle(
+                    Text(t.mail2Title,
+                        style: const TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w600)),
+                    Text(t.mail2Body,
+                        style: const TextStyle(
                             fontSize: 11.5, height: 1.6, color: MindColors.ink60)),
                   ],
                 ),
@@ -247,7 +257,7 @@ class _DraftCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Text('ร่างคำตอบของเธอ',
+          Text(t.mailDraftLabel,
               style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
           const SizedBox(height: 7),
           Container(
@@ -258,12 +268,9 @@ class _DraftCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(MindRadius.message),
               border: Border.all(color: MindColors.glassBorder, width: 1),
             ),
-            child: const Text(
-              'สวัสดีค่ะคุณนภา\n'
-              'เลื่อนเป็นวันจันทร์ได้ค่ะ แต่รบกวนส่งภายในเช้าวันจันทร์นะคะ '
-              'เพราะทีมต้องรีวิวก่อนส่งโรงพิมพ์บ่ายวันเดียวกัน\n'
-              'ขอบคุณค่ะ',
-              style: TextStyle(fontSize: 12.5, height: 1.7),
+            child: Text(
+              t.mailDraftBody,
+              style: const TextStyle(fontSize: 12.5, height: 1.7),
             ),
           ),
           const SizedBox(height: 12),
@@ -284,12 +291,16 @@ class _DraftCard extends StatelessWidget {
                           offset: const Offset(0, 8)),
                     ],
                   ),
-                  child: const Text('ส่งเลย',
-                      style: TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+                  child: Text(t.mailSendNow,
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white)),
                 ),
               ),
-              Expanded(child: _ghostButton(const Text('แก้ก่อน', style: TextStyle(fontSize: 12)))),
+              Expanded(
+                  child: _ghostButton(
+                      Text(t.mailEditFirst, style: const TextStyle(fontSize: 12)))),
               SizedBox(
                 width: 46,
                 child: _ghostButton(const Icon(Icons.volume_up_rounded, size: 16)),

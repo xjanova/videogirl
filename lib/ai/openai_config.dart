@@ -30,43 +30,36 @@ abstract final class OpenAiConfig {
 
   /// รายการที่ให้เลือกในหน้าตั้งค่า — ยืนยันแล้วว่าบัญชีเรียกได้จริง
   /// (ดึงจาก GET /v1/models เมื่อ 2026-08-29 ไม่ได้เดาชื่อ)
-  static const brainChoices = <({String id, String label, String hint})>[
-    (id: 'gpt-5.6-sol', label: 'Sol', hint: 'ฉลาดที่สุด เหมือนคนที่สุด · ค่าเริ่มต้น'),
-    (id: 'gpt-5.6-luna', label: 'Luna', hint: 'รุ่น 5.6 อีกบุคลิก'),
-    (id: 'gpt-5.6-terra', label: 'Terra', hint: 'รุ่น 5.6 อีกบุคลิก'),
-    (id: 'gpt-5.5', label: '5.5', hint: 'รุ่นก่อนหน้า ถูกกว่า'),
-    (id: 'gpt-5.4-mini', label: '5.4 mini', hint: 'เร็วและถูกที่สุด'),
+  /// ชื่อรุ่นเป็นวิสามานยนาม ไม่ต้องแปล · คำอธิบายอยู่ใน i18n/enum_labels.dart
+  static const brainChoices = <({String id, String label})>[
+    (id: 'gpt-5.6-sol', label: 'Sol'),
+    (id: 'gpt-5.6-luna', label: 'Luna'),
+    (id: 'gpt-5.6-terra', label: 'Terra'),
+    (id: 'gpt-5.5', label: '5.5'),
+    (id: 'gpt-5.4-mini', label: '5.4 mini'),
   ];
 
   /// เสียงของ gpt-4o-mini-tts ที่เข้ากับบุคลิกมายด์
-  static const voiceChoices = <({String id, String label})>[
-    (id: 'coral', label: 'Coral — นุ่ม อบอุ่น'),
-    (id: 'shimmer', label: 'Shimmer — ใส ฟังชัด'),
-    (id: 'sage', label: 'Sage — สุขุม เป็นทางการ'),
-    (id: 'nova', label: 'Nova — สดใส กระฉับกระเฉง'),
-    (id: 'ballad', label: 'Ballad — ช้า อ่อนโยน'),
+  static const voiceChoices = <String>[
+    'coral',
+    'shimmer',
+    'sage',
+    'nova',
+    'ballad',
   ];
 
   /// โมเดลเสียงที่บัญชีนี้เรียกได้ (ยืนยันจาก GET /v1/models 2026-08-29)
   ///
   /// มีแค่ gpt-4o-mini-tts ที่รับ `instructions` สั่งอารมณ์เสียงได้
   /// ตระกูล tts-1 เก่ากว่าและไม่รับ จึงเสียคำสั่งน้ำเสียงไปเปล่า ๆ
-  static const ttsChoices = <({String id, String label, String hint})>[
-    (
-      id: 'gpt-4o-mini-tts',
-      label: 'gpt-4o-mini-tts',
-      hint: 'สั่งอารมณ์เสียงได้ · สมจริงที่สุด'
-    ),
-    (id: 'tts-1-hd', label: 'tts-1-hd', hint: 'คมกว่า แต่สั่งอารมณ์ไม่ได้'),
-    (id: 'tts-1', label: 'tts-1', hint: 'เร็วและถูกที่สุด · สั่งอารมณ์ไม่ได้'),
-  ];
+  static const ttsChoices = <String>['gpt-4o-mini-tts', 'tts-1-hd', 'tts-1'];
 
   /// โมเดลคุยสด (speech-to-speech) สำหรับตอนรับสาย/โทรออกจริง
   /// ยังไม่ได้ต่อ — ดู docs/telephony.md
-  static const realtimeChoices = <({String id, String label, String hint})>[
-    (id: 'gpt-realtime-2.1', label: 'Realtime 2.1', hint: 'ดีเลย์ต่ำ คุณภาพสูงสุด'),
-    (id: 'gpt-realtime-2.1-mini', label: 'Realtime 2.1 mini', hint: 'ถูกกว่า เร็วกว่า'),
-    (id: 'gpt-realtime', label: 'Realtime', hint: 'รุ่นก่อนหน้า'),
+  static const realtimeChoices = <({String id, String label})>[
+    (id: 'gpt-realtime-2.1', label: 'Realtime 2.1'),
+    (id: 'gpt-realtime-2.1-mini', label: 'Realtime 2.1 mini'),
+    (id: 'gpt-realtime', label: 'Realtime'),
   ];
 
   /// โมเดลที่รับพารามิเตอร์ `instructions` — ตัวอื่นส่งไปก็ไม่มีผล

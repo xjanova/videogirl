@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../i18n/strings.dart';
 import '../theme/tokens.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
@@ -61,15 +62,16 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     final leave = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('ทิ้งที่แก้ไว้?'),
-        content: const Text('ที่พิมพ์ไว้ยังไม่ได้บันทึก ออกแล้วจะหายนะคะ'),
+        title: Text(S.of(context).discardTitle),
+        content: Text(S.of(context).discardBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('พิมพ์ต่อ')),
+              child: Text(S.of(context).keepTyping)),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('ทิ้งเลย', style: TextStyle(color: Color(0xFFE0357A))),
+            child: Text(S.of(context).discard,
+                style: const TextStyle(color: Color(0xFFE0357A))),
           ),
         ],
       ),
@@ -82,14 +84,16 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('คืนค่าตั้งต้น?'),
-        content: const Text('ข้อความที่เขียนไว้จะถูกแทนที่ทั้งหมด'),
+        title: Text(S.of(context).resetTitle),
+        content: Text(S.of(context).resetBody),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false), child: const Text('ยกเลิก')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(S.of(context).cancel)),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('คืนค่า', style: TextStyle(color: Color(0xFFE0357A))),
+            child: Text(S.of(context).reset,
+                style: const TextStyle(color: Color(0xFFE0357A))),
           ),
         ],
       ),
@@ -131,8 +135,9 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                       ),
                       TextButton(
                         onPressed: _reset,
-                        child: const Text('คืนค่าตั้งต้น',
-                            style: TextStyle(fontSize: 12, color: MindColors.ink60)),
+                        child: Text(S.of(context).resetToDefault,
+                            style: const TextStyle(
+                                fontSize: 12, color: MindColors.ink60)),
                       ),
                     ],
                   ),
@@ -160,9 +165,9 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                         keyboardType: TextInputType.multiline,
                         style: const TextStyle(
                             fontSize: 12.5, height: 1.7, color: MindColors.ink),
-                        decoration: const InputDecoration.collapsed(
-                          hintText: 'พิมพ์ที่นี่…',
-                          hintStyle: TextStyle(color: MindColors.ink45),
+                        decoration: InputDecoration.collapsed(
+                          hintText: S.of(context).typeHere,
+                          hintStyle: const TextStyle(color: MindColors.ink45),
                         ),
                         onChanged: (_) => setState(() {}),
                       ),
@@ -189,8 +194,8 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                               offset: const Offset(0, 10)),
                         ],
                       ),
-                      child: const Text('บันทึก',
-                          style: TextStyle(
+                      child: Text(S.of(context).save,
+                          style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: Colors.white)),

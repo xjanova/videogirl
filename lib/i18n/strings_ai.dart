@@ -188,4 +188,59 @@ extension AiStrings on S {
       );
   String get updateRetry =>
       pick('ดาวน์โหลดไม่สำเร็จ ลองใหม่อีกครั้งนะคะ', 'Download failed — please try again');
+
+  // ═══ เพิ่มเติมสำหรับ service ═══════════════════════════
+  String get errCloneNotSet =>
+      pick('ยังไม่ได้ตั้งเซิร์ฟเวอร์เสียงโคลน', 'No voice-clone server configured yet');
+  String errCheckModel(String e) =>
+      pick('เช็คโมเดลไม่ได้ — $e', 'Could not check the model — $e');
+  String errDownloadModel(String e) =>
+      pick('โหลดโมเดลไม่สำเร็จ — $e', 'Model download failed — $e');
+  String errLocalFailed(String e) => pick(
+      'โมเดลในเครื่องทำงานไม่สำเร็จ — $e', 'The on-device model failed — $e');
+  String get errNeedMic =>
+      pick('ต้องอนุญาตให้ใช้ไมโครโฟนก่อน', 'Microphone permission is needed first');
+  String get errNoSample => pick('ยังไม่มีตัวอย่างเสียง', 'No voice sample recorded yet');
+  String get errNoServer =>
+      pick('ยังไม่ได้ตั้งที่อยู่เซิร์ฟเวอร์', 'No server address configured');
+  String get errUploadFailed =>
+      pick('ส่งตัวอย่างเสียงไม่สำเร็จ', 'Could not upload the voice sample');
+  String get errServerEmptyAudio =>
+      pick('เซิร์ฟเวอร์ส่งเสียงเปล่ากลับมา', 'The server returned empty audio');
+  String get errCloneUnreachable =>
+      pick('ต่อเซิร์ฟเวอร์เสียงโคลนไม่ได้', 'Cannot reach the voice-clone server');
+  String get errNoPermission => pick(
+      'ไม่มีสิทธิ์ใช้บริการนี้ ลองล็อกอินใหม่', 'Not allowed — try signing in again');
+  String get errQuotaGone => pick('โควตาหมดแล้ว', 'Quota used up');
+  String get errFileTooBig => pick('ไฟล์เสียงใหญ่เกินไป', 'That audio file is too large');
+  String get errServerDown => pick(
+      'เซิร์ฟเวอร์ขัดข้อง ลองใหม่อีกครั้งนะคะ', 'The server is having trouble — try again');
+
+  // ═══ คำอธิบายที่หาจาก id ═══════════════════════════════
+  String brainModelHint(String id) => switch (id) {
+        'gpt-5.6-sol' => modelSolHint,
+        'gpt-5.6-luna' || 'gpt-5.6-terra' => modelPersonaHint,
+        'gpt-5.5' => modelOlderHint,
+        _ => modelFastestHint,
+      };
+
+  String voiceLabel(String id) => switch (id) {
+        'coral' => voiceCoral,
+        'shimmer' => voiceShimmer,
+        'sage' => voiceSage,
+        'nova' => voiceNova,
+        _ => voiceBallad,
+      };
+
+  String ttsModelHint(String id) => switch (id) {
+        'gpt-4o-mini-tts' => ttsSteerable,
+        'tts-1-hd' => ttsSharper,
+        _ => ttsCheapest,
+      };
+
+  String realtimeHint(String id) => switch (id) {
+        'gpt-realtime-2.1' => realtimeBest,
+        'gpt-realtime-2.1-mini' => realtimeCheap,
+        _ => realtimeOlder,
+      };
 }

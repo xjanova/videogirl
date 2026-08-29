@@ -8,6 +8,7 @@ import 'screens/mail_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/timeline_screen.dart';
 import 'state/mind_state.dart';
+import 'i18n/strings.dart';
 import 'theme/tokens.dart';
 import 'widgets/mind_nav_bar.dart';
 
@@ -30,16 +31,19 @@ class _MindShellState extends State<MindShell> {
   bool _speakerWired = false;
 
   /// เรียงตาม IndexedStack — ห้ามสลับ ไม่งั้นแท็บจะไปเปิดผิดหน้า
-  static const _tabs = <MindNavItem>[
-    MindNavItem(
-        index: 0,
-        label: 'มายด์',
-        icon: Icons.face_retouching_natural_rounded),
-    MindNavItem(index: 1, label: 'เมล', icon: Icons.mail_outline_rounded),
-    MindNavItem(index: 2, label: 'ปฏิทิน', icon: Icons.calendar_today_rounded),
-    MindNavItem(index: 3, label: 'ไทม์ไลน์', icon: Icons.timeline_rounded),
-    MindNavItem(index: 4, label: 'ตั้งค่า', icon: Icons.tune_rounded),
-  ];
+  /// ไอคอนคงที่ ส่วนป้ายมาจากตารางแปลตอนวาด
+  /// เก็บป้ายไว้ใน const list ไม่ได้ เพราะมันเปลี่ยนตามภาษาที่ผู้ใช้เลือก
+  List<MindNavItem> _tabsFor(S s) => [
+        MindNavItem(
+            index: 0,
+            label: s.tabMind,
+            icon: Icons.face_retouching_natural_rounded),
+        MindNavItem(index: 1, label: s.tabMail, icon: Icons.mail_outline_rounded),
+        MindNavItem(
+            index: 2, label: s.tabCalendar, icon: Icons.calendar_today_rounded),
+        MindNavItem(index: 3, label: s.tabTimeline, icon: Icons.timeline_rounded),
+        MindNavItem(index: 4, label: s.tabSettings, icon: Icons.tune_rounded),
+      ];
 
   /// ลำดับที่เห็นบนแถบ — มายด์ย้ายไปกลาง อีกสี่อันคงลำดับสัมพัทธ์เดิมไว้ทุกตัว
   /// (เมล ก่อน ปฏิทิน, ไทม์ไลน์ ก่อน ตั้งค่า) คนที่ใช้อยู่แล้วต้องจำใหม่แค่ที่เดียว
@@ -95,7 +99,7 @@ class _MindShellState extends State<MindShell> {
       bottomNavigationBar: ListenableBuilder(
         listenable: _avatar,
         builder: (context, _) => MindNavBar(
-          items: [for (final i in _order) _tabs[i]],
+          items: [for (final i in _order) _tabsFor(S.of(context))[i]],
           current: _tab,
           centerIndex: 0,
           mode: mode,

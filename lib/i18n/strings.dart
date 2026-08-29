@@ -316,4 +316,121 @@ class S {
         'ข้อความที่เขียนไว้จะถูกแทนที่ทั้งหมด',
         'Everything you wrote will be replaced.',
       );
+
+  // ═══ สวิตช์ความสามารถ ══════════════════════════════════
+  String get featMorningMail => _('สรุปเมลตอนเช้า 08:00', 'Morning inbox summary at 08:00');
+  String get featMorningMailHint =>
+      _('อ่านให้ฟังตอนคุณขึ้นรถได้', 'She can read it aloud on your commute');
+  String get featSendMail => _('ให้เธอส่งเมลเองได้', 'Let her send emails herself');
+  String get featSendMailHint => _(
+        'เฉพาะที่ตอบตามแม่แบบ · เรื่องเงินต้องขออนุมัติเสมอ',
+        'Template replies only · anything about money always needs approval',
+      );
+  String get featAlwaysOn => _('Always-on (ทำงานเบื้องหลัง)', 'Always-on (background)');
+  String get featAlwaysOnHint => _(
+        'ต้องปิด battery optimization ให้แอปนี้',
+        'Battery optimisation must be turned off for this app',
+      );
+  String get featBubbleOverlay => _('ฟองลอยบนหน้าจออื่น', 'Floating bubble over other apps');
+  String get featBubbleOverlayHint => _(
+        'ต้องให้สิทธิ์ Display over other apps',
+        'Needs the "display over other apps" permission',
+      );
+
+  String get somethingWrong => _('มีบางอย่างผิดพลาด', 'Something went wrong');
+  String downloadingPct(int pct, String size) =>
+      _('กำลังโหลด $pct% · $size', 'Downloading $pct% · $size');
+  String etaWithNote(String eta) => _(
+        '$eta · ใช้ไวไฟและอย่าปิดแอประหว่างโหลด',
+        '$eta · use wifi and keep the app open',
+      );
+  String toneFor(String channel) => _('น้ำเสียง — $channel', 'Tone — $channel');
+
+  // ═══ หน้าเมล (ข้อมูลตัวอย่าง) ═══════════════════════════
+  String get mailTitle => _('กล่องเมลเช้านี้', 'Your inbox this morning');
+  String get mailSubtitle =>
+      _('24 ฉบับ · เธอคัดให้เหลือ 3 ที่ต้องตอบ', '24 messages · she narrowed it to 3');
+  String get mail1Title =>
+      _('สยามเทค — ขอต่อรองราคา QT-2609', 'Siamtech — asking to negotiate QT-2609');
+  String get mail1Body => _(
+        'ขอส่วนลด 7% แลกกับสั่งเพิ่มเป็น 500 ชุด · ต้องการคำตอบก่อนศุกร์',
+        'Wants 7% off for a 500-unit order · needs an answer before Friday',
+      );
+  String get mail2Title =>
+      _('คุณนภา — เลื่อนส่งไฟล์อาร์ตเวิร์ก', 'Napa — pushing back the artwork');
+  String get mail2Body => _(
+        'ขอเลื่อนจากศุกร์เป็นจันทร์ เพราะรอไฟล์จากลูกค้า',
+        'Friday to Monday, waiting on files from the client',
+      );
+  String get mailDraftLabel => _('ร่างคำตอบของเธอ', 'Her draft reply');
+  String get mailDraftBody => _(
+        'สวัสดีค่ะคุณนภา\n'
+            'เลื่อนเป็นวันจันทร์ได้ค่ะ แต่รบกวนส่งภายในเช้าวันจันทร์นะคะ '
+            'เพราะทีมต้องรีวิวก่อนส่งโรงพิมพ์บ่ายวันเดียวกัน\n'
+            'ขอบคุณค่ะ',
+        'Hi Napa,\n'
+            'Monday works. Please send it by Monday morning though - '
+            'the team reviews before it goes to print that same afternoon.\n'
+            'Thank you.',
+      );
+  String get mailSendNow => _('ส่งเลย', 'Send it');
+  String get mailEditFirst => _('แก้ก่อน', 'Edit first');
+  String get mail3Title => _('HR — ยืนยันวันลาพักร้อน', 'HR — confirm your leave dates');
+  String get mail3Body => _(
+        'รอกดยืนยัน 12–14 ก.ย. เธอกดให้ได้ถ้าคุณสั่ง',
+        'Waiting on 12–14 Sep. She can confirm if you say so',
+      );
+  String get mailLaterNote1 => _('อีก 21 ฉบับเธอจัดเป็น ', 'She filed the other 21 as ');
+  String get mailLaterNote2 => _('อ่านทีหลัง', 'read later');
+  String get mailLaterNote3 =>
+      _(' — ข่าวสาร 12 · ใบเสร็จ 6 · สแปม 3', ' — 12 newsletters · 6 receipts · 3 spam');
+  String get mailReadAloud => _('ให้เธออ่านสรุปให้ฟัง', 'Have her read the summary aloud');
+
+  // ═══ หน้าปฏิทิน (ข้อมูลตัวอย่าง) ════════════════════════
+  String get calDate => _('พฤหัสบดี 3 ก.ย.', 'Thursday 3 Sep');
+  String get calSubtitle => _(
+        'เธอเช็กปฏิทินคุณ + คุณต้น + คุณนภา แล้ว',
+        'She checked your calendar plus Ton and Napa',
+      );
+  String get calStandup => _('Daily standup', 'Daily standup');
+  String get calClient => _('ลูกค้า สยามเทค', 'Client: Siamtech');
+  String get calProposedBadge => _('เธอเสนอ', 'She suggests');
+  String get calReview => _('รีวิวงานออกแบบ', 'Design review');
+  String get calAddPerson => _('+ เพิ่มคน', '+ Add someone');
+  String calFree(String name) => _('$name ว่าง', '$name is free');
+  String get nameTon => _('คุณต้น', 'Ton');
+  String get nameNapa => _('คุณนภา', 'Napa');
+  String get calNext => _('เธอจะทำต่อ', 'What she will do next');
+  String get calConfirm => _('ยืนยันและส่งคำเชิญ', 'Confirm and send invites');
+  String get calFindAnother => _('หาเวลาอื่น', 'Find another time');
+
+  // ═══ หน้าไทม์ไลน์ (ข้อมูลตัวอย่าง) ══════════════════════
+  String get tlTitle => _('วันนี้เธอทำให้ 14 อย่าง', 'She did 14 things for you today');
+  String get tlCalls => _('รับสาย', 'Calls');
+  String get tlMails => _('ส่งเมล', 'Emails');
+  String get tlMeetings => _('นัด', 'Meetings');
+  String get tlWaiting => _('รอคุณ', 'Waiting on you');
+  String get tl1Title => _('สรุปกล่องเมลเช้า', 'Summarised the morning inbox');
+  String get tl1Detail => _('24 ฉบับ → 3 ที่ต้องตอบ · ร่างคำตอบไว้ 2',
+      '24 messages → 3 need you · 2 replies drafted');
+  String get tl1Action => _('ดูร่าง', 'See drafts');
+  String get tl2Title => _('รับสายแทน — คุณวิชัย', 'Answered for you — Wichai');
+  String get tl2Detail => _('ใบเสนอราคา QT-2609 ขอต่อรอง 7% · จดไว้แล้ว',
+      'Quote QT-2609, asked for 7% off · noted');
+  String get tl2Action => _('ฟังเสียง · อ่านสรุป', 'Listen · read summary');
+  String get tl3Title => _('ส่งเมลตอบคุณนภา', 'Replied to Napa');
+  String get tl3Detail => _('อนุมัติเลื่อนอาร์ตเวิร์กเป็นวันจันทร์เช้า',
+      'Approved moving the artwork to Monday morning');
+  String get tl3Action => _('ย้อนกลับ (เหลือ 23 ชม.)', 'Undo (23h left)');
+  String get tl4Title => _('โทรออก — คุณต้น', 'Called out — Ton');
+  String get tl4Detail => _('เลื่อนรีวิวเป็นพฤหัส 15:00 · เขาตอบตกลง',
+      'Moved the review to Thursday 15:00 · he agreed');
+  String get tl4Action => _('ดูบทสนทนา', 'See transcript');
+  String get tl5Title => _('รอคุณอนุมัติ', 'Waiting on your approval');
+  String get tl5Detail => _('ส่วนลด QT-2609 เกินอำนาจที่ตั้งไว้ (สูงสุด 5%)',
+      'QT-2609 discount is above your limit (5% max)');
+  String get tl5Action => _('ตัดสินใจตอนนี้', 'Decide now');
+  String get tl6Title => _('เตือนกินข้าว', 'Reminded you to eat');
+  String get tl6Detail =>
+      _('เธอปิดแจ้งเตือนงานให้ 45 นาที', 'She muted work alerts for 45 minutes');
 }

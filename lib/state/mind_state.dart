@@ -26,24 +26,8 @@ class ChatMessage {
 
 /// สิ่งที่ผู้ใช้ "ตั้ง" ไว้ในหน้าตั้งค่า — ต่างจาก [MindMode] ที่เป็นโหมดที่มีผลจริง
 /// ตอนนี้ เพราะ [auto] จะแปลงเป็นงาน/ส่วนตัวตามเวลา
-enum PersonaSetting {
-  work('งาน'),
-  love('ส่วนตัว'),
-  auto('อัตโนมัติ');
-
-  const PersonaSetting(this.label);
-  final String label;
-}
-
-/// ระดับการแซว/จีบ 0.0 = ทางการล้วน → 1.0 = หวานจัด
-extension FlirtLevel on double {
-  String get flirtSample {
-    if (this < .2) return 'ประชุมบ่ายสามค่ะ';
-    if (this < .45) return 'ประชุมบ่ายสามนะคะ อย่าลืมเตรียมสไลด์ด้วยค่ะ';
-    if (this < .75) return 'ประชุมบ่ายสามนะคะ… อย่าลืมกินข้าวก่อนด้วยล่ะ';
-    return 'ประชุมบ่ายสามนะคะ… อย่าลืมกินข้าวก่อนด้วยล่ะ เดี๋ยวมายด์งอน';
-  }
-}
+/// ป้ายที่ผู้ใช้เห็นอยู่ใน i18n/enum_labels.dart — enum เก็บแค่ตัวตน
+enum PersonaSetting { work, love, auto }
 
 class MindState extends ChangeNotifier {
   MindState({
@@ -109,6 +93,7 @@ class MindState extends ChangeNotifier {
     _autoAnswer = p.getBool('autoAnswer') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
 
+    _seedConversation();
     _notify();
   }
 
@@ -232,6 +217,13 @@ class MindState extends ChangeNotifier {
 
     _lang = v;
     _save('lang', v.code);
+
+    // ถ้ายังไม่มีใครคุยจริง (ยังเป็นบทตัวอย่างล้วน) ให้สลับภาษาตามไปด้วย
+    // ถ้าคุยไปแล้ว ปล่อยไว้ — ประวัติจริงของผู้ใช้ห้ามถูกเขียนทับ
+    if (_context.isEmpty) {
+      _messages.clear();
+      _seedConversation();
+    }
     _notify();
   }
 
@@ -340,16 +332,25 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
-  String get ringLabel => _ringSeconds == 0 ? 'รับทันที' : 'ดัง $_ringSeconds วินาทีก่อน';
+  String get ringLabel => _ringSeconds == 0
+      ? s.ringImmediate
+      : s.ringDelayNote(_ringSeconds);
 
   // ═══ แชท ═══════════════════════════════════════════════
-  final List<ChatMessage> _messages = [
-    const ChatMessage.her(
-        'อรุณสวัสดิ์ค่ะ เช้านี้มีเมล 24 ฉบับ มายด์คัดให้เหลือ 3 ที่ต้องตอบนะคะ'),
-    const ChatMessage.me('บ่ายนี้ว่างไหม'),
-    const ChatMessage.her(
-        'บ่ายว่างตั้งแต่ 14:00 ค่ะ แต่คุณต้นขอเลื่อนรีวิวมาบ่ายสาม จะให้มายด์โทรไปคุยให้ไหมคะ'),
-  ];
+  /// บทสนทนาตัวอย่างตอนเปิดครั้งแรก
+  ///
+  /// เติมตอน [load] ไม่ใช่ตอนประกาศ เพราะข้อความขึ้นกับภาษาที่ผู้ใช้เคยเลือกไว้
+  /// ซึ่งอ่านได้หลัง SharedPreferences พร้อมเท่านั้น
+  final List<ChatMessage> _messages = [];
+
+  void _seedConversation() {
+    if (_messages.isNotEmpty) return;
+    _messages.addAll([
+      ChatMessage.her(s.seedGreeting),
+      ChatMessage.me(s.seedAsk),
+      ChatMessage.her(s.seedAnswer),
+    ]);
+  }
 
   /// แผงแชทลอยทับอวาตาร์อยู่ ถ้าเก็บยาวกว่านี้จะบังตัวเธอ
   static const _historyLimit = 6;
@@ -423,7 +424,7 @@ class MindState extends ChangeNotifier {
   /// ให้เธอพูดตัวอย่างในหน้าตั้งค่า — ผู้ใช้จะได้ยินผลของเสียงที่เลือกทันที
   /// ไม่ต้องเดาว่าเปลี่ยนแล้วต่างยังไง
   Future<void> previewVoice([VoiceChannel channel = VoiceChannel.chat]) =>
-      _speakIfEnabled(effectiveFlirt.flirtSample, channel: channel);
+      _speakIfEnabled(s.flirtSample(effectiveFlirt), channel: channel);
 
   // ═══ ฟองคำพูดเหนือหัวเธอ ═══════════════════════════════
   //
@@ -532,8 +533,8 @@ class MindState extends ChangeNotifier {
       final utterance = await _speech.synthesize(text, profile: profile);
       if (_disposed) return;
 
-      debugPrint('เสียง: ได้ ${utterance.bytes.length} ไบต์ (${utterance.mime}) '
-          'ส่งเข้าเวที');
+      debugPrint('เสียง: ได้ ${utterance.bytes.length} ไบต์ '
+          '(${utterance.mime}) ส่งเข้าเวที');
       _speaking = true;
       _notify();
       await out(utterance);

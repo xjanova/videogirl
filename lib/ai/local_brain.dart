@@ -10,6 +10,8 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 
+import '../i18n/strings.dart';
+import '../i18n/strings_ai.dart';
 import 'device_capability.dart';
 import 'openai_client.dart';
 
@@ -18,7 +20,7 @@ enum GemmaVariant {
   e2bGpu(
     id: 'gemma-4-e2b-gpu',
     label: 'Gemma 4 E2B (GPU)',
-    hint: 'เร็วที่สุดบนมือถือที่มี GPU ดี · แนะนำ',
+    hint: '',
     file: 'gemma-4-E2B-it-gpu.litertlm',
     repo: 'litert-community/gemma-4-E2B-it-litert-lm',
     bytes: 2008432640,
@@ -27,7 +29,7 @@ enum GemmaVariant {
   e2bCpu(
     id: 'gemma-4-e2b-cpu',
     label: 'Gemma 4 E2B (CPU)',
-    hint: 'ใช้ได้ทุกเครื่อง แต่ช้ากว่า',
+    hint: '',
     file: 'gemma-4-E2B-it.litertlm',
     repo: 'litert-community/gemma-4-E2B-it-litert-lm',
     bytes: 2588147712,
@@ -36,7 +38,7 @@ enum GemmaVariant {
   e4bGpu(
     id: 'gemma-4-e4b-gpu',
     label: 'Gemma 4 E4B (GPU)',
-    hint: 'ฉลาดกว่า แต่กินพื้นที่และแรมมากกว่า',
+    hint: '',
     file: 'gemma-4-E4B-it-gpu.litertlm',
     repo: 'litert-community/gemma-4-E4B-it-litert-lm',
     bytes: 2969059328,
@@ -66,6 +68,11 @@ enum GemmaVariant {
 enum LocalModelStage { unknown, missing, downloading, ready, failed }
 
 class LocalBrain extends ChangeNotifier {
+  LocalBrain({S Function()? strings}) : _s = strings ?? _thai;
+
+  final S Function() _s;
+  static S _thai() => const S(AppLang.th);
+
   GemmaVariant _variant = GemmaVariant.e2bGpu;
   GemmaVariant get variant => _variant;
 
@@ -116,14 +123,14 @@ class LocalBrain extends ChangeNotifier {
   /// "4.3 MB/วิ" — ว่างถ้ายังคำนวณไม่ได้
   String get speedLabel => _bytesPerSecond <= 0
       ? ''
-      : '${(_bytesPerSecond / 1048576).toStringAsFixed(1)} MB/วิ';
+      : _s().gemmaSpeed((_bytesPerSecond / 1048576).toStringAsFixed(1));
 
   /// เวลาที่เหลือโดยประมาณ — ว่างถ้ายังเดาไม่ได้
   String get etaLabel {
     if (_bytesPerSecond <= 0 || _progress >= 100) return '';
     final left = (_variant.bytes - downloadedBytes) ~/ _bytesPerSecond;
-    if (left < 60) return 'เหลืออีก ~$left วิ';
-    return 'เหลืออีก ~${(left / 60).ceil()} นาที';
+    if (left < 60) return _s().gemmaEtaSeconds(left);
+    return _s().gemmaEtaMinutes((left / 60).ceil());
   }
 
   static String _gb(int bytes) => (bytes / 1073741824).toStringAsFixed(1);
@@ -168,7 +175,7 @@ class LocalBrain extends ChangeNotifier {
           .isModelInstalled(_spec(_variant));
       _set(installed ? LocalModelStage.ready : LocalModelStage.missing);
     } on Exception catch (e) {
-      _set(LocalModelStage.failed, error: 'เช็คโมเดลไม่ได้ — $e');
+      _set(LocalModelStage.failed, error: _s().errCheckModel(e.toString()));
     }
   }
 
@@ -194,7 +201,7 @@ class LocalBrain extends ChangeNotifier {
       }
       _set(LocalModelStage.ready);
     } on Exception catch (e) {
-      _set(LocalModelStage.failed, error: 'โหลดโมเดลไม่สำเร็จ — $e');
+      _set(LocalModelStage.failed, error: _s().errDownloadModel(e.toString()));
     }
   }
 
@@ -217,7 +224,7 @@ class LocalBrain extends ChangeNotifier {
     required List<Turn> history,
   }) async {
     if (_stage != LocalModelStage.ready) {
-      throw const OpenAiFailure('ยังไม่ได้โหลดโมเดลลงเครื่อง');
+      throw OpenAiFailure(_s().errModelNotDownloaded);
     }
 
     try {
@@ -226,7 +233,7 @@ class LocalBrain extends ChangeNotifier {
 
       // ส่งเฉพาะข้อความล่าสุดของผู้ใช้ ตัว InferenceChat เก็บประวัติให้เองแล้ว
       final last = history.isEmpty ? '' : history.last.text;
-      if (last.isEmpty) throw const OpenAiFailure('ไม่มีข้อความให้ตอบ');
+      if (last.isEmpty) throw OpenAiFailure(_s().errNothingToAnswer);
 
       await chat.addQuery(Message.text(text: last, isUser: true));
       final res = await chat.generateChatResponse();
@@ -236,13 +243,13 @@ class LocalBrain extends ChangeNotifier {
         _ => '',
       };
       if (text.trim().isEmpty) {
-        throw const OpenAiFailure('โมเดลในเครื่องตอบกลับมาว่าง');
+        throw OpenAiFailure(_s().errLocalEmpty);
       }
       return text.trim();
     } on OpenAiFailure {
       rethrow;
     } on Exception catch (e) {
-      throw OpenAiFailure('โมเดลในเครื่องทำงานไม่สำเร็จ — $e');
+      throw OpenAiFailure(_s().errLocalFailed(e.toString()));
     }
   }
 

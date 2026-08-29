@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import '../i18n/strings.dart';
+import '../i18n/strings_ai.dart';
 import 'openai_config.dart';
 
 /// ข้อผิดพลาดที่เอาไปโชว์ผู้ใช้ได้เลย — ไม่มี stack trace ไม่มีคำว่า Exception
@@ -26,10 +28,17 @@ class OpenAiClient {
     Duration? timeout,
     String? baseUrl,
     String? apiKey,
-  })  : _http = httpClient ?? http.Client(),
+    S Function()? strings,
+  })  : _s = strings ?? _thai,
+        _http = httpClient ?? http.Client(),
         _timeout = timeout ?? const Duration(seconds: 30),
         _baseUrl = baseUrl ?? OpenAiConfig.baseUrl,
         _apiKey = apiKey ?? OpenAiConfig.apiKey;
+
+  /// อ่านภาษา ณ ตอนที่ error เกิดจริง ไม่ใช่ตอนสร้าง client
+  /// เพราะผู้ใช้สลับภาษาได้ระหว่างแอปเปิดอยู่
+  final S Function() _s;
+  static S _thai() => const S(AppLang.th);
 
   final http.Client _http;
   final Duration _timeout;
@@ -58,7 +67,7 @@ class OpenAiClient {
     String? model,
   }) async {
     if (!usable) {
-      throw const OpenAiFailure('ยังไม่ได้ใส่คีย์ OpenAI ตอน build');
+      throw OpenAiFailure(_s().errNoKey);
     }
 
     final body = jsonEncode({
@@ -76,12 +85,12 @@ class OpenAiClient {
     final choices = json['choices'] as List?;
 
     if (choices == null || choices.isEmpty) {
-      throw const OpenAiFailure('โมเดลไม่ได้ตอบอะไรกลับมา');
+      throw OpenAiFailure(_s().errNoReply);
     }
 
     final content = (choices.first as Map)['message']?['content'] as String?;
     if (content == null || content.trim().isEmpty) {
-      throw const OpenAiFailure('โมเดลตอบกลับมาว่าง');
+      throw OpenAiFailure(_s().errEmptyReply);
     }
     return content.trim();
   }
@@ -96,11 +105,11 @@ class OpenAiClient {
     String? model,
   }) async {
     if (!usable) {
-      throw const OpenAiFailure('ยังไม่ได้ใส่คีย์ OpenAI ตอน build');
+      throw OpenAiFailure(_s().errNoKey);
     }
 
     final clean = stripForSpeech(text);
-    if (clean.isEmpty) throw const OpenAiFailure('ไม่มีข้อความให้พูด');
+    if (clean.isEmpty) throw OpenAiFailure(_s().errNothingToSay);
 
     final ttsModel = model ?? OpenAiConfig.ttsModel;
 
@@ -127,7 +136,7 @@ class OpenAiClient {
           .timeout(_timeout);
     } on Exception {
       // ไม่ส่ง exception ดิบขึ้นไป มันมี URL และบางทีมี header ติดไปด้วย
-      throw const OpenAiFailure('ต่อเน็ตไม่ได้ ลองใหม่อีกครั้งนะคะ');
+      throw OpenAiFailure(_s().errOffline);
     }
 
     if (res.statusCode >= 400) {
@@ -140,11 +149,11 @@ class OpenAiClient {
   String _readableError(http.Response res) {
     switch (res.statusCode) {
       case 401:
-        return 'คีย์ OpenAI ใช้ไม่ได้แล้ว';
+        return _s().errBadKey;
       case 429:
-        return 'เรียกถี่เกินไป รอสักครู่นะคะ';
+        return _s().errRateLimited;
       case >= 500:
-        return 'ฝั่ง OpenAI ขัดข้อง ลองใหม่อีกครั้งนะคะ';
+        return _s().errUpstream;
     }
     try {
       final m = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
@@ -153,7 +162,7 @@ class OpenAiClient {
     } on Exception {
       // ตอบกลับไม่ใช่ JSON — ตกไปใช้ข้อความกลางด้านล่าง
     }
-    return 'เรียก OpenAI ไม่สำเร็จ (${res.statusCode})';
+    return _s().errRequestFailed(res.statusCode);
   }
 
   void close() => _http.close();

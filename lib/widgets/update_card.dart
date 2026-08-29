@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../i18n/strings.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../update/updater.dart';
@@ -45,12 +46,12 @@ class _UpdateCardState extends State<UpdateCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('อัปเดตแอป',
+          Text(S.of(context).sectionUpdate,
               style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _status(up)),
+              Expanded(child: _status(up, S.of(context))),
               if (up.stage == UpdateStage.checking)
                 const SizedBox(
                   width: 16,
@@ -61,7 +62,7 @@ class _UpdateCardState extends State<UpdateCard> {
                   up.stage != UpdateStage.verifying)
                 GestureDetector(
                   onTap: up.check,
-                  child: Text('เช็คใหม่',
+                  child: Text(S.of(context).updateRecheck,
                       style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
@@ -84,8 +85,8 @@ class _UpdateCardState extends State<UpdateCard> {
             const SizedBox(height: 6),
             Text(
               up.stage == UpdateStage.verifying
-                  ? 'กำลังตรวจว่าไฟล์ตรงกับที่ประกาศไว้…'
-                  : 'ดาวน์โหลดแล้ว ${(up.progress * 100).round()}%',
+                  ? S.of(context).updateVerifying
+                  : S.of(context).updateProgress((up.progress * 100).round()),
               style: const TextStyle(fontSize: 10.5, color: MindColors.ink55),
             ),
           ],
@@ -108,7 +109,7 @@ class _UpdateCardState extends State<UpdateCard> {
                         offset: const Offset(0, 8)),
                   ],
                 ),
-                child: Text('ดาวน์โหลดและติดตั้ง · ${up.pending!.sizeLabel}',
+                child: Text(S.of(context).updateInstall(up.pending!.sizeLabel),
                     style: const TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
@@ -127,13 +128,13 @@ class _UpdateCardState extends State<UpdateCard> {
     );
   }
 
-  Widget _status(Updater up) {
+  Widget _status(Updater up, S t) {
     final current = up.currentVersion.isEmpty ? '—' : up.currentVersion;
     final text = switch (up.stage) {
-      UpdateStage.checking => 'กำลังเช็ครุ่นใหม่…',
-      UpdateStage.available => 'มีรุ่นใหม่ ${up.pending?.version}',
-      UpdateStage.ready => 'พร้อมติดตั้งแล้ว',
-      _ => 'รุ่นปัจจุบัน $current — ใหม่ล่าสุดแล้ว',
+      UpdateStage.checking => t.updateChecking,
+      UpdateStage.available => t.updateAvailable('${up.pending?.version}'),
+      UpdateStage.ready => t.updateReady,
+      _ => t.updateCurrent(current),
     };
 
     return Column(
@@ -142,8 +143,8 @@ class _UpdateCardState extends State<UpdateCard> {
       children: [
         Text(text,
             style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-        Text('อ่านจาก GitHub Releases · ตรวจ SHA-256 ก่อนติดตั้งทุกครั้ง',
-            style: TextStyle(fontSize: 10.5, color: MindColors.ink55)),
+        Text(t.updateSource,
+            style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
       ],
     );
   }

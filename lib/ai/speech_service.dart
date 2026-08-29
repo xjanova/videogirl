@@ -6,28 +6,22 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../i18n/strings.dart';
+import '../i18n/strings_ai.dart';
 import 'openai_client.dart';
 import 'voice_clone.dart';
 import 'voice_profile.dart';
 
 /// เครื่องสังเคราะห์เสียงที่ให้เลือกได้
+/// ป้ายที่ผู้ใช้เห็นอยู่ใน i18n/enum_labels.dart — enum เก็บแค่ตัวตน
+///
+/// `clone` เสิร์ฟจากเซิร์ฟเวอร์โคลนเสียง ซึ่งยุคนี้ (F5-TTS, GPT-SoVITS,
+/// openedai-speech, Kokoro-FastAPI ฯลฯ) ส่วนใหญ่เปิด endpoint เลียนแบบ
+/// OpenAI ที่ `/v1/audio/speech` จึงใช้ client ตัวเดิมได้ เปลี่ยนแค่ปลายทาง
 enum TtsEngine {
-  /// OpenAI gpt-4o-mini-tts — สมจริงที่สุด สั่งโทนเสียงได้ แต่เสียเงินต่อครั้ง
-  openai('OpenAI', 'สมจริงที่สุด สั่งอารมณ์เสียงได้ · มีค่าใช้จ่าย'),
-
-  /// เครื่องเสียงของ Android เอง — ฟรี ใช้ได้แม้ไม่มีเน็ต แต่เสียงหุ่นยนต์กว่า
-  device('เครื่อง Android', 'ฟรี ใช้ออฟไลน์ได้ · เสียงหุ่นยนต์กว่า'),
-
-  /// เสียงที่โคลนไว้เอง เสิร์ฟจากคอมที่บ้าน
-  ///
-  /// เซิร์ฟเวอร์โคลนเสียงยุคนี้ (F5-TTS, GPT-SoVITS, openedai-speech,
-  /// Kokoro-FastAPI ฯลฯ) ส่วนใหญ่เปิด endpoint เลียนแบบ OpenAI ที่
-  /// `/v1/audio/speech` จึงใช้ client ตัวเดิมได้เลย เปลี่ยนแค่ปลายทาง
-  /// แล้วใช้ชื่อเสียงที่โคลนไว้เป็นค่า `voice`
-  clone('เสียงโคลนของเรา', 'เสียงเราเอง เสิร์ฟจากคอมที่บ้าน · ฟรี · ไม่ออกนอกบ้าน');
-
-  const TtsEngine(this.label, this.hint);
-  final String label, hint;
+  openai,
+  device,
+  clone;
 
   /// ต้องมีคีย์ OpenAI ไหม
   bool get needsOpenAiKey => this == TtsEngine.openai;
@@ -42,9 +36,16 @@ typedef Utterance = ({Uint8List bytes, String mime});
 /// ให้ lipsync.js อ่านคลื่นได้ ถ้าปล่อยให้ flutter_tts เล่นผ่านระบบเสียง Android
 /// เสียงจะดังแต่ปากจะนิ่งสนิท เพราะ analyser ไม่เห็นสัญญาณนั้นเลย
 class SpeechService {
-  SpeechService({OpenAiClient? openai, FlutterTts? deviceTts})
-      : _openai = openai ?? OpenAiClient(),
+  SpeechService({
+    OpenAiClient? openai,
+    FlutterTts? deviceTts,
+    S Function()? strings,
+  })  : _s = strings ?? _thai,
+        _openai = openai ?? OpenAiClient(strings: strings),
         _injectedTts = deviceTts;
+
+  final S Function() _s;
+  static S _thai() => const S(AppLang.th);
 
   final OpenAiClient _openai;
   final FlutterTts? _injectedTts;
@@ -63,7 +64,7 @@ class SpeechService {
   /// สังเคราะห์เสียงตามโปรไฟล์ของช่องทางนั้น ๆ
   Future<Utterance> synthesize(String text, {required VoiceProfile profile}) async {
     final clean = OpenAiClient.stripForSpeech(text);
-    if (clean.isEmpty) throw const OpenAiFailure('ไม่มีข้อความให้พูด');
+    if (clean.isEmpty) throw OpenAiFailure(_s().errNothingToSay);
 
     return switch (profile.engine) {
       TtsEngine.openai => (
@@ -91,7 +92,7 @@ class SpeechService {
   VoiceCloneService _requireClone() {
     final c = cloneService;
     if (c == null || !c.configured) {
-      throw const OpenAiFailure('ยังไม่ได้ตั้งเซิร์ฟเวอร์เสียงโคลน');
+      throw OpenAiFailure(_s().errCloneNotSet);
     }
     return c;
   }
@@ -116,12 +117,12 @@ class SpeechService {
 
     final result = await _tts.synthesizeToFile(text, path, true);
     if (result != 1) {
-      throw const OpenAiFailure('เครื่องนี้สังเคราะห์เสียงไม่สำเร็จ');
+      throw OpenAiFailure(_s().errTtsFailed);
     }
 
     final file = File(path);
     if (!await file.exists()) {
-      throw const OpenAiFailure('เครื่องนี้ไม่รองรับการบันทึกเสียงเป็นไฟล์');
+      throw OpenAiFailure(_s().errTtsNoFile);
     }
 
     final bytes = await file.readAsBytes();
@@ -129,7 +130,7 @@ class SpeechService {
     unawaited(file.delete().catchError((_) => file));
 
     if (bytes.isEmpty) {
-      throw const OpenAiFailure('ไฟล์เสียงที่ได้ว่างเปล่า');
+      throw OpenAiFailure(_s().errTtsEmpty);
     }
     return (bytes: bytes, mime: 'audio/wav');
   }

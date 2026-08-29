@@ -17,6 +17,9 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../i18n/strings.dart';
+import '../i18n/strings_ai.dart';
+
 const _repo = 'xjanova/videogirl';
 const _releaseApi = 'https://api.github.com/repos/$_repo/releases/latest';
 
@@ -50,7 +53,12 @@ class UpdateInfo {
 enum UpdateStage { idle, checking, available, downloading, verifying, ready, failed }
 
 class Updater extends ChangeNotifier {
-  Updater({http.Client? httpClient}) : _http = httpClient ?? http.Client();
+  Updater({http.Client? httpClient, S Function()? strings})
+      : _s = strings ?? _thai,
+        _http = httpClient ?? http.Client();
+
+  final S Function() _s;
+  static S _thai() => const S(AppLang.th);
 
   final http.Client _http;
   bool _disposed = false;
@@ -94,7 +102,7 @@ class Updater extends ChangeNotifier {
         return null; // ยังไม่เคยออก release เลย ไม่ใช่ error
       }
       if (res.statusCode >= 400) {
-        _set(UpdateStage.failed, error: 'เช็ครุ่นใหม่ไม่ได้ (${res.statusCode})');
+        _set(UpdateStage.failed, error: _s().updateCheckFailed(res.statusCode));
         return null;
       }
 
@@ -116,7 +124,7 @@ class Updater extends ChangeNotifier {
             orElse: () => <String, dynamic>{},
           );
       if (apk.isEmpty) {
-        _set(UpdateStage.failed, error: 'release นี้ไม่มีไฟล์ APK แนบมา');
+        _set(UpdateStage.failed, error: _s().updateNoApk);
         return null;
       }
 
@@ -133,7 +141,7 @@ class Updater extends ChangeNotifier {
       _set(UpdateStage.available);
       return _pending;
     } on Exception {
-      _set(UpdateStage.failed, error: 'ต่อ GitHub ไม่ได้');
+      _set(UpdateStage.failed, error: _s().updateNoGithub);
       return null;
     }
   }
@@ -178,7 +186,7 @@ class Updater extends ChangeNotifier {
       final req = http.Request('GET', Uri.parse(info.apkUrl));
       final res = await _http.send(req).timeout(const Duration(seconds: 60));
       if (res.statusCode >= 400) {
-        _set(UpdateStage.failed, error: 'ดาวน์โหลดไม่สำเร็จ (${res.statusCode})');
+        _set(UpdateStage.failed, error: _s().updateDownloadFailed(res.statusCode));
         return false;
       }
 
@@ -201,8 +209,7 @@ class Updater extends ChangeNotifier {
 
       if (info.sha256 == null) {
         await file.delete();
-        _set(UpdateStage.failed,
-            error: 'release นี้ไม่มี $_sumsAsset จึงตรวจไฟล์ไม่ได้ ยกเลิกเพื่อความปลอดภัย');
+        _set(UpdateStage.failed, error: _s().updateNoHash(_sumsAsset));
         return false;
       }
 
@@ -210,7 +217,7 @@ class Updater extends ChangeNotifier {
       final actual = await _hashFile(file);
       if (actual != info.sha256) {
         await file.delete();
-        _set(UpdateStage.failed, error: 'ไฟล์ที่โหลดมาไม่ตรงกับที่ประกาศไว้ ยกเลิกแล้ว');
+        _set(UpdateStage.failed, error: _s().updateHashMismatch);
         return false;
       }
 
@@ -218,13 +225,12 @@ class Updater extends ChangeNotifier {
       final opened = await OpenFilex.open(file.path,
           type: 'application/vnd.android.package-archive');
       if (opened.type != ResultType.done) {
-        _set(UpdateStage.failed,
-            error: 'เปิดตัวติดตั้งไม่ได้ — ต้องอนุญาต "ติดตั้งแอปที่ไม่รู้จัก" ให้แอปนี้ก่อน');
+        _set(UpdateStage.failed, error: _s().updateInstallerBlocked);
         return false;
       }
       return true;
     } on Exception {
-      _set(UpdateStage.failed, error: 'ดาวน์โหลดไม่สำเร็จ ลองใหม่อีกครั้งนะคะ');
+      _set(UpdateStage.failed, error: _s().updateRetry);
       return false;
     }
   }

@@ -2,32 +2,11 @@
 ///
 /// สามทางนี้แลกกันคนละแบบจริง ๆ ไม่ใช่แค่ชื่อต่างกัน:
 /// ฉลาด ↔ เป็นส่วนตัว ↔ ไม่ต้องมีเน็ต เลือกได้อย่างมากสองในสาม
+/// ป้ายที่ผู้ใช้เห็นอยู่ใน i18n/enum_labels.dart — enum เก็บแค่ตัวตน
 enum BrainProvider {
-  openai(
-    'OpenAI',
-    'ฉลาดที่สุด ตอบไทยเป็นธรรมชาติที่สุด',
-    'ข้อความทุกคำถูกส่งออกอินเทอร์เน็ต · ต้องมีเน็ต · มีค่าใช้จ่ายต่อครั้ง',
-  ),
-  homeServer(
-    'เซิร์ฟเวอร์ในบ้าน',
-    'Ollama / LM Studio / llama.cpp บนคอมที่บ้าน',
-    'ข้อมูลไม่ออกนอกบ้าน · ฟรี · แต่ต้องอยู่วงไวไฟเดียวกับคอม และคอมต้องเปิด',
-  ),
-  onDevice(
-    'ในเครื่อง',
-    'Gemma 4 รันบนมือถือเลย',
-    'ออฟไลน์จริง ไม่ต้องมีเน็ตเลย · ฟรี · แต่ต้องโหลดโมเดล 2–3 GB และตอบช้ากว่า',
-  );
-
-  const BrainProvider(this.label, this.summary, this.tradeoff);
-
-  final String label;
-
-  /// จุดเด่นสั้น ๆ
-  final String summary;
-
-  /// สิ่งที่ต้องแลก — เขียนให้ตรงไปตรงมา ผู้ใช้ควรรู้ก่อนเลือก
-  final String tradeoff;
+  openai,
+  homeServer,
+  onDevice;
 
   bool get needsInternet => this != BrainProvider.onDevice;
 
@@ -43,7 +22,6 @@ abstract final class HomeServerDefaults {
 
   static const model = 'gemma4:latest';
 
-  /// เขียนเป็นคำแนะนำในหน้าตั้งค่า
-  static const hint = 'ใส่ IP ของคอมที่รัน Ollama เช่น http://192.168.1.100:11434/v1\n'
-      'บนคอมต้องตั้ง OLLAMA_HOST=0.0.0.0 ก่อน ไม่งั้นมันรับเฉพาะ localhost';
+
+
 }

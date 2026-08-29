@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../avatar/avatar_view.dart';
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
+import '../i18n/enum_labels.dart';
+import '../i18n/strings.dart';
 import '../theme/tokens.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
@@ -86,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           Text('MIND', style: mindMono(size: 11, weight: FontWeight.w600, color: mode.accent, letterSpacing: .16)),
           Expanded(
             child: Text(
-              mode.statusLine,
+              mode.statusOf(S.of(context)),
               style: const TextStyle(fontSize: 11, color: MindColors.ink55),
               overflow: TextOverflow.ellipsis,
             ),
@@ -207,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final label in mode.chips)
+              for (final label in mode.chipsOf(S.of(context)))
                 GlassChip(label: label, onTap: () => state.send(label)),
             ],
           ),
@@ -288,7 +290,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               style: const TextStyle(fontSize: 12.5, color: MindColors.ink),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: 'พิมพ์ หรือกดไมค์…',
+                hintText: S.of(context).composerHint,
                 hintStyle: const TextStyle(fontSize: 12.5, color: MindColors.ink45),
                 filled: true,
                 fillColor: MindColors.glass80,

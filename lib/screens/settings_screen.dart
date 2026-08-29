@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../ai/brain_provider.dart';
+import '../i18n/enum_labels.dart';
 import '../i18n/strings.dart';
+import '../i18n/strings_ai.dart';
 import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
 import '../ai/openai_config.dart';
@@ -25,6 +27,25 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
+/// ความสามารถที่เปิด/ปิดได้ — enum เก็บตัวตน ป้ายมาจากตารางแปล
+enum _Feature { morningMail, sendMail, alwaysOn, bubbleOverlay }
+
+extension _FeatureLabels on _Feature {
+  String labelOf(S s) => switch (this) {
+        _Feature.morningMail => s.featMorningMail,
+        _Feature.sendMail => s.featSendMail,
+        _Feature.alwaysOn => s.featAlwaysOn,
+        _Feature.bubbleOverlay => s.featBubbleOverlay,
+      };
+
+  String hintOf(S s) => switch (this) {
+        _Feature.morningMail => s.featMorningMailHint,
+        _Feature.sendMail => s.featSendMailHint,
+        _Feature.alwaysOn => s.featAlwaysOnHint,
+        _Feature.bubbleOverlay => s.featBubbleOverlayHint,
+      };
+}
+
 class _SettingsScreenState extends State<SettingsScreen> {
   /// ช่องทางเสียงที่กำลังตั้งค่าอยู่ในการ์ด "เสียงพูด"
   VoiceChannel _voiceTab = VoiceChannel.chat;
@@ -32,24 +53,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // สวิตช์ที่ยังไม่มีระบบหลังบ้านรองรับ เก็บไว้ในหน่วยความจำก่อน
   // TODO(permissions): ตัวที่ต้องขอสิทธิ์ Android ต้องผูกกับสถานะสิทธิ์จริง
   // ไม่ใช่ค่าที่ผู้ใช้กดเอง ไม่งั้นเปิดไว้แต่ระบบไม่ให้ = โกหกผู้ใช้
-  final _switches = <String, bool>{
-    'สรุปเมลตอนเช้า 08:00': true,
-    'ให้เธอส่งเมลเองได้': false,
-    'Always-on (ทำงานเบื้องหลัง)': true,
-    'ฟองลอยบนหน้าจออื่น': true,
+  final _switches = <_Feature, bool>{
+    _Feature.morningMail: true,
+    _Feature.sendMail: false,
+    _Feature.alwaysOn: true,
+    _Feature.bubbleOverlay: true,
   };
 
-  static const _hints = <String, String>{
-    'สรุปเมลตอนเช้า 08:00': 'อ่านให้ฟังตอนคุณขึ้นรถได้',
-    'ให้เธอส่งเมลเองได้': 'เฉพาะที่ตอบตามแม่แบบ · เรื่องเงินต้องขออนุมัติเสมอ',
-    'Always-on (ทำงานเบื้องหลัง)': 'ต้องปิด battery optimization ให้แอปนี้',
-    'ฟองลอยบนหน้าจออื่น': 'ต้องให้สิทธิ์ Display over other apps',
-  };
+
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<MindState>();
     final mode = state.mode;
+    final t = S.of(context);
 
     return LiquidBackground(
       gradient: MindGradients.settings,
@@ -58,12 +75,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
           children: [
-            const Padding(
-              padding: EdgeInsets.only(left: 2, bottom: 14),
-              child: Text('บุคลิกและเสียง',
-                  style: TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -.2)),
+            Padding(
+              padding: const EdgeInsets.only(left: 2, bottom: 14),
+              child: Text(t.settingsTitle,
+                  style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -.2)),
             ),
+            _languageCard(state, mode, t),
+            const SizedBox(height: 11),
             if (!OpenAiConfig.configured) _noKeyBanner(),
             _modeCard(state, mode),
             const SizedBox(height: 11),
@@ -78,13 +99,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _longTextCard(
               state: state,
               mode: mode,
-              title: 'ข้อมูลเกี่ยวกับเรา',
-              hint: 'สิ่งที่เธอต้องรู้เพื่อทำงานแทนเราได้ ยิ่งละเอียดยิ่งตอบตรง',
+              title: t.ownerProfileTitle,
+              hint: t.ownerProfileHint,
               value: state.ownerProfile,
-              editorHint:
-                  'เขียนเป็นบรรทัด ๆ ก็ได้ เช่น ชื่อเรียก งานที่ทำ เวลาทำงาน คนที่ติดต่อบ่อย '
-                  'เรื่องที่ให้ตัดสินใจแทนได้ และเรื่องที่ต้องถามก่อนเสมอ '
-                  'ข้อความนี้ถูกส่งเข้าโมเดลทุกครั้งที่คุย',
+              editorHint: t.ownerProfileEditorHint,
               onSave: state.setOwnerProfile,
               onReset: () => MindPersona.defaultOwnerProfile(state.lang),
             ),
@@ -92,12 +110,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _longTextCard(
               state: state,
               mode: mode,
-              title: 'ขอบเขตการตอบ',
-              hint: 'เธอทำอะไรเองได้ · ต้องถามก่อน · ห้ามเด็ดขาด',
+              title: t.boundariesTitle,
+              hint: t.boundariesHint,
               value: state.boundaries,
-              editorHint:
-                  'ค่าตั้งต้นเขียนแบบ "ห้ามไว้ก่อน" คือถ้าไม่ได้อนุญาตชัดเจน เธอจะถามก่อนเสมอ '
-                  'ปลอดภัยกว่าการเขียนแค่รายการสิ่งที่ห้าม เพราะเรานึกไม่ออกทุกกรณี',
+              editorHint: t.boundariesEditorHint,
               onSave: state.setBoundaries,
               onReset: () => MindPersona.defaultBoundaries(state.lang),
             ),
@@ -121,15 +137,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         fill: const Color(0x33FFAB3D),
         border: const Color(0x66FFAB3D),
         padding: const EdgeInsets.all(13),
-        child: const Row(
+        child: Row(
           spacing: 10,
           children: [
-            Icon(Icons.info_outline_rounded, size: 18, color: Color(0xFFB46A00)),
+            const Icon(Icons.info_outline_rounded,
+                size: 18, color: Color(0xFFB46A00)),
             Expanded(
               child: Text(
-                'build นี้ไม่มีคีย์ OpenAI — เธอจะตอบด้วยประโยคสำเร็จรูป\n'
-                'ส่งคีย์ตอน build ด้วย --dart-define=OPENAI_API_KEY=...',
-                style: TextStyle(fontSize: 11, height: 1.6, color: MindColors.ink75),
+                S.of(context).noKeyBanner,
+                style: const TextStyle(
+                    fontSize: 11, height: 1.6, color: MindColors.ink75),
               ),
             ),
           ],
@@ -138,11 +155,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // ── ภาษา ────────────────────────────────────────────────
+  Widget _languageCard(MindState state, MindMode mode, S t) {
+    return _card(
+      mode: mode,
+      label: t.language,
+      child: Row(
+        spacing: 7,
+        children: [
+          for (final l in AppLang.values)
+            Expanded(
+              child: _segment(
+                // ชื่อภาษาเขียนด้วยภาษาของตัวเองเสมอ ผู้ใช้ต้องอ่านออก
+                // ไม่ว่าตอนนี้แอปจะตั้งภาษาอะไรอยู่ ไม่งั้นคนที่เผลอตั้งผิด
+                // จะหาทางกลับไม่เจอ
+                text: l.nativeName,
+                selected: state.lang == l,
+                mode: mode,
+                onTap: () => state.setLang(l),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ── โหมด ────────────────────────────────────────────────
   Widget _modeCard(MindState state, MindMode mode) {
     return _card(
       mode: mode,
-      label: 'โหมด',
+      label: S.of(context).sectionMode,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 10,
@@ -153,7 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               for (final p in PersonaSetting.values)
                 Expanded(
                   child: _segment(
-                    text: p.label,
+                    text: p.labelOf(S.of(context)),
                     selected: state.persona == p,
                     mode: mode,
                     onTap: () => state.setPersona(p),
@@ -161,12 +203,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
             ],
           ),
-          const Text(
-            'อัตโนมัติ = ในเวลางานเธอเป็นเลขาฯ หลังสองทุ่มและวันหยุดเธอเป็นตัวเอง',
-            style: TextStyle(fontSize: 11, height: 1.6, color: MindColors.ink55),
+          Text(
+            S.of(context).autoModeExplained,
+            style: const TextStyle(
+                fontSize: 11, height: 1.6, color: MindColors.ink55),
           ),
           if (state.persona == PersonaSetting.auto)
-            Text('ตอนนี้กำลังอยู่โหมด${mode.label}',
+            Text(S.of(context).nowInMode(mode.labelOf(S.of(context))),
                 style: TextStyle(
                     fontSize: 11, fontWeight: FontWeight.w600, color: mode.accent)),
         ],
@@ -178,7 +221,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _flirtCard(MindState state, MindMode mode) {
     return _card(
       mode: mode,
-      label: 'ระดับการแซว / จีบ',
+      label: S.of(context).flirtTitle,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -193,19 +236,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             child: Slider(value: state.flirt, onChanged: state.setFlirt),
           ),
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('ทางการล้วน',
-                  style: TextStyle(fontSize: 10.5, color: MindColors.ink50)),
-              Text('หวานจัด', style: TextStyle(fontSize: 10.5, color: MindColors.ink50)),
+              Text(S.of(context).flirtLow,
+                  style: const TextStyle(fontSize: 10.5, color: MindColors.ink50)),
+              Text(S.of(context).flirtHigh,
+                  style: const TextStyle(fontSize: 10.5, color: MindColors.ink50)),
             ],
           ),
           const SizedBox(height: 12),
-          _quote('“${state.effectiveFlirt.flirtSample}”'),
+          _quote('“${S.of(context).flirtSample(state.effectiveFlirt)}”'),
           const SizedBox(height: 7),
-          const Text('ตัวอย่างน้ำเสียงที่ระดับนี้ · ในโหมดงานจะลดลงอัตโนมัติ',
-              style: TextStyle(fontSize: 10.5, color: MindColors.ink50)),
+          Text(S.of(context).flirtNote,
+              style: const TextStyle(fontSize: 10.5, color: MindColors.ink50)),
         ],
       ),
     );
@@ -307,7 +351,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _brainCard(MindState state, MindMode mode) {
     return _card(
       mode: mode,
-      label: 'สมองของเธอ',
+      label: S.of(context).sectionBrain,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -315,8 +359,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 7),
               child: _choiceRow(
-                title: b.label,
-                subtitle: b.summary,
+                title: b.labelOf(S.of(context)),
+                subtitle: b.summaryOf(S.of(context)),
                 selected: state.brain == b,
                 mode: mode,
                 onTap: () => state.setBrain(b),
@@ -345,7 +389,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Expanded(
                   child: Text(
-                    state.brain.tradeoff,
+                    state.brain.tradeoffOf(S.of(context)),
                     style: const TextStyle(
                         fontSize: 10.5, height: 1.6, color: MindColors.ink75),
                   ),
@@ -355,7 +399,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           if (state.brain == BrainProvider.openai) ...[
             const SizedBox(height: 12),
-            Text('โมเดล',
+            Text(S.of(context).sectionBrain,
                 style: mindMono(
                     size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
             const SizedBox(height: 7),
@@ -364,7 +408,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.only(bottom: 7),
                 child: _choiceRow(
                   title: m.label,
-                  subtitle: m.hint,
+                  subtitle: S.of(context).brainModelHint(m.id),
                   trailing: m.id,
                   selected: state.brainModel == m.id,
                   mode: mode,
@@ -375,14 +419,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (state.brain == BrainProvider.homeServer) ...[
             const SizedBox(height: 12),
             _linkRow(
-              title: 'ที่อยู่เซิร์ฟเวอร์',
+              title: S.of(context).homeServerAddress,
               value: state.homeServerUrl,
               mode: mode,
               onTap: () => _editText(
                 state: state,
                 mode: mode,
-                title: 'ที่อยู่เซิร์ฟเวอร์ในบ้าน',
-                hint: HomeServerDefaults.hint,
+                title: S.of(context).homeServerAddress,
+                hint: S.of(context).homeServerHint,
                 value: state.homeServerUrl,
                 onSave: state.setHomeServerUrl,
                 onReset: () => HomeServerDefaults.baseUrl,
@@ -390,15 +434,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 7),
             _linkRow(
-              title: 'ชื่อโมเดลบนเซิร์ฟเวอร์',
+              title: S.of(context).homeServerModel,
               value: state.homeServerModel,
               mode: mode,
               onTap: () => _editText(
                 state: state,
                 mode: mode,
-                title: 'ชื่อโมเดล',
-                hint: 'ชื่อที่เซิร์ฟเวอร์รู้จัก เช่น gemma4:latest '
-                    'ดูรายชื่อได้ด้วยคำสั่ง ollama list บนคอม',
+                title: S.of(context).homeServerModel,
+                hint: S.of(context).homeServerModelHint,
                 value: state.homeServerModel,
                 onSave: state.setHomeServerModel,
                 onReset: () => HomeServerDefaults.model,
@@ -424,7 +467,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('รุ่นที่ใช้',
+            Text(S.of(context).gemmaVariant,
                 style: mindMono(
                     size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
             const SizedBox(height: 7),
@@ -433,7 +476,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.only(bottom: 7),
                 child: _choiceRow(
                   title: v.label,
-                  subtitle: v.hint,
+                  subtitle: v.hintOf(S.of(context)),
                   trailing: v.sizeLabel,
                   selected: lb.variant == v,
                   mode: mode,
@@ -447,14 +490,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     const Icon(Icons.check_circle_rounded,
                         size: 16, color: Color(0xFF00A894)),
-                    const Expanded(
-                      child: Text('โหลดลงเครื่องแล้ว พร้อมใช้แบบออฟไลน์',
-                          style: TextStyle(
+                    Expanded(
+                      child: Text(S.of(context).gemmaReady,
+                          style: const TextStyle(
                               fontSize: 11, color: MindColors.ink75)),
                     ),
                     GestureDetector(
                       onTap: lb.remove,
-                      child: const Text('ลบออก',
+                      child: Text(S.of(context).gemmaRemove,
                           style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
@@ -476,7 +519,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'กำลังโหลด ${lb.progress}% · ${lb.sizeProgressLabel}'
+                      '${S.of(context).downloadingPct(lb.progress, lb.sizeProgressLabel)}'
                       '${lb.speedLabel.isEmpty ? '' : ' · ${lb.speedLabel}'}',
                       style: const TextStyle(
                           fontSize: 10.5,
@@ -486,15 +529,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 3),
                     Text(
                       lb.etaLabel.isEmpty
-                          ? 'ใช้ไวไฟและอย่าปิดแอประหว่างโหลด'
-                          : '${lb.etaLabel} · ใช้ไวไฟและอย่าปิดแอประหว่างโหลด',
+                          ? S.of(context).gemmaKeepOpen
+                          : S.of(context).etaWithNote(lb.etaLabel),
                       style: const TextStyle(
                           fontSize: 10.5, color: MindColors.ink55),
                     ),
                   ],
                 ),
               LocalModelStage.failed => Text(
-                  lb.error ?? 'มีบางอย่างผิดพลาด',
+                  lb.error ?? S.of(context).somethingWrong,
                   style: const TextStyle(
                       fontSize: 11, height: 1.5, color: Color(0xFFB46A00)),
                 ),
@@ -514,7 +557,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                     child: Text(
-                      'โหลดโมเดลลงเครื่อง · ${lb.variant.sizeLabel}',
+                      S.of(context).gemmaDownload(lb.variant.sizeLabel),
                       style: const TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
@@ -538,15 +581,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return _card(
       mode: mode,
-      label: 'เสียงพูด',
+      label: S.of(context).sectionVoice,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text('ให้เธอพูดออกเสียง',
-                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+              Expanded(
+                child: Text(S.of(context).voiceEnabled,
+                    style: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w600)),
               ),
               _toggle(
                 on: state.voiceEnabled,
@@ -557,8 +601,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           if (!state.voiceEnabled) ...[
             const SizedBox(height: 6),
-            const Text('ปิดอยู่ — เธอจะตอบเป็นข้อความอย่างเดียว',
-                style: TextStyle(fontSize: 10.5, color: MindColors.ink55)),
+            Text(S.of(context).voiceDisabledNote,
+                style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
           ] else ...[
             const SizedBox(height: 14),
 
@@ -571,7 +615,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 for (final c in VoiceChannel.values)
                   Expanded(
                     child: _segment(
-                      text: c.label,
+                      text: c.labelOf(S.of(context)),
                       selected: channel == c,
                       mode: mode,
                       onTap: () => setState(() => _voiceTab = c),
@@ -580,11 +624,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            Text(channel.hint,
+            Text(channel.hintOf(S.of(context)),
                 style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
 
             const SizedBox(height: 14),
-            Text('เครื่องเสียง',
+            Text(S.of(context).voiceEngine,
                 style: mindMono(
                     size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
             const SizedBox(height: 7),
@@ -594,7 +638,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 for (final e in TtsEngine.values)
                   Expanded(
                     child: _segment(
-                      text: e.label,
+                      text: e.labelOf(S.of(context)),
                       selected: profile.engine == e,
                       mode: mode,
                       onTap: () =>
@@ -604,12 +648,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            Text(profile.engine.hint,
+            Text(profile.engine.hintOf(S.of(context)),
                 style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
 
             if (usingOpenAi) ...[
               const SizedBox(height: 14),
-              Text('โมเดลเสียง',
+              Text(S.of(context).voiceModel,
                   style: mindMono(
                       size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
               const SizedBox(height: 7),
@@ -617,16 +661,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 7),
                   child: _choiceRow(
-                    title: m.label,
-                    subtitle: m.hint,
-                    selected: profile.model == m.id,
+                    title: m,
+                    subtitle: S.of(context).ttsModelHint(m),
+                    selected: profile.model == m,
                     mode: mode,
                     onTap: () =>
-                        state.setVoice(channel, profile.copyWith(model: m.id)),
+                        state.setVoice(channel, profile.copyWith(model: m)),
                   ),
                 ),
               const SizedBox(height: 7),
-              Text('เสียง',
+              Text(S.of(context).voicePick,
                   style: mindMono(
                       size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
               const SizedBox(height: 7),
@@ -634,25 +678,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 7),
                   child: _choiceRow(
-                    title: v.label,
-                    selected: profile.voice == v.id,
+                    title: S.of(context).voiceLabel(v),
+                    selected: profile.voice == v,
                     mode: mode,
                     onTap: () =>
-                        state.setVoice(channel, profile.copyWith(voice: v.id)),
+                        state.setVoice(channel, profile.copyWith(voice: v)),
                   ),
                 ),
               if (canInstruct)
                 _linkRow(
-                  title: 'น้ำเสียงที่สั่งไว้',
+                  title: S.of(context).voiceInstructions,
                   value: profile.instructions,
                   mode: mode,
                   onTap: () => _editText(
                     state: state,
                     mode: mode,
-                    title: 'น้ำเสียง — ${channel.label}',
-                    hint: 'สั่งเป็นภาษาคนได้เลยว่าอยากให้พูดยังไง '
-                        'เช่น "นุ่ม ช้า ยิ้มขณะพูด" '
-                        'ข้อความนี้ส่งให้ ${profile.model} โดยตรง ผลชัดกว่าที่คิด',
+                    title: S.of(context).toneFor(channel.labelOf(S.of(context))),
+                    hint: S.of(context).toneEditorHint(profile.model),
                     value: profile.instructions,
                     onSave: (v) => state.setVoice(
                         channel, profile.copyWith(instructions: v)),
@@ -668,8 +710,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(MindRadius.control),
                   ),
                   child: Text(
-                    '${profile.model} ไม่รับคำสั่งน้ำเสียง — '
-                    'เลือก gpt-4o-mini-tts ถ้าอยากสั่งอารมณ์เสียงได้',
+                    S.of(context).noInstructionSupport(profile.model),
                     style: const TextStyle(
                         fontSize: 10.5, height: 1.5, color: MindColors.ink75),
                   ),
@@ -678,7 +719,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             if (channel != VoiceChannel.chat) ...[
               const SizedBox(height: 14),
-              Text('โมเดลคุยสดตอนอยู่ในสาย',
+              Text(S.of(context).realtimeModel,
                   style: mindMono(
                       size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
               const SizedBox(height: 7),
@@ -687,16 +728,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   padding: const EdgeInsets.only(bottom: 7),
                   child: _choiceRow(
                     title: r.label,
-                    subtitle: r.hint,
+                    subtitle: S.of(context).realtimeHint(r.id),
                     trailing: r.id,
                     selected: state.realtimeModel == r.id,
                     mode: mode,
                     onTap: () => state.setRealtimeModel(r.id),
                   ),
                 ),
-              const Text(
-                'ใช้ตอนต่อสายจริงเท่านั้น ยังไม่ได้ต่อ — ดู docs/telephony.md',
-                style: TextStyle(fontSize: 10.5, color: MindColors.ink55),
+              Text(
+                S.of(context).realtimeNote,
+                style: const TextStyle(fontSize: 10.5, color: MindColors.ink55),
               ),
             ],
 
@@ -722,7 +763,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Icon(Icons.volume_up_rounded,
                               size: 16, color: mode.accent),
-                          Text('ลองฟัง${channel.label}',
+                          Text(
+                              S.of(context)
+                                  .listenTo(channel.labelOf(S.of(context))),
                               style: const TextStyle(fontSize: 12)),
                         ],
                       ),
@@ -740,7 +783,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       border:
                           Border.all(color: MindColors.glassBorder, width: 1),
                     ),
-                    child: const Text('คืนค่า', style: TextStyle(fontSize: 12)),
+                    child: Text(S.of(context).reset,
+                        style: const TextStyle(fontSize: 12)),
                   ),
                 ),
               ],
@@ -755,21 +799,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _callCard(MindState state, MindMode mode) {
     return _card(
       mode: mode,
-      label: 'รับสายแทน',
+      label: S.of(context).sectionCall,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   spacing: 3,
                   children: [
-                    Text('ให้เธอรับสายอัตโนมัติ',
-                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                    Text('เฉพาะเบอร์ในสมุดโทรศัพท์ · สายแปลกให้คัดกรองก่อน',
-                        style: TextStyle(
+                    Text(S.of(context).autoAnswer,
+                        style: const TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    Text(S.of(context).autoAnswerHint,
+                        style: const TextStyle(
                             fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
                   ],
                 ),
@@ -783,7 +828,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           if (state.autoAnswer) ...[
             const SizedBox(height: 14),
-            Text('ปล่อยให้กริ่งดังนานเท่าไหร่ก่อนเธอรับ',
+            Text(S.of(context).ringDelayTitle,
                 style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
             const SizedBox(height: 8),
             Wrap(
@@ -805,7 +850,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Border.all(color: MindColors.glassBorder, width: 1),
                       ),
                       child: Text(
-                        s == 0 ? 'ทันที' : '$s วิ',
+                        s == 0
+                            ? S.of(context).ringImmediate
+                            : S.of(context).ringSeconds(s),
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
@@ -821,8 +868,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 8),
             Text(
               state.ringSeconds == 0
-                  ? 'เธอจะรับทันที คุณจะไม่มีจังหวะคว้าเครื่องก่อน'
-                  : 'กริ่งดัง ${state.ringSeconds} วินาที ถ้าคุณไม่รับ เธอจะรับแทน',
+                  ? S.of(context).ringImmediateNote
+                  : S.of(context).ringDelayNote(state.ringSeconds),
               style: const TextStyle(
                   fontSize: 10.5, height: 1.5, color: MindColors.ink55),
             ),
@@ -856,10 +903,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       spacing: 3,
                       children: [
-                        Text(keys[i],
+                        Text(keys[i].labelOf(S.of(context)),
                             style: const TextStyle(
                                 fontSize: 12.5, fontWeight: FontWeight.w600)),
-                        Text(_hints[keys[i]]!,
+                        Text(keys[i].hintOf(S.of(context)),
                             style: const TextStyle(
                                 fontSize: 10.5,
                                 height: 1.5,
@@ -1035,10 +1082,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _quote(value.trim(), maxLines: 4),
             Row(
               children: [
-                Text('$lines บรรทัด',
+                Text(S.of(context).lines(lines),
                     style: mindMono(size: 10, color: MindColors.ink45)),
                 const Spacer(),
-                Text('แตะเพื่อแก้',
+                Text(S.of(context).tapToEdit,
                     style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
