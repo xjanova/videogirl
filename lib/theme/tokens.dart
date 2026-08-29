@@ -98,6 +98,82 @@ abstract final class MindSpace {
   static const screenX = 10.0;
   static const cardX = 14.0;
   static const gap = 8.0;
+
+  /// จังหวะแนวตั้ง — ใช้ค่าจากบันไดนี้เท่านั้น อย่าพิมพ์เลขลอย ๆ
+  ///
+  /// ก่อนหน้านี้ระยะห่างในแอปมี 8/10/12/14/16 ปนกันโดยไม่มีเหตุผล
+  /// สายตาอ่านจังหวะที่ไม่สม่ำเสมอออกแม้บอกไม่ถูกว่าอะไรผิด
+  static const xs = 4.0;
+  static const sm = 8.0;
+  static const md = 12.0;
+  static const lg = 16.0;
+  static const xl = 24.0;
+  static const xxl = 32.0;
+
+  /// ความสูงของทุกอย่างที่กดได้ — ต่ำกว่านี้นิ้วโป้งพลาด
+  /// (Material บอก 48 · เราใช้ 44 แล้วเผื่อ hit area ด้วย padding รอบนอก)
+  static const tapHeight = 44.0;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  บันไดตัวอักษร
+//
+//  ปัญหาเดิมคือทุกอย่างอยู่ในช่วง 10–20px น้ำหนักใกล้กันหมด ตาจึงไม่รู้ว่า
+//  ต้องอ่านอะไรก่อน · แก้ด้วยการถ่างช่วงให้ห่างจริง และให้แต่ละขั้นมีหน้าที่
+//  ชัดเจนหนึ่งอย่าง ไม่ใช่ไล่ขนาดลงไปเฉย ๆ
+// ─────────────────────────────────────────────────────────────
+abstract final class MindType {
+  /// หัวจอ — มีจอละหนึ่งอันเท่านั้น
+  static const display = TextStyle(
+    fontSize: 26,
+    height: 1.24,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -.4,
+    color: MindColors.ink,
+  );
+
+  /// หัวข้อในการ์ด / ชื่อรายการ
+  static const title = TextStyle(
+    fontSize: 15,
+    height: 1.36,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -.1,
+    color: MindColors.ink,
+  );
+
+  /// เนื้อความ
+  static const body = TextStyle(
+    fontSize: 13.5,
+    height: 1.52,
+    fontWeight: FontWeight.w400,
+    color: MindColors.ink75,
+  );
+
+  /// คำอธิบายใต้เนื้อความ
+  static const caption = TextStyle(
+    fontSize: 12,
+    height: 1.44,
+    fontWeight: FontWeight.w400,
+    color: MindColors.ink55,
+  );
+
+  /// ป้ายหมวด — ตัวเล็กแต่ **หนาและถ่างตัว** ไม่ใช่ตัวเล็กแล้วจาง
+  /// ป้ายที่จางคือป้ายที่ไม่มีใครอ่าน แล้วโครงของหน้าก็หายไปด้วย
+  static const overline = TextStyle(
+    fontSize: 11,
+    height: 1.2,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 1.1,
+    color: MindColors.ink55,
+  );
+
+  /// ตัวหนังสือบนปุ่ม
+  static const button = TextStyle(
+    fontSize: 14,
+    height: 1.2,
+    fontWeight: FontWeight.w600,
+    letterSpacing: .1,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -5,8 +5,10 @@ import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
 import '../i18n/strings.dart';
 import '../theme/tokens.dart';
+import '../widgets/buttons.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
+import '../widgets/screen_header.dart';
 
 /// นัดประชุม — artboard 2e
 /// เธอหาช่องว่างร่วมของทุกคน แล้วรอคุณยืนยัน
@@ -25,19 +27,10 @@ class CalendarScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                spacing: 3,
-                children: [
-                  Text(t.calDate,
-                      style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -.2)),
-                  Text(t.calSubtitle,
-                      style: const TextStyle(fontSize: 11.5, color: MindColors.ink55)),
-                ],
-              ),
+            MindScreenHeader(
+              overline: t.tabCalendar,
+              title: t.calDate,
+              subtitle: t.calSubtitle,
             ),
             Expanded(
               child: ListView(
@@ -48,10 +41,12 @@ class CalendarScreen extends StatelessWidget {
                   _Slot(title: t.calClient, time: '11:00–12:00'),
                   const SizedBox(height: 10),
                   _proposal(mode, t),
+                  const SizedBox(height: MindSpace.md),
+                  _restOfDay(context, mode, t),
                 ],
               ),
             ),
-            _actions(mode, t),
+            _actions(context, mode, t),
           ],
         ),
       ),
@@ -107,50 +102,83 @@ class CalendarScreen extends StatelessWidget {
     );
   }
 
-  Widget _actions(MindMode mode, S t) {
+  /// ปิดท้ายรายการนัดด้วยคำตอบ ไม่ใช่ปล่อยว่าง
+  ///
+  /// ก่อนหน้านี้ครึ่งล่างของจอเป็นที่ว่างเปล่า ๆ ซึ่งอ่านได้สองแบบ:
+  /// "โหลดไม่เสร็จ" กับ "ไม่มีนัดแล้ว" · แบบหลังเป็นข่าวดีแต่ไม่มีใครรู้
+  /// เพราะไม่ได้พูดออกมา · ที่ว่างที่ไม่ได้ตั้งใจคือสิ่งที่ทำให้แอปดูยังไม่เสร็จ
+  Widget _restOfDay(BuildContext context, MindMode mode, S t) {
+    return GlassPanel(
+      radius: MindRadius.card,
+      fill: MindColors.glass55,
+      shadows: MindShadows.soft(),
+      padding: const EdgeInsets.symmetric(
+          vertical: MindSpace.xl, horizontal: MindSpace.lg),
+      child: Column(
+        children: [
+          // วงแสงนุ่ม ๆ ใช้จานสีเดียวกับก้อนแสงพื้นหลัง จะได้เป็นเนื้อเดียวกับ
+          // ทั้งจอ ไม่ใช่ภาพประกอบที่ลอยมาจากที่อื่น
+          Container(
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(colors: [
+                mode.accent.withValues(alpha: .18),
+                mode.accent.withValues(alpha: .02),
+              ]),
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.wb_twilight_rounded,
+                size: 34, color: mode.accent.withValues(alpha: .85)),
+          ),
+          const SizedBox(height: MindSpace.md),
+          Text(t.calRestClear, style: MindType.title),
+          const SizedBox(height: MindSpace.xs),
+          Text(t.calRestHours(4),
+              style: MindType.caption, textAlign: TextAlign.center),
+          const SizedBox(height: MindSpace.md),
+          MindButton(
+            label: t.calHold,
+            kind: MindButtonKind.quiet,
+            icon: Icons.lock_clock_rounded,
+            mode: mode,
+            onTap: () => showDemoNote(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _actions(BuildContext context, MindMode mode, S t) {
     return Padding(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(
+          MindSpace.lg, MindSpace.sm, MindSpace.lg, MindSpace.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: 8,
+        spacing: MindSpace.sm,
         children: [
-          Text(t.calNext,
-              style: mindMono(size: 10, color: MindColors.ink50, letterSpacing: .1)),
+          MindSectionLabel(t.calNext),
           Row(
-            spacing: 9,
+            spacing: MindSpace.sm,
             children: [
               Expanded(
                 flex: 2,
-                child: Container(
-                  height: 46,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: mode.gradient,
-                    borderRadius: BorderRadius.circular(MindRadius.message),
-                    boxShadow: [
-                      BoxShadow(
-                          color: mode.accentSoft,
-                          blurRadius: 24,
-                          offset: const Offset(0, 10)),
-                    ],
-                  ),
-                  child: Text(t.calConfirm,
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white)),
+                child: MindButton(
+                  label: t.calConfirm,
+                  kind: MindButtonKind.primary,
+                  icon: Icons.check_rounded,
+                  mode: mode,
+                  expand: true,
+                  onTap: () => showDemoNote(context),
                 ),
               ),
               Expanded(
-                child: Container(
-                  height: 46,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: MindColors.glass80,
-                    borderRadius: BorderRadius.circular(MindRadius.message),
-                    border: Border.all(color: MindColors.glassBorder, width: 1),
-                  ),
-                  child: Text(t.calFindAnother, style: const TextStyle(fontSize: 12.5)),
+                child: MindButton(
+                  label: t.calFindAnother,
+                  mode: mode,
+                  expand: true,
+                  onTap: () => showDemoNote(context),
                 ),
               ),
             ],

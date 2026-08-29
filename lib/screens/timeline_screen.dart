@@ -5,6 +5,7 @@ import '../i18n/strings.dart';
 import '../theme/tokens.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
+import '../widgets/screen_header.dart';
 
 /// ไทม์ไลน์ — artboard 2f
 /// วันนี้เธอทำอะไรให้บ้าง และย้อนกลับได้ทุกอย่าง
@@ -45,16 +46,9 @@ class TimelineScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            MindScreenHeader(overline: t.tabTimeline, title: t.tlTitle),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-              child: Text(t.tlTitle,
-                  style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -.2)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: MindSpace.lg),
               child: Row(
                 spacing: 8,
                 children: [
@@ -78,19 +72,30 @@ class TimelineScreen extends StatelessWidget {
     );
   }
 
+  /// ตัวเลขสรุป — ตัวเลขต้อง**เด่นกว่าป้าย**ชัดเจน ไม่ใช่ใหญ่กว่านิดเดียว
+  /// ของเดิม 17px กับ 10.5px ห่างกันไม่พอ ตาจึงอ่านทั้งกล่องเป็นก้อนเดียว
+  /// และเลขใช้ mono เพราะสี่ช่องเรียงกันต้องกว้างเท่ากันถึงจะดูเป็นตาราง
   Widget _stat(String label, int count) {
     return GlassPanel(
       radius: MindRadius.avatarThumb,
       fill: MindColors.glass62,
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(
+          vertical: MindSpace.md, horizontal: MindSpace.xs),
       shadows: MindShadows.soft(),
       child: Column(
-        spacing: 2,
         children: [
           Text('$count',
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              style: mindMono(
+                  size: 24,
+                  weight: FontWeight.w700,
+                  color: MindColors.ink,
+                  letterSpacing: 0)),
+          const SizedBox(height: MindSpace.xs),
           Text(label,
-              style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: MindType.overline.copyWith(fontSize: 9.5, letterSpacing: .6)),
         ],
       ),
     );

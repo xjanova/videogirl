@@ -47,7 +47,11 @@ let avatar = null;
 try {
   // โมเดลกับคลิปไม่ได้อยู่ใน git (ดู THIRD_PARTY.md) แอปจะวางไว้ใต้ ./model/
   // ตอนรันครั้งแรก ถ้ายังไม่มี ให้ Flutter ขึ้นกรอบ placeholder ตามดีไซน์แทน
-  avatar = new Avatar(stage, { base: './model/', model: 'minde.vrm' });
+  // ชุดตัวเธออาจอยู่ในแอป (build ในเครื่องที่มีไฟล์ครบ) หรือถูกโหลดทีหลัง
+  // ลงดิสก์แล้วเสิร์ฟจากพอร์ตอื่น (APK จาก CI ที่ไม่มีไฟล์ฝังมา)
+  // Flutter บอกทางมาทาง ?pack= · ไม่มี = ใช้ของในแอปเหมือนเดิม
+  const pack = new URLSearchParams(location.search).get('pack');
+  avatar = new Avatar(stage, { base: pack || './model/', model: 'minde.vrm' });
   await avatar.loaded;
   post('ready');
 } catch (err) {

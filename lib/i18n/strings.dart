@@ -97,6 +97,13 @@ class S {
       ? const ['วันนี้เป็นไงบ้าง', 'เล่าอะไรให้ฟังหน่อย', 'คิดถึงไหม']
       : const ['How was your day', 'Tell me something', 'Did you miss me'];
 
+  /// ปุ่มบนจอที่ยังเป็นข้อมูลตัวอย่าง — ต้องตอบอะไรที่จริง
+  /// ดีกว่าเงียบ และดีกว่าแกล้งทำเป็นทำงานได้
+  String get demoAction => _(
+        'หน้านี้ยังเป็นข้อมูลตัวอย่างค่ะ ยังไม่ได้ต่อของจริง',
+        'This screen is still sample data — not wired up yet',
+      );
+
   // ═══ หน้าเปิดแอป ═══════════════════════════════════════
   String get splashSkip => _('แตะเพื่อข้าม', 'Tap to skip');
 
@@ -418,6 +425,7 @@ class S {
   String get mailLaterNote3 =>
       _(' — ข่าวสาร 12 · ใบเสร็จ 6 · สแปม 3', ' — 12 newsletters · 6 receipts · 3 spam');
   String get mailReadAloud => _('ให้เธออ่านสรุปให้ฟัง', 'Have her read the summary aloud');
+  String get mailCompose => _('เขียนเมลใหม่', 'Write a new email');
 
   // ═══ หน้าปฏิทิน (ข้อมูลตัวอย่าง) ════════════════════════
   String get calDate => _('พฤหัสบดี 3 ก.ย.', 'Thursday 3 Sep');
@@ -434,6 +442,13 @@ class S {
   String get nameTon => _('คุณต้น', 'Ton');
   String get nameNapa => _('คุณนภา', 'Napa');
   String get calNext => _('เธอจะทำต่อ', 'What she will do next');
+
+  /// แผงปิดท้ายรายการนัด — ที่ว่างครึ่งจอที่ไม่มีอะไรเลยทำให้แอปดูค้าง
+  /// ทั้งที่ความจริงคือ "ไม่มีนัดแล้ว" ซึ่งเป็นข่าวดี ต้องพูดออกมา
+  String get calRestClear => _('ที่เหลือของวันว่างค่ะ', 'The rest of your day is clear');
+  String calRestHours(int h) =>
+      _('ว่างต่อเนื่อง $h ชั่วโมงหลังจากนี้', '$h hours free after this');
+  String get calHold => _('กันเวลาไว้ให้', 'Hold this time for me');
   String get calConfirm => _('ยืนยันและส่งคำเชิญ', 'Confirm and send invites');
   String get calFindAnother => _('หาเวลาอื่น', 'Find another time');
 

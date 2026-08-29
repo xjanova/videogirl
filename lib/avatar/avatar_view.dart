@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -288,6 +289,23 @@ class MindAvatarController extends ChangeNotifier {
 
   Future<void> stop() => _call('window.minde.stop()');
 
+  /// โหลดเวทีใหม่ — ใช้ตอนชุดตัวเธอเพิ่งโหลดเสร็จ ทางไปหาโมเดลจึงเปลี่ยน
+  ///
+  /// รีเซ็ต `_ready` ก่อน เพราะหน้าเก่ากำลังจะหายไป ถ้าไม่รีเซ็ต คำสั่งที่ยิง
+  /// ระหว่างที่หน้าใหม่ยังโหลดไม่เสร็จจะหายเงียบ ๆ โดยผู้เรียกคิดว่าสำเร็จ
+  Future<void> _reload(Uri url) async {
+    final web = _web;
+    if (web == null) return;
+    _ready = false;
+    _faceTried = false;
+    notifyListeners();
+    try {
+      await web.loadUrl(urlRequest: URLRequest(url: WebUri('$url')));
+    } catch (e) {
+      debugPrint('avatar: โหลดเวทีใหม่ไม่สำเร็จ — $e');
+    }
+  }
+
   Future<void> setFraming(MindFraming f) =>
       _call("window.minde.frame('${f.name}')");
 
@@ -321,6 +339,7 @@ class MindAvatarView extends StatefulWidget {
     super.key,
     required this.controller,
     required this.mode,
+    this.packBase,
     this.serverPort = 8747,
   });
 
@@ -329,6 +348,9 @@ class MindAvatarView extends StatefulWidget {
   /// ใช้กับสีวงแหวนรอบตัวเธอตอนยังไม่มีโมเดล
   final MindMode mode;
 
+  /// ที่อยู่ของชุดตัวเธอที่โหลดมาทีหลัง — null = ใช้ไฟล์ที่ฝังมาในแอป
+  final String? packBase;
+
   final int serverPort;
 
   @override
@@ -336,8 +358,30 @@ class MindAvatarView extends StatefulWidget {
 }
 
 class _MindAvatarViewState extends State<MindAvatarView> {
+  /// ทางที่หน้าเว็บกำลังใช้อยู่จริง ณ ตอนนี้
+  ///
+  /// `initialUrlRequest` ถูกอ่านครั้งเดียวตอนสร้าง WebView — พอชุดตัวเธอโหลด
+  /// เสร็จทีหลัง ต้องสั่งโหลดใหม่เอง ไม่งั้นเธอจะไม่โผล่จนกว่าจะปิดเปิดแอป
+  String? _loadedPack;
+
+  Uri _stageUrl() {
+    final base = 'http://localhost:${widget.serverPort}/assets/avatar/index.html';
+    final pack = widget.packBase;
+    if (pack == null || pack.isEmpty) return Uri.parse(base);
+    return Uri.parse('$base?pack=${Uri.encodeQueryComponent(pack)}');
+  }
+
+  @override
+  void didUpdateWidget(MindAvatarView old) {
+    super.didUpdateWidget(old);
+    if (widget.packBase == _loadedPack) return;
+    _loadedPack = widget.packBase;
+    unawaited(widget.controller._reload(_stageUrl()));
+  }
+
   @override
   Widget build(BuildContext context) {
+    _loadedPack ??= widget.packBase;
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (context, _) {
@@ -350,9 +394,7 @@ class _MindAvatarViewState extends State<MindAvatarView> {
             Opacity(
               opacity: widget.controller.ready ? 1 : 0,
               child: InAppWebView(
-                initialUrlRequest: URLRequest(
-                  url: WebUri('http://localhost:${widget.serverPort}/assets/avatar/index.html'),
-                ),
+                initialUrlRequest: URLRequest(url: WebUri('${_stageUrl()}')),
                 initialSettings: InAppWebViewSettings(
                   transparentBackground: true,
                   supportZoom: false,

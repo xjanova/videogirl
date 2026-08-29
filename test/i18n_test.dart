@@ -151,9 +151,15 @@ void main() {
       check('mailSubtitle', en.mailSubtitle);
       check('mail1Title', en.mail1Title);
       check('mailDraftBody', en.mailDraftBody);
+      check('mailReadAloud', en.mailReadAloud);
+      check('mailCompose', en.mailCompose);
+      check('demoAction', en.demoAction);
       check('calDate', en.calDate);
       check('calSubtitle', en.calSubtitle);
       check('calFree', en.calFree(en.nameTon));
+      check('calRestClear', en.calRestClear);
+      check('calRestHours', en.calRestHours(4));
+      check('calHold', en.calHold);
       check('tlTitle', en.tlTitle);
       check('tl2Title', en.tl2Title);
       check('tl5Detail', en.tl5Detail);

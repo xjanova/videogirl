@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
@@ -133,7 +134,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
                   onTap: state.showBubbleAgain,
-                  child: MindAvatarView(controller: widget.avatar, mode: mode),
+                  child: MindAvatarView(
+                    controller: widget.avatar,
+                    mode: mode,
+                    packBase: context.watch<AvatarPack>().baseUrl,
+                  ),
                 ),
               ),
 

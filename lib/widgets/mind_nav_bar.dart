@@ -189,9 +189,14 @@ class _NavItem extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             decoration: BoxDecoration(
-              gradient: selected ? mode.gradient : null,
+              // พิลล์สีจาง ไม่ใช่บล็อกไล่สีทึบ
+              //
+              // ทั้งแอปเป็นแผ่นกระจกใส ๆ สี่เหลี่ยมทึบสีเข้มบนแถบล่างจึงเป็น
+              // ก้อนที่หนักที่สุดในจอ ทั้งที่หน้าที่มันมีคือ "บอกว่าอยู่ตรงไหน"
+              // สีจางบวกไอคอนสีเน้นบอกได้เท่ากันโดยไม่แย่งสายตาจากเนื้อหา
+              color: selected ? mode.accent.withValues(alpha: .13) : null,
               borderRadius: BorderRadius.circular(MindRadius.avatarThumb),
             ),
             child: Column(
@@ -200,8 +205,8 @@ class _NavItem extends StatelessWidget {
               children: [
                 Icon(
                   item.icon,
-                  size: 17,
-                  color: selected ? Colors.white : MindColors.ink50,
+                  size: 18,
+                  color: selected ? mode.accent : MindColors.ink50,
                 ),
                 Text(
                   item.label,
@@ -209,7 +214,8 @@ class _NavItem extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 9.5,
-                    color: selected ? Colors.white : MindColors.ink50,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    color: selected ? mode.accent : MindColors.ink50,
                   ),
                 ),
               ],

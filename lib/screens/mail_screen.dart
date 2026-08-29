@@ -5,8 +5,10 @@ import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
 import '../i18n/strings.dart';
 import '../theme/tokens.dart';
+import '../widgets/buttons.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
+import '../widgets/screen_header.dart';
 
 /// เมล — artboard 2d
 /// เธอสรุปกล่องเช้านี้ แล้วร่างคำตอบรออนุมัติ
@@ -25,22 +27,10 @@ class MailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                spacing: 3,
-                children: [
-                  Text(t.mailTitle,
-                      style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -.2)),
-                  Text(t.mailSubtitle,
-                      style: const TextStyle(
-                          fontSize: 11.5, color: MindColors.ink55)),
-                ],
-              ),
+            MindScreenHeader(
+              overline: t.tabMail,
+              title: t.mailTitle,
+              subtitle: t.mailSubtitle,
             ),
             Expanded(
               child: ListView(
@@ -65,7 +55,7 @@ class MailScreen extends StatelessWidget {
                 ],
               ),
             ),
-            _actions(mode, t),
+            _actions(context, mode, t),
           ],
         ),
       ),
@@ -96,37 +86,28 @@ class MailScreen extends StatelessWidget {
     );
   }
 
-  Widget _actions(MindMode mode, S t) {
+  Widget _actions(BuildContext context, MindMode mode, S t) {
     return Padding(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(
+          MindSpace.lg, MindSpace.sm, MindSpace.lg, MindSpace.lg),
       child: Row(
-        spacing: 9,
+        spacing: MindSpace.sm,
         children: [
           Expanded(
-            child: Container(
-              height: 46,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: MindColors.glass80,
-                borderRadius: BorderRadius.circular(MindRadius.message),
-                border: Border.all(color: MindColors.glassBorder, width: 1),
-              ),
-              child: Text(t.mailReadAloud,
-                  style: const TextStyle(fontSize: 12.5)),
+            child: MindButton(
+              label: t.mailReadAloud,
+              icon: Icons.graphic_eq_rounded,
+              mode: mode,
+              expand: true,
+              onTap: () => showDemoNote(context),
             ),
           ),
-          Container(
-            width: 54,
-            height: 46,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              gradient: mode.gradient,
-              borderRadius: BorderRadius.circular(MindRadius.message),
-              boxShadow: [
-                BoxShadow(color: mode.accentSoft, blurRadius: 24, offset: const Offset(0, 10)),
-              ],
-            ),
-            child: const Icon(Icons.edit_rounded, size: 18, color: Colors.white),
+          MindIconButton(
+            icon: Icons.edit_rounded,
+            tooltip: t.mailCompose,
+            mode: mode,
+            filled: true,
+            onTap: () => showDemoNote(context),
           ),
         ],
       ),
@@ -275,35 +256,30 @@ class _DraftCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Row(
-            spacing: 8,
+            spacing: MindSpace.sm,
             children: [
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: mode.gradient,
-                    borderRadius: BorderRadius.circular(MindRadius.control),
-                    boxShadow: [
-                      BoxShadow(
-                          color: mode.accentSoft,
-                          blurRadius: 20,
-                          offset: const Offset(0, 8)),
-                    ],
-                  ),
-                  child: Text(t.mailSendNow,
-                      style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white)),
+                child: MindButton(
+                  label: t.mailSendNow,
+                  kind: MindButtonKind.primary,
+                  mode: mode,
+                  expand: true,
+                  onTap: () => showDemoNote(context),
                 ),
               ),
               Expanded(
-                  child: _ghostButton(
-                      Text(t.mailEditFirst, style: const TextStyle(fontSize: 12)))),
-              SizedBox(
-                width: 46,
-                child: _ghostButton(const Icon(Icons.volume_up_rounded, size: 16)),
+                child: MindButton(
+                  label: t.mailEditFirst,
+                  mode: mode,
+                  expand: true,
+                  onTap: () => showDemoNote(context),
+                ),
+              ),
+              MindIconButton(
+                icon: Icons.volume_up_rounded,
+                tooltip: t.mailReadAloud,
+                mode: mode,
+                onTap: () => showDemoNote(context),
               ),
             ],
           ),
@@ -311,15 +287,4 @@ class _DraftCard extends StatelessWidget {
       ),
     );
   }
-
-  Widget _ghostButton(Widget child) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: MindColors.glass85,
-          borderRadius: BorderRadius.circular(MindRadius.control),
-          border: Border.all(color: MindColors.glassBorder, width: 1),
-        ),
-        child: child,
-      );
 }

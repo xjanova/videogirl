@@ -15,6 +15,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
+import '../widgets/screen_header.dart';
 import '../widgets/update_card.dart';
 import 'text_editor_screen.dart';
 
@@ -73,29 +74,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
       orbs: Orb.settings,
       child: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
+          padding: const EdgeInsets.fromLTRB(
+              MindSpace.lg, 0, MindSpace.lg, MindSpace.lg),
           children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 2, bottom: 14),
-              child: Text(t.settingsTitle,
-                  style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -.2)),
+            // ListView มีขอบซ้ายขวาอยู่แล้ว หัวจอจึงต้องไม่ใส่ซ้ำ
+            // ไม่งั้นจะเยื้องเข้าเป็นสองเท่าของอีกสามจอ
+            MindScreenHeader(
+              overline: t.tabSettings,
+              title: t.settingsTitle,
+              padding: const EdgeInsets.fromLTRB(
+                  0, MindSpace.lg, 0, MindSpace.md),
             ),
             _languageCard(state, mode, t),
-            const SizedBox(height: 11),
+            const SizedBox(height: MindSpace.md),
             if (!OpenAiConfig.configured) _noKeyBanner(),
             _modeCard(state, mode),
-            const SizedBox(height: 11),
+            const SizedBox(height: MindSpace.md),
             _flirtCard(state, mode),
-            const SizedBox(height: 11),
+            const SizedBox(height: MindSpace.md),
             _bubbleCard(state, mode),
-            const SizedBox(height: 11),
+            const SizedBox(height: MindSpace.md),
             _brainCard(state, mode),
-            const SizedBox(height: 11),
+            const SizedBox(height: MindSpace.md),
             _voiceCard(state, mode),
-            const SizedBox(height: 11),
+            const SizedBox(height: MindSpace.md),
             _longTextCard(
               state: state,
               mode: mode,
@@ -106,7 +108,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onSave: state.setOwnerProfile,
               onReset: () => MindPersona.defaultOwnerProfile(state.lang),
             ),
-            const SizedBox(height: 11),
+            const SizedBox(height: MindSpace.md),
             _longTextCard(
               state: state,
               mode: mode,
@@ -117,11 +119,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onSave: state.setBoundaries,
               onReset: () => MindPersona.defaultBoundaries(state.lang),
             ),
-            const SizedBox(height: 11),
+            const SizedBox(height: MindSpace.md),
             _callCard(state, mode),
-            const SizedBox(height: 11),
+            const SizedBox(height: MindSpace.md),
             _switchCard(mode),
-            const SizedBox(height: 11),
+            const SizedBox(height: MindSpace.md),
             UpdateCard(mode: mode),
           ],
         ),
@@ -945,9 +947,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(label,
-              style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
-          const SizedBox(height: 10),
+          // ป้ายหัวการ์ด — ของเดิม 10px น้ำหนักปกติสีเน้นจาง ๆ กลืนไปกับการ์ด
+          // ป้ายที่อ่านไม่ออกคือป้ายที่ไม่มีอยู่ โครงของหน้าก็หายไปด้วย
+          Row(
+            children: [
+              Container(
+                width: 3,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: mode.accent,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: MindSpace.sm),
+              Expanded(
+                child: Text(label.toUpperCase(),
+                    style: MindType.overline.copyWith(color: mode.accent)),
+              ),
+            ],
+          ),
+          const SizedBox(height: MindSpace.md),
           child,
         ],
       ),
@@ -964,20 +983,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        curve: Curves.easeOutCubic,
+        height: MindSpace.tapHeight,
+        padding: const EdgeInsets.symmetric(horizontal: MindSpace.sm),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           gradient: selected ? mode.gradient : null,
           color: selected ? null : MindColors.glass80,
           borderRadius: BorderRadius.circular(MindRadius.control),
-          border: Border.all(color: MindColors.glassBorder, width: 1),
+          border: Border.all(
+              color: selected ? Colors.transparent : MindColors.glassBorder,
+              width: 1),
+          // เงาเรืองเฉพาะอันที่เลือกอยู่ ทำให้ตาจับได้ทันทีว่าตอนนี้อยู่ตรงไหน
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                      color: mode.accentSoft,
+                      blurRadius: 16,
+                      offset: const Offset(0, 6)),
+                ]
+              : null,
         ),
         child: Text(
           text,
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: MindType.button.copyWith(
             color: selected ? Colors.white : MindColors.ink60,
           ),
         ),

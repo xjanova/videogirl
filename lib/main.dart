@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 
+import 'avatar/avatar_pack.dart';
 import 'screens/splash_screen.dart';
 import 'i18n/strings.dart';
 import 'state/mind_state.dart';
@@ -40,19 +41,26 @@ Future<void> main() async {
   final state = MindState();
   await state.load();
 
-  runApp(MindApp(state: state));
+  // ชุดตัวเธอต้องพร้อม **ก่อน** สร้าง WebView ไม่งั้นหน้าเวทีจะโหลดด้วยทางเก่า
+  // แล้วต้องรีโหลดทีหลัง ซึ่งผู้ใช้เห็นเป็นอวาตาร์โผล่แล้วหายแล้วโผล่ใหม่
+  final pack = AvatarPack();
+  await pack.restore();
+
+  runApp(MindApp(state: state, pack: pack));
 }
 
 class MindApp extends StatelessWidget {
-  const MindApp({super.key, required this.state});
+  const MindApp({super.key, required this.state, required this.pack});
 
   final MindState state;
+  final AvatarPack pack;
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: state),
+        ChangeNotifierProvider.value(value: pack),
         ChangeNotifierProvider(create: (_) => Updater()),
       ],
       // locale ต้องอ่านจาก state ไม่ใช่ค่าคงที่ ไม่งั้นสลับภาษาแล้วจอไม่เปลี่ยน
@@ -60,7 +68,7 @@ class MindApp extends StatelessWidget {
         builder: (context, state, _) => MaterialApp(
           title: 'GigGok',
           debugShowCheckedModeBanner: false,
-          theme: mindTheme(),
+          theme: mindTheme(state.mode),
           locale: state.lang.locale,
           supportedLocales: [for (final l in AppLang.values) l.locale],
           // delegate ของ Flutter ทำให้วิดเจ็ตมาตรฐาน (ตัวเลือกวันที่ ปุ่มในไดอะล็อก)
