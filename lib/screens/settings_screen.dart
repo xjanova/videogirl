@@ -83,7 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'เรื่องที่ให้ตัดสินใจแทนได้ และเรื่องที่ต้องถามก่อนเสมอ '
                   'ข้อความนี้ถูกส่งเข้าโมเดลทุกครั้งที่คุย',
               onSave: state.setOwnerProfile,
-              onReset: () => MindPersona.defaultOwnerProfile,
+              onReset: () => MindPersona.defaultOwnerProfile(state.lang),
             ),
             const SizedBox(height: 11),
             _longTextCard(
@@ -96,7 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'ค่าตั้งต้นเขียนแบบ "ห้ามไว้ก่อน" คือถ้าไม่ได้อนุญาตชัดเจน เธอจะถามก่อนเสมอ '
                   'ปลอดภัยกว่าการเขียนแค่รายการสิ่งที่ห้าม เพราะเรานึกไม่ออกทุกกรณี',
               onSave: state.setBoundaries,
-              onReset: () => MindPersona.defaultBoundaries,
+              onReset: () => MindPersona.defaultBoundaries(state.lang),
             ),
             const SizedBox(height: 11),
             _callCard(state, mode),
@@ -561,7 +561,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: profile.instructions,
                     onSave: (v) => state.setVoice(
                         channel, profile.copyWith(instructions: v)),
-                    onReset: () => VoiceProfile.defaultFor(channel).instructions,
+                    onReset: () =>
+                        VoiceProfile.defaultFor(channel, state.lang).instructions,
                   ),
                 )
               else

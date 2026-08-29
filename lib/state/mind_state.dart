@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../ai/brain_provider.dart';
 import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
+import '../i18n/strings.dart';
 import '../ai/openai_client.dart';
 import '../ai/openai_config.dart';
 import '../ai/speech_service.dart';
@@ -71,13 +72,15 @@ class MindState extends ChangeNotifier {
     _prefs = await SharedPreferences.getInstance();
     final p = _prefs!;
 
+    _lang = AppLang.fromCode(p.getString('lang'));
     _persona = PersonaSetting.values.firstWhere(
       (e) => e.name == p.getString('persona'),
       orElse: () => PersonaSetting.work,
     );
     _flirt = p.getDouble('flirt') ?? .72;
-    _ownerProfile = p.getString('ownerProfile') ?? MindPersona.defaultOwnerProfile;
-    _boundaries = p.getString('boundaries') ?? MindPersona.defaultBoundaries;
+    _ownerProfile =
+        p.getString('ownerProfile') ?? MindPersona.defaultOwnerProfile(_lang);
+    _boundaries = p.getString('boundaries') ?? MindPersona.defaultBoundaries(_lang);
     _brain = BrainProvider.values.firstWhere(
       (e) => e.name == p.getString('brain'),
       orElse: () => BrainProvider.openai,
@@ -93,7 +96,7 @@ class MindState extends ChangeNotifier {
       try {
         _voices[c] = VoiceProfile.fromJson(
           jsonDecode(raw) as Map<String, dynamic>,
-          VoiceProfile.defaultFor(c),
+          VoiceProfile.defaultFor(c, _lang),
         );
       } on FormatException {
         // ค่าที่บันทึกไว้เสีย ปล่อยให้ใช้ค่าตั้งต้นแทน ดีกว่าแอปเปิดไม่ขึ้น
@@ -171,10 +174,10 @@ class MindState extends ChangeNotifier {
   }
 
   // ═══ ข้อมูลดิบ + ขอบเขต ════════════════════════════════
-  String _ownerProfile = MindPersona.defaultOwnerProfile;
+  String _ownerProfile = MindPersona.defaultOwnerProfile(AppLang.th);
   String get ownerProfile => _ownerProfile;
 
-  String _boundaries = MindPersona.defaultBoundaries;
+  String _boundaries = MindPersona.defaultBoundaries(AppLang.th);
   String get boundaries => _boundaries;
 
   void setOwnerProfile(String v) {
@@ -189,8 +192,45 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
-  void resetOwnerProfile() => setOwnerProfile(MindPersona.defaultOwnerProfile);
-  void resetBoundaries() => setBoundaries(MindPersona.defaultBoundaries);
+  void resetOwnerProfile() =>
+      setOwnerProfile(MindPersona.defaultOwnerProfile(_lang));
+  void resetBoundaries() => setBoundaries(MindPersona.defaultBoundaries(_lang));
+
+  // ═══ ภาษา ══════════════════════════════════════════════
+  AppLang _lang = AppLang.th;
+  AppLang get lang => _lang;
+
+  /// ตารางข้อความของภาษาที่ใช้อยู่ ใช้ในที่ที่ไม่มี BuildContext
+  S get s => S(_lang);
+
+  /// เปลี่ยนภาษา
+  ///
+  /// ค่าตั้งต้นของ "ข้อมูลเกี่ยวกับเรา" "ขอบเขต" และคำสั่งน้ำเสียง ผูกกับภาษาด้วย
+  /// แต่ **ห้ามเขียนทับของที่ผู้ใช้แก้เอง** — เช็คว่ายังเท่ากับค่าตั้งต้นของภาษาเดิมไหม
+  /// ถ้าใช่ค่อยสลับ ถ้าไม่ใช่แปลว่าเขาเขียนเองแล้ว ปล่อยไว้
+  void setLang(AppLang v) {
+    if (_lang == v) return;
+    final old = _lang;
+
+    if (_ownerProfile.trim() == MindPersona.defaultOwnerProfile(old).trim()) {
+      _ownerProfile = MindPersona.defaultOwnerProfile(v);
+      _save('ownerProfile', _ownerProfile);
+    }
+    if (_boundaries.trim() == MindPersona.defaultBoundaries(old).trim()) {
+      _boundaries = MindPersona.defaultBoundaries(v);
+      _save('boundaries', _boundaries);
+    }
+    for (final c in VoiceChannel.values) {
+      if (_voices[c] == VoiceProfile.defaultFor(c, old)) {
+        _voices[c] = VoiceProfile.defaultFor(c, v);
+        _save('voice_${c.name}', jsonEncode(_voices[c]!.toJson()));
+      }
+    }
+
+    _lang = v;
+    _save('lang', v.code);
+    _notify();
+  }
 
   // ═══ สมอง — เลือกผู้ประมวลผลได้ ═════════════════════════
   BrainProvider _brain = BrainProvider.openai;
@@ -236,7 +276,7 @@ class MindState extends ChangeNotifier {
   /// เสียงแยกตามช่องทาง — คุยในแอป / รับสายแทน / โทรออก
   /// บริบทต่างกันจริง จึงไม่ควรใช้เสียงเดียวกันทั้งหมด
   final Map<VoiceChannel, VoiceProfile> _voices = {
-    for (final c in VoiceChannel.values) c: VoiceProfile.defaultFor(c),
+    for (final c in VoiceChannel.values) c: VoiceProfile.defaultFor(c, AppLang.th),
   };
 
   VoiceProfile voiceFor(VoiceChannel c) => _voices[c]!;
@@ -266,7 +306,7 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
-  void resetVoice(VoiceChannel c) => setVoice(c, VoiceProfile.defaultFor(c));
+  void resetVoice(VoiceChannel c) => setVoice(c, VoiceProfile.defaultFor(c, _lang));
 
   void setVoiceEnabled(bool v) {
     _voiceEnabled = v;
@@ -438,6 +478,7 @@ class MindState extends ChangeNotifier {
   /// ตามผู้ให้บริการ เปลี่ยนแค่ว่าใครเป็นคนคิด
   Future<String> _think() async {
     final system = MindPersona.system(
+      lang: _lang,
       mode: mode,
       flirt: effectiveFlirt,
       ownerProfile: _ownerProfile,
@@ -479,9 +520,7 @@ class MindState extends ChangeNotifier {
     }
   }
 
-  String _cannedReply() => mode.isWork
-      ? 'รับทราบค่ะ มายด์จัดการให้แล้วจะสรุปกลับมานะคะ'
-      : 'ได้เลยค่ะ… แต่ขอค่าจ้างเป็นคำชมสักคำนะคะ';
+  String _cannedReply() => mode.isWork ? s.cannedWork : s.cannedLove;
 
   void _push(ChatMessage m) {
     _messages.add(m);

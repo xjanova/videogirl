@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../i18n/strings.dart';
 import 'mind_persona.dart';
 import 'speech_service.dart';
 
@@ -69,32 +70,30 @@ class VoiceProfile {
       );
 
   /// ค่าตั้งต้นของแต่ละช่อง — ต่างกันโดยตั้งใจ ไม่ใช่ก๊อปกัน
-  static VoiceProfile defaultFor(VoiceChannel c) => switch (c) {
+  /// และผูกกับภาษา เพราะคำสั่งน้ำเสียงต้องเขียนด้วยภาษาที่เธอจะพูด
+  static VoiceProfile defaultFor(VoiceChannel c, AppLang lang) => switch (c) {
         // คุยกับเจ้าของ: นุ่ม อบอุ่น เป็นตัวเธอ
-        VoiceChannel.chat => const VoiceProfile(
+        VoiceChannel.chat => VoiceProfile(
             engine: TtsEngine.openai,
             voice: 'coral',
             model: 'gpt-4o-mini-tts',
-            instructions: MindPersona.defaultVoiceInstructions,
+            instructions: MindPersona.defaultVoiceInstructions(lang),
           ),
 
         // รับสายแทน: คนปลายสายเป็นคนแปลกหน้า ต้องสุภาพ ชัด ไม่หวาน
-        VoiceChannel.answer => const VoiceProfile(
+        VoiceChannel.answer => VoiceProfile(
             engine: TtsEngine.openai,
             voice: 'sage',
             model: 'gpt-4o-mini-tts',
-            instructions: 'พูดภาษาไทยแบบเลขานุการมืออาชีพ สุภาพ ชัดถ้อยชัดคำ '
-                'น้ำเสียงเป็นมิตรแต่ไม่สนิทสนม ความเร็วปกติ ไม่แซว ไม่ทอดเสียง',
+            instructions: MindPersona.answerVoiceInstructions(lang),
           ),
 
         // โทรออก: ต้องฟังชัดที่สุดเพราะสายโทรศัพท์บีบเสียงอยู่แล้ว
-        VoiceChannel.outgoing => const VoiceProfile(
+        VoiceChannel.outgoing => VoiceProfile(
             engine: TtsEngine.openai,
             voice: 'shimmer',
             model: 'gpt-4o-mini-tts',
-            instructions: 'พูดภาษาไทยให้ชัดเจนที่สุด ออกเสียงเต็มคำ '
-                'ช้ากว่าปกติเล็กน้อย น้ำเสียงสุภาพและมั่นใจ '
-                'เพราะสายโทรศัพท์บีบคุณภาพเสียงอยู่แล้ว',
+            instructions: MindPersona.outgoingVoiceInstructions(lang),
           ),
       };
 }

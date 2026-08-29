@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 
 import 'shell.dart';
+import 'i18n/strings.dart';
 import 'state/mind_state.dart';
 import 'update/updater.dart';
 import 'theme/app_theme.dart';
@@ -53,11 +55,23 @@ class MindApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: state),
         ChangeNotifierProvider(create: (_) => Updater()),
       ],
-      child: MaterialApp(
-        title: 'GigGok',
-        debugShowCheckedModeBanner: false,
-        theme: mindTheme(),
-        home: const MindShell(),
+      // locale ต้องอ่านจาก state ไม่ใช่ค่าคงที่ ไม่งั้นสลับภาษาแล้วจอไม่เปลี่ยน
+      child: Consumer<MindState>(
+        builder: (context, state, _) => MaterialApp(
+          title: 'GigGok',
+          debugShowCheckedModeBanner: false,
+          theme: mindTheme(),
+          locale: state.lang.locale,
+          supportedLocales: [for (final l in AppLang.values) l.locale],
+          // delegate ของ Flutter ทำให้วิดเจ็ตมาตรฐาน (ตัวเลือกวันที่ ปุ่มในไดอะล็อก)
+          // เปลี่ยนภาษาตามไปด้วย ไม่ใช่แค่ข้อความที่เราเขียนเอง
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: const MindShell(),
+        ),
       ),
     );
   }
