@@ -9,6 +9,7 @@ import 'background/mind_background.dart';
 import 'background/mind_watch.dart';
 import 'system/permissions.dart';
 import 'screens/splash_screen.dart';
+import 'shell.dart';
 import 'i18n/strings.dart';
 import 'state/mind_state.dart';
 import 'update/updater.dart';
@@ -37,42 +38,78 @@ Future<void> main() async {
   ));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-  await InAppLocalhostServer(port: kAvatarPort).start();
-
-  // โหลดค่าที่ผู้ใช้ตั้งไว้ให้เสร็จก่อนวาดจอแรก ไม่งั้นหน้าจอจะกะพริบจาก
-  // ค่าเริ่มต้นไปค่าจริง และคนที่ตั้งโหมดส่วนตัวไว้จะเห็นสีเขียวงานแวบหนึ่ง
-  final state = MindState();
-  await state.load();
-
-  // ชุดตัวเธอต้องพร้อม **ก่อน** สร้าง WebView ไม่งั้นหน้าเวทีจะโหลดด้วยทางเก่า
-  // แล้วต้องรีโหลดทีหลัง ซึ่งผู้ใช้เห็นเป็นอวาตาร์โผล่แล้วหายแล้วโผล่ใหม่
-  final pack = AvatarPacks();
-  await pack.restore(preferId: state.avatarPackId);
-
-  // ลงทะเบียนบริการเบื้องหลัง — ยัง**ไม่สตาร์ต** จนกว่าผู้ใช้จะกดเปิดเอง
-  // การแจ้งเตือนค้างจอต้องมาจากการที่คนเลือก ไม่ใช่แอปหยิบไปเอง
-  await configureMindBackground();
-
-  runApp(MindApp(state: state, pack: pack));
+  // 🔴 วาดจอแรกทันที **ห้ามรออะไรก่อนบรรทัดนี้**
+  //
+  // ของเดิมรอ server + prefs + ทะเบียนชุด + บริการเบื้องหลัง ให้เสร็จก่อน
+  // ผลที่วัดได้บนเครื่องจริง: จอขาวของ Android ค้าง **10.2 วินาที**
+  // (`SplashScreenView: Build` → `Splash Screen EXITING` ห่างกัน 10.2 วิ)
+  // แล้ววิดีโอเปิดแอปเพิ่งได้เริ่มตอนนั้น — ซึ่งสายเกินไปจนแทบไม่มีใครทันเห็น
+  //
+  // ทุกอย่างที่เคยรอ ย้ายไปโหลด**ระหว่างที่วิดีโอกำลังเล่น** ใน MindBootstrap
+  runApp(const MindBootstrap());
 }
 
-class MindApp extends StatelessWidget {
-  const MindApp({super.key, required this.state, required this.pack});
+/// ตัวเปิดแอป — วาดวิดีโอก่อน แล้วค่อยโหลดของหนักอยู่ข้างหลัง
+///
+/// เหตุผลที่ของหนักย้ายมาอยู่ที่นี่ได้ ทั้งที่เดิมต้องเสร็จก่อนวาดจอแรก:
+/// **วิดีโอเปิดแอปบังทั้งจออยู่แล้ว** การกะพริบจากค่าเริ่มต้นไปค่าจริง
+/// ที่เคยต้องกันด้วยการรอ จึงถูกบังไปด้วยตัวมันเอง
+class MindBootstrap extends StatefulWidget {
+  const MindBootstrap({super.key});
 
-  final MindState state;
-  final AvatarPacks pack;
+  @override
+  State<MindBootstrap> createState() => _MindBootstrapState();
+}
+
+class _MindBootstrapState extends State<MindBootstrap> {
+  final MindState _state = MindState();
+  final AvatarPacks _pack = AvatarPacks();
+
+  /// โหลดของหนักเสร็จหรือยัง — เชลล์สร้างไม่ได้ก่อนหน้านี้เพราะ WebView
+  /// จะยิงไปที่ localhost ที่ยังไม่มีเซิร์ฟเวอร์ แล้วขึ้น error ค้าง
+  bool _ready = false;
+
+  /// วิดีโอเล่นจบ (หรือถูกแตะข้าม) แล้วหรือยัง
+  bool _splashDone = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _boot();
+  }
+
+  Future<void> _boot() async {
+    try {
+      await InAppLocalhostServer(port: kAvatarPort).start();
+      await _state.load();
+      await _pack.restore(preferId: _state.avatarPackId);
+      await configureMindBackground();
+    } catch (e) {
+      // เปิดไม่ครบดีกว่าเปิดไม่ได้ — ผู้ใช้ยังเข้าแอปได้ แล้วส่วนที่พัง
+      // จะแสดงสถานะของตัวเองในหน้าที่เกี่ยวข้อง
+      debugPrint('boot: เตรียมของไม่ครบ — $e');
+    }
+    if (mounted) setState(() => _ready = true);
+  }
+
+  @override
+  void dispose() {
+    _state.dispose();
+    _pack.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: state),
-        ChangeNotifierProvider.value(value: pack),
+        ChangeNotifierProvider.value(value: _state),
+        ChangeNotifierProvider.value(value: _pack),
+        ChangeNotifierProvider.value(value: _state.memory),
+        ChangeNotifierProvider(create: (_) => Updater()),
         ChangeNotifierProvider(create: (_) => MindWatch()..refresh()),
         ChangeNotifierProvider(create: (_) => MindPermissions()..refresh()),
-        ChangeNotifierProvider(create: (_) => Updater()),
       ],
-      // locale ต้องอ่านจาก state ไม่ใช่ค่าคงที่ ไม่งั้นสลับภาษาแล้วจอไม่เปลี่ยน
       child: Consumer<MindState>(
         builder: (context, state, _) => MaterialApp(
           title: 'GigGok',
@@ -80,14 +117,24 @@ class MindApp extends StatelessWidget {
           theme: mindTheme(state.mode),
           locale: state.lang.locale,
           supportedLocales: [for (final l in AppLang.values) l.locale],
-          // delegate ของ Flutter ทำให้วิดเจ็ตมาตรฐาน (ตัวเลือกวันที่ ปุ่มในไดอะล็อก)
-          // เปลี่ยนภาษาตามไปด้วย ไม่ใช่แค่ข้อความที่เราเขียนเอง
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-          home: const MindBoot(),
+          home: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (_ready) const MindShell(),
+              if (!_splashDone)
+                MindSplash(
+                  // วิดีโอเล่นจบแล้วแต่ของยังโหลดไม่เสร็จ ก็ค้างหน้าเปิดไว้ต่อ
+                  // ดีกว่าโยนคนเข้าไปเจอจอเปล่าที่ยังไม่มีอะไร
+                  appReady: _ready,
+                  onDone: () => setState(() => _splashDone = true),
+                ),
+            ],
+          ),
         ),
       ),
     );

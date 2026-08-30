@@ -110,6 +110,7 @@ Never, under any circumstances:
     required String boundaries,
     required AppLang lang,
     bool onCall = false,
+    String memories = '',
   }) {
     final s = S(lang);
     final buffer = StringBuffer()
@@ -166,7 +167,28 @@ Never, under any circumstances:
 
     buffer
       ..writeln(s.pick('=== ข้อมูลเกี่ยวกับเจ้าของ ===', '=== About the owner ==='))
-      ..writeln(ownerProfile.trim())
+      ..writeln(ownerProfile.trim());
+
+    // สิ่งที่เธอ**จำมาเอง** แยกหัวข้อจากโปรไฟล์ที่เจ้าของพิมพ์ให้ โดยตั้งใจ
+    //
+    // สองอย่างนี้เชื่อถือได้ไม่เท่ากัน: โปรไฟล์คือสิ่งที่เจ้าของยืนยันเอง
+    // ส่วนความจำคือสิ่งที่เธอสรุปเอาเอง ซึ่งอาจสรุปผิด · บอกให้โมเดลรู้ว่า
+    // อันไหนเป็นอันไหน จะได้ไม่ยืนยันเรื่องที่ตัวเองเดามาเหมือนเป็นข้อเท็จจริง
+    if (memories.trim().isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln(s.pick(
+          '=== สิ่งที่มายด์จำได้จากที่เคยคุยกัน ===',
+          '=== What Mind remembers from past conversations ===',
+        ))
+        ..writeln(s.pick(
+          '(เธอสรุปเอง อาจคลาดเคลื่อน ถ้าขัดกับข้อมูลข้างบนให้เชื่อข้างบน)',
+          '(her own summaries — may be wrong; if they clash with the profile above, trust the profile)',
+        ))
+        ..writeln(memories.trim());
+    }
+
+    buffer
       ..writeln()
       ..writeln(s.pick('=== ขอบเขตที่ทำได้ ===', '=== What you may do ==='))
       ..writeln(boundaries.trim());

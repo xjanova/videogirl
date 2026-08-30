@@ -12,6 +12,7 @@ import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
 import '../avatar/avatar_pack.dart';
 import '../background/mind_watch.dart';
+import '../memory/mind_memory.dart';
 import '../system/permissions.dart';
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
@@ -123,6 +124,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: MindSpace.md),
             _permissionCard(context, mode, t),
             const SizedBox(height: MindSpace.md),
+            _memoryCard(context, state, mode, t),
+            const SizedBox(height: MindSpace.md),
             if (!OpenAiConfig.configured) _noKeyBanner(),
             _modeCard(state, mode),
             const SizedBox(height: MindSpace.md),
@@ -165,6 +168,120 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       ),
     );
+  }
+
+  /// สิ่งที่เธอจำได้
+  ///
+  /// 🔴 การ์ดนี้ไม่ใช่ของแถม — ระบบที่สะสมโปรไฟล์ของคนไว้เงียบ ๆ โดยเจ้าตัว
+  /// เปิดดูไม่ได้ ไม่ใช่ผู้ช่วย · ทุกข้อที่เธอจำต้องเห็น แก้ และลบได้
+  Widget _memoryCard(
+      BuildContext context, MindState state, MindMode mode, S t) {
+    final mem = context.watch<MindMemory>();
+    final facts = mem.forPrompt(limit: 200);
+
+    return _card(
+      mode: mode,
+      label: t.memTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(mem.isEmpty ? t.memEmpty : t.memCount(mem.count),
+              style: MindType.title),
+          const SizedBox(height: MindSpace.sm),
+          Text(t.memWhy, style: MindType.caption),
+          if (facts.isNotEmpty) ...[
+            const SizedBox(height: MindSpace.md),
+            for (final f in facts)
+              Padding(
+                padding: const EdgeInsets.only(bottom: MindSpace.sm),
+                child: _memoryRow(context, mem, mode, t, f),
+              ),
+            const SizedBox(height: MindSpace.xs),
+            MindButton(
+              label: t.memForgetAll,
+              icon: Icons.delete_sweep_rounded,
+              mode: mode,
+              expand: true,
+              onTap: () => _confirmForgetAll(context, mem, t),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _memoryRow(BuildContext context, MindMemory mem, MindMode mode, S t,
+      MemoryFact f) {
+    return Container(
+      padding: const EdgeInsets.all(MindSpace.md),
+      decoration: BoxDecoration(
+        color: MindColors.glass80,
+        borderRadius: BorderRadius.circular(MindRadius.control),
+        border: Border.all(
+          color: f.pinned
+              ? mode.accent.withValues(alpha: .35)
+              : MindColors.glassBorder,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(t.memKind(f.kind.name),
+                    style: MindType.overline
+                        .copyWith(fontSize: 9.5, color: mode.accent)),
+                const SizedBox(height: 3),
+                Text(f.text, style: MindType.body.copyWith(fontSize: 12.5)),
+              ],
+            ),
+          ),
+          const SizedBox(width: MindSpace.sm),
+          // ปักหมุด — กันไม่ให้เรื่องสำคัญโดนตัดตอนความจำเต็ม
+          GestureDetector(
+            onTap: () => mem.setPinned(f.id, !f.pinned),
+            child: Tooltip(
+              message: f.pinned ? t.memPinned : t.memPinWhy,
+              child: Icon(
+                f.pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                size: 17,
+                color: f.pinned ? mode.accent : MindColors.ink22,
+              ),
+            ),
+          ),
+          const SizedBox(width: MindSpace.md),
+          GestureDetector(
+            onTap: () => mem.forget(f.id),
+            child: Tooltip(
+              message: t.memForget,
+              child: const Icon(Icons.close_rounded,
+                  size: 17, color: MindColors.ink45),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmForgetAll(
+      BuildContext context, MindMemory mem, S t) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        content: Text(t.memForgetAllConfirm),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false), child: Text(t.cancel)),
+          TextButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: Text(t.memForgetAll)),
+        ],
+      ),
+    );
+    if (ok == true) await mem.forgetAll();
   }
 
   /// สิทธิ์ทั้งหมดในที่เดียว

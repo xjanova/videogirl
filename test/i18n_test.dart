@@ -68,6 +68,22 @@ void main() {
         check('flirtSample($lv)', en.flirtSample(lv));
       }
 
+      // ความจำ
+      check('memTitle', en.memTitle);
+      check('memCount', en.memCount(3));
+      check('memEmpty', en.memEmpty);
+      check('memWhy', en.memWhy);
+      check('memPin', en.memPin);
+      check('memPinned', en.memPinned);
+      check('memPinWhy', en.memPinWhy);
+      check('memForget', en.memForget);
+      check('memForgetAll', en.memForgetAll);
+      check('memForgetAllConfirm', en.memForgetAllConfirm);
+      check('memEdit', en.memEdit);
+      check('memKind', en.memKind('routine'));
+      check('speakerMe', en.speakerMe);
+      check('speakerHer', en.speakerHer);
+
       // สิทธิ์
       check('permTitle', en.permTitle);
       check('permAllSet', en.permAllSet);
@@ -245,6 +261,7 @@ void main() {
         'packWhy': th.packWhy,
         'bgWhy': th.bgWhy,
         'permBlocked': th.permBlocked,
+        'memWhy': th.memWhy,
         'permInstallWhy': th.permInstallWhy,
         'bgBatteryWhy': th.bgBatteryWhy,
         'calRestClear': th.calRestClear,
@@ -285,6 +302,9 @@ void main() {
         'lib/ai/mind_persona.dart',
         // ข้อความ assert สำหรับนักพัฒนา ผู้ใช้ไม่มีวันเห็น
         'lib/widgets/mind_nav_bar.dart',
+        // regex ตรวจจับความลับ ไม่ใช่ข้อความที่ผู้ใช้เห็น — คำไทยในนั้นคือ
+        // สิ่งที่ต้อง **จับให้ได้** ("รหัสผ่าน") ย้ายเข้า i18n แล้วจะจับไม่ได้
+        'lib/memory/mind_memory.dart',
       };
 
       final offenders = <String>[];

@@ -109,10 +109,50 @@ class S {
 
   // ═══ หน้าหลัก ══════════════════════════════════════════
   String get composerHint => _('พิมพ์ หรือกดไมค์…', 'Type, or tap the mic…');
-  String get avatarPlaceholder =>
-      _('VRM avatar · full body', 'VRM avatar · full body');
+  /// ข้อความตอนเธอยังไม่ขึ้นเวที — เขียนด้วยภาษาคน ไม่ใช่ศัพท์ของนักพัฒนา
+  /// "VRM avatar · full body" ที่เคยขึ้นตรงนี้คือชื่อรูปแบบไฟล์ ผู้ใช้ไม่ต้องรู้
+  String get avatarPlaceholder => _('มายด์กำลังมา…', 'Mind is on her way…');
   String get avatarMissing =>
-      _('ยังไม่มีโมเดลอวาตาร์ในเครื่อง', 'Avatar model not on this device yet');
+      _('ยังไม่ได้โหลดตัวมายด์', "Mind's pack is not downloaded yet");
+
+  // ═══ ความจำ ════════════════════════════════════════════
+  /// ป้ายชื่อผู้พูดตอนประกอบบทสนทนาให้โมเดลอ่านตอนสกัดความจำ
+  /// อยู่ที่นี่เพราะโมเดลอ่านภาษาที่ผู้ใช้ตั้งไว้ ไม่ใช่ไทยเสมอ
+  String get speakerMe => _('เจ้าของ', 'Owner');
+  String get speakerHer => _('มายด์', 'Mind');
+
+  String get memTitle => _('สิ่งที่มายด์จำได้', 'What Mind remembers');
+  String memCount(int n) => _('จำไว้ $n เรื่อง', '$n things remembered');
+  String get memEmpty => _(
+        'ยังไม่ได้จำอะไร — คุยกันสักพักแล้วเธอจะเริ่มจำเอง',
+        'Nothing yet — talk for a while and she will start remembering',
+      );
+
+  /// ต้องบอกให้ชัดว่าเธอสรุปเอง ไม่ใช่ของที่เจ้าของยืนยัน
+  String get memWhy => _(
+        'เธอสรุปเองจากที่เคยคุยกัน แก้หรือลบได้ทุกข้อ '
+        'รหัสผ่าน เลขบัตร และ OTP จะไม่ถูกจำ',
+        'Her own summaries from past conversations — edit or delete any of them. '
+        'Passwords, card numbers and OTPs are never remembered.',
+      );
+  String get memPin => _('ปักหมุด', 'Pin');
+  String get memPinned => _('ปักหมุดแล้ว', 'Pinned');
+  String get memPinWhy =>
+      _('ปักหมุดแล้วจะไม่ถูกตัดทิ้งตอนความจำเต็ม', 'Pinned items are never evicted');
+  String get memForget => _('ลืมเรื่องนี้', 'Forget this');
+  String get memForgetAll => _('ลืมทั้งหมด', 'Forget everything');
+  String get memForgetAllConfirm => _(
+        'ให้มายด์ลืมทุกอย่างที่จำมาเลยไหมคะ กู้คืนไม่ได้นะ',
+        'Make Mind forget everything she has learned? This cannot be undone.',
+      );
+  String get memEdit => _('แก้ข้อความ', 'Edit');
+
+  String memKind(String kind) => switch (kind) {
+        'preference' => _('รสนิยม', 'Preference'),
+        'routine' => _('กิจวัตร', 'Routine'),
+        'person' => _('คนรอบตัว', 'People'),
+        _ => _('ข้อเท็จจริง', 'Fact'),
+      };
 
   // ═══ สิทธิ์ ════════════════════════════════════════════
   String get permTitle => _('สิทธิ์ที่มายด์ต้องใช้', 'Permissions Mind needs');
@@ -194,7 +234,7 @@ class S {
   String get agoJustNow => _('เมื่อครู่นี้', 'just now');
 
   // ═══ ชุดตัวมายด์ (โหลดทีหลัง) ══════════════════════════
-  String get packTitle => _('ชุดตัวมายด์', "Mind's avatar pack");
+  String get packTitle => _('ชุดตัวมายด์', "Mind's outfits");
 
   /// ต้องอธิบายว่าทำไมไม่ฝังมาให้เลย ไม่งั้นดูเหมือนแอปโหลดไม่ครบ
   String get packWhy => _(
@@ -215,7 +255,8 @@ class S {
       _('ลบ "$name" ออกจากเครื่องไหมคะ', 'Remove "$name" from this device?');
 
   String get packMissingHint =>
-      _('ไปที่ตั้งค่า → ชุดตัวมายด์ เพื่อโหลด', 'Settings → avatar pack to download');
+      _('ไปที่ตั้งค่า → ชุดตัวมายด์ เพื่อโหลด',
+        "Settings → Mind's outfits to download");
   String get packDownload => _('โหลดชุด', 'Download pack');
   String get packRemove => _('ลบออกจากเครื่อง', 'Remove from device');
   String get packUrlLabel => _('ที่อยู่ไฟล์ .zip ของชุด', 'URL of the pack .zip');

@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../memory/distiller.dart';
+import '../memory/mind_memory.dart';
 import '../ai/brain_provider.dart';
 import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
@@ -34,9 +36,17 @@ class MindState extends ChangeNotifier {
     DateTime Function()? clock,
     OpenAiClient? openai,
     SpeechService? speech,
+    MindMemory? memory,
   })  : _clock = clock ?? DateTime.now,
         _openai = openai ?? OpenAiClient(),
-        _speech = speech ?? SpeechService();
+        _speech = speech ?? SpeechService(),
+        memory = memory ?? MindMemory();
+
+  /// สิ่งที่เธอจำได้จากที่เคยคุยกัน
+  ///
+  /// เป็น public เพราะหน้าตั้งค่าต้องเปิดดูและลบได้ — ความจำที่เจ้าของ
+  /// เปิดดูไม่ได้ ไม่ใช่ผู้ช่วย
+  final MindMemory memory;
 
   /// ฉีดนาฬิกาเข้ามาได้เพื่อให้เทสต์โหมดอัตโนมัติได้โดยไม่ต้องรอถึงสองทุ่ม
   final DateTime Function() _clock;
@@ -95,6 +105,10 @@ class MindState extends ChangeNotifier {
     _autoAnswer = p.getBool('autoAnswer') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
 
+    // บทสนทนาเก่าต้องกลับมาก่อนบทตัวอย่าง — ถ้าเคยคุยจริงแล้ว
+    // การเอาบทตัวอย่างมาทับคือการลบสิ่งที่ผู้ใช้พิมพ์เองทิ้ง
+    _loadContext();
+    await memory.load();
     _seedConversation();
     _notify();
   }
@@ -392,6 +406,51 @@ class MindState extends ChangeNotifier {
 
   final List<ChatMessage> _context = [];
 
+  /// คีย์ที่เก็บบทสนทนาไว้ข้ามการเปิดปิดแอป
+  ///
+  /// 🔴 ของเดิม `_context` อยู่ในหน่วยความจำล้วน ปิดแอปแล้วเธอลืมหมด
+  /// ทั้งที่เพิ่งคุยกันเมื่อกี้ · ซึ่งเป็นสิ่งที่ผู้ใช้อ่านว่า "โง่" มากที่สุด
+  static const _prefContext = 'context';
+
+  /// นับตาที่คุยไปตั้งแต่สกัดความจำรอบล่าสุด
+  int _sinceDistill = 0;
+
+  void _saveContext() {
+    final p = _prefs;
+    if (p == null) return;
+    p.setString(
+      _prefContext,
+      jsonEncode([
+        for (final m in _context) {'her': m.fromHer, 't': m.text},
+      ]),
+    );
+  }
+
+  void _loadContext() {
+    final raw = _prefs?.getString(_prefContext);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final list = jsonDecode(raw);
+      if (list is! List) return;
+      for (final e in list) {
+        if (e is! Map) continue;
+        final t = '${e['t'] ?? ''}';
+        if (t.isEmpty) continue;
+        _context.add(
+            e['her'] == true ? ChatMessage.her(t) : ChatMessage.me(t));
+      }
+      // เอาท้าย ๆ ขึ้นจอด้วย ไม่งั้นเปิดแอปมาจะเห็นบทตัวอย่างเหมือนไม่เคยคุยกัน
+      // ทั้งที่เธอจำได้อยู่ — จอกับความจำไม่ตรงกันคือสิ่งที่อ่านว่าแอปพัง
+      if (_context.isNotEmpty) {
+        _messages.addAll(_context.length > _historyLimit
+            ? _context.sublist(_context.length - _historyLimit)
+            : _context);
+      }
+    } catch (e) {
+      debugPrint('state: อ่านบทสนทนาเก่าไม่ได้ — $e');
+    }
+  }
+
   List<ChatMessage> get messages => List.unmodifiable(_messages);
 
   String get bubbleText => _messages
@@ -595,11 +654,23 @@ class MindState extends ChangeNotifier {
       flirt: effectiveFlirt,
       ownerProfile: _ownerProfile,
       boundaries: _boundaries,
+      memories: memory.promptBlock(),
     );
     final history = [
       for (final m in _context) (fromHer: m.fromHer, text: m.text),
     ];
+    return _askBrain(system, history);
+  }
 
+  /// ยิงคำถามไปที่สมองที่เลือกไว้
+  ///
+  /// แยกออกมาเพราะมีคนใช้สองที่: การคุยปกติ กับการสกัดความจำ
+  /// ถ้าไม่แยก การสกัดจะต้องก๊อป switch สามทางนี้ไปอีกชุด แล้ววันหนึ่ง
+  /// จะมีทางใดทางหนึ่งที่แก้ไปที่เดียวแล้วอีกที่ไม่ตาม
+  Future<String> _askBrain(
+    String system,
+    List<({bool fromHer, String text})> history,
+  ) async {
     switch (_brain) {
       case BrainProvider.openai:
         if (!OpenAiConfig.configured) return _cannedReply();
@@ -644,6 +715,43 @@ class MindState extends ChangeNotifier {
     }
     if (_context.length > _contextLimit) {
       _context.removeRange(0, _context.length - _contextLimit);
+    }
+    _saveContext();
+
+    // สกัดความจำเป็นรอบ ไม่ใช่ทุกข้อความ — การสกัดคือการเรียกโมเดลอีกครั้ง
+    // ทำทุกข้อความ = จ่ายสองเท่าช้าสองเท่าตลอดเวลา ทั้งที่คุยกันสิบประโยค
+    // อาจมีเรื่องที่ควรจำแค่เรื่องเดียว
+    if (m.fromHer && ++_sinceDistill >= kDistillEvery) {
+      _sinceDistill = 0;
+      unawaited(_distil());
+    }
+  }
+
+  /// สกัดสิ่งที่ควรจำออกจากบทสนทนาล่าสุด แล้วเก็บลงความจำถาวร
+  ///
+  /// เงียบเสมอเมื่อพลาด — นี่เป็นงานเบื้องหลังที่ผู้ใช้ไม่ได้สั่ง
+  /// ขึ้น error ให้เห็นจะกลายเป็นการรบกวนด้วยเรื่องที่เขาไม่ได้ขอ
+  Future<void> _distil() async {
+    if (_context.length < 4) return;
+    try {
+      final block = conversationBlock(
+        [for (final m in _context) (fromHer: m.fromHer, text: m.text)],
+        me: s.speakerMe,
+        her: s.speakerHer,
+      );
+      final raw = await _askBrain(
+        distillPrompt(_lang == AppLang.th),
+        [(fromHer: false, text: block)],
+      );
+      if (_disposed) return;
+
+      var kept = 0;
+      for (final f in parseDistilled(raw)) {
+        if (await memory.remember(f.text, kind: f.kind)) kept++;
+      }
+      if (kept > 0) debugPrint('memory: จำเพิ่ม $kept เรื่อง');
+    } catch (e) {
+      debugPrint('memory: สกัดไม่สำเร็จ — $e');
     }
   }
 
