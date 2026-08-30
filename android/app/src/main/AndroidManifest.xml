@@ -16,6 +16,11 @@
          ฝั่ง Flutter จึงต้องขอสิทธิ์เองก่อนสั่งเปิดโหมด ดู avatar_view.dart -->
     <uses-permission android:name="android.permission.CAMERA"/>
 
+    <!-- ไมค์ — พูดกับเธอ และอัดเสียงตอนโคลนเสียง
+         ปลั๊กอิน record ประกาศมาให้อยู่แล้ว แต่ประกาศซ้ำที่นี่เพื่อให้คนอ่าน
+         manifest ของแอปเห็นครบว่าแอปนี้ขออะไรบ้าง ไม่ต้องไปไล่ดูของปลั๊กอิน -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+
     <!-- ═══ ให้เธอเฝ้างานตอนแอปปิด ═══════════════════════════════
          FOREGROUND_SERVICE / RECEIVE_BOOT_COMPLETED / WAKE_LOCK ปลั๊กอิน
          flutter_background_service ประกาศมาให้แล้ว ที่เหลือต้องประกาศเอง -->

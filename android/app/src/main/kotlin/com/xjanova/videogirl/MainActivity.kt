@@ -34,6 +34,10 @@ class MainActivity : FlutterActivity() {
     private var pending: MethodChannel.Result? = null
     private var pendingNotify: MethodChannel.Result? = null
 
+    /// สิทธิ์ที่ค้างอยู่ — ต้องจำไว้เพราะ shouldShowRequestPermissionRationale
+    /// ถามเป็นรายสิทธิ์ ถามผิดตัวจะได้คำตอบของสิทธิ์อื่น
+    private var pendingPermission: String? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         ensureWatchChannel()
@@ -54,20 +58,40 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "notifyGranted" -> result.success(notifyGranted())
-                    "requestNotify" -> {
-                        requestNotify(result)
+                    "requestNotify" -> requestNotify(result)
+
+                    // ── ไมค์ ─────────────────────────────────────
+                    "micGranted" -> result.success(granted(Manifest.permission.RECORD_AUDIO))
+                    "requestMic" -> ask(Manifest.permission.RECORD_AUDIO, REQ_MIC, result)
+
+                    // ── ติดตั้งแอปที่ไม่รู้จัก ────────────────────
+                    "canInstall" -> result.success(canInstall())
+                    "requestInstall" -> {
+                        requestInstall()
+                        result.success(true)
                     }
                     else -> result.notImplemented()
                 }
             }
     }
 
-    private fun granted() = ContextCompat.checkSelfPermission(
-        this, Manifest.permission.CAMERA
+    private fun granted(permission: String) = ContextCompat.checkSelfPermission(
+        this, permission
     ) == PackageManager.PERMISSION_GRANTED
 
-    private fun request(result: MethodChannel.Result) {
-        if (granted()) {
+    private fun granted() = granted(Manifest.permission.CAMERA)
+
+    private fun request(result: MethodChannel.Result) =
+        ask(Manifest.permission.CAMERA, REQ_CAMERA, result)
+
+    /**
+     * ขอสิทธิ์หนึ่งตัว แล้วตอบกลับเป็น granted / denied / blocked
+     *
+     * ตัวเดียวใช้ได้ทุกสิทธิ์ เพราะการแยก "ปฏิเสธแต่ถามใหม่ได้" ออกจาก
+     * "ปฏิเสธถาวร" เป็นตรรกะเดียวกันหมด และเป็นจุดที่พลาดง่ายที่สุด
+     */
+    private fun ask(permission: String, code: Int, result: MethodChannel.Result) {
+        if (granted(permission)) {
             result.success(GRANTED)
             return
         }
@@ -75,9 +99,31 @@ class MainActivity : FlutterActivity() {
         // จะค้างตลอดกาลและปุ่มจะกดไม่ได้อีกเลยทั้งเซสชัน
         pending?.success(DENIED)
         pending = result
-        ActivityCompat.requestPermissions(
-            this, arrayOf(Manifest.permission.CAMERA), REQ_CAMERA
-        )
+        pendingPermission = permission
+        ActivityCompat.requestPermissions(this, arrayOf(permission), code)
+    }
+
+    /**
+     * ติดตั้ง APK ที่โหลดมาเองได้ไหม
+     *
+     * 🔴 ถ้าไม่ได้ auto-update จะโหลดไฟล์จนจบ (หลายร้อยเมก) แล้วค่อยล้ม
+     * ตรงขั้นสุดท้าย · ต้องเช็ค**ก่อน**เริ่มโหลด ไม่ใช่ค้นพบตอนจบ
+     *
+     * Android 8+ สิทธิ์นี้ให้ทีละแอป และ**ขอผ่านกล่องปกติไม่ได้**
+     * ต้องพาไปหน้าตั้งค่าของระบบเท่านั้น
+     */
+    private fun canInstall(): Boolean =
+        if (Build.VERSION.SDK_INT >= 26) packageManager.canRequestPackageInstalls() else true
+
+    private fun requestInstall() {
+        if (canInstall()) return
+        val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+            .setData(Uri.parse("package:" + packageName))
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            openAppSettings()
+        }
     }
 
     override fun onRequestPermissionsResult(
@@ -95,10 +141,12 @@ class MainActivity : FlutterActivity() {
             return
         }
 
-        if (requestCode != REQ_CAMERA) return
+        if (requestCode != REQ_CAMERA && requestCode != REQ_MIC) return
 
         val reply = pending ?: return
+        val which = pendingPermission ?: Manifest.permission.CAMERA
         pending = null
+        pendingPermission = null
 
         val ok = grantResults.isNotEmpty() &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED
@@ -109,9 +157,7 @@ class MainActivity : FlutterActivity() {
         // shouldShowRequestPermissionRationale เป็น false ได้สองกรณี คือ
         // "ยังไม่เคยถาม" กับ "ปฏิเสธถาวร" — แต่ตรงนี้เราเพิ่งถามไปหมาด ๆ
         // กรณีแรกจึงถูกตัดออกไปเอง ไม่ต้องจำสถานะลงดิสก์ให้ยุ่ง
-        val canAskAgain = ActivityCompat.shouldShowRequestPermissionRationale(
-            this, Manifest.permission.CAMERA
-        )
+        val canAskAgain = ActivityCompat.shouldShowRequestPermissionRationale(this, which)
 
         reply.success(if (ok) GRANTED else if (canAskAgain) DENIED else BLOCKED)
     }
@@ -208,6 +254,7 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL = "giggok/system"
         private const val REQ_CAMERA = 8747
         private const val REQ_NOTIFY = 8748
+        private const val REQ_MIC = 8749
 
         /// ต้องตรงกับ kMindChannelId ใน lib/background/mind_background.dart
         /// ไม่ตรงกัน = บริการหาช่องไม่เจอ แล้วตายแบบเดียวกับไม่มีช่องเลย

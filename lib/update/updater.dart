@@ -14,6 +14,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
+
+import '../system/permissions.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -179,6 +181,16 @@ class Updater extends ChangeNotifier {
     final info = _pending;
     if (info == null) return false;
 
+    // 🔴 เช็คสิทธิ์ติดตั้ง **ก่อน** เริ่มโหลด ไม่ใช่ตอนจะเปิดตัวติดตั้ง
+    //
+    // ของเดิมโหลด APK จนจบทั้งไฟล์ (หลายร้อยเมก) แล้วค่อยพบว่าเปิดตัวติดตั้ง
+    // ไม่ได้ — เสียทั้งเน็ตทั้งเวลาทั้งพื้นที่ แล้วต้องเริ่มใหม่หมดหลังไปกดอนุญาต
+    // ค่าที่ใช้เช็คเป็นแค่ boolean ตัวเดียว ถามก่อนแทบไม่มีต้นทุน
+    if (!await _canInstall()) {
+      _set(UpdateStage.failed, error: _s().updateInstallerBlocked);
+      return false;
+    }
+
     _progress = 0;
     _set(UpdateStage.downloading);
 
@@ -232,6 +244,19 @@ class Updater extends ChangeNotifier {
     } on Exception {
       _set(UpdateStage.failed, error: _s().updateRetry);
       return false;
+    }
+  }
+
+  /// เครื่องนี้ยอมให้แอปเปิดตัวติดตั้ง APK ไหม
+  ///
+  /// ไม่มีฝั่ง native (เทสต์ / เดสก์ท็อป) ให้ถือว่า**ได้** แล้วไปตายที่ขั้นเปิด
+  /// ตัวติดตั้งแทน — เดาว่าไม่ได้จะทำให้เทสต์ที่มีอยู่ล้มโดยไม่ได้มีอะไรพังจริง
+  Future<bool> _canInstall() async {
+    try {
+      return await kSystemChannel.invokeMethod<bool>('canInstall') ?? true;
+    } catch (e) {
+      debugPrint('update: ถามสิทธิ์ติดตั้งไม่ได้ — $e');
+      return true;
     }
   }
 

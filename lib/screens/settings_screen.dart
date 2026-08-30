@@ -12,6 +12,7 @@ import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
 import '../avatar/avatar_pack.dart';
 import '../background/mind_watch.dart';
+import '../system/permissions.dart';
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -50,7 +51,31 @@ extension _FeatureLabels on _Feature {
       };
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
+  /// 🔴 สิทธิ์ที่ต้องไปกดในหน้าตั้งค่าของระบบ (ยกเว้นแบต, ติดตั้งแอปไม่รู้จัก)
+  /// เปลี่ยนค่าตอนที่แอปเรา**ไม่ได้อยู่หน้าจอ** ถ้าไม่อ่านใหม่ตอนกลับมา
+  /// การ์ดจะบอกว่ายังไม่ได้ให้ ทั้งที่เพิ่งไปกดให้มาหมาด ๆ
+  /// แล้วผู้ใช้จะกดวนอยู่อย่างนั้นโดยไม่รู้ว่าจริง ๆ สำเร็จไปแล้ว
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    context.read<MindPermissions>().refresh();
+    context.read<MindWatch>().refresh();
+  }
+
   /// ช่องทางเสียงที่กำลังตั้งค่าอยู่ในการ์ด "เสียงพูด"
   VoiceChannel _voiceTab = VoiceChannel.chat;
 
@@ -96,6 +121,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: MindSpace.md),
             _watchCard(context, mode, t),
             const SizedBox(height: MindSpace.md),
+            _permissionCard(context, mode, t),
+            const SizedBox(height: MindSpace.md),
             if (!OpenAiConfig.configured) _noKeyBanner(),
             _modeCard(state, mode),
             const SizedBox(height: MindSpace.md),
@@ -136,6 +163,135 @@ class _SettingsScreenState extends State<SettingsScreen> {
             UpdateCard(mode: mode),
           ],
         ),
+      ),
+    );
+  }
+
+  /// สิทธิ์ทั้งหมดในที่เดียว
+  ///
+  /// ขอตอนจะใช้จริงฟังดูสุภาพ แต่ผลคือเจ้าของค้นพบว่ายังไม่ได้ให้สิทธิ์
+  /// **ตอนที่กำลังจะใช้งานพอดี** — และบางตัวแย่กว่านั้น (ดู permInstallWhy)
+  /// การ์ดนี้บอกครบว่าต้องใช้อะไร เพื่ออะไร และยังขาดตัวไหน
+  Widget _permissionCard(BuildContext context, MindMode mode, S t) {
+    final perms = context.watch<MindPermissions>();
+
+    return _card(
+      mode: mode,
+      label: t.permTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                perms.allGranted
+                    ? Icons.verified_user_rounded
+                    : Icons.shield_outlined,
+                size: 18,
+                color: perms.allGranted ? mode.accent : MindColors.ink45,
+              ),
+              const SizedBox(width: MindSpace.sm),
+              Expanded(
+                child: Text(
+                  perms.allGranted
+                      ? t.permAllSet
+                      : t.permMissing(perms.missing),
+                  style: MindType.title,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: MindSpace.md),
+          for (final p in MindPermission.values) ...[
+            _permRow(mode, t, perms, p),
+            const SizedBox(height: MindSpace.sm),
+          ],
+          if (!perms.allGranted) ...[
+            const SizedBox(height: MindSpace.xs),
+            MindButton(
+              label: t.permGrantAll,
+              kind: MindButtonKind.primary,
+              icon: Icons.done_all_rounded,
+              mode: mode,
+              expand: true,
+              onTap: perms.busy ? null : perms.requestAllMissing,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _permRow(
+      MindMode mode, S t, MindPermissions perms, MindPermission p) {
+    final ok = perms.of(p);
+    final blocked = perms.isBlocked(p);
+
+    final (name, why) = switch (p) {
+      MindPermission.camera => (t.permCamera, t.permCameraWhy),
+      MindPermission.mic => (t.permMic, t.permMicWhy),
+      MindPermission.notify => (t.permNotify, t.permNotifyWhy),
+      MindPermission.battery => (t.permBattery, t.bgBatteryWhy),
+      MindPermission.install => (t.permInstall, t.permInstallWhy),
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(MindSpace.md),
+      decoration: BoxDecoration(
+        color: ok ? mode.accent.withValues(alpha: .07) : MindColors.glass80,
+        borderRadius: BorderRadius.circular(MindRadius.control),
+        border: Border.all(
+          color: ok ? mode.accent.withValues(alpha: .30) : MindColors.glassBorder,
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                ok ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                size: 17,
+                color: ok ? mode.accent : MindColors.ink22,
+              ),
+              const SizedBox(width: MindSpace.sm),
+              Expanded(child: Text(name, style: MindType.title.copyWith(fontSize: 13.5))),
+              Text(ok ? t.permOk : t.permNo,
+                  style: MindType.caption.copyWith(
+                      fontSize: 11,
+                      color: ok ? mode.accent : MindColors.ink45)),
+            ],
+          ),
+          const SizedBox(height: MindSpace.xs),
+          Padding(
+            padding: const EdgeInsets.only(left: 25),
+            child: Text(why, style: MindType.caption.copyWith(fontSize: 11)),
+          ),
+          if (!ok) ...[
+            if (blocked)
+              Padding(
+                padding: const EdgeInsets.only(left: 25, top: MindSpace.xs),
+                child: Text(t.permBlocked,
+                    style: MindType.caption
+                        .copyWith(fontSize: 11, color: const Color(0xFFB46A00))),
+              )
+            // ตัวที่ต้องออกไปหน้าตั้งค่า บอกล่วงหน้าว่าแอปจะเด้งออกไปที่อื่น
+            else if (!p.inApp)
+              Padding(
+                padding: const EdgeInsets.only(left: 25, top: MindSpace.xs),
+                child: Text(t.permGoesToSettings,
+                    style: MindType.caption.copyWith(fontSize: 10.5)),
+              ),
+            const SizedBox(height: MindSpace.sm),
+            MindButton(
+              label: t.permGrant,
+              mode: mode,
+              expand: true,
+              onTap: perms.busy ? null : () => perms.request(p),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -114,6 +114,52 @@ class S {
   String get avatarMissing =>
       _('ยังไม่มีโมเดลอวาตาร์ในเครื่อง', 'Avatar model not on this device yet');
 
+  // ═══ สิทธิ์ ════════════════════════════════════════════
+  String get permTitle => _('สิทธิ์ที่มายด์ต้องใช้', 'Permissions Mind needs');
+  String get permAllSet => _('ให้ครบแล้ว ขอบคุณค่ะ', 'All set — thank you');
+  String permMissing(int n) =>
+      _('ยังขาดอีก $n อย่าง', '$n still missing');
+  String get permGrant => _('อนุญาต', 'Allow');
+  String get permGrantAll => _('อนุญาตทั้งหมด', 'Allow everything');
+  String get permOk => _('ให้แล้ว', 'Granted');
+  String get permNo => _('ยังไม่ได้ให้', 'Not granted');
+
+  /// ปฏิเสธถาวรแล้ว กล่องขอไม่ขึ้นอีก — ต้องบอกทางไปให้ชัด
+  /// ไม่งั้นผู้ใช้จะกดปุ่มอนุญาตซ้ำ ๆ แล้วงงว่าทำไมไม่มีอะไรเกิดขึ้น
+  String get permBlocked => _(
+        'ปฏิเสธถาวรไปแล้ว กล่องขอจะไม่ขึ้นอีก ต้องไปเปิดในตั้งค่าของเครื่อง',
+        'Permanently denied — the prompt will not appear again. '
+        'Turn it on in system settings.',
+      );
+
+  /// ตัวที่ต้องออกไปหน้าตั้งค่าของระบบ ไม่ใช่กล่องในแอป — บอกล่วงหน้า
+  /// ไม่งั้นคนจะตกใจว่าทำไมแอปเด้งออกไปที่อื่น
+  String get permGoesToSettings =>
+      _('จะพาไปหน้าตั้งค่าของเครื่อง', 'Opens system settings');
+
+  String get permCamera => _('กล้องหน้า', 'Front camera');
+  String get permCameraWhy => _(
+        'โหมดหุ่นเชิด — ภาพไม่ออกจากเครื่อง',
+        'Puppet mode — video never leaves this device',
+      );
+  String get permMic => _('ไมโครโฟน', 'Microphone');
+  String get permMicWhy =>
+      _('พูดกับเธอ และอัดเสียงตอนโคลนเสียง', 'Talk to her, and record for voice cloning');
+  String get permNotify => _('การแจ้งเตือน', 'Notifications');
+  String get permNotifyWhy => _(
+        'Android บังคับว่าบริการเบื้องหลังต้องมีการแจ้งเตือน ไม่ให้ = เธอเฝ้างานไม่ได้',
+        'Android requires a notification for background work — without it she cannot watch',
+      );
+  String get permBattery => _('ยกเว้นการประหยัดแบต', 'Exempt from battery saver');
+  String get permInstall => _('ติดตั้งแอปที่ไม่รู้จัก', 'Install unknown apps');
+
+  /// ต้องอธิบายว่าทำไมต้องให้**ก่อน** ไม่ใช่ตอนจะติดตั้ง
+  String get permInstallWhy => _(
+        'อัปเดตในตัวต้องใช้ ไม่ให้ไว้ก่อน = โหลดไฟล์จนจบแล้วค่อยล้มตอนติดตั้ง',
+        'The built-in updater needs this — without it the download finishes '
+        'and only then fails at the install step',
+      );
+
   // ═══ เฝ้างานเบื้องหลัง ══════════════════════════════════
   String get bgTitle => _('ให้เธอเฝ้างานตอนปิดแอป', 'Let her watch while the app is closed');
 

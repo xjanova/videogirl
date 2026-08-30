@@ -68,6 +68,26 @@ void main() {
         check('flirtSample($lv)', en.flirtSample(lv));
       }
 
+      // สิทธิ์
+      check('permTitle', en.permTitle);
+      check('permAllSet', en.permAllSet);
+      check('permMissing', en.permMissing(2));
+      check('permGrant', en.permGrant);
+      check('permGrantAll', en.permGrantAll);
+      check('permOk', en.permOk);
+      check('permNo', en.permNo);
+      check('permBlocked', en.permBlocked);
+      check('permGoesToSettings', en.permGoesToSettings);
+      check('permCamera', en.permCamera);
+      check('permCameraWhy', en.permCameraWhy);
+      check('permMic', en.permMic);
+      check('permMicWhy', en.permMicWhy);
+      check('permNotify', en.permNotify);
+      check('permNotifyWhy', en.permNotifyWhy);
+      check('permBattery', en.permBattery);
+      check('permInstall', en.permInstall);
+      check('permInstallWhy', en.permInstallWhy);
+
       // เฝ้างานเบื้องหลัง
       check('bgTitle', en.bgTitle);
       check('bgWhy', en.bgWhy);
@@ -224,6 +244,8 @@ void main() {
         'puppetPrivacy': th.puppetPrivacy,
         'packWhy': th.packWhy,
         'bgWhy': th.bgWhy,
+        'permBlocked': th.permBlocked,
+        'permInstallWhy': th.permInstallWhy,
         'bgBatteryWhy': th.bgBatteryWhy,
         'calRestClear': th.calRestClear,
       };

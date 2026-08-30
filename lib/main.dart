@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'avatar/avatar_pack.dart';
 import 'background/mind_background.dart';
 import 'background/mind_watch.dart';
+import 'system/permissions.dart';
 import 'screens/splash_screen.dart';
 import 'i18n/strings.dart';
 import 'state/mind_state.dart';
@@ -68,6 +69,7 @@ class MindApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: state),
         ChangeNotifierProvider.value(value: pack),
         ChangeNotifierProvider(create: (_) => MindWatch()..refresh()),
+        ChangeNotifierProvider(create: (_) => MindPermissions()..refresh()),
         ChangeNotifierProvider(create: (_) => Updater()),
       ],
       // locale ต้องอ่านจาก state ไม่ใช่ค่าคงที่ ไม่งั้นสลับภาษาแล้วจอไม่เปลี่ยน
