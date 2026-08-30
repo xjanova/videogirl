@@ -253,11 +253,20 @@ class MindNavItem {
     required this.index,
     required this.label,
     required this.icon,
+    this.asset,
   });
 
   final int index;
   final String label;
+
+  /// ไอคอนสำรอง — ใช้เมื่อไม่มี [asset] หรือโหลดภาพไม่ขึ้น
+  ///
+  /// เก็บไว้เสมอ ไม่ตัดทิ้ง เพราะภาพเป็นไฟล์ที่หายได้ (แพ็กตกหล่น ไฟล์เสีย)
+  /// แถบนำทางที่ไอคอนหายไปคือแถบที่ใช้ไม่ได้เลย
   final IconData icon;
+
+  /// ภาพไอคอน 3D แบบลิควิด เจนจาก Magnific — ดู assets/brand/nav/
+  final String? asset;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -304,11 +313,36 @@ class _NavItem extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               spacing: 3,
               children: [
-                Icon(
-                  item.icon,
-                  size: 18,
-                  color: selected ? mode.accent : MindColors.ink50,
-                ),
+                // ไอคอนภาพเป็นสีของตัวเอง (ม่วง-ชมพูลิควิด) ย้อมตามโหมดไม่ได้
+                // จึงแยกที่เลือกอยู่ด้วย **ความทึบ** แทนสี — ตัวที่ไม่ได้เลือก
+                // จางลงจนถอยไปเป็นฉากหลัง ตัวที่เลือกเต็มสีและมีพิลล์รอง
+                if (item.asset != null)
+                  SizedBox(
+                    // ใหญ่กว่าไอคอนเส้นเดิม (18) เพราะไอคอน 3D มีขอบ มีเงา
+                    // และมีที่ว่างรอบตัวในภาพ ขนาดเท่ากันจะเห็นสัญลักษณ์
+                    // ข้างในเล็กจนอ่านไม่ออก
+                    width: 26,
+                    height: 26,
+                    child: Opacity(
+                      opacity: selected ? 1 : .48,
+                      child: Image.asset(
+                        item.asset!,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.medium,
+                        errorBuilder: (_, _, _) => Icon(
+                          item.icon,
+                          size: 18,
+                          color: selected ? mode.accent : MindColors.ink50,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Icon(
+                    item.icon,
+                    size: 18,
+                    color: selected ? mode.accent : MindColors.ink50,
+                  ),
                 Text(
                   item.label,
                   maxLines: 1,

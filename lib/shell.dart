@@ -40,12 +40,28 @@ class _MindShellState extends State<MindShell> {
         MindNavItem(
             index: 0,
             label: s.tabMind,
-            icon: Icons.face_retouching_natural_rounded),
-        MindNavItem(index: 1, label: s.tabMail, icon: Icons.mail_outline_rounded),
+            icon: Icons.face_retouching_natural_rounded,
+            asset: 'assets/brand/nav/mind.png'),
         MindNavItem(
-            index: 2, label: s.tabCalendar, icon: Icons.calendar_today_rounded),
-        MindNavItem(index: 3, label: s.tabTimeline, icon: Icons.timeline_rounded),
-        MindNavItem(index: 4, label: s.tabSettings, icon: Icons.tune_rounded),
+            index: 1,
+            label: s.tabMail,
+            icon: Icons.mail_outline_rounded,
+            asset: 'assets/brand/nav/mail.png'),
+        MindNavItem(
+            index: 2,
+            label: s.tabCalendar,
+            icon: Icons.calendar_today_rounded,
+            asset: 'assets/brand/nav/calendar.png'),
+        MindNavItem(
+            index: 3,
+            label: s.tabTimeline,
+            icon: Icons.timeline_rounded,
+            asset: 'assets/brand/nav/timeline.png'),
+        MindNavItem(
+            index: 4,
+            label: s.tabSettings,
+            icon: Icons.tune_rounded,
+            asset: 'assets/brand/nav/settings.png'),
       ];
 
   /// ลำดับที่เห็นบนแถบ — มายด์ย้ายไปกลาง อีกสี่อันคงลำดับสัมพัทธ์เดิมไว้ทุกตัว

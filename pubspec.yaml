@@ -79,6 +79,7 @@ flutter:
   assets:
     - assets/avatar/
     - assets/brand/
+    - assets/brand/nav/
     - assets/avatar/model/
     - assets/avatar/vendor/
     - assets/avatar/vendor/three/

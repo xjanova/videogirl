@@ -603,7 +603,28 @@ class _SettingsScreenState extends State<SettingsScreen>
           ],
 
           const SizedBox(height: MindSpace.md),
-          // ทางเข้าร้าน — ปลายทางจริงของการได้ชุดใหม่ ส่วนช่อง URL ข้างล่าง
+          // ที่อยู่ร้าน — ไม่มีตัวนี้ หน้าร้านเปิดไปก็ไม่รู้จะไปคุยกับใคร
+          MindSectionLabel(t.shopUrlLabel),
+          const SizedBox(height: MindSpace.sm),
+          Container(
+            decoration: BoxDecoration(
+              color: MindColors.glass80,
+              borderRadius: BorderRadius.circular(MindRadius.control),
+              border: Border.all(color: MindColors.glassBorder, width: 1),
+            ),
+            child: TextFormField(
+              initialValue: state.storeBaseUrl,
+              enabled: !busy,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              style: MindType.body.copyWith(fontSize: 12.5),
+              decoration: const InputDecoration(hintText: 'https://…'),
+              onChanged: state.setStoreBaseUrl,
+            ),
+          ),
+          const SizedBox(height: MindSpace.sm),
+
+          // ทางเข้าร้าน — ปลายทางจริงของการได้ชุดใหม่ ส่วนช่อง .zip ข้างล่าง
           // เก็บไว้สำหรับทดสอบชุดที่ยังไม่ขึ้นร้าน
           MindButton(
             label: t.shopOpen,
