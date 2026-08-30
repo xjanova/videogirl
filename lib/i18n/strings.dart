@@ -240,6 +240,25 @@ class S {
         'Android requires a notification for background work — without it she cannot watch',
       );
   String get permBattery => _('ยกเว้นการประหยัดแบต', 'Exempt from battery saver');
+  String get permPhone => _('สายโทรเข้า', 'Phone calls');
+  String get permPhoneWhy => _(
+        'รู้ว่าใครโทรมาและอ่านประวัติการโทร · ต้องได้ทั้งสองอย่างคู่กัน '
+        'ไม่งั้น Android จะไม่บอกเบอร์ผู้โทรเลย',
+        'See who is calling and read call history — both are needed together, '
+        'or Android hides the caller number entirely',
+      );
+  String get permContacts => _('สมุดโทรศัพท์', 'Contacts');
+  String get permContactsWhy => _(
+        'เปลี่ยนเบอร์เป็นชื่อคน · อ่านอย่างเดียว ไม่แก้ ไม่ส่งออกจากเครื่อง',
+        'Turns numbers into names — read-only, never edited, never leaves this device',
+      );
+  String get permAnswer => _('รับสายแทน', 'Answer calls');
+  String get permAnswerWhy => _(
+        'รับหรือวางสายให้ได้ · เธอยังพูดในสายไม่ได้ ต้องตั้งแอปนี้เป็น '
+        'แอปโทรศัพท์หลักก่อน ซึ่งยังไม่ได้ทำ',
+        'Lets her pick up or hang up. She cannot speak on the line yet — '
+        'that needs this app set as the default phone app, which is not built.',
+      );
   String get permCalendar => _('ปฏิทิน', 'Calendar');
   String get permCalendarWhy => _(
         'อ่านตารางนัดของคุณ อ่านอย่างเดียว ไม่แก้ไม่ลบ และไม่ส่งออกจากเครื่อง',
@@ -725,12 +744,13 @@ class S {
   String get tlStatTalk => _('คุยกัน', 'Messages');
   String get tlStatLearn => _('จำได้', 'Learned');
   String get tlStatMeet => _('นัด', 'Events');
-  String get tlStatOther => _('อื่น ๆ', 'Other');
+  String get tlStatCall => _('สาย', 'Calls');
 
   /// ป้ายชนิดของแต่ละบรรทัด
   String get tlKindAsked => _('คุณถาม', 'You asked');
   String get tlKindReplied => _('มายด์ตอบ', 'Mind replied');
   String get tlKindLearned => _('จำเรื่องใหม่', 'Learned something');
+  String get tlKindCall => _('สายโทร', 'Phone call');
   String get tlKindPack => _('ติดตั้งชุด', 'Installed a pack');
   String get tlKindUpdate => _('อัปเดตแอป', 'App update');
   String get tlKindSystem => _('ระบบ', 'System');

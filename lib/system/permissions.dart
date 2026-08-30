@@ -40,6 +40,19 @@ enum MindPermission {
   /// คือสิ่งที่ผู้ใช้จำได้ตอนกดปฏิเสธ
   calendar(check: 'calendarGranted', ask: 'requestCalendar', inApp: true),
 
+  /// สายโทรเข้า — รู้ว่าใครโทรมา และอ่านประวัติการโทร
+  ///
+  /// 🔴 สองสิทธิ์นี้ต้องมาคู่กันเสมอ (ฝั่ง Android ขอพร้อมกัน)
+  /// เพราะตั้งแต่ Android 9 เบอร์ที่โทรเข้าจะว่างเปล่าถ้าไม่มี READ_CALL_LOG
+  /// โดยไม่มี error ไม่มี log — ดูเหมือนทำงานแต่ไม่รู้ว่าใครโทรมา
+  phone(check: 'callGranted', ask: 'requestCall', inApp: true),
+
+  /// สมุดโทรศัพท์ — เบอร์อย่างเดียวช่วยอะไรไม่ได้ ต้องรู้ว่าเป็นใคร
+  contacts(check: 'contactsGranted', ask: 'requestContacts', inApp: true),
+
+  /// รับสายแทน · เธอยังพูดในสายไม่ได้ ดู [CallWatch]
+  answerCalls(check: 'answerGranted', ask: 'requestAnswer', inApp: true),
+
   /// ติดตั้งแอปที่ไม่รู้จัก — auto-update ถึงจะติดตั้งได้จริง
   install(check: 'canInstall', ask: 'requestInstall', inApp: false);
 

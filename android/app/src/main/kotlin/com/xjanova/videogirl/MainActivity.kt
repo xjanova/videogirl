@@ -12,6 +12,9 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.CalendarContract
 import android.provider.Settings
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyCallback
+import android.telephony.TelephonyManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -33,6 +36,14 @@ import io.flutter.plugin.common.MethodChannel
  */
 class MainActivity : FlutterActivity() {
 
+    private val calls by lazy { CallBridge(this) }
+
+    /// ช่องคุยกับ Dart — เก็บไว้เพื่อ **ยิงกลับ** ตอนสายเข้า
+    /// ไม่ใช่แค่ตอบคำถามที่ Dart ถามมา
+    private var channel: MethodChannel? = null
+
+    private var phoneListener: Any? = null
+
     private var pending: MethodChannel.Result? = null
     private var pendingNotify: MethodChannel.Result? = null
 
@@ -43,8 +54,8 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         ensureWatchChannel()
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
-            .setMethodCallHandler { call, result ->
+        channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        channel!!.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "status" -> result.success(if (granted()) GRANTED else DENIED)
                     "request" -> request(result)
@@ -76,6 +87,32 @@ class MainActivity : FlutterActivity() {
                         (call.argument<Number>("to") ?: 0).toLong(),
                         result
                     )
+
+                    // ── สายโทรเข้า ───────────────────────────────
+                    "callGranted" -> result.success(calls.canReadCalls())
+                    "requestCall" -> askMany(
+                        arrayOf(
+                            Manifest.permission.READ_PHONE_STATE,
+                            Manifest.permission.READ_CALL_LOG
+                        ),
+                        REQ_CALL, result
+                    )
+                    "contactsGranted" -> result.success(calls.canReadContacts())
+                    "requestContacts" ->
+                        ask(Manifest.permission.READ_CONTACTS, REQ_CONTACTS, result)
+                    "answerGranted" -> result.success(calls.canAnswer())
+                    "requestAnswer" -> askMany(
+                        arrayOf(Manifest.permission.ANSWER_PHONE_CALLS),
+                        REQ_ANSWER, result
+                    )
+                    "recentCalls" ->
+                        result.success(calls.recentCalls(call.argument<Int>("limit") ?: 30))
+                    "answerCall" -> result.success(calls.answer())
+                    "hangUp" -> result.success(calls.hangUp())
+                    "watchCalls" -> {
+                        watchCalls()
+                        result.success(true)
+                    }
 
                     // ── ติดตั้งแอปที่ไม่รู้จัก ────────────────────
                     "canInstall" -> result.success(canInstall())
@@ -154,15 +191,29 @@ class MainActivity : FlutterActivity() {
             return
         }
 
-        if (requestCode != REQ_CAMERA && requestCode != REQ_MIC) return
+        // 🔴 เคยเขียนเป็น `if (requestCode != REQ_CAMERA && != REQ_MIC) return`
+        //
+        // ทุกสิทธิ์ที่เพิ่มเข้ามาทีหลัง (ปฏิทิน สาย สมุดโทรศัพท์ รับสาย) จึงหลุด
+        // ออกทางนี้โดยไม่ตอบ `pending` เลย · ผลคือ Future ฝั่ง Dart **ค้างตลอด
+        // กาล** และเพราะ MindPermissions.request() ตั้ง _busy ไว้จนกว่าจะได้
+        // คำตอบ **ปุ่มขอสิทธิ์ทั้งแอปก็ตายตามไปด้วยทั้งเซสชัน**
+        //
+        // ไม่มี error ไม่มี log · ผู้ใช้เห็นแค่ปุ่มที่กดแล้วไม่มีอะไรเกิดขึ้น
+        // เพิ่มสิทธิ์ใหม่เมื่อไหร่ ต้องเพิ่มรหัสตรงนี้ด้วยเสมอ
+        if (requestCode !in KNOWN_REQUESTS) return
 
         val reply = pending ?: return
         val which = pendingPermission ?: Manifest.permission.CAMERA
         pending = null
         pendingPermission = null
 
+        // ต้องได้ **ครบทุกตัว** ที่ขอไป ไม่ใช่แค่ตัวแรก
+        //
+        // สายขอ READ_PHONE_STATE คู่กับ READ_CALL_LOG · ถ้าดูแค่ตัวแรก
+        // คนที่ให้ตัวเดียวจะถูกนับว่าให้ครบ แล้วฟีเจอร์ทำงานครึ่ง ๆ
+        // โดยที่ UI บอกว่าเรียบร้อย
         val ok = grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED
+            grantResults.all { it == PackageManager.PERMISSION_GRANTED }
 
         // แยก "ปฏิเสธแต่ถามใหม่ได้" ออกจาก "ปฏิเสธถาวร" ให้ได้ ไม่งั้น UI จะบอก
         // ให้กดใหม่ทั้งที่กดไปก็ไม่มีอะไรขึ้น
@@ -330,6 +381,68 @@ class MainActivity : FlutterActivity() {
         return out
     }
 
+    /**
+     * ขอสิทธิ์หลายตัวพร้อมกัน
+     *
+     * แยกจาก [ask] เพราะสายต้องใช้ READ_PHONE_STATE **คู่กับ** READ_CALL_LOG
+     * เสมอ (ไม่งั้นเบอร์ที่โทรเข้าจะว่างเปล่าโดยไม่มีอะไรบอก) การขอทีละตัว
+     * แปลว่าผู้ใช้อาจให้ตัวเดียว แล้วฟีเจอร์ทำงานครึ่ง ๆ อย่างเงียบที่สุด
+     */
+    private fun askMany(
+        permissions: Array<String>,
+        code: Int,
+        result: MethodChannel.Result,
+    ) {
+        if (permissions.all { granted(it) }) {
+            result.success(GRANTED)
+            return
+        }
+        pending?.success(DENIED)
+        pending = result
+        pendingPermission = permissions.first()
+        ActivityCompat.requestPermissions(this, permissions, code)
+    }
+
+    /**
+     * เฝ้าสถานะสาย แล้วบอก Dart ทุกครั้งที่เปลี่ยน
+     *
+     * 🔴 เบอร์ที่ได้จากตรงนี้ **ว่างเปล่าบน Android 9+ ถ้าไม่มี READ_CALL_LOG**
+     * และไม่มี error อะไรบอก · ฝั่ง Dart จึงต้องเผื่อเบอร์ว่างเสมอ และไปอ่าน
+     * จากบันทึกการโทรหลังสายจบแทน
+     */
+    private fun watchCalls() {
+        if (phoneListener != null) return
+        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
+
+        if (Build.VERSION.SDK_INT >= 31) {
+            val cb = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+                override fun onCallStateChanged(state: Int) = sendCallState(state, null)
+            }
+            phoneListener = cb
+            tm.registerTelephonyCallback(mainExecutor, cb)
+        } else {
+            @Suppress("DEPRECATION")
+            val l = object : PhoneStateListener() {
+                override fun onCallStateChanged(state: Int, phoneNumber: String?) =
+                    sendCallState(state, phoneNumber)
+            }
+            phoneListener = l
+            @Suppress("DEPRECATION")
+            tm.listen(l, PhoneStateListener.LISTEN_CALL_STATE)
+        }
+    }
+
+    private fun sendCallState(state: Int, number: String?) {
+        channel?.invokeMethod(
+            "onCallState",
+            mapOf(
+                "state" to state,
+                "number" to number,
+                "name" to calls.nameFor(number)
+            )
+        )
+    }
+
     private fun openAppSettings() {
         startActivity(
             Intent(
@@ -345,6 +458,17 @@ class MainActivity : FlutterActivity() {
         private const val REQ_NOTIFY = 8748
         private const val REQ_MIC = 8749
         private const val REQ_CALENDAR = 8750
+        private const val REQ_CALL = 8751
+        private const val REQ_CONTACTS = 8752
+        private const val REQ_ANSWER = 8753
+
+        /// รหัสคำขอทุกตัวที่ [ask] / [askMany] ใช้
+        ///
+        /// ต้องครบ ไม่งั้นคำขอที่หายไปจะไม่มีใครตอบ แล้วปุ่มขอสิทธิ์
+        /// ทั้งแอปค้างทั้งเซสชัน · ดู onRequestPermissionsResult
+        private val KNOWN_REQUESTS = setOf(
+            REQ_CAMERA, REQ_MIC, REQ_CALENDAR, REQ_CALL, REQ_CONTACTS, REQ_ANSWER
+        )
 
         /// ต้องตรงกับ kMindChannelId ใน lib/background/mind_background.dart
         /// ไม่ตรงกัน = บริการหาช่องไม่เจอ แล้วตายแบบเดียวกับไม่มีช่องเลย

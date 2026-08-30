@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'avatar/avatar_pack.dart';
 import 'calendar/device_calendar.dart';
 import 'journal/mind_journal.dart';
+import 'phone/call_watch.dart';
 import 'avatar/avatar_view.dart';
 import 'background/mind_background.dart';
 import 'background/mind_watch.dart';
@@ -78,6 +79,10 @@ class _MindBootstrapState extends State<MindBootstrap> {
   /// สมุดบันทึกเรื่องที่เกิดขึ้นจริง — แท็บไทม์ไลน์อ่านจากตรงนี้
   final MindJournal _journal = MindJournal();
 
+  /// สายโทรเข้า — เธอต้องรู้ว่าใครโทรมาถึงจะเป็นเลขาได้
+  late final CallWatch _calls =
+      CallWatch(permissions: _perms, journal: _journal);
+
   /// ตัวควบคุมอวาตาร์อยู่ที่นี่ ไม่ใช่ในเชลล์ เพราะหน้าเปิดแอปต้องอ่าน
   /// ความคืบหน้าการโหลด VRM มาโชว์เป็นเปอร์เซ็นต์จริง
   final MindAvatarController _avatar = MindAvatarController();
@@ -140,6 +145,11 @@ class _MindBootstrapState extends State<MindBootstrap> {
     // ยังไม่ได้ให้สิทธิ์ก็ไม่เป็นไร — จบที่สถานะ denied เงียบ ๆ
     _state.attachCalendar(_calendar);
     await _calendar.load();
+
+    // เฝ้าสายตั้งแต่เปิดแอป · การเฝ้าเองไม่ต้องใช้สิทธิ์ (รู้แค่ว่ามีสาย)
+    // ยังไม่ได้ให้สิทธิ์ก็แค่ไม่รู้ว่าใครโทร ไม่ได้ล้มทั้งระบบ
+    _state.attachCalls(_calls);
+    await _calls.start();
   }
 
   @override
@@ -163,6 +173,7 @@ class _MindBootstrapState extends State<MindBootstrap> {
         ChangeNotifierProvider.value(value: _perms..refresh()),
         ChangeNotifierProvider.value(value: _calendar),
         ChangeNotifierProvider.value(value: _journal),
+        ChangeNotifierProvider.value(value: _calls),
       ],
       child: Consumer<MindState>(
         builder: (context, state, _) => MaterialApp(

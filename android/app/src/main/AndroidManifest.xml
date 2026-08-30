@@ -42,6 +42,25 @@
          และสิทธิ์ที่ขอไปโดยไม่ได้ใช้คือสิ่งที่ผู้ใช้จำได้ตอนกดปฏิเสธ -->
     <uses-permission android:name="android.permission.READ_CALENDAR"/>
 
+    <!-- ═══ สายโทรเข้า ═══════════════════════════════════════
+         เธอเป็นเลขา ต้องรู้ว่าใครโทรมาถึงจะช่วยอะไรได้
+
+         🔴 บน Android 9 (API 28) ขึ้นไป **เบอร์ที่โทรเข้าไม่ได้มากับ
+         broadcast อีกแล้ว** ถ้าไม่มี READ_CALL_LOG จะได้ EXTRA_INCOMING_NUMBER
+         เป็นค่าว่างโดยไม่มี error ไม่มี log — ดูเหมือนทำงานแต่ไม่มีเบอร์
+         ทั้งสองตัวจึงต้องมาคู่กันเสมอ ไม่ใช่ตัวเลือก -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.READ_CALL_LOG"/>
+
+    <!-- เบอร์อย่างเดียวช่วยอะไรไม่ได้ ต้องรู้ว่าเป็นใคร -->
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
+
+    <!-- รับสายแทน · ดู CallBridge.kt ว่าทำได้แค่ไหนและติดตรงไหน -->
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS"/>
+
+    <!-- เครื่องที่ไม่มีซิมก็ยังลงแอปได้ แค่ไม่มีสายให้รับ -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false"/>
+
     <!-- ไม่บังคับ: เครื่องไม่มีกล้องหน้าก็ยังลงแอปได้ แค่ใช้โหมดหุ่นเชิดไม่ได้ -->
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.front" android:required="false"/>

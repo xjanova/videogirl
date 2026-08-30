@@ -8,6 +8,7 @@ import '../memory/distiller.dart';
 import '../calendar/device_calendar.dart';
 import '../journal/mind_journal.dart';
 import '../memory/mind_memory.dart';
+import '../phone/call_watch.dart';
 import '../ai/brain_provider.dart';
 import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
@@ -63,6 +64,11 @@ class MindState extends ChangeNotifier {
   MindJournal? _journal;
 
   void attachJournal(MindJournal j) => _journal = j;
+
+  /// สายโทรเข้า — ให้เธอตอบได้ว่าใครโทรมาบ้างวันนี้
+  CallWatch? _calls;
+
+  void attachCalls(CallWatch c) => _calls = c;
 
   /// ฉีดนาฬิกาเข้ามาได้เพื่อให้เทสต์โหมดอัตโนมัติได้โดยไม่ต้องรอถึงสองทุ่ม
   final DateTime Function() _clock;
@@ -784,6 +790,7 @@ class MindState extends ChangeNotifier {
       boundaries: _boundaries,
       memories: memory.promptBlock(),
       schedule: _calendar?.promptBlock() ?? '',
+      calls: _calls?.promptBlock() ?? '',
     );
     final history = [
       for (final m in _context) (fromHer: m.fromHer, text: m.text),

@@ -112,6 +112,7 @@ Never, under any circumstances:
     bool onCall = false,
     String memories = '',
     String schedule = '',
+    String calls = '',
   }) {
     final s = S(lang);
     final buffer = StringBuffer()
@@ -206,6 +207,20 @@ Never, under any circumstances:
           '(actual data, not a guess — answer schedule questions from this)',
         ))
         ..writeln(schedule.trim());
+    }
+
+    // สายวันนี้ — เลขาที่ไม่รู้ว่าใครโทรมาไม่ใช่เลขา
+    //
+    // รูปแบบต่อบรรทัด: เวลา ชนิด(incoming/missed/outgoing) ใคร
+    // ชนิดส่งเป็นคำอังกฤษเพราะเป็นคำของระบบ ไม่ใช่ข้อความที่ผู้ใช้เห็น
+    if (calls.trim().isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln(s.pick(
+          '=== สายโทรของวันนี้ (อ่านจากบันทึกการโทรในเครื่อง) ===',
+          "=== Today's calls (read from the device call log) ===",
+        ))
+        ..writeln(calls.trim());
     }
 
     buffer

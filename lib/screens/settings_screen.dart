@@ -351,6 +351,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       MindPermission.notify => (t.permNotify, t.permNotifyWhy),
       MindPermission.battery => (t.permBattery, t.bgBatteryWhy),
       MindPermission.calendar => (t.permCalendar, t.permCalendarWhy),
+      MindPermission.phone => (t.permPhone, t.permPhoneWhy),
+      MindPermission.contacts => (t.permContacts, t.permContactsWhy),
+      MindPermission.answerCalls => (t.permAnswer, t.permAnswerWhy),
       MindPermission.install => (t.permInstall, t.permInstallWhy),
     };
 

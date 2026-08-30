@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../calendar/device_calendar.dart';
 import '../i18n/strings.dart';
 import '../journal/mind_journal.dart';
+import '../phone/call_watch.dart';
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -34,6 +35,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
     final mode = context.select<MindState, MindMode>((s) => s.mode);
     final journal = context.watch<MindJournal>();
     final cal = context.watch<DeviceCalendar>();
+    final calls = context.watch<CallWatch>();
     final today = journal.today;
 
     return LiquidBackground(
@@ -74,14 +76,9 @@ class _TimelineScreenState extends State<TimelineScreen> {
                   // ช่องนี้มาจากปฏิทิน ไม่ใช่สมุด — นัดเป็นเรื่องที่ "มีอยู่"
                   // ไม่ใช่เรื่องที่ "เกิดขึ้น" จึงไม่ได้ถูกบันทึกลงสมุด
                   Expanded(child: _stat(t.tlStatMeet, cal.today.length)),
-                  Expanded(
-                      child: _stat(
-                          t.tlStatOther,
-                          journal.countToday({
-                            JournalKind.pack,
-                            JournalKind.update,
-                            JournalKind.system,
-                          }))),
+                  // สายมาจากบันทึกการโทรของเครื่อง ไม่ใช่จากสมุด — สมุดจด
+                  // เฉพาะสายที่เกิดขึ้นตอนแอปเปิดอยู่ ส่วนช่องนี้ต้องนับครบ
+                  Expanded(child: _stat(t.tlStatCall, calls.today.length)),
                 ],
               ),
             ),
@@ -258,6 +255,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
         JournalKind.asked => t.tlKindAsked,
         JournalKind.replied => t.tlKindReplied,
         JournalKind.learned => t.tlKindLearned,
+        JournalKind.call => t.tlKindCall,
         JournalKind.pack => t.tlKindPack,
         JournalKind.update => t.tlKindUpdate,
         JournalKind.system => t.tlKindSystem,
@@ -268,6 +266,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
         JournalKind.asked => const Color(0xFF3EC7FF),
         JournalKind.replied => mode.accent,
         JournalKind.learned => const Color(0xFF00C2A8),
+        JournalKind.call => const Color(0xFF7C6CFF),
         JournalKind.pack => const Color(0xFFFF6FAE),
         JournalKind.update => const Color(0xFFFFAB3D),
         JournalKind.system => MindColors.ink45,

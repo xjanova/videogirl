@@ -277,7 +277,14 @@ void main() {
       check('tlStatTalk', en.tlStatTalk);
       check('tlStatLearn', en.tlStatLearn);
       check('tlStatMeet', en.tlStatMeet);
-      check('tlStatOther', en.tlStatOther);
+      check('tlStatCall', en.tlStatCall);
+      check('tlKindCall', en.tlKindCall);
+      check('permPhone', en.permPhone);
+      check('permPhoneWhy', en.permPhoneWhy);
+      check('permContacts', en.permContacts);
+      check('permContactsWhy', en.permContactsWhy);
+      check('permAnswer', en.permAnswer);
+      check('permAnswerWhy', en.permAnswerWhy);
       check('tlKindAsked', en.tlKindAsked);
       check('tlKindReplied', en.tlKindReplied);
       check('tlKindLearned', en.tlKindLearned);
