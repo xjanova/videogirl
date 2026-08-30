@@ -44,6 +44,9 @@ export class Motion {
         this.base = base.endsWith('/') ? base : base + '/';
         this.mixer = new THREE.AnimationMixer(vrm.scene);
         this.clips = new Map();       // id -> {action, meta, want}
+        this.talking = false;
+        this._talkAt = 0;
+        this._lastGesture = null;
         this.current = null;          // the idle or pose currently held
         this.gesture = null;          // a one-shot playing over it
         this.mood = 'neutral';
@@ -174,16 +177,44 @@ export class Motion {
     /**
      * Weighted pick among the gestures this mood allows. A clip with no mood
      * list suits any of them.
+     *
+     * ไม่หยิบท่าเดิมซ้ำติดกัน — คลังท่าที่ใช้ได้ตอน neutral มีไม่กี่ท่า
+     * การสุ่มล้วนจึงซ้ำติดกันบ่อยกว่าที่ตาคนยอมรับ และ "ยืดเส้นสองรอบติด"
+     * อ่านออกทันทีว่าเป็นเครื่องจักรสุ่ม ไม่ใช่คนที่นึกอยากยืด
      */
-    _pickGesture() {
-        const pool = [...this.clips.values()].filter((c) =>
+    _pickGesture(mood = this.mood) {
+        let pool = [...this.clips.values()].filter((c) =>
             c.meta.role === 'gesture' &&
-            (!c.meta.mood?.length || c.meta.mood.includes(this.mood)));
+            (!c.meta.mood?.length || c.meta.mood.includes(mood)));
         if (!pool.length) return null;
+        // ตัดท่าล่าสุดออก เว้นแต่มันเหลือท่าเดียวจริง ๆ
+        if (pool.length > 1) {
+            const rest = pool.filter((c) => c.meta.id !== this._lastGesture);
+            if (rest.length) pool = rest;
+        }
         const total = pool.reduce((s, c) => s + (c.meta.weight ?? 1), 0);
         let r = Math.random() * total;
-        for (const c of pool) if ((r -= c.meta.weight ?? 1) <= 0) return c.meta.id;
-        return pool[pool.length - 1].meta.id;
+        let pick = pool[pool.length - 1].meta.id;
+        for (const c of pool) if ((r -= c.meta.weight ?? 1) <= 0) { pick = c.meta.id; break; }
+        this._lastGesture = pick;
+        return pick;
+    }
+
+    /**
+     * เธอกำลังพูดอยู่หรือเปล่า
+     *
+     * 🔴 **ตอนพูดคือตอนที่เธอนิ่งที่สุด** ซึ่งกลับหัวกับความจริง
+     * `setBusy(true)` ระหว่างพูดทำให้ตัวกำหนดท่าหยุดทั้งหมด (ตั้งใจ — ไม่ให้
+     * ท่าสุ่มมาแย่งร่างกลางประโยค) แต่ผลคือไม่มีอะไรมาแทน · และคลิป Talking
+     * ที่มีอยู่กลับไปโผล่ตอน**เงียบ** เพราะที่เดียวที่เรียกมันคือตัวสุ่มยามว่าง
+     *
+     * สวิตช์นี้แยกท่า "ตอนพูด" ออกมาเป็นคิวของตัวเอง คลิปที่ mood มี
+     * 'speaking' จะถูกใช้เฉพาะตรงนี้ และหลุดจากคลังยามว่างไปโดยอัตโนมัติ
+     * เพราะอารมณ์ของเธอไม่มีทางเป็น 'speaking'
+     */
+    setTalking(on) {
+        this.talking = !!on;
+        this._talkAt = 0;
     }
 
     /**
@@ -233,6 +264,14 @@ export class Motion {
         }
 
         this.mixer.update(dt);
+
+        // ท่าตอนพูด — ยิงซ้ำเป็นระยะเพราะประโยคหนึ่งยาวกว่าคลิปหนึ่ง
+        // ต้องอยู่**ก่อน**ด่าน _busy เพราะตอนพูด _busy คือ true เสมอ
+        if (this.talking && this.ready && !this.gesture && t > this._talkAt) {
+            const g = this._pickGesture('speaking');
+            if (g) this.once(g);
+            this._talkAt = t + 1800 + Math.random() * 3200;
+        }
 
         if (!this.ready || this._busy || this.gesture) return;
         // Long and irregular on purpose. A character who does something cute on

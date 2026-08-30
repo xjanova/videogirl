@@ -124,6 +124,12 @@ const FINGER_CURL = 0.26;
 const FINGERS = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'];
 const SEGMENTS = ['Proximal', 'Intermediate', 'Distal'];
 
+/// expression ที่หยิบมาใช้ตอนอยู่เฉย ๆ
+///
+/// `relaxed` มาก่อนเพราะนุ่มกว่า `happy` ของ VRoid ที่หลับตาแรง
+/// รุ่นที่ไม่มี `relaxed` ผู้เรียกจะตกไปใช้ `happy` ให้เอง (ดู avatar.js)
+const WARM = ['relaxed', 'happy', 'relaxed'];
+
 export class Idle {
     constructor(vrm) {
         this.vrm = vrm;
@@ -175,6 +181,26 @@ export class Idle {
         this._wasLoud = false;
         this._blinkAt = 0;
         this._blinkStart = -1e9;
+
+        // ── สีหน้าตอนอยู่เฉย ๆ ────────────────────────────────
+        //
+        // 🔴 ร่างกายมี fidget มี gesture สุ่มอยู่แล้ว แต่**หน้าไม่มีอะไรเลย**
+        // ตอน mood เป็น neutral ทุก expression ถูกไล่ลงศูนย์ เหลือแค่กะพริบตา
+        // ผลคือตัวขยับแต่หน้านิ่งสนิท ซึ่งอ่านว่า "หุ่น" ไม่ใช่ "คน"
+        //
+        // แก้ด้วยการให้เธอยิ้มบาง ๆ เป็นครั้งคราว แล้วคลายกลับ
+        // เบา (สูงสุด ~0.45) เพราะ expression ของ VRoid แรงมาก
+        // ใส่เต็มค่าจะกลายเป็นยิ้มค้างแบบตุ๊กตา ไม่ใช่ยิ้มที่ผ่านมาแล้วผ่านไป
+
+        /** น้ำหนักสีหน้าตอนนี้ 0..1 — ผู้เรียกเอาไปคูณกับ expression ที่เลือก */
+        this.warmth = 0;
+
+        /** ชื่อ expression ที่รอบนี้เลือกใช้ */
+        this.warmthName = 'happy';
+
+        this._warmAt = 6 + Math.random() * 8;   // ครั้งแรกไม่ต้องรอนาน
+        this._warmUntil = -1;
+        this._warmPeak = 0;
 
         this.hips = vrm.humanoid?.getNormalizedBoneNode('hips') ?? null;
         this.hipsRest = this.hips ? this.hips.position.clone() : null;
@@ -320,5 +346,42 @@ export class Idle {
         }
         const bp = (t - this._blinkStart) / 0.13;
         this.blink = bp >= 0 && bp <= 1 ? Math.abs(Math.sin(bp * Math.PI)) : 0;
+
+        this._warmth(t, dt, loud);
+    }
+
+    /**
+     * ยิ้มเองเป็นครั้งคราวตอนไม่ได้พูด
+     *
+     * ไม่ทำตอนกำลังพูด เพราะ expression ของ VRoid หลายตัวปิดตาและบิดปาก
+     * ซึ่งจะไปกลืนรูปปากที่กำลังออกเสียงอยู่ · ตอนพูดมี nod กับ blink
+     * ที่เกาะจังหวะเสียงอยู่แล้ว หน้าไม่ได้นิ่ง
+     *
+     * ช่วงเวลาตั้งใจให้**ไม่สม่ำเสมอ** อะไรที่เดาจังหวะได้จะหยุดอ่านว่ามีชีวิต
+     * ตั้งแต่ครั้งที่สาม เหมือนกับ fidget ของร่างกาย
+     */
+    _warmth(t, dt, loud) {
+        if (loud) {
+            // พูดอยู่ = คลายกลับ แล้วเลื่อนครั้งหน้าออกไป ไม่ให้เด้งทันทีที่พูดจบ
+            this.warmth += (0 - this.warmth) * ease(4.0, dt);
+            this._warmUntil = -1;
+            this._warmAt = Math.max(this._warmAt, t + 2.5);
+            return;
+        }
+
+        if (t > this._warmAt && this._warmUntil < 0) {
+            // สุ่มทั้งความแรงและความยาว ยิ้มสองครั้งไม่ควรเหมือนกันเป๊ะ
+            this._warmPeak = 0.22 + Math.random() * 0.23;
+            this._warmUntil = t + 1.6 + Math.random() * 2.4;
+            this.warmthName = WARM[Math.floor(Math.random() * WARM.length)];
+        }
+
+        const want = t < this._warmUntil ? this._warmPeak : 0;
+        if (want === 0 && this._warmUntil > 0 && t >= this._warmUntil) {
+            this._warmUntil = -1;
+            this._warmAt = t + 7 + Math.random() * 11;
+        }
+        // ขึ้นช้ากว่าลง — ยิ้มค่อย ๆ มา แล้วคลายเร็วกว่านิดหน่อย
+        this.warmth += (want - this.warmth) * ease(want > this.warmth ? 1.7 : 2.6, dt);
     }
 }

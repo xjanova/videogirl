@@ -77,6 +77,10 @@ export class Avatar {
         /** เรียกเมื่อ**ตัวเธอขึ้นจอแล้ว** ซึ่งมาก่อนคลิปท่าทางโหลดเสร็จ */
         this.onVisible = null;
 
+        /** เรียกครั้งเดียวเมื่อลูปเรนเดอร์ล้ม — ดู [_loop] */
+        this.onLoopError = null;
+        this._loopDead = false;
+
         const w = host.clientWidth || 320, h = host.clientHeight || 300;
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -130,6 +134,25 @@ export class Avatar {
         this._blinkLR = !!(em?.getExpression?.('blinkLeft')
                         && em?.getExpression?.('blinkRight'));
 
+        // `relaxed` เป็นรอยยิ้มที่นุ่มกว่า `happy` ของ VRoid ซึ่งหลับตาแรง
+        // แต่ไม่ใช่ทุกรุ่นที่มี — ต้อง probe ครั้งเดียวตอนโหลด เพราะ setValue
+        // ชื่อที่ไม่มีคือ no-op เงียบ ๆ แล้วเธอจะไม่ยิ้มเลยโดยไม่มีอะไรบอก
+        this._hasRelaxed = !!em?.getExpression?.('relaxed');
+
+        // 🔴 สายตาของรุ่นนี้ **ไม่ได้ทำด้วย expression**
+        //
+        // probe แล้วพบว่า lookUp/lookDown/lookLeft/lookRight ไม่มีในโมเดล
+        // (มีแค่ happy angry sad relaxed surprised + วิเซม + blink)
+        // การ setValue ชื่อที่ไม่มีคือ **no-op เงียบ ๆ** โหมดเชิดหุ่นจึงสั่ง
+        // สายตาไปแล้วไม่มีอะไรเกิดขึ้นเลย โดยไม่มี error ที่ไหนบอก
+        //
+        // ทางที่ถูกของ VRM คือ `vrm.lookAt` ซึ่งขยับลูกตาจริงตามเป้าที่ให้
+        // เตรียมเป้าไว้ที่นี่ ใช้เฉพาะตอนเชิดหุ่น
+        this._hasLookExpr = !!em?.getExpression?.('lookUp');
+        this._gaze = new THREE.Object3D();
+        this.scene.add(this._gaze);
+        this._gazeBase = new THREE.Vector3();
+
         this.idle = new Idle(vrm);
         this.framing = new Framing(this.camera, vrm);
         this.motion = new Motion(vrm, this.base);
@@ -172,12 +195,14 @@ export class Avatar {
     async speak(url) {
         this.speaking = true;
         this.motion?.setBusy(true);
+        this.motion?.setTalking(true);
         this.framing?.set('bust');
         try {
             return await this.lip.play(url);
         } finally {
             this.speaking = false;
             this.motion?.setBusy(false);
+            this.motion?.setTalking(false);
             this.framing?.set('full');
         }
     }
@@ -186,6 +211,7 @@ export class Avatar {
         this.lip.stop();
         this.speaking = false;
         this.motion?.setBusy(false);
+        this.motion?.setTalking(false);
         this.framing?.set('full');
     }
 
@@ -221,8 +247,30 @@ export class Avatar {
 
     mocapStatus() { return this.mocap.status(); }
 
+    /**
+     * 🔴 **ข้อผิดพลาดในลูปนี้เคยเงียบสนิทมาแล้ว**
+     *
+     * `requestAnimationFrame` ถูกต่อคิวเป็นบรรทัดแรกเสมอ (ตั้งใจ — ลูปต้อง
+     * ไม่ตายเพราะเฟรมเดียวสะดุด) แต่ผลข้างเคียงคือ throw ทุกเฟรมก็ยังต่อคิวต่อ
+     * ได้เรื่อย ๆ · เธอหายไปทั้งตัว โดยที่แอปยังคิดว่าทุกอย่างปกติ เพราะ
+     * `visible` ยิงไปแล้วตั้งแต่ก่อนหน้า มีแต่ใน logcat ที่มีร่องรอย
+     *
+     * จึงต้องดักไว้ และ**รายงานออกไปครั้งเดียว** ให้ฝั่งแอปรู้ว่าเวทีตายแล้ว
+     * ครั้งเดียวเพราะถ้ารายงานทุกเฟรมคือยิงข้ามสะพาน 60 ครั้งต่อวินาที
+     */
     _loop() {
         this._raf = requestAnimationFrame(this._loop);
+        try {
+            this._frame();
+        } catch (err) {
+            if (this._loopDead) return;
+            this._loopDead = true;
+            console.error('avatar: ลูปเรนเดอร์ล้ม', err);
+            this.onLoopError?.(String(err?.stack ?? err?.message ?? err));
+        }
+    }
+
+    _frame() {
         const dt = Math.min(0.1, this.clock.getDelta());
         this._t += dt;
         const vrm = this.vrm;
@@ -305,11 +353,7 @@ export class Avatar {
             ease('angry', e.angry);
             ease('surprised', e.surprised);
 
-            const l = this.mocap.look;
-            em.setValue('lookUp', l.up);
-            em.setValue('lookDown', l.down);
-            em.setValue('lookLeft', l.left);
-            em.setValue('lookRight', l.right);
+            this._aimEyes(this.mocap.look);
 
             if (this._blinkLR) {
                 em.setValue('blinkLeft', this.mocap.blinkL);
@@ -329,12 +373,40 @@ export class Avatar {
         // weight it simply eats the visemes. Held back while she is talking —
         // the mood stays legible and the words still land.
         const cap = this.speaking ? 0.45 : 1;
+
+        // สีหน้าตอนอยู่เฉย ๆ — ร่างกายมี fidget กับ gesture อยู่แล้ว
+        // แต่หน้าเคยนิ่งสนิทเหลือแค่กะพริบตา ซึ่งอ่านว่าหุ่น ไม่ใช่คน
+        //
+        // ทับเฉพาะตอน mood เป็น neutral · ถ้าเจ้าของตั้งอารมณ์ไว้แล้ว
+        // อารมณ์นั้นต้องชนะ ไม่ใช่โดนรอยยิ้มสุ่ม ๆ กลบ
+        const warmOn = this.mood === 'neutral' && !this.speaking;
+        const warmName = !warmOn
+            ? null
+            : this.idle.warmthName === 'relaxed' && this._hasRelaxed
+                ? 'relaxed'
+                : 'happy';
+        const warmAmt = warmOn ? this.idle.warmth : 0;
+
         for (const expr of MOOD_EXPRS) {
             const cur = em.getValue(expr) ?? 0;
-            const want = expr === wantExpr ? wantAmt * cap : 0;
+            let want = expr === wantExpr ? wantAmt * cap : 0;
+            if (expr === warmName) want = Math.max(want, warmAmt);
             em.setValue(expr, cur + (want - cur) * k);
         }
+
+        // `relaxed` ไม่ได้อยู่ใน MOOD_EXPRS จึงไม่มีใครไล่มันกลับศูนย์ให้
+        // ต้องเขียนเองทุกเฟรม ไม่งั้นค้างอยู่ตอนเลิกยิ้ม
+        if (this._hasRelaxed) {
+            const cur = em.getValue('relaxed') ?? 0;
+            const want = warmName === 'relaxed' ? warmAmt : 0;
+            em.setValue('relaxed', cur + (want - cur) * k);
+        }
+
         em.setValue('blink', this.idle.blink);
+
+        // เลิกเชิดหุ่นแล้ว ปล่อยลูกตากลับไปมองตรง
+        const look = this.vrm?.lookAt;
+        if (look && look.target === this._gaze) look.target = null;
 
         // The camera's leftovers, walked back to zero. Nothing else in the app
         // writes these four, so switching the camera off while looking away
@@ -343,6 +415,39 @@ export class Avatar {
         // reloading the page.
         for (const n of LOOK_EXPRS) ease(n, 0);
         if (this._blinkLR) { ease('blinkLeft', 0); ease('blinkRight', 0); }
+    }
+
+    /**
+     * เล็งลูกตาไปตามที่กล้องเห็น
+     *
+     * ใช้ `vrm.lookAt` ไม่ใช่ expression เพราะโมเดลจำนวนมาก (รวมรุ่นที่ใช้อยู่)
+     * ไม่มี expression สายตา · lookAt ขยับลูกตาจริงและทำงานกับทุกรุ่น
+     *
+     * รุ่นที่มี expression ด้วยก็ยังเซ็ตให้ เผื่อรุ่นนั้นทำสายตาด้วยวิธีนั้น
+     */
+    _aimEyes(l) {
+        const vrm = this.vrm;
+        const em = vrm?.expressionManager;
+        if (!vrm) return;
+
+        if (this._hasLookExpr && em) {
+            em.setValue('lookUp', l.up);
+            em.setValue('lookDown', l.down);
+            em.setValue('lookLeft', l.left);
+            em.setValue('lookRight', l.right);
+        }
+
+        const head = vrm.humanoid?.getNormalizedBoneNode('head');
+        if (!vrm.lookAt || !head) return;
+
+        head.getWorldPosition(this._gazeBase);
+        // หนึ่งเมตรข้างหน้าเธอ แล้วเลื่อนข้าง/ขึ้นลงตามที่มองอยู่
+        // ตัวคูณเล็ก เพราะลูกตาคนกลอกได้ไม่กี่องศาก่อนจะดูเป็นการ์ตูน
+        this._gaze.position
+            .set((l.right - l.left) * 0.5, (l.up - l.down) * 0.35, 1)
+            .applyQuaternion(vrm.scene.quaternion)
+            .add(this._gazeBase);
+        vrm.lookAt.target = this._gaze;
     }
 
     resize(w, h) {

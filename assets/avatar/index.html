@@ -74,6 +74,9 @@ try {
   // หน้าเปิดแอปรอสัญญาณนี้ ไม่ใช่รอ 'ready' ที่ต้องรอคลิปครบอีกหลายวินาที
   avatar.onVisible = () => post('visible');
 
+  // เวทีตายกลางทาง — ต้องดังพอ ๆ กับตายตอนโหลด ไม่ใช่จอว่างเปล่าที่เงียบ
+  avatar.onLoopError = (msg) => post('error', { message: msg });
+
   await avatar.loaded;
   post('ready');
 } catch (err) {
@@ -227,6 +230,33 @@ window.minde = {
   stand: ()    => avatar?.stand(),
   /** 'bust' ตอนคุย · 'full' ตอนยืนเฉย ๆ */
   frame: (n)   => avatar?.framing?.set(n),
+
+  /**
+   * ค่าสีหน้าที่กำลังใช้อยู่จริงในวินาทีนี้
+   *
+   * มีไว้เพราะสีหน้าเป็นสิ่งที่**ล้มแบบเงียบที่สุดในแอปนี้** — ตั้งค่าชื่อ
+   * expression ที่โมเดลไม่มี แล้ว three-vrm จะเมินให้เฉย ๆ ไม่มี error
+   * ไม่มี log · ดูจากจอก็แยกไม่ออกว่า "ไม่ยิ้มเพราะยังไม่ถึงรอบ" กับ
+   * "ไม่ยิ้มเพราะสั่งชื่อผิดมาตลอด" · ตัวเลขตอบได้ ตาเปล่าตอบไม่ได้
+   */
+  probe: () => {
+    const em = avatar?.vrm?.expressionManager;
+    if (!em) return null;
+    const values = {};
+    for (const n of Object.keys(em.expressionMap ?? {})) {
+      values[n] = Number((em.getValue(n) ?? 0).toFixed(3));
+    }
+    const m = avatar.motion;
+    return {
+      warmth:  Number((avatar.idle?.warmth ?? 0).toFixed(3)),
+      values,
+      mood:    avatar.mood,
+      talking: !!m?.talking,
+      gesture: m?.gesture?.meta.id ?? null,
+      clip:    m?.current?.meta.id ?? null,
+      missing: m?.missing ?? [],
+    };
+  },
 
   // ── กล้องเชิดหุ่น ────────────────────────────────────────
   // start เป็น async เพราะต้องขอสิทธิ์กล้องกับโหลด wasm 11MB
