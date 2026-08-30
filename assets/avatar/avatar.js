@@ -46,6 +46,8 @@ const MOOD_EXPRESSION = {
     thinking:  null,
     // ถูกทิ้งไว้นานจนเบื่อ · ไม่บังคับสีหน้า คลิปยืนเป็นตัวเล่าเอง
     waiting:   null,
+    // กำลังมีสายอยู่ · คลิปถือโทรศัพท์เล่าเอง ไม่ต้องบังคับสีหน้า
+    calling:   null,
     sorry:     ['sad', 0.85],
     alert:     ['surprised', 0.80],
     angry:     ['angry', 0.85],
@@ -196,6 +198,12 @@ export class Avatar {
         this._quiet = 0;
         this._autoWait = false;
         this.mood = m in MOOD_EXPRESSION ? m : 'neutral';
+
+        // ตอนคุยโทรศัพท์ปากต้องขยับตลอด แต่**ไม่มีเสียงให้วิเคราะห์**
+        // เสียงในสายแตะไม่ได้ทั้งขาเข้าและขาออก · ถ้าไม่เปิดโหมดนี้
+        // เธอจะยกโทรศัพท์ขึ้นมาแล้วปากนิ่งสนิทตลอดสาย
+        this.lip.babble = this.mood === 'calling';
+
         this._applyMood();
         return this;
     }
@@ -325,12 +333,21 @@ export class Avatar {
         // Her arms are held clear of the skirt only while she is idling on her
         // feet. During a gesture they belong to the clip — holding them out
         // through a wave would flatten it back into a stand.
-        const armsFree = !!this.motion?.gesture
+        //
+        // 🔴 คลิปคุยโทรศัพท์เป็น role 'idle' (มันคือท่ายืนที่วนอยู่) ซึ่งแปลว่า
+        // ชั้น procedural คิดว่าแขนเป็นของมัน แล้วดึงแขนลงข้างตัวทับคลิป
+        // ผลคือเธอ "คุยโทรศัพท์" โดยไม่ได้ยกโทรศัพท์เลย — คลิปเล่นอยู่จริง
+        // ทุกอย่างดูเหมือนทำงาน แต่ภาพที่ออกมาผิด
+        //
+        // เห็นได้ด้วยตาเท่านั้น ตัวเลขบอกว่าคลิปถูกเล่นอยู่ทุกประการ
+        const onPhone = this.mood === 'calling';
+        const armsFree = onPhone
+            || !!this.motion?.gesture
             || (this.motion?.current?.meta.role ?? 'idle') !== 'idle';
         this.lip.update(dt);
         this.mocap.update(dt, performance.now());
         this.idle.apply(this._t, w, this.lip.speaking ? this.lip.level : 0, dt,
-                        onFeet ? 0.82 : 0, armsFree ? 0 : 0.75);
+                        onPhone ? 0 : (onFeet ? 0.82 : 0), armsFree ? 0 : 0.75);
 
         // 3 — face.
         this._face(dt);
@@ -414,6 +431,7 @@ export class Avatar {
         // อารมณ์นั้นต้องชนะ ไม่ใช่โดนรอยยิ้มสุ่ม ๆ กลบ
         const warmOn = (this.mood === 'neutral' || this.mood === 'waiting')
             && !this.speaking;
+
         const warmName = !warmOn
             ? null
             : this.idle.warmthName === 'relaxed' && this._hasRelaxed

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -149,15 +151,32 @@ class _MindBootstrapState extends State<MindBootstrap> {
     // เฝ้าสายตั้งแต่เปิดแอป · การเฝ้าเองไม่ต้องใช้สิทธิ์ (รู้แค่ว่ามีสาย)
     // ยังไม่ได้ให้สิทธิ์ก็แค่ไม่รู้ว่าใครโทร ไม่ได้ล้มทั้งระบบ
     _state.attachCalls(_calls);
+    _calls.addListener(_showCallOnStage);
     await _calls.start();
   }
 
   @override
   void dispose() {
+    _calls.removeListener(_showCallOnStage);
     _avatar.dispose();
     _state.dispose();
     _pack.dispose();
     super.dispose();
+  }
+
+  /// อารมณ์ที่ดันไปให้อวาตาร์ล่าสุด — กันการยิงซ้ำทุกครั้งที่ CallWatch ขยับ
+  MindMood? _stageMood;
+
+  /// มีสายอยู่ = เธอต้องยกโทรศัพท์ ไม่ใช่ยืนเฉยเหมือนไม่มีอะไรเกิดขึ้น
+  ///
+  /// พอสายจบคืนเป็น neutral ไม่ใช่คืนอารมณ์ก่อนหน้า — อารมณ์ก่อนหน้าเป็นของ
+  /// บทสนทนาที่จบไปแล้วก่อนสายเข้า จำไว้แล้วคืนทีหลังจะได้สีหน้าที่ค้าง
+  /// มาจากเรื่องที่ผ่านไปนานแล้ว
+  void _showCallOnStage() {
+    final want = _calls.state == CallState.idle ? MindMood.neutral : MindMood.calling;
+    if (want == _stageMood) return;
+    _stageMood = want;
+    unawaited(_avatar.setMood(want));
   }
 
   @override

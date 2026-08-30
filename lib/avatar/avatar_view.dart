@@ -12,7 +12,26 @@ import '../theme/tokens.dart';
 
 /// อารมณ์ที่มายด์แสดงได้ — ตรงกับ MOOD_EXPRESSION ใน avatar.js
 /// ถ้าเพิ่มที่นี่ต้องไปเพิ่มใน BrainX ด้วย ไม่งั้นจะตกกลับเป็น neutral เงียบ ๆ
-enum MindMood { neutral, happy, pleased, concerned, thinking, sorry, alert, angry }
+/// อารมณ์ที่ฝั่ง JS รู้จัก — ต้องตรงกับ MOOD_EXPRESSION ใน avatar.js
+///
+/// 🔴 ชื่อที่ไม่มีในนั้นจะถูกปัดกลับเป็น neutral **เงียบ ๆ** ไม่มี error
+/// เพิ่มที่นี่แล้วต้องเพิ่มที่โน่นด้วยเสมอ (มีเทสต์คุมอยู่)
+enum MindMood {
+  neutral,
+  happy,
+  pleased,
+  concerned,
+  thinking,
+  sorry,
+  alert,
+  angry,
+
+  /// ถูกทิ้งไว้นานจนเบื่อ — ฝั่ง JS ตั้งเองเมื่อเงียบครบสองนาที
+  waiting,
+
+  /// กำลังมีสายโทรศัพท์ — ฝั่ง Dart ตั้งจาก [CallWatch]
+  calling,
+}
 
 /// ระยะกล้อง — 'bust' ตอนคุย, 'full' ตอนยืนเฉย
 enum MindFraming { bust, full }

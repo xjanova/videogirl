@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:videogirl/avatar/avatar_view.dart';
 import 'package:videogirl/system/permissions.dart';
 
 /// ด่านกันสะพาน Dart↔Kotlin หลุดจากกัน
@@ -144,5 +146,57 @@ void main() {
     expect(unused, isEmpty,
         reason: 'ประกาศไว้แต่ไม่มีโค้ดไหนใช้ — เอาออกหรือใช้ให้จริง:\n'
             '${unused.join(', ')}');
+  });
+
+  /// 🔴 อารมณ์ที่ฝั่ง JS ไม่รู้จักถูกปัดเป็น neutral **เงียบ ๆ**
+  ///
+  /// `setMood()` ใน avatar.js เขียนว่า `m in MOOD_EXPRESSION ? m : 'neutral'`
+  /// ส่งชื่อที่ไม่มีไปจึงไม่ได้ error อะไรเลย แค่ไม่มีอะไรเกิดขึ้น
+  /// เกิดขึ้นจริงมาแล้วกับ 'waiting' ซึ่งมีคลิปรออยู่แต่ไม่มีวันได้เล่น
+  test('ทุกอารมณ์ใน MindMood ต้องมีใน MOOD_EXPRESSION ของ avatar.js', () {
+    final js = File('assets/avatar/avatar.js').readAsStringSync();
+
+    final block = RegExp(r'const MOOD_EXPRESSION = \{([\s\S]*?)\n\};')
+        .firstMatch(js)
+        ?.group(1);
+
+    expect(block, isNotNull,
+        reason: 'หา MOOD_EXPRESSION ใน avatar.js ไม่เจอ — รูปแบบเปลี่ยนไป '
+            'ต้องแก้เทสต์นี้ ไม่ใช่ปล่อยผ่าน');
+
+    final known = RegExp(r'^\s*(\w+):', multiLine: true)
+        .allMatches(block!)
+        .map((m) => m.group(1)!)
+        .toSet();
+
+    final missing =
+        MindMood.values.map((m) => m.name).where((n) => !known.contains(n));
+
+    expect(missing, isEmpty,
+        reason: 'อารมณ์พวกนี้จะถูกปัดเป็น neutral เงียบ ๆ ฝั่ง JS: '
+            '${missing.join(', ')}');
+  });
+
+  /// คลิปที่ผูกกับอารมณ์ต้องผูกกับอารมณ์ที่มีอยู่จริง
+  test('mood ใน clips.json ต้องเป็นอารมณ์ที่รู้จัก', () {
+    final manifest = File('assets/avatar/model/clips.json');
+    if (!manifest.existsSync()) return; // ชุดคลิปไม่ได้อยู่ในเครื่องทุกที่
+
+    final clips = (jsonDecode(manifest.readAsStringSync())
+        as Map<String, dynamic>)['clips'] as List;
+
+    // 'speaking' ไม่ใช่อารมณ์จริง — เป็นคลังท่าตอนพูด ดู docs/packs.md
+    final known = {...MindMood.values.map((m) => m.name), 'speaking'};
+
+    final bad = <String>[];
+    for (final c in clips) {
+      for (final m in ((c as Map)['mood'] as List? ?? const [])) {
+        if (!known.contains('$m')) bad.add('${c['id']}: $m');
+      }
+    }
+
+    expect(bad, isEmpty,
+        reason: 'คลิปพวกนี้ผูกกับอารมณ์ที่ไม่มีอยู่ จะไม่มีวันได้เล่น: '
+            '${bad.join(', ')}');
   });
 }

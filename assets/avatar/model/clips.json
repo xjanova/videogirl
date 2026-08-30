@@ -36,7 +36,11 @@
   "",
   "mood 'waiting' = she has been left alone for a couple of minutes. The app",
   "     sets it on its own; nothing has to ask for it. Idle clips listed under",
-  "     it are picked at random, so listing two or three reads better than one."
+  "     it are picked at random, so listing two or three reads better than one.",
+  "",
+  "mood 'calling' plays while a real phone call is ringing or connected.",
+  "     The app sets it from the call state; nothing has to ask for it.",
+  "     Standing clips only — she is on a small stage, not walking around."
  ],
  "clips": [
   {
@@ -226,6 +230,34 @@
     "neutral"
    ],
    "weight": 0.2
+  },
+  {
+   "id": "call_talk",
+   "file": "Talking On Phone.fbx",
+   "role": "idle",
+   "mood": [
+    "calling"
+   ],
+   "weight": 1.0
+  },
+  {
+   "id": "call_talk2",
+   "file": "Talking On A Cell Phone.fbx",
+   "role": "idle",
+   "mood": [
+    "calling"
+   ],
+   "weight": 0.6
+  },
+  {
+   "id": "phone_check",
+   "file": "Texting While Standing.fbx",
+   "role": "gesture",
+   "mood": [
+    "neutral",
+    "waiting"
+   ],
+   "weight": 0.3
   }
  ]
 }

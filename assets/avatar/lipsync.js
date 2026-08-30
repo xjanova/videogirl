@@ -47,6 +47,20 @@ export class LipSync {
     constructor() {
         this.speaking = false;
         this.level = 0;              // 0..1 loudness, for anything else that wants it
+
+        // ── พูดพึมพำ (ไม่มีเสียงให้วิเคราะห์) ──────────────────
+        //
+        // 🔴 ตอนคุยโทรศัพท์ **ไม่มีเสียงของเธอให้ฟัง** เสียงในสายเป็นทางเดิน
+        // ที่แอปแตะไม่ได้ ทั้งขาเข้าและขาออก · ถ้าปากขยับตามเสียงอย่างเดียว
+        // เธอจะยกโทรศัพท์ขึ้นมาแล้วอ้าปากค้างไว้เฉย ๆ ตลอดสาย
+        //
+        // โหมดนี้จึงสร้างจังหวะปากขึ้นเอง ให้ดูเหมือนกำลังคุย
+        this.babble = false;
+        this._bT = 0;
+        this._bOn = false;
+        this._bUntil = 0;
+        this._bSpread = 0.3;
+        this._bRate = 0;
         this._open = 0;
         this._spread = 0;
         this.weights = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
@@ -121,6 +135,11 @@ export class LipSync {
             this.analyser.getByteFrequencyData(this.freq);
             const lo = band(this.freq, LOW), mid = band(this.freq, MID), hi = band(this.freq, HIGH);
             spread = Math.min(1, Math.max(0, hi * 2.4 + mid * 0.7 - lo * 0.6));
+        } else if (this.babble) {
+            const b = this._babbleShape(dt);
+            open = b.open;
+            spread = b.spread;
+            this.level = open;
         } else {
             this.level += (0 - this.level) * ease(6.5);
         }
@@ -132,6 +151,50 @@ export class LipSync {
         this._spread += (spread - this._spread) * ease(25);
 
         return this.shape(this._open, this._spread);
+    }
+
+    /**
+     * จังหวะปากตอนพูดพึมพำ — ไม่ได้มาจากเสียง แต่ต้องดูเหมือนคำพูด
+     *
+     * สองชั้น:
+     * - **ชั้นประโยค** พูดเป็นช่วง 1.4–3.8 วิ แล้วเว้น 0.5–1.6 วิ
+     *   คนไม่ได้พูดรัวไม่หยุด และการเว้นวรรคคือสิ่งที่ทำให้ดูเป็นบทสนทนา
+     *   ไม่ใช่ปากที่ขยับตลอดเวลาแบบเครื่องจักร
+     * - **ชั้นพยางค์** ผสมสามคลื่นที่ความถี่ไม่ลงตัวกัน จังหวะจะได้ไม่ซ้ำรอบ
+     *   คลื่นเดียวจะเป็นจังหวะเป๊ะซึ่งตาจับได้ในไม่กี่วินาที
+     *
+     * แยกออกมาเป็นเมธอดบริสุทธิ์ (นอกจาก dt) เพื่อให้นับจังหวะได้ในเทสต์
+     * โดยไม่ต้องมีเสียงและไม่ต้องมีเบราว์เซอร์
+     */
+    _babbleShape(dt) {
+        this._bT += dt;
+
+        if (this._bT > this._bUntil) {
+            this._bOn = !this._bOn;
+            this._bT = 0;
+            this._bUntil = this._bOn
+                ? 1.4 + Math.random() * 2.4
+                : 0.5 + Math.random() * 1.1;
+            // เปลี่ยนสีสระและความเร็วพูดทุกประโยค ไม่งั้นทุกประโยคเหมือนกันหมด
+            this._bSpread = 0.15 + Math.random() * 0.5;
+            this._bRate = 17 + Math.random() * 9;
+        }
+
+        if (!this._bOn) return { open: 0, spread: this._bSpread };
+
+        const t = this._bT * this._bRate;
+        const w = Math.sin(t) * 0.5
+            + Math.sin(t * 0.61 + 1.7) * 0.3
+            + Math.sin(t * 1.43 + 0.4) * 0.2;
+
+        // มีพื้นเล็กน้อยระหว่างพยางค์ ไม่ปิดสนิททุกครั้ง
+        //
+        // วัดแล้ว: ปิดสนิทเกิน 60% ของเวลาอ่านว่า "เคี้ยว" ไม่ใช่ "พูด"
+        // เพราะคนพูดจริงขากรรไกรอ้าค้างไว้ตลอดประโยค ปิดเฉพาะพยัญชนะ
+        return {
+            open: Math.max(0, Math.min(1, 0.14 + w * 0.72)),
+            spread: this._bSpread,
+        };
     }
 
     /**
