@@ -43,8 +43,8 @@ Future<void> main() async {
 
   // ชุดตัวเธอต้องพร้อม **ก่อน** สร้าง WebView ไม่งั้นหน้าเวทีจะโหลดด้วยทางเก่า
   // แล้วต้องรีโหลดทีหลัง ซึ่งผู้ใช้เห็นเป็นอวาตาร์โผล่แล้วหายแล้วโผล่ใหม่
-  final pack = AvatarPack();
-  await pack.restore();
+  final pack = AvatarPacks();
+  await pack.restore(preferId: state.avatarPackId);
 
   runApp(MindApp(state: state, pack: pack));
 }
@@ -53,7 +53,7 @@ class MindApp extends StatelessWidget {
   const MindApp({super.key, required this.state, required this.pack});
 
   final MindState state;
-  final AvatarPack pack;
+  final AvatarPacks pack;
 
   @override
   Widget build(BuildContext context) {

@@ -50,8 +50,13 @@ try {
   // ชุดตัวเธออาจอยู่ในแอป (build ในเครื่องที่มีไฟล์ครบ) หรือถูกโหลดทีหลัง
   // ลงดิสก์แล้วเสิร์ฟจากพอร์ตอื่น (APK จาก CI ที่ไม่มีไฟล์ฝังมา)
   // Flutter บอกทางมาทาง ?pack= · ไม่มี = ใช้ของในแอปเหมือนเดิม
-  const pack = new URLSearchParams(location.search).get('pack');
-  avatar = new Avatar(stage, { base: pack || './model/', model: 'minde.vrm' });
+  // ชุดของเลขาคนอื่นไม่ได้ชื่อ minde.vrm — Flutter บอกชื่อไฟล์มาด้วย
+  const q = new URLSearchParams(location.search);
+  const pack = q.get('pack');
+  avatar = new Avatar(stage, {
+    base: pack || './model/',
+    model: q.get('model') || 'minde.vrm',
+  });
   await avatar.loaded;
   post('ready');
 } catch (err) {

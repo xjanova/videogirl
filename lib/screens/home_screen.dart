@@ -137,7 +137,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   child: MindAvatarView(
                     controller: widget.avatar,
                     mode: mode,
-                    packBase: context.watch<AvatarPack>().baseUrl,
+                    packBase: context.watch<AvatarPacks>().baseUrl,
+                    packModel: context.watch<AvatarPacks>().modelFile,
                   ),
                 ),
               ),

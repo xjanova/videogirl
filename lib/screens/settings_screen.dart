@@ -139,20 +139,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _avatarPackCard(
       BuildContext context, MindState state, MindMode mode, S t) {
-    final pack = context.watch<AvatarPack>();
-    final busy = pack.stage == AvatarPackStage.downloading ||
-        pack.stage == AvatarPackStage.verifying ||
-        pack.stage == AvatarPackStage.unpacking;
+    final packs = context.watch<AvatarPacks>();
+    final busy = packs.stage == AvatarPackStage.downloading ||
+        packs.stage == AvatarPackStage.verifying ||
+        packs.stage == AvatarPackStage.unpacking;
 
-    final status = switch (pack.stage) {
-      AvatarPackStage.ready => t.packReady,
-      AvatarPackStage.downloading => '${t.packDownloading} · ${pack.sizeLabel}',
-      AvatarPackStage.verifying => t.packVerifying,
-      AvatarPackStage.unpacking => t.packUnpacking,
-      _ => t.packMissing,
-    };
-
-    final err = switch (pack.error) {
+    final err = switch (packs.error) {
       AvatarPackError.noUrl => t.packErrNoUrl,
       AvatarPackError.network => t.packErrNetwork,
       AvatarPackError.hashMismatch => t.packErrHash,
@@ -161,36 +153,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
       null => null,
     };
 
+    final busyLabel = switch (packs.stage) {
+      AvatarPackStage.downloading => '${t.packDownloading} · ${packs.sizeLabel}',
+      AvatarPackStage.verifying => t.packVerifying,
+      AvatarPackStage.unpacking => t.packUnpacking,
+      _ => null,
+    };
+
     return _card(
       mode: mode,
       label: t.packTitle,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Icon(
-                pack.stage == AvatarPackStage.ready
-                    ? Icons.check_circle_rounded
-                    : Icons.download_for_offline_outlined,
-                size: 18,
-                color: pack.stage == AvatarPackStage.ready
-                    ? mode.accent
-                    : MindColors.ink45,
+          if (packs.installed.isEmpty) ...[
+            Row(
+              children: [
+                const Icon(Icons.download_for_offline_outlined,
+                    size: 18, color: MindColors.ink45),
+                const SizedBox(width: MindSpace.sm),
+                Expanded(child: Text(t.packMissing, style: MindType.title)),
+              ],
+            ),
+            const SizedBox(height: MindSpace.sm),
+            Text(t.packWhy, style: MindType.caption),
+          ] else ...[
+            MindSectionLabel(t.packInstalled),
+            const SizedBox(height: MindSpace.sm),
+            for (final p in packs.installed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: MindSpace.sm),
+                child: _packRow(context, state, packs, mode, t, p, busy),
               ),
-              const SizedBox(width: MindSpace.sm),
-              Expanded(child: Text(status, style: MindType.title)),
-            ],
-          ),
-          const SizedBox(height: MindSpace.sm),
-          Text(t.packWhy, style: MindType.caption),
-          if (busy) ...[
+          ],
+
+          if (busyLabel != null) ...[
             const SizedBox(height: MindSpace.md),
+            Text(busyLabel, style: MindType.caption),
+            const SizedBox(height: MindSpace.sm),
             // ระหว่างแตกไฟล์ไม่รู้ความคืบหน้า ให้แถบวิ่งไปเรื่อย ๆ ดีกว่าแถบ 0%
             // ที่ค้างนิ่ง ซึ่งอ่านได้ว่าค้างจริง
             LinearProgressIndicator(
-              value: pack.stage == AvatarPackStage.downloading
-                  ? pack.progress
+              value: packs.stage == AvatarPackStage.downloading
+                  ? packs.progress
                   : null,
             ),
           ],
@@ -199,8 +204,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Text(err,
                 style: MindType.caption.copyWith(color: const Color(0xFFB4004E))),
           ],
+
           const SizedBox(height: MindSpace.md),
-          MindSectionLabel(t.packUrlLabel),
+          MindSectionLabel(t.packAdd),
           const SizedBox(height: MindSpace.sm),
           Container(
             decoration: BoxDecoration(
@@ -214,38 +220,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
               keyboardType: TextInputType.url,
               autocorrect: false,
               style: MindType.body.copyWith(fontSize: 12.5),
-              decoration: const InputDecoration(hintText: 'https://…'),
+              decoration: InputDecoration(hintText: t.packUrlLabel),
               onChanged: state.setAvatarPackUrl,
             ),
           ),
-          const SizedBox(height: MindSpace.md),
-          Row(
-            spacing: MindSpace.sm,
-            children: [
-              Expanded(
-                child: MindButton(
-                  label: t.packDownload,
-                  kind: MindButtonKind.primary,
-                  icon: Icons.download_rounded,
-                  mode: mode,
-                  expand: true,
-                  onTap: busy || state.avatarPackUrl.isEmpty
-                      ? null
-                      : () => pack.download(state.avatarPackUrl),
-                ),
-              ),
-              if (pack.stage == AvatarPackStage.ready)
-                MindIconButton(
-                  icon: Icons.delete_outline_rounded,
-                  tooltip: t.packRemove,
-                  mode: mode,
-                  onTap: busy ? null : pack.remove,
-                ),
-            ],
+          const SizedBox(height: MindSpace.sm),
+          MindButton(
+            label: t.packDownload,
+            kind: MindButtonKind.primary,
+            icon: Icons.download_rounded,
+            mode: mode,
+            expand: true,
+            onTap: busy || state.avatarPackUrl.isEmpty
+                ? null
+                : () => packs.install(state.avatarPackUrl),
           ),
         ],
       ),
     );
+  }
+
+  /// หนึ่งแถว = หนึ่งชุดที่มีในเครื่อง · แตะเพื่อใส่ กดถังขยะเพื่อลบ
+  Widget _packRow(BuildContext context, MindState state, AvatarPacks packs,
+      MindMode mode, S t, AvatarPackInfo p, bool busy) {
+    final wearing = packs.selected?.id == p.id;
+    final kind = p.kind == AvatarPackKind.outfit
+        ? t.packKindOutfit
+        : t.packKindCharacter;
+
+    return GestureDetector(
+      onTap: busy || wearing
+          ? null
+          : () {
+              packs.select(p.id);
+              // จำไว้ข้ามการเปิดปิดแอป — ทะเบียนชุดไม่รู้จัก SharedPreferences
+              // และไม่ควรรู้จัก หน้าจอเป็นคนเชื่อมสองฝั่งนี้
+              state.setAvatarPackId(p.id);
+            },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(
+            horizontal: MindSpace.md, vertical: MindSpace.md),
+        decoration: BoxDecoration(
+          color: wearing
+              ? mode.accent.withValues(alpha: .10)
+              : MindColors.glass80,
+          borderRadius: BorderRadius.circular(MindRadius.control),
+          border: Border.all(
+            color: wearing ? mode.accent.withValues(alpha: .45)
+                           : MindColors.glassBorder,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              wearing ? Icons.check_circle_rounded : Icons.circle_outlined,
+              size: 18,
+              color: wearing ? mode.accent : MindColors.ink22,
+            ),
+            const SizedBox(width: MindSpace.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(p.nameFor(t.isThai),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: MindType.title),
+                  const SizedBox(height: 2),
+                  Text(wearing ? '$kind · ${t.packWearing}' : kind,
+                      style: MindType.caption.copyWith(fontSize: 11)),
+                ],
+              ),
+            ),
+            // ลบได้เฉพาะชุดที่ไม่ได้ใส่อยู่ — ลบชุดที่ใส่อยู่แล้วเธอจะหายไปทันที
+            // โดยที่คนกดไม่ได้ตั้งใจให้เป็นแบบนั้น
+            if (!wearing)
+              MindIconButton(
+                icon: Icons.delete_outline_rounded,
+                tooltip: t.packRemove,
+                mode: mode,
+                onTap: busy
+                    ? null
+                    : () => _confirmRemove(context, packs, t, p),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmRemove(BuildContext context, AvatarPacks packs, S t,
+      AvatarPackInfo p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        content: Text(t.packRemoveConfirm(p.nameFor(t.isThai))),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false), child: Text(t.cancel)),
+          TextButton(
+              onPressed: () => Navigator.pop(c, true), child: Text(t.packRemove)),
+        ],
+      ),
+    );
+    if (ok == true) await packs.remove(p.id);
   }
 
   Widget _noKeyBanner() {

@@ -78,6 +78,8 @@ git push origin v0.2.0
 
 **ห้ามแนบชุดไปกับ GitHub Release** — release เป็น public เท่ากับแจกคลิป Mixamo ต่อ
 
+> โครงไฟล์เต็ม ๆ กับวิธีทำชุดเพิ่ม (ชุดอื่น ทรงอื่น เลขาคนอื่น) อยู่ที่ [packs.md](packs.md)
+
 ### ทำไฟล์ชุด
 
 ```bash

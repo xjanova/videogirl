@@ -339,6 +339,7 @@ class MindAvatarView extends StatefulWidget {
     required this.controller,
     required this.mode,
     this.packBase,
+    this.packModel,
     this.serverPort = 8747,
   });
 
@@ -349,6 +350,9 @@ class MindAvatarView extends StatefulWidget {
 
   /// ที่อยู่ของชุดตัวเธอที่โหลดมาทีหลัง — null = ใช้ไฟล์ที่ฝังมาในแอป
   final String? packBase;
+
+  /// ชื่อไฟล์ .vrm ในชุดที่เลือก — ชุดของเลขาคนอื่นไม่ได้ชื่อ minde.vrm
+  final String? packModel;
 
   final int serverPort;
 
@@ -361,26 +365,34 @@ class _MindAvatarViewState extends State<MindAvatarView> {
   ///
   /// `initialUrlRequest` ถูกอ่านครั้งเดียวตอนสร้าง WebView — พอชุดตัวเธอโหลด
   /// เสร็จทีหลัง ต้องสั่งโหลดใหม่เอง ไม่งั้นเธอจะไม่โผล่จนกว่าจะปิดเปิดแอป
-  String? _loadedPack;
+  String? _loadedKey;
+
+  /// ทางที่หน้าเว็บควรใช้ — รวมทั้ง base และชื่อไฟล์ เพราะเปลี่ยนชุดคือเปลี่ยนทั้งคู่
+  String get _packKey => '${widget.packBase}|${widget.packModel}';
 
   Uri _stageUrl() {
     final base = 'http://localhost:${widget.serverPort}/assets/avatar/index.html';
     final pack = widget.packBase;
     if (pack == null || pack.isEmpty) return Uri.parse(base);
-    return Uri.parse('$base?pack=${Uri.encodeQueryComponent(pack)}');
+    final model = widget.packModel;
+    final q = StringBuffer('?pack=${Uri.encodeQueryComponent(pack)}');
+    if (model != null && model.isNotEmpty) {
+      q.write('&model=${Uri.encodeQueryComponent(model)}');
+    }
+    return Uri.parse('$base$q');
   }
 
   @override
   void didUpdateWidget(MindAvatarView old) {
     super.didUpdateWidget(old);
-    if (widget.packBase == _loadedPack) return;
-    _loadedPack = widget.packBase;
+    if (_packKey == _loadedKey) return;
+    _loadedKey = _packKey;
     unawaited(widget.controller._reload(_stageUrl()));
   }
 
   @override
   Widget build(BuildContext context) {
-    _loadedPack ??= widget.packBase;
+    _loadedKey ??= _packKey;
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (context, _) {

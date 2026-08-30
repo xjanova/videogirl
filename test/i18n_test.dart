@@ -74,6 +74,12 @@ void main() {
       check('packMissing', en.packMissing);
       check('packReady', en.packReady);
       check('packMissingHint', en.packMissingHint);
+      check('packInstalled', en.packInstalled);
+      check('packAdd', en.packAdd);
+      check('packWearing', en.packWearing);
+      check('packKindCharacter', en.packKindCharacter);
+      check('packKindOutfit', en.packKindOutfit);
+      check('packRemoveConfirm', en.packRemoveConfirm('X'));
       check('packDownload', en.packDownload);
       check('packRemove', en.packRemove);
       check('packUrlLabel', en.packUrlLabel);

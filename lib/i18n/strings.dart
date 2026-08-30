@@ -127,6 +127,14 @@ class S {
   String get packMissing =>
       _('ยังไม่มีในเครื่อง เธอจะขึ้นเป็นกรอบแทน', 'Not here yet — she shows as a placeholder');
   String get packReady => _('พร้อมใช้แล้ว', 'Ready');
+  String get packInstalled => _('ชุดที่มีในเครื่อง', 'Installed');
+  String get packAdd => _('เพิ่มชุดใหม่', 'Add a pack');
+  String get packWearing => _('ใส่อยู่', 'Wearing');
+  String get packKindCharacter => _('ตัวละคร', 'Character');
+  String get packKindOutfit => _('ชุดแต่งตัว', 'Outfit');
+  String packRemoveConfirm(String name) =>
+      _('ลบ "$name" ออกจากเครื่องไหมคะ', 'Remove "$name" from this device?');
+
   String get packMissingHint =>
       _('ไปที่ตั้งค่า → ชุดตัวมายด์ เพื่อโหลด', 'Settings → avatar pack to download');
   String get packDownload => _('โหลดชุด', 'Download pack');

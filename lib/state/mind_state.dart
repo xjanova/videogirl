@@ -73,6 +73,7 @@ class MindState extends ChangeNotifier {
     _homeServerUrl = p.getString('homeServerUrl') ?? HomeServerDefaults.baseUrl;
     _homeServerModel = p.getString('homeServerModel') ?? HomeServerDefaults.model;
     _avatarPackUrl = p.getString('avatarPackUrl') ?? _packUrlDefault;
+    _avatarPackId = p.getString('avatarPackId') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
     _realtimeModel = p.getString('realtimeModel') ?? OpenAiConfig.realtimeModel;
 
@@ -281,6 +282,17 @@ class MindState extends ChangeNotifier {
   void setAvatarPackUrl(String v) {
     _avatarPackUrl = v.trim();
     _save('avatarPackUrl', _avatarPackUrl);
+    _notify();
+  }
+
+  /// ชุดที่ใส่อยู่ — จำไว้ข้ามการเปิดปิดแอป ไม่งั้นเปลี่ยนชุดแล้วเปิดใหม่
+  /// จะกลับไปเป็นชุดแรกตามลำดับตัวอักษร ซึ่งดูเหมือนแอปลืม
+  String _avatarPackId = '';
+  String get avatarPackId => _avatarPackId.isEmpty ? '' : _avatarPackId;
+
+  void setAvatarPackId(String v) {
+    _avatarPackId = v;
+    _save('avatarPackId', v);
     _notify();
   }
 
