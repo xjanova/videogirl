@@ -3,6 +3,7 @@ package com.xjanova.videogirl
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.role.RoleManager
 import android.content.ContentUris
 import android.content.Intent
 import android.content.Context
@@ -14,6 +15,7 @@ import android.provider.CalendarContract
 import android.provider.Settings
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
+import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -111,6 +113,13 @@ class MainActivity : FlutterActivity() {
                     "hangUp" -> result.success(calls.hangUp())
                     "watchCalls" -> {
                         watchCalls()
+                        result.success(true)
+                    }
+
+                    // ── แอปโทรศัพท์หลัก ──────────────────────────
+                    "isDefaultDialer" -> result.success(isDefaultDialer())
+                    "requestDefaultDialer" -> {
+                        requestDefaultDialer()
                         result.success(true)
                     }
 
@@ -443,6 +452,50 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    /**
+     * แอปนี้เป็นแอปโทรศัพท์หลักของเครื่องอยู่หรือเปล่า
+     *
+     * ถามผ่าน RoleManager บน Android 10 ขึ้นไป ที่เหลือถาม TelecomManager
+     * สองทางนี้ตอบเรื่องเดียวกัน แต่ทางเก่าถูกเลิกใช้ไปแล้วบนรุ่นใหม่
+     */
+    private fun isDefaultDialer(): Boolean {
+        if (Build.VERSION.SDK_INT >= 29) {
+            val rm = getSystemService(RoleManager::class.java) ?: return false
+            return rm.isRoleHeld(RoleManager.ROLE_DIALER)
+        }
+        val tm = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager ?: return false
+        return tm.defaultDialerPackage == packageName
+    }
+
+    /**
+     * ขอเป็นแอปโทรศัพท์หลัก
+     *
+     * 🔴 **เป็นแล้วทุกสายของเครื่องผ่านแอปนี้** ไม่ใช่แค่สายที่เราสนใจ
+     * ถ้า InCallActivity หรือ DialerActivity พัง เจ้าของโทรออกรับสายไม่ได้
+     * ทั้งเครื่อง · ผู้ใช้ต้องกดยอมรับเองเสมอ ระบบไม่ยอมให้ตั้งเงียบ ๆ
+     * และถอนออกได้ตลอดจากหน้าตั้งค่าของเครื่อง
+     */
+    private fun requestDefaultDialer() {
+        if (isDefaultDialer()) return
+        try {
+            val intent = if (Build.VERSION.SDK_INT >= 29) {
+                getSystemService(RoleManager::class.java)
+                    ?.createRequestRoleIntent(RoleManager.ROLE_DIALER)
+            } else {
+                @Suppress("DEPRECATION")
+                Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER)
+                    .putExtra(
+                        TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME,
+                        packageName
+                    )
+            } ?: return
+            startActivityForResult(intent, REQ_DIALER_ROLE)
+        } catch (e: Exception) {
+            // บาง ROM ถอดหน้านี้ออก — พาไปหน้าตั้งค่าแอปแทน ดีกว่าไม่เกิดอะไร
+            openAppSettings()
+        }
+    }
+
     private fun openAppSettings() {
         startActivity(
             Intent(
@@ -461,6 +514,7 @@ class MainActivity : FlutterActivity() {
         private const val REQ_CALL = 8751
         private const val REQ_CONTACTS = 8752
         private const val REQ_ANSWER = 8753
+        private const val REQ_DIALER_ROLE = 8754
 
         /// รหัสคำขอทุกตัวที่ [ask] / [askMany] ใช้
         ///

@@ -259,6 +259,19 @@ class S {
         'Lets her pick up or hang up. She cannot speak on the line yet — '
         'that needs this app set as the default phone app, which is not built.',
       );
+  String get permDialer => _('เป็นแอปโทรศัพท์หลัก', 'Be the phone app');
+
+  /// 🔴 ต้องบอกให้ครบว่า**เปลี่ยนทั้งเครื่อง** ไม่ใช่แค่เปิดฟีเจอร์
+  /// และต้องบอกด้วยว่าสิ่งที่คนคาดหวังที่สุด (เธอคุยแทน) ยังทำไม่ได้
+  String get permDialerWhy => _(
+        'ทุกสายของเครื่องจะผ่านแอปนี้ — จอสายเป็นของมายด์ รับ วาง ปิดไมค์ '
+        'สลับลำโพงได้ · เธอยังพูดในสายไม่ได้ Android ไม่เปิดทางให้แอปไหนทำ '
+        'ถอนคืนได้ตลอดจากหน้าตั้งค่าของเครื่อง',
+        'Every call on this phone goes through this app — Mind owns the call '
+        'screen and can answer, hang up, mute and switch to speaker. She still '
+        'cannot talk on the line; Android allows no app to do that. '
+        'Reversible any time from system settings.',
+      );
   String get permCalendar => _('ปฏิทิน', 'Calendar');
   String get permCalendarWhy => _(
         'อ่านตารางนัดของคุณ อ่านอย่างเดียว ไม่แก้ไม่ลบ และไม่ส่งออกจากเครื่อง',

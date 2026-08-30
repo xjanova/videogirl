@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ข้อความบนจอสาย
+
+  🔴 อยู่ที่นี่ ไม่ได้อยู่ใน lib/i18n เหมือนข้อความอื่นทั้งแอป
+  เพราะจอสายเป็น Activity เนทีฟที่ต้องขึ้นได้โดยไม่ต้องรอ Flutter engine
+  (สายดังแล้วจอว่างเปล่าหลายวินาทีคือรับสายไม่ได้จริง)
+
+  ค่าตั้งต้นเป็นไทย ส่วน values-en เป็นอังกฤษ — ตามภาษาของ **เครื่อง**
+  ไม่ใช่ภาษาที่ตั้งในแอป เพราะตอนสายดังเรายังไม่ได้อ่านค่าที่ตั้งไว้
+-->
+<resources>
+    <string name="call_incoming">สายเข้า</string>
+    <string name="call_dialing">กำลังโทรออก</string>
+    <string name="call_connecting">กำลังต่อสาย</string>
+    <string name="call_active">กำลังคุย</string>
+    <string name="call_holding">พักสายไว้</string>
+    <string name="call_ended">วางสายแล้ว</string>
+    <string name="call_unknown">ไม่ทราบเบอร์</string>
+    <string name="call_answer">รับสาย</string>
+    <string name="call_decline">ปฏิเสธ</string>
+    <string name="call_hangup">วางสาย</string>
+    <string name="dial_call">โทร</string>
+    <string name="dial_hint">กดเบอร์</string>
+</resources>

@@ -58,6 +58,9 @@
     <!-- รับสายแทน · ดู CallBridge.kt ว่าทำได้แค่ไหนและติดตรงไหน -->
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS"/>
 
+    <!-- โทรออกจากแป้นของเราเอง — จำเป็นเมื่อเป็นแอปโทรศัพท์หลัก -->
+    <uses-permission android:name="android.permission.CALL_PHONE"/>
+
     <!-- เครื่องที่ไม่มีซิมก็ยังลงแอปได้ แค่ไม่มีสายให้รับ -->
     <uses-feature android:name="android.hardware.telephony" android:required="false"/>
 
@@ -95,6 +98,59 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- ═══ แอปโทรศัพท์หลัก ═══════════════════════════════
+             🔴 ตั้งเป็นแอปหลักแล้ว **ทุกสายของเครื่องผ่านแอปนี้**
+             สายเข้า สายออก สายซ้อน · จอสายหรือแป้นโทรพังเมื่อไหร่
+             เจ้าของโทรออกรับสายไม่ได้ทั้งเครื่อง ไม่ใช่แค่ฟีเจอร์นี้เสีย
+
+             ทั้งสอง Activity เป็นเนทีฟล้วน ไม่ใช่ Flutter เพราะต้องขึ้นได้
+             ทันทีโดยไม่รอ engine — สายดังแล้วจอว่างหลายวินาที = รับสายไม่ได้ -->
+        <activity
+            android:name=".InCallActivity"
+            android:exported="true"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:showOnLockScreen="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>
+
+        <activity
+            android:name=".DialerActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            <!-- แป้นโทรที่ไม่มีเบอร์มาด้วย — คนเปิด "แอปโทรศัพท์" -->
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+            <!-- แตะเบอร์จากที่อื่น -->
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL"/>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="tel"/>
+            </intent-filter>
+        </activity>
+
+        <!-- ระบบผูกกับบริการนี้เพื่อส่งสายมาให้เรา
+             BIND_INCALL_SERVICE ต้องเป็น permission ของ <service> ไม่ใช่ uses-permission
+             และ IN_CALL_SERVICE_UI = true คือการบอกว่าเรามีจอสายของตัวเอง -->
+        <service
+            android:name=".MindInCallService"
+            android:exported="true"
+            android:permission="android.permission.BIND_INCALL_SERVICE">
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_UI"
+                android:value="true"/>
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_RINGING"
+                android:value="true"/>
+            <intent-filter>
+                <action android:name="android.telecom.InCallService"/>
+            </intent-filter>
+        </service>
+
         <!-- ประเภทของ foreground service ต้องประกาศใน manifest
              ประกาศแค่ตอนเรียก startForeground ไม่พอ — Android ปฏิเสธ
              ปลั๊กอินประกาศ <service> มาให้แล้ว เราเติมแค่ประเภทเข้าไป -->

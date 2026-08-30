@@ -284,6 +284,8 @@ void main() {
       check('permContacts', en.permContacts);
       check('permContactsWhy', en.permContactsWhy);
       check('permAnswer', en.permAnswer);
+      check('permDialer', en.permDialer);
+      check('permDialerWhy', en.permDialerWhy);
       check('permAnswerWhy', en.permAnswerWhy);
       check('tlKindAsked', en.tlKindAsked);
       check('tlKindReplied', en.tlKindReplied);

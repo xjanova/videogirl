@@ -19,15 +19,30 @@ import 'package:videogirl/system/permissions.dart';
 /// เทสต์พวกนี้อ่านซอร์ส Kotlin ตรง ๆ ซึ่งหยาบแต่**จับได้ตอนรันเทสต์**
 /// ไม่ใช่ตอนผู้ใช้กดปุ่มบนเครื่องจริงแล้วเงียบ
 void main() {
-  final activity =
-      File('android/app/src/main/kotlin/com/xjanova/videogirl/MainActivity.kt');
+  final kotlinDir = Directory('android/app/src/main/kotlin/com/xjanova/videogirl');
 
+  /// ซอร์ส Kotlin **ทุกไฟล์** ต่อกัน
+  ///
+  /// เคยอ่านแค่ MainActivity.kt แล้วเทสต์รายงานว่า CALL_PHONE ไม่มีใครใช้
+  /// ทั้งที่ DialerActivity.kt ใช้อยู่ · ขอบเขตที่แคบกว่าความจริงทำให้
+  /// เทสต์กล่าวหาโค้ดที่ถูกต้อง ซึ่งพอเกิดบ่อย ๆ คนจะเริ่มปิดเทสต์ทิ้ง
   late String kotlin;
 
+  /// เฉพาะ MainActivity — ใช้กับด่านที่เกี่ยวกับ when และ KNOWN_REQUESTS
+  late String activity;
+
   setUpAll(() {
-    expect(activity.existsSync(), isTrue,
-        reason: 'หา MainActivity.kt ไม่เจอ — เทสต์นี้ผูกกับที่อยู่ของไฟล์');
-    kotlin = activity.readAsStringSync();
+    expect(kotlinDir.existsSync(), isTrue,
+        reason: 'หาโฟลเดอร์ Kotlin ไม่เจอ — เทสต์นี้ผูกกับที่อยู่ของไฟล์');
+
+    kotlin = kotlinDir
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.kt'))
+        .map((f) => f.readAsStringSync())
+        .join('\n');
+
+    activity = File('${kotlinDir.path}/MainActivity.kt').readAsStringSync();
   });
 
   test('ทุกเมธอดที่ฝั่ง Dart เรียก ต้องมีอยู่ใน when ของ Kotlin', () {
@@ -51,7 +66,7 @@ void main() {
     final used = <String>{};
     for (final m in RegExp(r'\bask(?:Many)?\(\s*(?:arrayOf\([^)]*\)|[^,]+),\s*'
             r'(REQ_[A-Z_]+)')
-        .allMatches(kotlin)) {
+        .allMatches(activity)) {
       used.add(m.group(1)!);
     }
 
@@ -60,7 +75,7 @@ void main() {
             'ต้องแก้เทสต์นี้ ไม่ใช่ปล่อยผ่าน');
 
     final known = RegExp(r'KNOWN_REQUESTS\s*=\s*setOf\(([^)]*)\)')
-        .firstMatch(kotlin)
+        .firstMatch(activity)
         ?.group(1);
 
     expect(known, isNotNull, reason: 'ไม่มี KNOWN_REQUESTS ใน MainActivity.kt');
@@ -110,7 +125,13 @@ void main() {
       'POST_NOTIFICATIONS',
     };
 
-    final declared = RegExp(r'android\.permission\.([A-Z_]+)')
+    // เฉพาะ <uses-permission> เท่านั้น
+    //
+    // `android:permission` ของ <service> เป็นคนละเรื่อง — มันคือสิทธิ์ที่
+    // **ผู้อื่นต้องมี**ถึงจะผูกกับบริการเราได้ ไม่ใช่สิทธิ์ที่เราขอ
+    // (BIND_INCALL_SERVICE เป็นแบบนั้น) นับรวมแล้วจะกล่าวหาผิด
+    final declared = RegExp(
+            r'<uses-permission[^>]*android:name="android\.permission\.([A-Z_]+)"')
         .allMatches(manifest)
         .map((m) => m.group(1)!)
         .toSet()
