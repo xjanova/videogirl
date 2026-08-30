@@ -56,7 +56,11 @@ export class Motion {
     }
 
     /** Read the manifest and retarget everything it can find. */
-    async load() {
+    /**
+     * @param {(done:number,total:number)=>void} [onStep] รายงานความคืบหน้าทีละคลิป
+     *   มีไว้ให้หน้าเปิดแอปโชว์เปอร์เซ็นต์จริง ไม่ใช่หลอกด้วยตัวเลขที่เดาเอา
+     */
+    async load(onStep) {
         let manifest;
         try {
             const res = await fetch(this.base + 'clips.json');
@@ -70,12 +74,15 @@ export class Motion {
         // Sequential, not parallel. FBXLoader parses on the main thread, and
         // twenty of them at once stalls the first frames for seconds; one at a
         // time lets her stand there breathing while the rest arrive.
-        for (const meta of manifest.clips ?? []) {
+        const all = manifest.clips ?? [];
+        let done = 0;
+        for (const meta of all) {
             let clip = null;
             try {
                 clip = await loadMixamo(this.base + encodeURIComponent(meta.file),
                                         this.vrm, { name: meta.id, quiet: true });
             } catch { /* falls through to `missing` */ }
+            onStep?.(++done, all.length);
             if (!clip) { this.missing.push(meta.file); continue; }
 
             const action = this.mixer.clipAction(clip);

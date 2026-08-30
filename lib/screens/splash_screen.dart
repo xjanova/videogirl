@@ -40,10 +40,16 @@ class MindSplash extends StatefulWidget {
     super.key,
     required this.appReady,
     required this.onDone,
+    this.loadPercent = 0,
   });
 
-  /// ของหนักโหลดเสร็จหรือยัง — ยังไม่เสร็จก็ยังไม่ปล่อยให้เข้าแอป
+  /// ตัวเธอขึ้นจอพร้อมให้เห็นแล้วหรือยัง — ยังไม่พร้อมก็ยังไม่ปล่อยให้เข้าแอป
+  ///
+  /// เจ้าของสั่งว่าเข้าแอปแล้วต้องเห็นตัวเธอเลย ไม่ใช่โครงร่าง
   final bool appReady;
+
+  /// ความคืบหน้าการโหลดจริง 0–100
+  final int loadPercent;
 
   final VoidCallback onDone;
 
@@ -134,9 +140,14 @@ class _MindSplashState extends State<MindSplash> {
   /// คลิปจบแล้ว — แต่จะออกจากหน้านี้ได้ก็ต่อเมื่อแอปพร้อมด้วย
   void _finishClip() {
     if (_clipDone) return;
-    _clipDone = true;
     _giveUp?.cancel();
     _hint?.cancel();
+    // setState เพราะหน้าต้องสลับจากวิดีโอไปเป็นโลโก้นิ่ง + แถบความคืบหน้า
+    if (mounted) {
+      setState(() => _clipDone = true);
+    } else {
+      _clipDone = true;
+    }
     if (widget.appReady) _leave();
   }
 
@@ -184,15 +195,38 @@ class _MindSplashState extends State<MindSplash> {
           behavior: HitTestBehavior.opaque,
           // แตะข้ามได้ — แอปไม่ตัดให้เอง แต่ถ้าเจ้าของอยากข้ามก็ต้องข้ามได้
           onTap: () {
-            _clipDone = true;
-            _leave();
+            // แตะข้ามวิดีโอ — แต่ถ้าตัวเธอยังโหลดไม่เสร็จ จะไปหยุดที่หน้าโลโก้
+            // พร้อมเปอร์เซ็นต์ ไม่ใช่ทะลุเข้าไปเจอโครงร่าง
+            _finishClip();
           },
           child: ColoredBox(
             color: _kSplashBackdrop,
             child: Stack(
               fit: StackFit.expand,
               children: [
-                if (v != null && v.value.isInitialized)
+                // ── ชั้นล่างสุด: โลโก้นิ่ง อยู่**ตลอดเวลา** ──
+                //
+                // 🔴 ต้องอยู่ตั้งแต่เฟรมแรก ไม่ใช่โผล่ทีหลัง
+                //
+                // จอเริ่มต้นของ Android ก็เป็นโลโก้ตัวนี้บนพื้นสีนี้ ถ้าที่นี่
+                // เริ่มด้วยพื้นเปล่า ผู้ใช้จะเห็นโลโก้**หายไปหลายวินาที**
+                // ตอน Flutter รับช่วงต่อ แล้วค่อยโผล่กลับมา — วัดได้จริงว่า
+                // ขาดตอนไป ~4 วินาที · มีโลโก้รออยู่ก่อนแล้ววิดีโอค่อยเล่นทับ
+                // ตาจึงเห็นเป็นภาพเดียวที่เริ่มขยับ ไม่ใช่สามจอสลับกัน
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 40),
+                    child: Image.asset(
+                      'assets/brand/giggok-wordmark.png',
+                      width: 260,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+
+                // ── วิดีโอ เล่นทับโลโก้ที่รออยู่ ──
+                if (v != null && v.value.isInitialized && !_clipDone)
                   // คลิปแนวตั้ง 9:16 จอมือถือส่วนใหญ่สูงกว่านั้น — cover
                   // แล้วยอมให้ล้นข้าง ดีกว่า contain ที่เหลือแถบพื้นบนล่าง
                   FittedBox(
@@ -204,12 +238,52 @@ class _MindSplashState extends State<MindSplash> {
                       child: VideoPlayer(v),
                     ),
                   ),
+
+                // ── หลังวิดีโอจบ: ความคืบหน้าจริงใต้โลโก้ ──
+                if (_clipDone)
+                  Align(
+                    alignment: Alignment.center,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 190),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 200,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(99),
+                              child: LinearProgressIndicator(
+                                // เปอร์เซ็นต์จริงจากไบต์ที่โหลดมาแล้ว
+                                // ยังไม่มีตัวเลขค่อยให้แถบวิ่งไปก่อน
+                                // ดีกว่าค้างที่ 0 ซึ่งอ่านว่าแอปแฮงก์
+                                value: widget.loadPercent > 0
+                                    ? widget.loadPercent / 100
+                                    : null,
+                                minHeight: 5,
+                                backgroundColor: const Color(0x1A23204A),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            S.of(context).splashLoading(widget.loadPercent),
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              letterSpacing: .4,
+                              color: MindColors.ink55,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 56),
                     child: AnimatedOpacity(
-                      opacity: _hintOn ? 1 : 0,
+                      opacity: _hintOn && !_clipDone ? 1 : 0,
                       duration: const Duration(milliseconds: 520),
                       child: Text(
                         S.of(context).splashSkip,

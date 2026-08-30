@@ -63,8 +63,20 @@ class MindAvatarController extends ChangeNotifier {
   bool _ready = false;
   String? _error;
 
-  /// โมเดลโหลดขึ้นเวทีแล้วหรือยัง
+  /// โมเดลโหลดขึ้นเวทีแล้วหรือยัง (รวมคลิปท่าทางครบแล้ว)
   bool get ready => _ready;
+
+  /// **ตัวเธอขึ้นจอแล้ว** — มาก่อน [ready] หลายวินาที เพราะคลิปท่าทาง
+  /// ยังทยอยโหลดอยู่ แต่คนดูเห็นเธอยืนอยู่แล้ว
+  ///
+  /// หน้าเปิดแอปรอสัญญาณนี้ ไม่ใช่รอ [ready] — รอจนคลิปครบแปลว่าให้คนนั่ง
+  /// มองโลโก้ต่ออีกหลายวินาทีทั้งที่เธอพร้อมให้เห็นแล้ว
+  bool _visible = false;
+  bool get visible => _visible;
+
+  /// ความคืบหน้าการโหลดจริง 0–100 — นับจากไบต์ที่โหลดมาแล้ว ไม่ใช่แถบที่วิ่งเอง
+  int _loadPercent = 0;
+  int get loadPercent => _loadPercent;
 
   /// ข้อความผิดพลาดจากฝั่ง WebView — ปกติคือหาไฟล์โมเดลอวาตาร์ไม่เจอ
   String? get error => _error;
@@ -74,12 +86,29 @@ class MindAvatarController extends ChangeNotifier {
   void _onReady() {
     if (_ready) return;
     _ready = true;
+    _visible = true;
+    _loadPercent = 100;
     _error = null;
+    notifyListeners();
+  }
+
+  void _onVisible() {
+    if (_visible) return;
+    _visible = true;
+    notifyListeners();
+  }
+
+  void _onProgress(int pct) {
+    if (pct == _loadPercent) return;
+    _loadPercent = pct.clamp(0, 100);
     notifyListeners();
   }
 
   void _onError(String message) {
     _ready = false;
+    // เวทีพัง = ไม่มีทางเห็นเธอ · ต้องปลดธงนี้ด้วย ไม่งั้นหน้าเปิดแอปจะรอ
+    // สัญญาณที่ไม่มีวันมา แล้วค้างอยู่บนโลโก้ตลอดกาล
+    _visible = false;
     _error = message;
     notifyListeners();
   }
@@ -296,6 +325,8 @@ class MindAvatarController extends ChangeNotifier {
     final web = _web;
     if (web == null) return;
     _ready = false;
+    _visible = false;
+    _loadPercent = 0;
     _faceTried = false;
     notifyListeners();
     try {
@@ -403,7 +434,12 @@ class _MindAvatarViewState extends State<MindAvatarView> {
             // WebView ยังอยู่แม้ตอน error เพื่อให้ hot reload หรือการวางไฟล์โมเดล
             // ทีหลังแล้ว reload กลับมาทำงานได้โดยไม่ต้องสร้างใหม่ทั้งก้อน
             Opacity(
-              opacity: widget.controller.ready ? 1 : 0,
+              // ผูกกับ `visible` ไม่ใช่ `ready`
+              //
+              // `ready` มาหลังคลิปท่าทางโหลดครบ ซึ่งช้ากว่าตัวเธอขึ้นจอ
+              // หลายวินาที · ถ้าใช้ `ready` ผู้ใช้จะเห็นกรอบแทนตัวเธอค้าง
+              // อยู่ทั้งที่เธอยืนพร้อมอยู่ข้างหลังแล้ว
+              opacity: widget.controller.visible ? 1 : 0,
               child: InAppWebView(
                 initialUrlRequest: URLRequest(url: WebUri('${_stageUrl()}')),
                 initialSettings: InAppWebViewSettings(
@@ -428,6 +464,11 @@ class _MindAvatarViewState extends State<MindAvatarView> {
                       final msg = args.isEmpty ? null : args.first;
                       if (msg is! Map) return null;
                       switch (msg['type']) {
+                        case 'progress':
+                          widget.controller
+                              ._onProgress((msg['pct'] as num?)?.toInt() ?? 0);
+                        case 'visible':
+                          widget.controller._onVisible();
                         case 'ready':
                           widget.controller._onReady();
                           // ถ่ายรูปหน้าไว้ใช้เป็นไอคอนปุ่มกลาง หน่วงให้กล้อง
@@ -497,7 +538,7 @@ class _MindAvatarViewState extends State<MindAvatarView> {
                 },
               ),
             ),
-            if (!widget.controller.ready)
+            if (!widget.controller.visible)
               _AvatarPlaceholder(mode: widget.mode, failed: failed),
           ],
         );

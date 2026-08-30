@@ -5,6 +5,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 
 import 'avatar/avatar_pack.dart';
+import 'avatar/avatar_view.dart';
 import 'background/mind_background.dart';
 import 'background/mind_watch.dart';
 import 'system/permissions.dart';
@@ -65,9 +66,16 @@ class _MindBootstrapState extends State<MindBootstrap> {
   final MindState _state = MindState();
   final AvatarPacks _pack = AvatarPacks();
 
-  /// โหลดของหนักเสร็จหรือยัง — เชลล์สร้างไม่ได้ก่อนหน้านี้เพราะ WebView
-  /// จะยิงไปที่ localhost ที่ยังไม่มีเซิร์ฟเวอร์ แล้วขึ้น error ค้าง
-  bool _ready = false;
+  /// ตัวควบคุมอวาตาร์อยู่ที่นี่ ไม่ใช่ในเชลล์ เพราะหน้าเปิดแอปต้องอ่าน
+  /// ความคืบหน้าการโหลด VRM มาโชว์เป็นเปอร์เซ็นต์จริง
+  final MindAvatarController _avatar = MindAvatarController();
+
+  /// พร้อมสร้างเชลล์หรือยัง — ต้องมีเซิร์ฟเวอร์ + ค่าที่ตั้งไว้ + ทะเบียนชุด
+  ///
+  /// ทั้งสามอย่างนี้เร็ว (หลักร้อยมิลลิวินาที) ต่างจากการโหลด VRM 33MB
+  /// ที่กินหลายวินาที · แยกกันเพื่อให้ **WebView เริ่มโหลด VRM ตั้งแต่วิดีโอ
+  /// ยังเล่นอยู่** ไม่ใช่รอวิดีโอจบแล้วค่อยเริ่ม
+  bool _canBuildShell = false;
 
   /// วิดีโอเล่นจบ (หรือถูกแตะข้าม) แล้วหรือยัง
   bool _splashDone = false;
@@ -79,21 +87,31 @@ class _MindBootstrapState extends State<MindBootstrap> {
   }
 
   Future<void> _boot() async {
+    // ── รอบแรก: ของที่ต้องมีก่อนสร้างเชลล์ (เร็วทั้งหมด) ──
+    //
+    // ทะเบียนชุดต้องเสร็จก่อนด้วย ไม่งั้น WebView โหลดด้วยทางเก่าแล้วต้อง
+    // รีโหลดทีหลัง = โหลด VRM 33MB สองรอบ ซึ่งช้ากว่ารอให้เสร็จก่อนมาก
     try {
       await InAppLocalhostServer(port: kAvatarPort).start();
       await _state.load();
       await _pack.restore(preferId: _state.avatarPackId);
-      await configureMindBackground();
     } catch (e) {
-      // เปิดไม่ครบดีกว่าเปิดไม่ได้ — ผู้ใช้ยังเข้าแอปได้ แล้วส่วนที่พัง
-      // จะแสดงสถานะของตัวเองในหน้าที่เกี่ยวข้อง
       debugPrint('boot: เตรียมของไม่ครบ — $e');
     }
-    if (mounted) setState(() => _ready = true);
+    if (!mounted) return;
+    setState(() => _canBuildShell = true);
+
+    // ── รอบสอง: ของที่รอได้ ทำหลังเชลล์เริ่มโหลด VRM ไปแล้ว ──
+    try {
+      await configureMindBackground();
+    } catch (e) {
+      debugPrint('boot: ตั้งบริการเบื้องหลังไม่สำเร็จ — $e');
+    }
   }
 
   @override
   void dispose() {
+    _avatar.dispose();
     _state.dispose();
     _pack.dispose();
     super.dispose();
@@ -105,6 +123,7 @@ class _MindBootstrapState extends State<MindBootstrap> {
       providers: [
         ChangeNotifierProvider.value(value: _state),
         ChangeNotifierProvider.value(value: _pack),
+        ChangeNotifierProvider.value(value: _avatar),
         ChangeNotifierProvider.value(value: _state.memory),
         ChangeNotifierProvider(create: (_) => Updater()),
         ChangeNotifierProvider(create: (_) => MindWatch()..refresh()),
@@ -125,13 +144,21 @@ class _MindBootstrapState extends State<MindBootstrap> {
           home: Stack(
             fit: StackFit.expand,
             children: [
-              if (_ready) const MindShell(),
+              // เชลล์เกิดตั้งแต่วิดีโอยังเล่นอยู่ WebView จึงเริ่มโหลด VRM
+              // ไปพร้อมกัน แทนที่จะรอวิดีโอจบแล้วค่อยเริ่มนับหนึ่ง
+              if (_canBuildShell) const MindShell(),
               if (!_splashDone)
-                MindSplash(
-                  // วิดีโอเล่นจบแล้วแต่ของยังโหลดไม่เสร็จ ก็ค้างหน้าเปิดไว้ต่อ
-                  // ดีกว่าโยนคนเข้าไปเจอจอเปล่าที่ยังไม่มีอะไร
-                  appReady: _ready,
-                  onDone: () => setState(() => _splashDone = true),
+                // 🔴 รอ `visible` ไม่ใช่ `ready`
+                //
+                // เจ้าของสั่งว่าเข้าแอปแล้วต้องเห็นตัวเธอเลย ไม่ใช่โครงร่าง
+                // `visible` = VRM ขึ้นจอแล้ว · `ready` = คลิปท่าทางครบด้วย
+                // ซึ่งมาช้ากว่าอีกหลายวินาทีโดยที่เธอยืนอยู่แล้ว
+                Consumer<MindAvatarController>(
+                  builder: (context, avatar, _) => MindSplash(
+                    appReady: avatar.visible || avatar.error != null,
+                    loadPercent: avatar.loadPercent,
+                    onDone: () => setState(() => _splashDone = true),
+                  ),
                 ),
             ],
           ),

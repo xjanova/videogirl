@@ -57,6 +57,23 @@ try {
     base: pack || './model/',
     model: q.get('model') || 'minde.vrm',
   });
+
+  // รายงานความคืบหน้าจริงออกไปให้หน้าเปิดแอป
+  //
+  // ปัดเป็นจำนวนเต็มก่อนส่ง ไม่งั้นยิงข้ามสะพานทุก chunk ที่โหลดมา
+  // ซึ่งกับไฟล์ 33MB คือหลายพันครั้งโดยที่ตัวเลขบนจอเปลี่ยนเท่าเดิม
+  let lastPct = -1;
+  avatar.onProgress = (p) => {
+    const pct = Math.round(p * 100);
+    if (pct === lastPct) return;
+    lastPct = pct;
+    post('progress', { pct });
+  };
+
+  // ตัวเธอขึ้นจอแล้ว — มาก่อนคลิปท่าทางโหลดเสร็จ
+  // หน้าเปิดแอปรอสัญญาณนี้ ไม่ใช่รอ 'ready' ที่ต้องรอคลิปครบอีกหลายวินาที
+  avatar.onVisible = () => post('visible');
+
   await avatar.loaded;
   post('ready');
 } catch (err) {

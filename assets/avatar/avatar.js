@@ -65,6 +65,18 @@ export class Avatar {
         this.speaking = false;
         this.ready = false;
 
+        /**
+         * เรียกทุกครั้งที่ความคืบหน้าเปลี่ยน — ผู้ที่ฝังหน้านี้ตั้งเอง
+         *
+         * ตัวเลขที่ส่งออกไปคือ**ของจริง** จาก byte ที่โหลดมาแล้ว ไม่ใช่แถบ
+         * ที่วิ่งเองตามเวลา · แถบปลอมบอกอะไรผู้ใช้ไม่ได้เลยเวลามันค้างจริง
+         * @type {?(p:number)=>void}
+         */
+        this.onProgress = null;
+
+        /** เรียกเมื่อ**ตัวเธอขึ้นจอแล้ว** ซึ่งมาก่อนคลิปท่าทางโหลดเสร็จ */
+        this.onVisible = null;
+
         const w = host.clientWidth || 320, h = host.clientHeight || 300;
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -96,7 +108,12 @@ export class Avatar {
     async _load() {
         const loader = new GLTFLoader();
         loader.register((p) => new VRMLoaderPlugin(p));
-        const gltf = await loader.loadAsync(this.base + this.model);
+        // VRM 33MB คือของที่หนักที่สุดในการเปิดแอป กินสัดส่วนใหญ่ของแถบ
+        const gltf = await loader.loadAsync(this.base + this.model, (e) => {
+            if (e && e.lengthComputable && e.total > 0) {
+                this.onProgress?.((e.loaded / e.total) * 0.85);
+            }
+        });
         const vrm = gltf.userData.vrm;
         // Drop vertices nothing references, and merge the per-primitive
         // skeletons VRoid emits — 20-odd draw calls become a handful.
@@ -124,7 +141,15 @@ export class Avatar {
         this.ready = true;
         this._raf = requestAnimationFrame(this._loop);
 
-        await this.motion.load();
+        // ตัวเธออยู่บนจอแล้วตรงนี้ — คลิปท่าทางยังทยอยมาอยู่ แต่คนดูเห็นเธอแล้ว
+        // นี่คือจังหวะที่หน้าเปิดแอปควรหลบให้ ไม่ใช่รอจนคลิปครบ
+        this.onProgress?.(0.85);
+        this.onVisible?.();
+
+        await this.motion.load((done, total) => {
+            this.onProgress?.(0.85 + 0.15 * (total > 0 ? done / total : 1));
+        });
+        this.onProgress?.(1);
         this._applyMood();
         return this;
     }

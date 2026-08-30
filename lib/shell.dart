@@ -23,9 +23,12 @@ class MindShell extends StatefulWidget {
 }
 
 class _MindShellState extends State<MindShell> {
-  /// อวาตาร์อยู่ระดับ shell ไม่ใช่ระดับหน้าจอ — ถ้าสร้างใหม่ทุกครั้งที่สลับแท็บ
-  /// VRM 33MB จะโหลดใหม่ทุกรอบ และเธอจะรีเซ็ตท่ากลับไปยืนตรงทุกครั้ง
-  final _avatar = MindAvatarController();
+  /// อวาตาร์อยู่ **เหนือ shell ขึ้นไปอีกชั้น** ไม่ใช่ของ shell เอง
+  ///
+  /// เดิมสร้างที่นี่ แต่หน้าเปิดแอปต้องรู้ความคืบหน้าการโหลด VRM ด้วย
+  /// เพื่อโชว์เปอร์เซ็นต์จริง · ถ้าตัวควบคุมเกิดที่นี่ หน้าเปิดแอปที่อยู่
+  /// ชั้นบนกว่าจะมองไม่เห็นมันเลย
+  MindAvatarController get _avatar => context.read<MindAvatarController>();
 
   int _tab = 0;
   bool _speakerWired = false;
@@ -53,11 +56,8 @@ class _MindShellState extends State<MindShell> {
   /// ถ้ายังไม่มีไฟล์ ปุ่มจะตกไปใช้ไอคอนแทนเอง ไม่พัง
 
 
-  @override
-  void dispose() {
-    _avatar.dispose();
-    super.dispose();
-  }
+  // ไม่ dispose อวาตาร์ที่นี่ — ผู้สร้างเป็นคนปิด (MindBootstrap)
+  // ปิดจากที่นี่ = ตัวควบคุมตายทั้งที่ provider ยังแจกอยู่
 
   @override
   void didChangeDependencies() {
