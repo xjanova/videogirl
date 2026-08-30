@@ -69,6 +69,23 @@ void main() {
         check('flirtSample($lv)', en.flirtSample(lv));
       }
 
+      // ร้าน
+      check('shopTitle', en.shopTitle);
+      check('shopSubtitle', en.shopSubtitle);
+      check('shopOpen', en.shopOpen);
+      check('refresh', en.refresh);
+      check('shopUnreachable', en.shopUnreachable);
+      check('shopUnreachableWhy', en.shopUnreachableWhy);
+      check('shopNoUrl', en.shopNoUrl);
+      check('shopEmpty', en.shopEmpty);
+      check('shopUrlLabel', en.shopUrlLabel);
+      check('shopOwned', en.shopOwned);
+      check('shopFree', en.shopFree);
+      check('shopBuy', en.shopBuy);
+      check('shopGet', en.shopGet);
+      check('shopBuyOnWeb', en.shopBuyOnWeb);
+      check('shopKind', en.shopKind('prop'));
+
       // ความจำ
       check('memTitle', en.memTitle);
       check('memCount', en.memCount(3));
@@ -263,6 +280,7 @@ void main() {
         'bgWhy': th.bgWhy,
         'permBlocked': th.permBlocked,
         'memWhy': th.memWhy,
+        'shopUnreachableWhy': th.shopUnreachableWhy,
         'permInstallWhy': th.permInstallWhy,
         'bgBatteryWhy': th.bgBatteryWhy,
         'calRestClear': th.calRestClear,

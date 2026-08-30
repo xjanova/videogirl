@@ -1,7 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme/tokens.dart';
-import 'glass.dart';
 
 /// แถบนำทางล่างจอ — เต็มความกว้าง มีหน้ามายด์เป็นปุ่มกลาง
 ///
@@ -87,16 +88,9 @@ class MindNavBar extends StatelessWidget {
             left: 0,
             right: 0,
             bottom: 0,
-            child: GlassPanel(
-              // มุมบนโค้งอย่างเดียว ล่างชนขอบจอ — จึงต้องส่ง shape ไม่ใช่ radius
-              shape: const BorderRadius.vertical(
-                top: Radius.circular(MindRadius.card),
-              ),
+            child: _NotchedGlass(
               // ทึบขึ้นกว่าค่าเริ่มต้นหนึ่งขั้น เพราะตอนนี้ข้างหลังเป็นเนื้อหาจริง
               // (extendBody) ไม่ใช่พื้นเปล่าเหมือนแถบลอยแบบเดิม
-              fill: MindColors.glass72,
-              filter: MindGlass.heavy,
-              shadows: MindShadows.dock(),
               padding: EdgeInsets.only(bottom: safeBottom),
               child: SizedBox(
                 height: barHeight,
@@ -142,6 +136,113 @@ class MindNavBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// แผ่นกระจกของแถบล่าง ที่ขอบบน **เว้าโค้งรับปุ่มกลาง**
+///
+/// ทำไมไม่ใช้ GlassPanel เหมือนที่อื่น: มันตัดด้วย `ClipRRect` ซึ่งได้แค่
+/// สี่เหลี่ยมมุมโค้ง · รอยเว้าเป็นส่วนโค้งของวงกลมที่ **กินเข้าไปในแผ่น**
+/// ต้องใช้ `Path` ของตัวเอง
+///
+/// ก่อนหน้านี้ปุ่มหน้ามายด์ลอยทับขอบตรง ๆ เห็นเป็นวงกลมวางบนแถบ
+/// เว้าให้รับกันแล้วมันกลายเป็นชิ้นเดียวกัน — ปุ่มโผล่ออกมาจากแถบ
+/// ไม่ใช่ของสองชิ้นที่บังเอิญมาซ้อนกัน
+class _NotchedGlass extends StatelessWidget {
+  const _NotchedGlass({required this.child, required this.padding});
+
+  final Widget child;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      // เงาต้องวาดตาม path เดียวกัน ไม่งั้นจะเห็นเงาสี่เหลี่ยมโผล่ตรงรอยเว้า
+      painter: const _NotchShadow(),
+      child: ClipPath(
+        clipper: const _NotchClipper(),
+        child: BackdropFilter(
+          filter: MindGlass.heavy,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(color: MindColors.glass72),
+            child: Padding(padding: padding, child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// รูปทรงของแผ่น — มุมบนโค้ง ล่างชนขอบจอ และเว้าเป็นวงกลมตรงกลาง
+///
+/// แยกเป็นฟังก์ชันเดียวที่ทั้งตัวตัดและตัววาดเงาเรียกใช้ ไม่งั้นสองอย่างนี้
+/// จะค่อย ๆ เพี้ยนออกจากกันจนเห็นขอบเงาโผล่พ้นกระจก
+Path _navBarPath(Size size) {
+  const r = MindRadius.card;
+
+  // จุดศูนย์กลางของรอยเว้า = จุดศูนย์กลางของปุ่มกลางพอดี
+  // ปุ่มโผล่พ้นขอบบน [lift] พิกเซล ศูนย์กลางจึงอยู่ **เหนือ** ขอบบน
+  // เท่ากับ (เส้นผ่านศูนย์กลาง/2 − lift)
+  final cx = size.width / 2;
+  final cy = -(MindNavBar.faceSize / 2 - MindNavBar.lift);
+
+  /// เผื่อช่องว่างรอบปุ่มไว้ ไม่ให้ขอบกระจกไปแตะตัวปุ่มพอดีเป๊ะ
+  const gap = 7.0;
+  const nr = MindNavBar.faceSize / 2 + gap;
+
+  final path = Path();
+
+  // ครึ่งความกว้างของรอยเว้าตรงระดับขอบบน — จากพีทาโกรัส
+  // วงกลมรัศมี nr ศูนย์กลางอยู่เหนือขอบ |cy| จะตัดขอบที่ ±√(nr²−cy²)
+  final dy = cy.abs();
+  final half = nr > dy ? math.sqrt(nr * nr - dy * dy) : 0.0;
+
+  path
+    ..moveTo(0, r)
+    ..arcToPoint(const Offset(r, 0), radius: const Radius.circular(r))
+    ..lineTo(cx - half, 0);
+
+  if (half > 0) {
+    final start = math.atan2(dy, -half);
+    final end = math.atan2(dy, half);
+    path.arcTo(
+      Rect.fromCircle(center: Offset(cx, cy), radius: nr),
+      start,
+      end - start,
+      false,
+    );
+  }
+
+  path
+    ..lineTo(size.width - r, 0)
+    ..arcToPoint(Offset(size.width, r), radius: const Radius.circular(r))
+    ..lineTo(size.width, size.height)
+    ..lineTo(0, size.height)
+    ..close();
+
+  return path;
+}
+
+class _NotchClipper extends CustomClipper<Path> {
+  const _NotchClipper();
+
+  @override
+  Path getClip(Size size) => _navBarPath(size);
+
+  @override
+  bool shouldReclip(_NotchClipper oldClipper) => false;
+}
+
+class _NotchShadow extends CustomPainter {
+  const _NotchShadow();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = _navBarPath(size);
+    canvas.drawShadow(path, const Color(0xFF5A46B4), 12, true);
+  }
+
+  @override
+  bool shouldRepaint(_NotchShadow oldDelegate) => false;
 }
 
 /// หนึ่งแท็บ — `index` คือดัชนีใน IndexedStack ไม่ใช่ตำแหน่งบนแถบ

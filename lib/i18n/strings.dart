@@ -119,6 +119,46 @@ class S {
   String get avatarMissing =>
       _('ยังไม่ได้โหลดตัวมายด์', "Mind's pack is not downloaded yet");
 
+  // ═══ ร้านของมายด์ ══════════════════════════════════════
+  String get shopTitle => _('ร้านของมายด์', "Mind's shop");
+  String get shopSubtitle => _(
+        'ชุด ตัวละครใหม่ และของประดับเวที',
+        'Outfits, new characters and stage props',
+      );
+  String get shopOpen => _('เปิดร้าน', 'Open shop');
+  String get refresh => _('รีเฟรช', 'Refresh');
+
+  /// ร้านยังไม่เปิด ต้องบอกให้ต่างจาก "ไม่มีของขาย" — คนละเรื่องกัน
+  String get shopUnreachable => _('ยังต่อร้านไม่ได้', "Can't reach the shop");
+  String get shopUnreachableWhy => _(
+        'ร้านอาจยังไม่เปิด หรือยังไม่ได้ตั้งที่อยู่ร้านในหน้าตั้งค่า',
+        'The shop may not be open yet, or its address is not set in Settings',
+      );
+  String get shopNoUrl => _('ยังไม่ได้ตั้งที่อยู่ร้าน', 'No shop address set');
+  String get shopEmpty => _('ยังไม่มีของขาย', 'Nothing on sale yet');
+  String get shopUrlLabel => _('ที่อยู่ร้าน', 'Shop address');
+
+  String get shopOwned => _('มีแล้ว', 'Owned');
+  String get shopFree => _('ฟรี', 'Free');
+  String get shopBuy => _('ซื้อ', 'Buy');
+  String get shopGet => _('โหลดลงเครื่อง', 'Download');
+  String shopPrice(String amount, String currency) => _(
+        '$amount $currency',
+        '$currency $amount',
+      );
+
+  /// จ่ายเงินบนเว็บ ไม่ใช่ในแอป — ต้องบอกล่วงหน้าว่าจะเด้งออกไป
+  String get shopBuyOnWeb => _(
+        'จ่ายเงินบนเว็บ แล้วกลับมากดรีเฟรช',
+        'Pay on the web, then come back and refresh',
+      );
+
+  String shopKind(String kind) => switch (kind) {
+        'outfit' => _('ชุดแต่งตัว', 'Outfit'),
+        'prop' => _('ของประดับเวที', 'Stage prop'),
+        _ => _('ตัวละคร', 'Character'),
+      };
+
   // ═══ ความจำ ════════════════════════════════════════════
   /// ป้ายชื่อผู้พูดตอนประกอบบทสนทนาให้โมเดลอ่านตอนสกัดความจำ
   /// อยู่ที่นี่เพราะโมเดลอ่านภาษาที่ผู้ใช้ตั้งไว้ ไม่ใช่ไทยเสมอ

@@ -84,6 +84,8 @@ class MindState extends ChangeNotifier {
     _homeServerModel = p.getString('homeServerModel') ?? HomeServerDefaults.model;
     _avatarPackUrl = p.getString('avatarPackUrl') ?? _packUrlDefault;
     _avatarPackId = p.getString('avatarPackId') ?? '';
+    _storeBaseUrl = p.getString('storeBaseUrl') ?? _storeDefault;
+    _licenseKey = p.getString('licenseKey') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
     _realtimeModel = p.getString('realtimeModel') ?? OpenAiConfig.realtimeModel;
 
@@ -307,6 +309,35 @@ class MindState extends ChangeNotifier {
   void setAvatarPackId(String v) {
     _avatarPackId = v;
     _save('avatarPackId', v);
+    _notify();
+  }
+
+  // ═══ ร้านของมายด์ ══════════════════════════════════════
+  //
+  // ที่อยู่หลังบ้าน xman studio ที่ขายชุด · ตั้งตอน build ได้ และแก้ในแอปได้
+  // เพื่อให้ย้ายร้านหรือชี้ไปเซิร์ฟเวอร์ทดสอบได้โดยไม่ต้อง build ใหม่
+  static const _storeDefault =
+      String.fromEnvironment('STORE_BASE_URL', defaultValue: '');
+
+  String _storeBaseUrl = _storeDefault;
+  String get storeBaseUrl => _storeBaseUrl;
+
+  void setStoreBaseUrl(String v) {
+    _storeBaseUrl = v.trim();
+    _save('storeBaseUrl', _storeBaseUrl);
+    _notify();
+  }
+
+  /// คีย์ไลเซนส์ — ตัวบอกว่าเครื่องนี้ซื้ออะไรไปแล้ว
+  ///
+  /// ระบบเดียวกับ TpingApp/WinXTools (ดู docs/pack-store.md)
+  /// ว่างไว้ก็เปิดร้านดูของได้ แค่ไม่รู้ว่าซื้ออะไรไปแล้ว
+  String _licenseKey = '';
+  String get licenseKey => _licenseKey;
+
+  void setLicenseKey(String v) {
+    _licenseKey = v.trim();
+    _save('licenseKey', _licenseKey);
     _notify();
   }
 

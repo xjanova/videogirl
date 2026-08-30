@@ -78,10 +78,19 @@ enum AvatarPackKind {
   character,
 
   /// เฉพาะชุดเสื้อผ้า/ทรงผม ของตัวละครเดิม — มีแค่ .vrm ก็พอ
-  outfit;
+  outfit,
 
-  static AvatarPackKind parse(Object? v) =>
-      '$v' == 'outfit' ? AvatarPackKind.outfit : AvatarPackKind.character;
+  /// ของประดับบนเวที — โมเดล 3D ที่ไม่ใช่ตัวละคร (โซฟา ต้นไม้ ไฟ ป้าย)
+  ///
+  /// ต่างจากสองอันบนตรงที่**ไม่ได้แทนที่ตัวเธอ** แต่วางเพิ่มเข้าไปในฉาก
+  /// จึงใส่พร้อมกันได้หลายชิ้น ต่างจากชุดที่ใส่ได้ทีละชุด
+  prop;
+
+  static AvatarPackKind parse(Object? v) => switch ('$v') {
+        'outfit' => AvatarPackKind.outfit,
+        'prop' => AvatarPackKind.prop,
+        _ => AvatarPackKind.character,
+      };
 }
 
 /// ชุดหนึ่งชุดที่ติดตั้งอยู่ในเครื่อง

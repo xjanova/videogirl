@@ -12,6 +12,7 @@ import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
 import '../avatar/avatar_pack.dart';
 import '../background/mind_watch.dart';
+import 'shop_screen.dart';
 import '../memory/mind_memory.dart';
 import '../system/permissions.dart';
 import '../state/mind_state.dart';
@@ -601,6 +602,19 @@ class _SettingsScreenState extends State<SettingsScreen>
                 style: MindType.caption.copyWith(color: const Color(0xFFB4004E))),
           ],
 
+          const SizedBox(height: MindSpace.md),
+          // ทางเข้าร้าน — ปลายทางจริงของการได้ชุดใหม่ ส่วนช่อง URL ข้างล่าง
+          // เก็บไว้สำหรับทดสอบชุดที่ยังไม่ขึ้นร้าน
+          MindButton(
+            label: t.shopOpen,
+            kind: MindButtonKind.primary,
+            icon: Icons.storefront_rounded,
+            mode: mode,
+            expand: true,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const ShopScreen()),
+            ),
+          ),
           const SizedBox(height: MindSpace.md),
           MindSectionLabel(t.packAdd),
           const SizedBox(height: MindSpace.sm),

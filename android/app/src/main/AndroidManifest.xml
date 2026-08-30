@@ -95,5 +95,14 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+
+        <!-- 🔴 เปิดหน้าซื้อของบนเว็บ (url_launcher)
+             Android 11+ ซ่อนรายชื่อแอปอื่นไว้ ถ้าไม่ประกาศตรงนี้
+             launchUrl จะ**คืน false เงียบ ๆ** ไม่มี error ไม่มีเบราว์เซอร์เปิด
+             ผู้ใช้เห็นแค่กดปุ่มซื้อแล้วไม่มีอะไรเกิดขึ้น -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>
