@@ -59,6 +59,24 @@ export class Framing {
 
         const box = new THREE.Box3().setFromObject(vrm.scene);
         this.height = box.getSize(new THREE.Vector3()).y;
+
+        // WHERE HER MIDDLE ACTUALLY IS. Aiming at world zero assumes every
+        // model is built centred on the origin. The shipped one is — measured:
+        // hips.x, head.x and the bounding-box centre are all exactly 0, so this
+        // is a no-op today. It is here for the packs that are coming: other
+        // creators' VRMs are under no obligation to sit on the origin, and a
+        // character that loads half a metre off to one side would otherwise
+        // frame every shot wrong with nothing in the code to explain why.
+        //
+        // Taken from the HIPS bone, not the bounding box: the box includes
+        // hair, skirt and anything she is holding, all of which are asymmetric
+        // and would drag the centre around whenever she moves. The hips are her
+        // body axis and stay put.
+        const hips = vrm.humanoid?.getNormalizedBoneNode('hips')
+            ?.getWorldPosition(new THREE.Vector3());
+        const c = hips ?? box.getCenter(new THREE.Vector3());
+        this.centreX = c.x;
+        this.centreZ = hips ? c.z : box.getCenter(new THREE.Vector3()).z;
         this.headY = vrm.humanoid?.getNormalizedBoneNode('head')
             ?.getWorldPosition(new THREE.Vector3()).y ?? this.height * 0.85;
 
@@ -91,8 +109,9 @@ export class Framing {
         // slide. The owner's pan rides in the same place.
         const visW = 2 * dist * Math.tan(half) * this.camera.aspect;
         const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
-        const ax = visW * this.lateral + this.panX * cy;
-        const az = -this.panX * sy;
+        // ทุกช็อตเล็งจากแกนตัวเธอจริง ไม่ใช่จากจุดกำเนิดของฉาก
+        const ax = this.centreX + visW * this.lateral + this.panX * cy;
+        const az = this.centreZ - this.panX * sy;
         this._a.set(ax, aimY + this.panY, az);
 
         // Orbit around the aim point.

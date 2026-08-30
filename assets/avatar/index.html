@@ -254,8 +254,13 @@ setInterval(() => {
   post('mocap', st);
 }, 150);
 
-// WebView ถูกย่อ/ขยายตอนคีย์บอร์ดเด้ง ถ้าไม่ resize เธอจะยืดผิดสัดส่วน
-addEventListener('resize', () => avatar?.resize(innerWidth, innerHeight));
+// เกาะขนาดของ #stage ไว้ตลอด ไม่ใช่รอ event resize ของ window
+//
+// 🔴 ของเดิมดักแค่ `resize` ของ window ซึ่ง**บนมือถือไม่เคยเกิดขึ้นเลย**
+// canvas จึงค้างที่ขนาดสำรอง 320 ที่ constructor เดาไว้ตอน WebView ยังไม่ layout
+// ผลคือเธอเรนเดอร์ในกล่องแคบชิดซ้ายทั้งเซสชัน เยื้องจากกึ่งกลางจอ ~104px
+// และเล็กกว่าที่ควรจะเป็น โดยไม่มี error ที่ไหนบอกเลย
+avatar?.watchSize(stage);
 </script>
 </body>
 </html>

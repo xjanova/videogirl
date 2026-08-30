@@ -346,12 +346,40 @@ export class Avatar {
     }
 
     resize(w, h) {
+        if (!(w > 0) || !(h > 0)) return;
+        if (w === this._w && h === this._h) return;
+        this._w = w;
+        this._h = h;
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(w, h);
     }
 
+    /**
+     * Keep the canvas the size of the element it lives in, forever.
+     *
+     * 🔴 WHY THIS EXISTS. The constructor reads `host.clientWidth`, and inside a
+     * freshly created WebView that is 0 — layout has not run yet — so it fell
+     * back to 320. The only thing that ever corrected it was a `resize` event
+     * on `window`, which on a phone simply never fires. The canvas therefore
+     * stayed 320 CSS px wide inside a ~393 CSS px stage FOR THE WHOLE SESSION:
+     * left-aligned, so she rendered about 10% of the screen width left of
+     * centre, and smaller than intended. Measured on device: her centre sat
+     * 104px left of the screen centre on a 1080px screen.
+     *
+     * Nothing reported an error. The picture just quietly had the wrong shape.
+     */
+    watchSize(host) {
+        this.resize(host.clientWidth, host.clientHeight);
+        if (typeof ResizeObserver !== 'function') return;
+        this._ro?.disconnect();
+        this._ro = new ResizeObserver(() =>
+            this.resize(host.clientWidth, host.clientHeight));
+        this._ro.observe(host);
+    }
+
     dispose() {
+        this._ro?.disconnect();
         cancelAnimationFrame(this._raf);
         this.lip.dispose();
         // Releases the camera. Skipping this leaves the recording light on
