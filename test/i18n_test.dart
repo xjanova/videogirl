@@ -251,12 +251,24 @@ void main() {
       check('mailReadAloud', en.mailReadAloud);
       check('mailCompose', en.mailCompose);
       check('demoAction', en.demoAction);
-      check('calDate', en.calDate);
-      check('calSubtitle', en.calSubtitle);
-      check('calFree', en.calFree(en.nameTon));
       check('calRestClear', en.calRestClear);
       check('calRestHours', en.calRestHours(4));
-      check('calHold', en.calHold);
+      check('calNoneToday', en.calNoneToday);
+      check('calCount', en.calCount(3));
+      check('calNeedPermission', en.calNeedPermission);
+      check('calNeedPermissionWhy', en.calNeedPermissionWhy);
+      check('calGrant', en.calGrant);
+      check('calAllDay', en.calAllDay);
+      check('calNow', en.calNow);
+      check('calToday', en.calToday);
+      check('calTomorrow', en.calTomorrow);
+      check('calLoading', en.calLoading);
+      check('calFailed', en.calFailed);
+      check('permCalendarWhy', en.permCalendarWhy);
+      // ชื่อวันกับชื่อเดือนฝั่งอังกฤษต้องไม่ใช่ไทย ไม่งั้นวันที่จะโผล่เป็นไทย
+      // กลางหน้าจอภาษาอังกฤษ ซึ่งเป็นจุดที่คนสังเกตเห็นทันที
+      for (final w in en.weekdayNames) check('weekdayNames', w);
+      for (final m in en.monthShort) check('monthShort', m);
       check('tlTitle', en.tlTitle);
       check('tl2Title', en.tl2Title);
       check('tl5Detail', en.tl5Detail);

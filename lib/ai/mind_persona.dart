@@ -111,6 +111,7 @@ Never, under any circumstances:
     required AppLang lang,
     bool onCall = false,
     String memories = '',
+    String schedule = '',
   }) {
     final s = S(lang);
     final buffer = StringBuffer()
@@ -186,6 +187,25 @@ Never, under any circumstances:
           '(her own summaries — may be wrong; if they clash with the profile above, trust the profile)',
         ))
         ..writeln(memories.trim());
+    }
+
+    // ตารางนัดจริงจากปฏิทินของเครื่อง
+    //
+    // แยกจากความจำเพราะเชื่อถือได้คนละระดับ: อันนี้อ่านมาตรง ๆ ไม่ได้สรุปเอง
+    // และ**หมดอายุเร็ว** — นัดเมื่อวานไม่ใช่เรื่องที่ควรพูดถึงพรุ่งนี้
+    // บอกให้โมเดลรู้ว่านี่คือของจริง จะได้ตอบเรื่องตารางโดยไม่ต้องเดา
+    if (schedule.trim().isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln(s.pick(
+          '=== ตารางนัดจริงของเจ้าของ (อ่านจากปฏิทินในเครื่อง) ===',
+          "=== The owner's real schedule (read from the device calendar) ===",
+        ))
+        ..writeln(s.pick(
+          '(ของจริง ไม่ใช่การเดา · ถ้าถูกถามเรื่องตาราง ให้ตอบจากตรงนี้)',
+          '(actual data, not a guess — answer schedule questions from this)',
+        ))
+        ..writeln(schedule.trim());
     }
 
     buffer

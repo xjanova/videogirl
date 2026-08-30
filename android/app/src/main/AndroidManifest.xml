@@ -37,6 +37,11 @@
          ไม่ได้ยกเว้น = ระบบหรี่ให้ตื่นทุก 9–15 นาทีแทน 5 และ ROM จีนฆ่าทิ้งเลย
          ประกาศใน manifest อย่างเดียวไม่พอ ผู้ใช้ต้องกดยอมรับเองด้วย -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <!-- ปฏิทินของเครื่อง — เธอเป็นเลขา ต้องรู้ตารางจริงถึงจะช่วยอะไรได้
+         อ่านอย่างเดียว ไม่ขอสิทธิ์เขียน เพราะยังไม่มีอะไรต้องเขียน
+         และสิทธิ์ที่ขอไปโดยไม่ได้ใช้คือสิ่งที่ผู้ใช้จำได้ตอนกดปฏิเสธ -->
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
+
     <!-- ไม่บังคับ: เครื่องไม่มีกล้องหน้าก็ยังลงแอปได้ แค่ใช้โหมดหุ่นเชิดไม่ได้ -->
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.front" android:required="false"/>

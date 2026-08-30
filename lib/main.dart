@@ -5,6 +5,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 
 import 'avatar/avatar_pack.dart';
+import 'calendar/device_calendar.dart';
 import 'avatar/avatar_view.dart';
 import 'background/mind_background.dart';
 import 'background/mind_watch.dart';
@@ -66,6 +67,13 @@ class _MindBootstrapState extends State<MindBootstrap> {
   final MindState _state = MindState();
   final AvatarPacks _pack = AvatarPacks();
 
+  /// สิทธิ์ทั้งแอปใช้ตัวเดียวกัน — สองตัวจะเห็นสถานะไม่ตรงกันได้
+  /// ตอนที่ผู้ใช้เพิ่งกดอนุญาตในหน้าหนึ่งแล้วอีกหน้ายังจำค่าเก่าอยู่
+  final MindPermissions _perms = MindPermissions();
+
+  /// ปฏิทินของเครื่อง — เธอต้องรู้ตารางจริงถึงจะตอบเรื่องนัดได้
+  late final DeviceCalendar _calendar = DeviceCalendar(permissions: _perms);
+
   /// ตัวควบคุมอวาตาร์อยู่ที่นี่ ไม่ใช่ในเชลล์ เพราะหน้าเปิดแอปต้องอ่าน
   /// ความคืบหน้าการโหลด VRM มาโชว์เป็นเปอร์เซ็นต์จริง
   final MindAvatarController _avatar = MindAvatarController();
@@ -107,6 +115,14 @@ class _MindBootstrapState extends State<MindBootstrap> {
     } catch (e) {
       debugPrint('boot: ตั้งบริการเบื้องหลังไม่สำเร็จ — $e');
     }
+
+    // อ่านปฏิทินตั้งแต่เปิดแอป ไม่ใช่รอให้เปิดแท็บปฏิทินก่อน
+    //
+    // ถ้ารอ เธอจะตอบว่าไม่รู้ตารางจนกว่าเจ้าของจะบังเอิญกดแท็บนั้น
+    // ซึ่งอ่านได้ว่าเธอจำไม่ได้ ทั้งที่ความจริงคือยังไม่ได้ถาม
+    // ยังไม่ได้ให้สิทธิ์ก็ไม่เป็นไร — จบที่สถานะ denied เงียบ ๆ
+    _state.attachCalendar(_calendar);
+    await _calendar.load();
   }
 
   @override
@@ -127,7 +143,8 @@ class _MindBootstrapState extends State<MindBootstrap> {
         ChangeNotifierProvider.value(value: _state.memory),
         ChangeNotifierProvider(create: (_) => Updater()),
         ChangeNotifierProvider(create: (_) => MindWatch()..refresh()),
-        ChangeNotifierProvider(create: (_) => MindPermissions()..refresh()),
+        ChangeNotifierProvider.value(value: _perms..refresh()),
+        ChangeNotifierProvider.value(value: _calendar),
       ],
       child: Consumer<MindState>(
         builder: (context, state, _) => MaterialApp(

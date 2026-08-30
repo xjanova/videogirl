@@ -34,6 +34,12 @@ enum MindPermission {
   /// ยกเว้นการประหยัดแบต — บริการเบื้องหลังถึงจะไม่โดนหรี่หรือฆ่า
   battery(check: 'batteryExempt', ask: 'requestBatteryExempt', inApp: false),
 
+  /// ปฏิทินของเครื่อง — เธอเป็นเลขา ต้องรู้ตารางจริงถึงจะช่วยอะไรได้
+  ///
+  /// อ่านอย่างเดียว ไม่ขอสิทธิ์เขียน · สิทธิ์ที่ขอไปโดยไม่ได้ใช้
+  /// คือสิ่งที่ผู้ใช้จำได้ตอนกดปฏิเสธ
+  calendar(check: 'calendarGranted', ask: 'requestCalendar', inApp: true),
+
   /// ติดตั้งแอปที่ไม่รู้จัก — auto-update ถึงจะติดตั้งได้จริง
   install(check: 'canInstall', ask: 'requestInstall', inApp: false);
 

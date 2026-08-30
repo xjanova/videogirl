@@ -3,12 +3,14 @@ package com.xjanova.videogirl
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ContentUris
 import android.content.Intent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.provider.CalendarContract
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -63,6 +65,17 @@ class MainActivity : FlutterActivity() {
                     // ── ไมค์ ─────────────────────────────────────
                     "micGranted" -> result.success(granted(Manifest.permission.RECORD_AUDIO))
                     "requestMic" -> ask(Manifest.permission.RECORD_AUDIO, REQ_MIC, result)
+
+                    // ── ปฏิทินของเครื่อง ─────────────────────────
+                    "calendarGranted" ->
+                        result.success(granted(Manifest.permission.READ_CALENDAR))
+                    "requestCalendar" ->
+                        ask(Manifest.permission.READ_CALENDAR, REQ_CALENDAR, result)
+                    "readCalendar" -> readCalendar(
+                        (call.argument<Number>("from") ?: 0).toLong(),
+                        (call.argument<Number>("to") ?: 0).toLong(),
+                        result
+                    )
 
                     // ── ติดตั้งแอปที่ไม่รู้จัก ────────────────────
                     "canInstall" -> result.success(canInstall())
@@ -241,6 +254,82 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    /**
+     * อ่านนัดจากปฏิทินของเครื่องในช่วงเวลาที่ขอมา
+     *
+     * ใช้ `Instances` ไม่ใช่ `Events` เพราะนัดที่เกิดซ้ำทุกสัปดาห์มีแถวเดียว
+     * ใน `Events` แต่มีทุกครั้งใน `Instances` · ถามจาก `Events` ตรง ๆ จะได้
+     * ประชุมประจำสัปดาห์มาแค่ครั้งแรกครั้งเดียว แล้วสัปดาห์อื่นหายหมด
+     * โดยไม่มีอะไรบอกว่าขาด
+     *
+     * 🔴 ทำในเธรดอื่น ไม่ใช่เธรดหลัก · ContentResolver ของปฏิทินช้าได้จริง
+     * บนเครื่องที่ซิงก์หลายบัญชี และ MethodChannel เรียกบนเธรด UI
+     */
+    private fun readCalendar(from: Long, to: Long, result: MethodChannel.Result) {
+        if (!granted(Manifest.permission.READ_CALENDAR)) {
+            result.success(null)
+            return
+        }
+        if (to <= from) {
+            result.success(emptyList<Map<String, Any?>>())
+            return
+        }
+
+        Thread {
+            val events = try {
+                queryInstances(from, to)
+            } catch (e: Exception) {
+                // ปฏิทินอ่านไม่ได้ไม่ควรทำให้ทั้งแท็บพัง — คืน null แปลว่า
+                // "ถามไม่สำเร็จ" ซึ่งต่างจาก emptyList ที่แปลว่า "ไม่มีนัด"
+                null
+            }
+            runOnUiThread { result.success(events) }
+        }.start()
+    }
+
+    private fun queryInstances(from: Long, to: Long): List<Map<String, Any?>> {
+        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().let {
+            ContentUris.appendId(it, from)
+            ContentUris.appendId(it, to)
+            it.build()
+        }
+        val cols = arrayOf(
+            CalendarContract.Instances.EVENT_ID,
+            CalendarContract.Instances.TITLE,
+            CalendarContract.Instances.BEGIN,
+            CalendarContract.Instances.END,
+            CalendarContract.Instances.ALL_DAY,
+            CalendarContract.Instances.EVENT_LOCATION,
+            CalendarContract.Instances.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Instances.DISPLAY_COLOR,
+            CalendarContract.Instances.SELF_ATTENDEE_STATUS
+        )
+
+        val out = ArrayList<Map<String, Any?>>()
+        contentResolver.query(uri, cols, null, null, CalendarContract.Instances.BEGIN + " ASC")
+            ?.use { c ->
+                while (c.moveToNext()) {
+                    // นัดที่เจ้าของกดปฏิเสธไปแล้ว ไม่ใช่ตารางของเขา
+                    val status = c.getInt(8)
+                    if (status == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED) continue
+
+                    out.add(
+                        mapOf(
+                            "id" to c.getLong(0),
+                            "title" to (c.getString(1) ?: ""),
+                            "begin" to c.getLong(2),
+                            "end" to c.getLong(3),
+                            "allDay" to (c.getInt(4) == 1),
+                            "location" to c.getString(5),
+                            "calendar" to c.getString(6),
+                            "color" to c.getInt(7)
+                        )
+                    )
+                }
+            }
+        return out
+    }
+
     private fun openAppSettings() {
         startActivity(
             Intent(
@@ -255,6 +344,7 @@ class MainActivity : FlutterActivity() {
         private const val REQ_CAMERA = 8747
         private const val REQ_NOTIFY = 8748
         private const val REQ_MIC = 8749
+        private const val REQ_CALENDAR = 8750
 
         /// ต้องตรงกับ kMindChannelId ใน lib/background/mind_background.dart
         /// ไม่ตรงกัน = บริการหาช่องไม่เจอ แล้วตายแบบเดียวกับไม่มีช่องเลย

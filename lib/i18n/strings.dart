@@ -240,6 +240,11 @@ class S {
         'Android requires a notification for background work — without it she cannot watch',
       );
   String get permBattery => _('ยกเว้นการประหยัดแบต', 'Exempt from battery saver');
+  String get permCalendar => _('ปฏิทิน', 'Calendar');
+  String get permCalendarWhy => _(
+        'อ่านตารางนัดของคุณ อ่านอย่างเดียว ไม่แก้ไม่ลบ และไม่ส่งออกจากเครื่อง',
+        'Reads your schedule — read-only, never edited, never leaves this device',
+      );
   String get permInstall => _('ติดตั้งแอปที่ไม่รู้จัก', 'Install unknown apps');
 
   /// ต้องอธิบายว่าทำไมต้องให้**ก่อน** ไม่ใช่ตอนจะติดตั้ง
@@ -639,30 +644,60 @@ class S {
   String get mailReadAloud => _('ให้เธออ่านสรุปให้ฟัง', 'Have her read the summary aloud');
   String get mailCompose => _('เขียนเมลใหม่', 'Write a new email');
 
-  // ═══ หน้าปฏิทิน (ข้อมูลตัวอย่าง) ════════════════════════
-  String get calDate => _('พฤหัสบดี 3 ก.ย.', 'Thursday 3 Sep');
-  String get calSubtitle => _(
-        'เธอเช็กปฏิทินคุณ + คุณต้น + คุณนภา แล้ว',
-        'She checked your calendar plus Ton and Napa',
-      );
-  String get calStandup => _('Daily standup', 'Daily standup');
-  String get calClient => _('ลูกค้า สยามเทค', 'Client: Siamtech');
-  String get calProposedBadge => _('เธอเสนอ', 'She suggests');
-  String get calReview => _('รีวิวงานออกแบบ', 'Design review');
-  String get calAddPerson => _('+ เพิ่มคน', '+ Add someone');
-  String calFree(String name) => _('$name ว่าง', '$name is free');
-  String get nameTon => _('คุณต้น', 'Ton');
-  String get nameNapa => _('คุณนภา', 'Napa');
-  String get calNext => _('เธอจะทำต่อ', 'What she will do next');
+  // ═══ หน้าปฏิทิน (อ่านจากปฏิทินของเครื่องจริง) ═══════════
+  //
+  // ของเดิมเป็นชื่อนัดสมมติ (Daily standup / ลูกค้าสยามเทค / คุณต้นว่าง)
+  // ซึ่งดูดีแต่ไม่ใช่ตารางของใครทั้งนั้น · ลบทิ้งแล้วเพราะเลขาที่บอกตาราง
+  // ผิดทุกวันแย่กว่าเลขาที่ไม่บอกอะไรเลย
+
+  /// ชื่อวันเต็ม เรียงตาม DateTime.weekday (1 = จันทร์)
+  List<String> get weekdayNames => isThai
+      ? const ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์']
+      : const [
+          'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+          'Friday', 'Saturday', 'Sunday',
+        ];
+
+  /// ชื่อเดือนแบบย่อ เรียงตาม DateTime.month (1 = มกราคม)
+  List<String> get monthShort => isThai
+      ? const [
+          'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+          'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
+        ]
+      : const [
+          'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+        ];
+
+  /// "พฤหัสบดี 31 ส.ค." — ไม่ใส่ปีเพราะหน้านี้มองไปข้างหน้าแค่สัปดาห์เดียว
+  String dayLabel(DateTime d) =>
+      '${weekdayNames[d.weekday - 1]} ${d.day} ${monthShort[d.month - 1]}';
+
+  String get calLoading => _('กำลังดูปฏิทินให้', 'Checking your calendar');
+  String get calToday => _('วันนี้', 'Today');
+  String get calTomorrow => _('พรุ่งนี้', 'Tomorrow');
+  String get calAllDay => _('ทั้งวัน', 'All day');
+  String get calNow => _('กำลังอยู่ในนัดนี้', 'Happening now');
+
+  String calCount(int n) => _('$n นัดในสัปดาห์นี้', '$n events this week');
+  String get calNoneToday => _('วันนี้ไม่มีนัดค่ะ', 'Nothing on today');
 
   /// แผงปิดท้ายรายการนัด — ที่ว่างครึ่งจอที่ไม่มีอะไรเลยทำให้แอปดูค้าง
   /// ทั้งที่ความจริงคือ "ไม่มีนัดแล้ว" ซึ่งเป็นข่าวดี ต้องพูดออกมา
   String get calRestClear => _('ที่เหลือของวันว่างค่ะ', 'The rest of your day is clear');
   String calRestHours(int h) =>
       _('ว่างต่อเนื่อง $h ชั่วโมงหลังจากนี้', '$h hours free after this');
-  String get calHold => _('กันเวลาไว้ให้', 'Hold this time for me');
-  String get calConfirm => _('ยืนยันและส่งคำเชิญ', 'Confirm and send invites');
-  String get calFindAnother => _('หาเวลาอื่น', 'Find another time');
+
+  /// ยังไม่ได้ให้สิทธิ์ — ต้องบอกว่าจะได้อะไรกลับมา ไม่ใช่แค่บอกว่าขาดอะไร
+  String get calNeedPermission => _('ยังดูปฏิทินไม่ได้', 'She cannot see your calendar yet');
+  String get calNeedPermissionWhy => _(
+        'ให้สิทธิ์อ่านปฏิทินแล้วเธอจะรู้ตารางจริงของคุณ '
+        'อ่านอย่างเดียว ไม่แก้ ไม่ลบ และไม่ส่งออกจากเครื่อง',
+        'Grant calendar access and she will know your real schedule. '
+        'Read-only, never edited, never leaves this device.',
+      );
+  String get calGrant => _('ให้สิทธิ์อ่านปฏิทิน', 'Allow calendar access');
+  String get calFailed => _('อ่านปฏิทินไม่สำเร็จ', 'Could not read the calendar');
 
   // ═══ หน้าไทม์ไลน์ (ข้อมูลตัวอย่าง) ══════════════════════
   String get tlTitle => _('วันนี้เธอทำให้ 14 อย่าง', 'She did 14 things for you today');

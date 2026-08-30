@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../memory/distiller.dart';
+import '../calendar/device_calendar.dart';
 import '../memory/mind_memory.dart';
 import '../ai/brain_provider.dart';
 import '../ai/local_brain.dart';
@@ -47,6 +48,15 @@ class MindState extends ChangeNotifier {
   /// เป็น public เพราะหน้าตั้งค่าต้องเปิดดูและลบได้ — ความจำที่เจ้าของ
   /// เปิดดูไม่ได้ ไม่ใช่ผู้ช่วย
   final MindMemory memory;
+
+  /// ปฏิทินของเครื่อง — ต่อเข้ามาทีหลังด้วย [attachCalendar]
+  ///
+  /// ไม่ได้เป็นเจ้าของเองเพราะมันต้องใช้ [MindPermissions] ตัวเดียวกับทั้งแอป
+  /// และตัวนั้นถูกสร้างที่ main · null = ยังไม่ได้ต่อ ซึ่งเกิดได้ในเทสต์
+  DeviceCalendar? _calendar;
+
+  /// ให้เธอรู้ตารางจริง · เรียกครั้งเดียวตอนเปิดแอป
+  void attachCalendar(DeviceCalendar c) => _calendar = c;
 
   /// ฉีดนาฬิกาเข้ามาได้เพื่อให้เทสต์โหมดอัตโนมัติได้โดยไม่ต้องรอถึงสองทุ่ม
   final DateTime Function() _clock;
@@ -767,6 +777,7 @@ class MindState extends ChangeNotifier {
       ownerProfile: _ownerProfile,
       boundaries: _boundaries,
       memories: memory.promptBlock(),
+      schedule: _calendar?.promptBlock() ?? '',
     );
     final history = [
       for (final m in _context) (fromHer: m.fromHer, text: m.text),
