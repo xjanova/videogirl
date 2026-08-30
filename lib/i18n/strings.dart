@@ -114,6 +114,39 @@ class S {
   String get avatarMissing =>
       _('ยังไม่มีโมเดลอวาตาร์ในเครื่อง', 'Avatar model not on this device yet');
 
+  // ═══ เฝ้างานเบื้องหลัง ══════════════════════════════════
+  String get bgTitle => _('ให้เธอเฝ้างานตอนปิดแอป', 'Let her watch while the app is closed');
+
+  /// ต้องบอกตรง ๆ ว่าแลกอะไร — การแจ้งเตือนค้างจอเป็นสิ่งที่ Android บังคับ
+  /// ไม่ใช่สิ่งที่เราเลือกใส่ ถ้าไม่อธิบายผู้ใช้จะคิดว่าแอปหน้าด้าน
+  String get bgWhy => _(
+        'Android บังคับให้บริการที่ไม่ถูกฆ่าต้องมีการแจ้งเตือนค้างไว้ '
+        'ปิดสวิตช์นี้แล้วเธอจะทำงานเฉพาะตอนเปิดแอปเท่านั้น',
+        'Android requires a permanent notification for a service it will not kill. '
+        'Turn this off and she only works while the app is open.',
+      );
+  String get bgWatching => _('กำลังเฝ้างานให้', 'Watching things for you');
+  String bgUpdateFound(String v) => _('มีรุ่นใหม่ $v', 'Version $v is out');
+  String get bgNeverRan => _('ยังไม่เคยตื่นมาทำงาน', 'Has not run yet');
+  String bgLastBeat(String ago) => _('ตื่นมาดูงานล่าสุด $ago', 'Last check $ago');
+  String bgBeats(int n) => _('รวม $n ครั้ง', '$n checks so far');
+
+  /// ต้องพูดให้ชัดว่าถ้าไม่ยกเว้น ระบบจะหรี่ให้เอง ไม่งั้นผู้ใช้จะโทษแอป
+  String get bgBatteryTitle => _('ยกเว้นการประหยัดแบต', 'Exempt from battery saver');
+  String get bgBatteryWhy => _(
+        'ถ้าไม่ยกเว้น Android จะหรี่ให้เธอตื่นทุก 9–15 นาทีแทนที่จะเป็น 5 '
+        'และบางรุ่น (Xiaomi Huawei OPPO) ฆ่าทิ้งเลย',
+        'Without this, Android throttles her to every 9–15 minutes instead of 5 — '
+        'and some phones (Xiaomi, Huawei, OPPO) kill her outright.',
+      );
+  String get bgBatteryOn => _('ยกเว้นแล้ว', 'Exempted');
+  String get bgBatteryOff => _('ยังไม่ได้ยกเว้น', 'Not exempted yet');
+  String get bgBatteryAsk => _('ขอยกเว้น', 'Ask for exemption');
+
+  String agoMinutes(int m) => _('$m นาทีที่แล้ว', '$m min ago');
+  String agoHours(int h) => _('$h ชั่วโมงที่แล้ว', '$h hr ago');
+  String get agoJustNow => _('เมื่อครู่นี้', 'just now');
+
   // ═══ ชุดตัวมายด์ (โหลดทีหลัง) ══════════════════════════
   String get packTitle => _('ชุดตัวมายด์', "Mind's avatar pack");
 

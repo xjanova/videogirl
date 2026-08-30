@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
 
     <!-- WebView โหลดเวทีอวาตาร์จาก localhost — ต้องมี INTERNET แม้ไม่ออกเน็ตจริง -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -14,6 +15,23 @@
          CAMERA จริง getUserMedia จะถูกปฏิเสธโดยที่ฝั่งเว็บเห็นแค่ NotAllowedError
          ฝั่ง Flutter จึงต้องขอสิทธิ์เองก่อนสั่งเปิดโหมด ดู avatar_view.dart -->
     <uses-permission android:name="android.permission.CAMERA"/>
+
+    <!-- ═══ ให้เธอเฝ้างานตอนแอปปิด ═══════════════════════════════
+         FOREGROUND_SERVICE / RECEIVE_BOOT_COMPLETED / WAKE_LOCK ปลั๊กอิน
+         flutter_background_service ประกาศมาให้แล้ว ที่เหลือต้องประกาศเอง -->
+
+    <!-- Android 14 (API 34) บังคับว่าถ้าใช้ foregroundServiceType ต้องขอสิทธิ์
+         ที่คู่กันด้วย ไม่งั้น startForeground โยน SecurityException ทันที -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+
+    <!-- Android 13 (API 33) การแจ้งเตือนกลายเป็นสิทธิ์ที่ต้องขอ
+         ไม่ได้ขอ = บริการรันอยู่จริงแต่ผู้ใช้ไม่เห็นอะไรเลย -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- 🔴 ตัวชี้ขาดความน่าเชื่อถือของงานเบื้องหลัง
+         ไม่ได้ยกเว้น = ระบบหรี่ให้ตื่นทุก 9–15 นาทีแทน 5 และ ROM จีนฆ่าทิ้งเลย
+         ประกาศใน manifest อย่างเดียวไม่พอ ผู้ใช้ต้องกดยอมรับเองด้วย -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <!-- ไม่บังคับ: เครื่องไม่มีกล้องหน้าก็ยังลงแอปได้ แค่ใช้โหมดหุ่นเชิดไม่ได้ -->
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.front" android:required="false"/>
@@ -48,6 +66,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- ประเภทของ foreground service ต้องประกาศใน manifest
+             ประกาศแค่ตอนเรียก startForeground ไม่พอ — Android ปฏิเสธ
+             ปลั๊กอินประกาศ <service> มาให้แล้ว เราเติมแค่ประเภทเข้าไป -->
+        <service
+            android:name="id.flutter.flutter_background_service.BackgroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

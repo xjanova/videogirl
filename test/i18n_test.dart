@@ -68,6 +68,23 @@ void main() {
         check('flirtSample($lv)', en.flirtSample(lv));
       }
 
+      // เฝ้างานเบื้องหลัง
+      check('bgTitle', en.bgTitle);
+      check('bgWhy', en.bgWhy);
+      check('bgWatching', en.bgWatching);
+      check('bgUpdateFound', en.bgUpdateFound('0.2.0'));
+      check('bgNeverRan', en.bgNeverRan);
+      check('bgLastBeat', en.bgLastBeat('x'));
+      check('bgBeats', en.bgBeats(3));
+      check('bgBatteryTitle', en.bgBatteryTitle);
+      check('bgBatteryWhy', en.bgBatteryWhy);
+      check('bgBatteryOn', en.bgBatteryOn);
+      check('bgBatteryOff', en.bgBatteryOff);
+      check('bgBatteryAsk', en.bgBatteryAsk);
+      check('agoMinutes', en.agoMinutes(5));
+      check('agoHours', en.agoHours(2));
+      check('agoJustNow', en.agoJustNow);
+
       // ชุดตัวมายด์
       check('packTitle', en.packTitle);
       check('packWhy', en.packWhy);
@@ -206,6 +223,8 @@ void main() {
         'puppetCalibrating': th.puppetCalibrating,
         'puppetPrivacy': th.puppetPrivacy,
         'packWhy': th.packWhy,
+        'bgWhy': th.bgWhy,
+        'bgBatteryWhy': th.bgBatteryWhy,
         'calRestClear': th.calRestClear,
       };
       for (final e in longThai.entries) {

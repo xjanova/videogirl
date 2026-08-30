@@ -1,9 +1,14 @@
 package com.xjanova.videogirl
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -27,9 +32,11 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
 
     private var pending: MethodChannel.Result? = null
+    private var pendingNotify: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        ensureWatchChannel()
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -38,6 +45,17 @@ class MainActivity : FlutterActivity() {
                     "openSettings" -> {
                         openAppSettings()
                         result.success(true)
+                    }
+
+                    // ── งานเบื้องหลัง ────────────────────────────
+                    "batteryExempt" -> result.success(batteryExempt())
+                    "requestBatteryExempt" -> {
+                        requestBatteryExempt()
+                        result.success(true)
+                    }
+                    "notifyGranted" -> result.success(notifyGranted())
+                    "requestNotify" -> {
+                        requestNotify(result)
                     }
                     else -> result.notImplemented()
                 }
@@ -68,6 +86,15 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode == REQ_NOTIFY) {
+            val reply = pendingNotify ?: return
+            pendingNotify = null
+            reply.success(grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED)
+            return
+        }
+
         if (requestCode != REQ_CAMERA) return
 
         val reply = pending ?: return
@@ -89,6 +116,85 @@ class MainActivity : FlutterActivity() {
         reply.success(if (ok) GRANTED else if (canAskAgain) DENIED else BLOCKED)
     }
 
+    /**
+     * สร้างช่องแจ้งเตือนของบริการเบื้องหลัง
+     *
+     * 🔴 ไม่มีช่องนี้ = `startForeground` โยน
+     * `CannotPostForegroundServiceNotificationException` ทันทีที่บริการเริ่ม
+     * แล้วบริการตายก่อนทำอะไรสักอย่าง · Android ไม่ได้บอกว่า "ไม่มีช่อง"
+     * มันบอกแค่ "Bad notification" ซึ่งชี้ไปผิดทางว่าเนื้อการแจ้งเตือนมีปัญหา
+     *
+     * ปลั๊กอิน flutter_background_service **ไม่ได้สร้างช่องให้** มันแค่ใช้ id
+     * ที่เราส่งไป · ต้องสร้างที่นี่ ฝั่ง native เพราะช่องต้องมีอยู่ก่อน
+     * บริการจะเริ่ม และตอนบริการเริ่ม isolate ฝั่ง Dart ยังไม่ทันรัน
+     *
+     * IMPORTANCE_LOW เพราะเป็นการแจ้งเตือนค้างที่ต้องอยู่ทั้งวัน
+     * ถ้าดังหรือเด้ง heads-up ทุกครั้งที่อัปเดตข้อความ คนจะปิดแอปทิ้ง
+     */
+    private fun ensureWatchChannel() {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            ?: return
+        if (nm.getNotificationChannel(WATCH_CHANNEL) != null) return
+        nm.createNotificationChannel(
+            NotificationChannel(
+                WATCH_CHANNEL,
+                "GigGok",
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                setShowBadge(false)
+                enableVibration(false)
+                setSound(null, null)
+            }
+        )
+    }
+
+    /// 🔴 ตัวชี้ขาดว่างานเบื้องหลังจะเชื่อถือได้ไหม
+    ///
+    /// ไม่ได้ยกเว้น = ระบบหรี่ให้ตื่นทุก 9–15 นาทีแทนที่จะเป็นตามที่ตั้งไว้
+    /// และบาง ROM (Xiaomi/Huawei/OPPO) ฆ่าทิ้งเลย · ประกาศใน manifest
+    /// อย่างเดียวไม่พอ ผู้ใช้ต้องกดยอมรับเองเท่านั้น
+    private fun batteryExempt(): Boolean {
+        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            ?: return false
+        return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    private fun requestBatteryExempt() {
+        if (batteryExempt()) return
+        // กล่องขอตรง ๆ ก่อน · เครื่องที่ไม่มี activity รองรับ (บาง ROM ถอดออก)
+        // ให้ตกไปหน้าตั้งค่าแบตของระบบแทน ดีกว่าไม่เกิดอะไรขึ้นเลย
+        val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            .setData(Uri.parse("package:" + packageName))
+        val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        val intent = if (direct.resolveActivity(packageManager) != null) direct else fallback
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            openAppSettings()
+        }
+    }
+
+    /// Android 13+ การแจ้งเตือนเป็นสิทธิ์ที่ต้องขอ · ไม่ได้ขอ = บริการรันอยู่จริง
+    /// แต่ผู้ใช้ไม่เห็นอะไรเลย แล้วจะคิดว่ามันไม่ทำงาน
+    private fun notifyGranted(): Boolean {
+        if (Build.VERSION.SDK_INT < 33) return true
+        return ContextCompat.checkSelfPermission(
+            this, "android.permission.POST_NOTIFICATIONS"
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestNotify(result: MethodChannel.Result) {
+        if (notifyGranted()) {
+            result.success(true)
+            return
+        }
+        pendingNotify?.success(false)
+        pendingNotify = result
+        ActivityCompat.requestPermissions(
+            this, arrayOf("android.permission.POST_NOTIFICATIONS"), REQ_NOTIFY
+        )
+    }
+
     private fun openAppSettings() {
         startActivity(
             Intent(
@@ -99,8 +205,13 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
-        private const val CHANNEL = "giggok/camera"
+        private const val CHANNEL = "giggok/system"
         private const val REQ_CAMERA = 8747
+        private const val REQ_NOTIFY = 8748
+
+        /// ต้องตรงกับ kMindChannelId ใน lib/background/mind_background.dart
+        /// ไม่ตรงกัน = บริการหาช่องไม่เจอ แล้วตายแบบเดียวกับไม่มีช่องเลย
+        private const val WATCH_CHANNEL = "mind_watch"
         private const val GRANTED = "granted"
         private const val DENIED = "denied"
         private const val BLOCKED = "blocked"

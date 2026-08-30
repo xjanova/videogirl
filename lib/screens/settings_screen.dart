@@ -11,6 +11,7 @@ import '../ai/openai_config.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
 import '../avatar/avatar_pack.dart';
+import '../background/mind_watch.dart';
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -93,6 +94,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // ตั้งแต่เปิดแอป ซึ่งเป็นคำถามแรกที่จะเกิดขึ้นในหัว
             _avatarPackCard(context, state, mode, t),
             const SizedBox(height: MindSpace.md),
+            _watchCard(context, mode, t),
+            const SizedBox(height: MindSpace.md),
             if (!OpenAiConfig.configured) _noKeyBanner(),
             _modeCard(state, mode),
             const SizedBox(height: MindSpace.md),
@@ -135,6 +138,126 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  /// ให้เธอเฝ้างานตอนแอปปิด
+  ///
+  /// การ์ดนี้ต้องโชว์ **เวลาที่ตื่นครั้งล่าสุด** เสมอ ไม่ใช่แค่สวิตช์เปิด/ปิด
+  /// บริการเบื้องหลังบน Android ตายเงียบเป็นเรื่องปกติ ถ้ามีแต่สวิตช์
+  /// ผู้ใช้จะเห็น "เปิดอยู่" ตลอดทั้งที่ตายไปตั้งแต่เมื่อวาน แล้วเชื่อผิด ๆ
+  /// ว่าของมันทำงาน · ตัวเลขที่ขยับคือหลักฐานชิ้นเดียวที่มี
+  Widget _watchCard(BuildContext context, MindMode mode, S t) {
+    final watch = context.watch<MindWatch>();
+
+    return _card(
+      mode: mode,
+      label: t.bgTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  watch.on ? t.bgWatching : t.bgNeverRan,
+                  style: MindType.title,
+                ),
+              ),
+              Switch(
+                value: watch.on,
+                onChanged: watch.busy
+                    ? null
+                    : (v) => v ? watch.start() : watch.stop(),
+              ),
+            ],
+          ),
+          const SizedBox(height: MindSpace.sm),
+          Text(t.bgWhy, style: MindType.caption),
+
+          if (watch.on) ...[
+            const SizedBox(height: MindSpace.md),
+            Row(
+              children: [
+                Icon(Icons.favorite_rounded, size: 15, color: mode.accent),
+                const SizedBox(width: MindSpace.sm),
+                Expanded(
+                  child: Text(
+                    watch.lastBeat == null
+                        ? t.bgNeverRan
+                        : '${t.bgLastBeat(_ago(t, watch.lastBeat!))} · '
+                            '${t.bgBeats(watch.beats)}',
+                    style: MindType.caption,
+                  ),
+                ),
+              ],
+            ),
+            if (watch.found != null) ...[
+              const SizedBox(height: MindSpace.xs),
+              Text(t.bgUpdateFound(watch.found!),
+                  style: MindType.caption.copyWith(color: mode.accent)),
+            ],
+          ],
+
+          const SizedBox(height: MindSpace.md),
+          Container(
+            padding: const EdgeInsets.all(MindSpace.md),
+            decoration: BoxDecoration(
+              color: watch.batteryExempt
+                  ? mode.accent.withValues(alpha: .08)
+                  : const Color(0x14FFAB3D),
+              borderRadius: BorderRadius.circular(MindRadius.control),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      watch.batteryExempt
+                          ? Icons.check_circle_rounded
+                          : Icons.battery_alert_rounded,
+                      size: 16,
+                      color: watch.batteryExempt
+                          ? mode.accent
+                          : const Color(0xFFB46A00),
+                    ),
+                    const SizedBox(width: MindSpace.sm),
+                    Expanded(
+                      child: Text(
+                        watch.batteryExempt
+                            ? t.bgBatteryOn
+                            : t.bgBatteryOff,
+                        style: MindType.title.copyWith(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                if (!watch.batteryExempt) ...[
+                  const SizedBox(height: MindSpace.sm),
+                  Text(t.bgBatteryWhy, style: MindType.caption),
+                  const SizedBox(height: MindSpace.sm),
+                  MindButton(
+                    label: t.bgBatteryAsk,
+                    mode: mode,
+                    expand: true,
+                    onTap: watch.askBatteryExempt,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// "เมื่อไหร่" แบบหยาบ ๆ ก็พอ — คนอ่านอยากรู้ว่า "เพิ่งตื่น" หรือ "หายไปนาน"
+  /// ไม่ได้อยากรู้วินาทีที่เท่าไหร่
+  static String _ago(S t, DateTime at) {
+    final m = DateTime.now().difference(at).inMinutes;
+    if (m < 1) return t.agoJustNow;
+    if (m < 60) return t.agoMinutes(m);
+    return t.agoHours(m ~/ 60);
   }
 
   Widget _avatarPackCard(

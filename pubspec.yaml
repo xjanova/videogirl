@@ -52,6 +52,7 @@ dependencies:
   system_info_plus: ^0.0.6
   video_player: ^2.11.1
   archive: ^4.2.0
+  flutter_background_service: ^5.1.0
 
 dev_dependencies:
   flutter_test:

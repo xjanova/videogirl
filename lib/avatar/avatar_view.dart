@@ -22,7 +22,7 @@ enum MindFraming { bust, full }
 /// เขียนเองแทน permission_handler เพราะเวอร์ชันล่าสุดของแพ็กเกจนั้น build ไม่ผ่าน
 /// กับชุด AGP 8.11 / Kotlin 2.2.20 ของโปรเจกต์นี้ · เหตุผลเต็มอยู่ใน MainActivity.kt
 abstract final class MindCameraPermission {
-  static const _ch = MethodChannel('giggok/camera');
+  static const _ch = MethodChannel('giggok/system');
 
   /// 'granted' · 'denied' · 'blocked' (ปฏิเสธถาวร ต้องไปเปิดในตั้งค่าเครื่อง)
   static Future<String> status() => _ask('status');

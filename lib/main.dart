@@ -5,6 +5,8 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 
 import 'avatar/avatar_pack.dart';
+import 'background/mind_background.dart';
+import 'background/mind_watch.dart';
 import 'screens/splash_screen.dart';
 import 'i18n/strings.dart';
 import 'state/mind_state.dart';
@@ -46,6 +48,10 @@ Future<void> main() async {
   final pack = AvatarPacks();
   await pack.restore(preferId: state.avatarPackId);
 
+  // ลงทะเบียนบริการเบื้องหลัง — ยัง**ไม่สตาร์ต** จนกว่าผู้ใช้จะกดเปิดเอง
+  // การแจ้งเตือนค้างจอต้องมาจากการที่คนเลือก ไม่ใช่แอปหยิบไปเอง
+  await configureMindBackground();
+
   runApp(MindApp(state: state, pack: pack));
 }
 
@@ -61,6 +67,7 @@ class MindApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider.value(value: state),
         ChangeNotifierProvider.value(value: pack),
+        ChangeNotifierProvider(create: (_) => MindWatch()..refresh()),
         ChangeNotifierProvider(create: (_) => Updater()),
       ],
       // locale ต้องอ่านจาก state ไม่ใช่ค่าคงที่ ไม่งั้นสลับภาษาแล้วจอไม่เปลี่ยน
