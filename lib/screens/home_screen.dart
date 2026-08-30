@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
 import '../state/mind_state.dart';
+import 'shop_screen.dart';
 import '../theme/app_theme.dart';
 import '../i18n/enum_labels.dart';
 import '../i18n/strings.dart';
@@ -32,10 +33,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.initState();
     // liqRing — วงแหวนขยายออกแล้วจางหาย 3 วินาทีต่อรอบ
     _ring = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+
+    // แผงแชทพับเองเมื่อเงียบ — แต่ต้องไม่พับตอนคนกำลังพิมพ์ค้างอยู่
+    // ซึ่งเป็นสิ่งที่แย่ที่สุดที่จะเกิดขึ้นได้ · ช่องพิมพ์เป็นคนบอก state
+    _focus.addListener(_reportTyping);
+    _draft.addListener(_reportTyping);
+  }
+
+  void _reportTyping() {
+    if (!mounted) return;
+    context.read<MindState>().setTyping(_focus.hasFocus || _draft.text.isNotEmpty);
   }
 
   @override
   void dispose() {
+    _focus.removeListener(_reportTyping);
+    _draft.removeListener(_reportTyping);
     _draft.dispose();
     _focus.dispose();
     _ring.dispose();
@@ -72,7 +85,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           children: [
             _header(state, mode),
             Expanded(child: _stage(state, mode)),
-            _chatDock(state, mode),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, anim) => SizeTransition(
+                sizeFactor: anim,
+                // ยึดขอบล่าง แผงจึงยุบลงไปหาแถบนำทาง ไม่ใช่หดเข้ากลาง
+                axisAlignment: -1,
+                child: FadeTransition(opacity: anim, child: child),
+              ),
+              child: state.chatOpen
+                  ? KeyedSubtree(
+                      key: const ValueKey('dock'), child: _chatDock(state, mode))
+                  : KeyedSubtree(
+                      key: const ValueKey('pill'), child: _chatPill(state, mode)),
+            ),
           ],
         ),
       ),
@@ -175,7 +203,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               Positioned(
                 right: 10,
                 top: 10,
-                child: _PuppetButton(avatar: widget.avatar, mode: mode),
+                child: Column(
+                  spacing: MindSpace.sm,
+                  children: [
+                    _PuppetButton(avatar: widget.avatar, mode: mode),
+                    // ทางเข้าร้านอยู่บนเวที ไม่ใช่ซ่อนในหน้าตั้งค่าอย่างเดียว
+                    // เพราะของที่ขายคือของที่ **เห็นผลบนเวทีนี้** (ชุด ตัวละคร
+                    // ของประดับ) คนควรกดซื้อได้จากที่ที่มองเห็นของอยู่
+                    _StageIconButton(
+                      asset: 'assets/brand/nav/shop.png',
+                      fallback: Icons.storefront_rounded,
+                      tooltip: S.of(context).shopTitle,
+                      mode: mode,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                            builder: (_) => const ShopScreen()),
+                      ),
+                    ),
+                  ],
+                ),
               ),
 
               // แถบบอกสถานะกล้อง — ขึ้นเฉพาะตอนมีอะไรต้องบอกจริง ๆ
@@ -215,6 +261,66 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  // ── ปุ่มพับ — สิ่งที่เหลืออยู่เมื่อแผงแชทหุบไป ─────────────
+  //
+  // 🔴 ต้องมีอะไรเหลือให้เห็นเสมอ ห้ามหายไปเฉย ๆ
+  //
+  // แผงแชทกินครึ่งล่างของจอ ทำให้มองไม่เห็นเธอเต็มตัวและบังห้อง
+  // แต่ถ้าหุบแล้วไม่เหลืออะไรเลย ผู้ใช้จะไม่รู้ว่ายังคุยได้อยู่ไหม
+  // และไม่รู้ว่าต้องทำอะไรถึงจะเรียกกลับมา
+  Widget _chatPill(MindState state, MindMode mode) {
+    final t = S.of(context);
+    final last = state.bubbleText;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          MindSpace.lg, 0, MindSpace.lg, MindSpace.lg),
+      child: GestureDetector(
+        onTap: state.openChat,
+        child: GlassPanel(
+          radius: MindRadius.pill,
+          fill: MindColors.glass72,
+          filter: MindGlass.light,
+          shadows: MindShadows.soft(),
+          padding: const EdgeInsets.symmetric(
+              horizontal: MindSpace.lg, vertical: MindSpace.md),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: Image.asset(
+                  'assets/brand/nav/chat.png',
+                  fit: BoxFit.contain,
+                  // ภาพเป็นไฟล์ที่หายได้ ปุ่มต้องยังใช้ได้อยู่
+                  errorBuilder: (_, _, _) => Icon(
+                    Icons.chat_bubble_outline_rounded,
+                    size: 18,
+                    color: mode.accent,
+                  ),
+                ),
+              ),
+              const SizedBox(width: MindSpace.md),
+              Expanded(
+                child: Text(
+                  // เอาสิ่งที่เธอพูดล่าสุดมาโชว์ ดีกว่าข้อความชวนกดลอย ๆ
+                  // เพราะบอกได้ด้วยว่าคุยค้างไว้ตรงไหน
+                  last.isEmpty ? t.chatTapToOpen : last,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: MindType.body.copyWith(fontSize: 12.5),
+                ),
+              ),
+              const SizedBox(width: MindSpace.sm),
+              Icon(Icons.keyboard_arrow_up_rounded,
+                  size: 20, color: MindColors.ink45),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── แผงแชทกระจกล่างสุด ──────────────────────────────────
   Widget _chatDock(MindState state, MindMode mode) {
     return GlassPanel(
@@ -226,6 +332,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         crossAxisAlignment: CrossAxisAlignment.stretch,
         spacing: MindSpace.gap,
         children: [
+          // ที่จับสำหรับพับเอง — ไม่ต้องรอให้หมดเวลา
+          // คนที่อยากดูเธอเต็มตัวเดี๋ยวนี้ ไม่ควรต้องนั่งรอ 14 วินาที
+          Align(
+            alignment: Alignment.centerRight,
+            child: Semantics(
+              button: true,
+              label: S.of(context).chatCollapse,
+              child: Tooltip(
+                message: S.of(context).chatCollapse,
+                child: GestureDetector(
+                  onTap: state.collapseChat,
+                  behavior: HitTestBehavior.opaque,
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 24, bottom: 4),
+                    child: Icon(Icons.keyboard_arrow_down_rounded,
+                        size: 20, color: MindColors.ink45),
+                  ),
+                ),
+              ),
+            ),
+          ),
           for (final m in state.messages) _message(m, mode),
           Wrap(
             spacing: 6,
@@ -355,6 +482,56 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
       ],
+    );
+  }
+}
+
+/// ปุ่มกลมบนเวที — ใช้ภาพไอคอนที่เจนมา ถ้าไม่มีก็ตกไปใช้ไอคอนเส้น
+///
+/// แยกออกมาเพราะบนเวทีจะมีปุ่มแบบนี้หลายตัว (เชิดหุ่น ร้านค้า และต่อไปอีก)
+/// ถ้าประกอบสดทีละที่ ขนาดกับเงาจะเริ่มไม่ตรงกันเหมือนที่เคยเกิดกับปุ่มทั้งแอป
+class _StageIconButton extends StatelessWidget {
+  const _StageIconButton({
+    required this.asset,
+    required this.fallback,
+    required this.tooltip,
+    required this.mode,
+    required this.onTap,
+  });
+
+  final String asset;
+  final IconData fallback;
+  final String tooltip;
+  final MindMode mode;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: GlassPanel(
+            radius: 22,
+            fill: MindColors.glass72,
+            padding: const EdgeInsets.all(7),
+            shadows: MindShadows.soft(),
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: Image.asset(
+                asset,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) =>
+                    Icon(fallback, size: 20, color: mode.accent),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

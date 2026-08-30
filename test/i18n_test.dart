@@ -44,6 +44,8 @@ void main() {
       // หน้าเปิดแอป
       check('splashSkip', en.splashSkip);
       check('splashLoading', en.splashLoading(42));
+      check('chatTapToOpen', en.chatTapToOpen);
+      check('chatCollapse', en.chatCollapse);
 
       // โหมด
       check('modeWork', en.modeWork);

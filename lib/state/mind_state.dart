@@ -112,6 +112,14 @@ class MindState extends ChangeNotifier {
     _loadContext();
     await memory.load();
     _seedConversation();
+
+    // 🔴 เริ่มนับตั้งแต่เปิดแอป ไม่ใช่รอให้มีข้อความใหม่
+    //
+    // `_armChat` ถูกเรียกจาก `_push` เท่านั้น แต่บทสนทนาตอนเปิดแอป
+    // (ทั้งบทตัวอย่างและที่กู้มาจากดิสก์) ถูกเติมตรง ๆ ไม่ผ่าน `_push`
+    // ผลคือนาฬิกาไม่เคยเริ่มเดิน แผงจึงไม่พับเลยจนกว่าจะคุยสักคำ
+    // — เจอตอนลองจริงบนเครื่อง รอ 17 วินาทีแล้วแผงยังอยู่เหมือนเดิม
+    _startChatCountdown();
     _notify();
   }
 
@@ -615,6 +623,78 @@ class MindState extends ChangeNotifier {
     });
   }
 
+  // ═══ แผงแชท — พับเองเมื่อไม่ได้คุย ═══════════════════════
+  //
+  // แผงแชทกินครึ่งล่างของจอ ทำให้มองไม่เห็นเธอเต็มตัว ไม่เห็นห้อง
+  // และตอนเปิดโหมดกล้องยิ่งบังของที่ต้องดู · พับเองเมื่อเงียบไปสักพัก
+  // แล้วกลับมาเองเมื่อมีใครพูด
+
+  /// เงียบไปกี่วินาทีถึงจะพับ
+  ///
+  /// 14 วินาทีมาจากการชั่ง: สั้นกว่านี้แผงจะหุบตอนคนกำลังอ่านคำตอบยาว ๆ
+  /// ยาวกว่านี้ก็แทบไม่ต่างจากไม่พับเลย
+  static const chatIdleSeconds = 14;
+
+  bool _chatOpen = true;
+  bool get chatOpen => _chatOpen;
+
+  Timer? _chatTimer;
+
+  /// เรียกเมื่อมีข้อความใหม่ — เปิดแผงแล้วเริ่มนับใหม่
+  void _armChat() {
+    _chatOpen = true;
+    _startChatCountdown();
+  }
+
+  /// 🔴 นาฬิกาต้องไม่เดินตอนเธอกำลังพูด และตอนคนกำลังพิมพ์
+  ///
+  /// กับดักเดียวกับฟองคำพูด: ถ้านับตั้งแต่ข้อความมาถึง แผงจะหุบกลางประโยค
+  /// ที่เธอกำลังพูดอยู่ · และถ้าไม่กันตอนพิมพ์ แผงจะหายไปพร้อมกับคีย์บอร์ด
+  /// ระหว่างที่คนกำลังพิมพ์ค้างอยู่ ซึ่งเป็นสิ่งที่แย่ที่สุดที่จะเกิดขึ้นได้
+  void _startChatCountdown() {
+    _chatTimer?.cancel();
+    if (_speaking || _typing || !_chatOpen) return;
+    _chatTimer = Timer(const Duration(seconds: chatIdleSeconds), () {
+      _chatOpen = false;
+      _notify();
+    });
+  }
+
+  /// เปิดแผงกลับมา — แตะที่ปุ่มพับไว้ หรือเริ่มพิมพ์
+  void openChat() {
+    if (_chatOpen) {
+      _startChatCountdown();
+      return;
+    }
+    _chatOpen = true;
+    _startChatCountdown();
+    _notify();
+  }
+
+  /// พับเอง — ให้ผู้ใช้สั่งได้ด้วย ไม่ใช่รอให้หมดเวลาอย่างเดียว
+  void collapseChat() {
+    _chatTimer?.cancel();
+    if (!_chatOpen) return;
+    _chatOpen = false;
+    _notify();
+  }
+
+  /// กำลังพิมพ์อยู่ไหม — ช่องพิมพ์เป็นคนบอก
+  ///
+  /// state ไม่รู้จัก FocusNode และไม่ควรรู้ ไม่งั้นเทสต์ต้องมี widget tree
+  bool _typing = false;
+  void setTyping(bool v) {
+    if (_typing == v) return;
+    _typing = v;
+    if (v) {
+      _chatOpen = true;
+      _chatTimer?.cancel();
+      _notify();
+    } else {
+      _startChatCountdown();
+    }
+  }
+
   /// แตะที่ตัวเธอเพื่อเรียกฟองกลับมาอ่านซ้ำ
   void showBubbleAgain() {
     if (!_bubbleEnabled || bubbleText.isEmpty) return;
@@ -667,8 +747,9 @@ class MindState extends ChangeNotifier {
     } finally {
       // ต้องปลดเสมอ ไม่งั้นฟองจะหายถาวรถ้าเล่นเสียงพัง
       _speaking = false;
-      // ฟองเพิ่งโผล่ตอนนี้ ค่อยเริ่มนับถอยหลัง
+      // ฟองเพิ่งโผล่ตอนนี้ ค่อยเริ่มนับถอยหลัง · แผงแชทก็เหมือนกัน
       _startBubbleCountdown();
+      _startChatCountdown();
       _notify();
     }
   }
@@ -739,6 +820,7 @@ class MindState extends ChangeNotifier {
   void _push(ChatMessage m) {
     // ฟองแสดงเฉพาะสิ่งที่ **เธอ** พูด ข้อความของเราไม่ต้องมีฟองเหนือหัวเธอ
     if (m.fromHer) _armBubble();
+    _armChat();
     _messages.add(m);
     _context.add(m);
     if (_messages.length > _historyLimit) {
@@ -799,6 +881,7 @@ class MindState extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _bubbleTimer?.cancel();
+    _chatTimer?.cancel();
     _openai.close();
     _speech.dispose();
     if (hasLocalBrain) _lazyLocal!.dispose();
