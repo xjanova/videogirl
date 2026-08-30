@@ -166,11 +166,20 @@ export class Motion {
      * mood here rather than at every call site is what lets `setMood` alone
      * change how she stands.
      */
+    /**
+     * กลับไปยืนเฉย ๆ ตามอารมณ์ปัจจุบัน
+     *
+     * 🔴 เดิมใช้ `.find()` ซึ่งคืนตัว**แรก**ที่ตรงเสมอ · อารมณ์ที่มีคลิปให้เลือก
+     * มากกว่าหนึ่งตัว (เช่น waiting มีทั้ง idle_wait และ idle_bored)
+     * ตัวหลังจะไม่มีวันได้เล่นเลย และไม่มีอะไรบอกว่าไฟล์ที่โหลดมานอนนิ่งอยู่
+     */
     _restoreIdle() {
-        const byMood = [...this.clips.values()].find(
+        const pool = [...this.clips.values()].filter(
             (c) => c.meta.role === 'idle' && c.meta.mood?.includes(this.mood));
-        const id = byMood?.meta.id ?? 'idle';
-        this.play(id, FADE_OUT);
+        const pick = pool.length
+            ? pool[Math.floor(Math.random() * pool.length)].meta.id
+            : 'idle';
+        this.play(pick, FADE_OUT);
         return true;
     }
 

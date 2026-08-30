@@ -44,6 +44,8 @@ const MOOD_EXPRESSION = {
     pleased:   ['happy', 0.45],
     concerned: ['sad', 0.55],
     thinking:  null,
+    // ถูกทิ้งไว้นานจนเบื่อ · ไม่บังคับสีหน้า คลิปยืนเป็นตัวเล่าเอง
+    waiting:   null,
     sorry:     ['sad', 0.85],
     alert:     ['surprised', 0.80],
     angry:     ['angry', 0.85],
@@ -52,6 +54,13 @@ const MOOD_EXPRESSION = {
 /** Every expression any mood can use, each named once. */
 const MOOD_EXPRS = [...new Set(
     Object.values(MOOD_EXPRESSION).filter(Boolean).map(([e]) => e))];
+
+/**
+ * เงียบกี่วินาทีถึงจะถือว่าถูกทิ้งไว้
+ *
+ * สองนาที · สั้นกว่านี้เธอจะทำท่าเบื่อใส่คนที่แค่หยุดพิมพ์ไปคิดแป๊บเดียว
+ */
+const QUIET_UNTIL_WAITING = 120;
 
 /** The gaze expressions. Only the camera writes these, so only it cleans up. */
 const LOOK_EXPRS = ['lookUp', 'lookDown', 'lookLeft', 'lookRight'];
@@ -80,6 +89,10 @@ export class Avatar {
         /** เรียกครั้งเดียวเมื่อลูปเรนเดอร์ล้ม — ดู [_loop] */
         this.onLoopError = null;
         this._loopDead = false;
+
+        /** เงียบมากี่วินาทีแล้ว — ดู [_frame] */
+        this._quiet = 0;
+        this._autoWait = false;
 
         const w = host.clientWidth || 320, h = host.clientHeight || 300;
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -179,6 +192,9 @@ export class Avatar {
 
     /** @param {string} m a key of MOOD_EXPRESSION */
     setMood(m) {
+        // มีคนสั่งอารมณ์มา = มีอะไรเกิดขึ้น = ยังไม่ถูกทิ้ง
+        this._quiet = 0;
+        this._autoWait = false;
         this.mood = m in MOOD_EXPRESSION ? m : 'neutral';
         this._applyMood();
         return this;
@@ -194,6 +210,8 @@ export class Avatar {
      */
     async speak(url) {
         this.speaking = true;
+        this._quiet = 0;
+        if (this._autoWait) { this._autoWait = false; this.setMood('neutral'); }
         this.motion?.setBusy(true);
         this.motion?.setTalking(true);
         this.framing?.set('bust');
@@ -275,6 +293,21 @@ export class Avatar {
         this._t += dt;
         const vrm = this.vrm;
         if (!vrm) return;
+
+        // ถูกทิ้งไว้นานจนเบื่อ
+        //
+        // clips.json มีคลิป mood 'waiting' มาตั้งแต่ต้น แต่**ไม่มีอะไรในแอป
+        // ตั้งอารมณ์นี้เลย** และ setMood() ก็ปัดค่าที่ไม่รู้จักกลับเป็น neutral
+        // คลิปที่โหลดมาจึงนอนนิ่งอยู่บนดิสก์โดยไม่มีอะไรบอกสักอย่าง
+        //
+        // จับเวลาที่นี่ ไม่ใช่ฝั่ง Flutter เพราะที่นี่คือที่เดียวที่รู้แน่ว่า
+        // เธอไม่ได้พูดและไม่มีใครสั่งอะไรมา
+        this._quiet += dt;
+        if (!this._autoWait && !this.speaking
+            && this.mood === 'neutral' && this._quiet > QUIET_UNTIL_WAITING) {
+            this.setMood('waiting');
+            this._autoWait = true;   // setMood ล้างธงนี้ ต้องตั้งกลับหลังเรียก
+        }
 
         // 1 — the clip writes the bones it owns.
         this.motion?.update(dt, performance.now());
@@ -379,7 +412,8 @@ export class Avatar {
         //
         // ทับเฉพาะตอน mood เป็น neutral · ถ้าเจ้าของตั้งอารมณ์ไว้แล้ว
         // อารมณ์นั้นต้องชนะ ไม่ใช่โดนรอยยิ้มสุ่ม ๆ กลบ
-        const warmOn = this.mood === 'neutral' && !this.speaking;
+        const warmOn = (this.mood === 'neutral' || this.mood === 'waiting')
+            && !this.speaking;
         const warmName = !warmOn
             ? null
             : this.idle.warmthName === 'relaxed' && this._hasRelaxed

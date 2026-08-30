@@ -32,7 +32,11 @@
   "mood 'speaking' is not a real mood — nothing ever sets it. Listing it",
   "     takes the clip OUT of the idle pool and puts it in the pool that",
   "     plays while she is actually talking. Anything with hands moving as",
-  "     if mid-sentence belongs there, not in the idle rotation."
+  "     if mid-sentence belongs there, not in the idle rotation.",
+  "",
+  "mood 'waiting' = she has been left alone for a couple of minutes. The app",
+  "     sets it on its own; nothing has to ask for it. Idle clips listed under",
+  "     it are picked at random, so listing two or three reads better than one."
  ],
  "clips": [
   {
@@ -188,7 +192,8 @@
    "file": "Arm Stretching.fbx",
    "role": "gesture",
    "mood": [
-    "neutral"
+    "neutral",
+    "waiting"
    ],
    "weight": 0.7
   },
@@ -197,7 +202,8 @@
    "file": "Yawn.fbx",
    "role": "gesture",
    "mood": [
-    "neutral"
+    "neutral",
+    "waiting"
    ],
    "weight": 0.3
   },
