@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import 'avatar/avatar_pack.dart';
 import 'calendar/device_calendar.dart';
+import 'journal/mind_journal.dart';
 import 'avatar/avatar_view.dart';
 import 'background/mind_background.dart';
 import 'background/mind_watch.dart';
@@ -74,6 +75,9 @@ class _MindBootstrapState extends State<MindBootstrap> {
   /// ปฏิทินของเครื่อง — เธอต้องรู้ตารางจริงถึงจะตอบเรื่องนัดได้
   late final DeviceCalendar _calendar = DeviceCalendar(permissions: _perms);
 
+  /// สมุดบันทึกเรื่องที่เกิดขึ้นจริง — แท็บไทม์ไลน์อ่านจากตรงนี้
+  final MindJournal _journal = MindJournal();
+
   /// ตัวควบคุมอวาตาร์อยู่ที่นี่ ไม่ใช่ในเชลล์ เพราะหน้าเปิดแอปต้องอ่าน
   /// ความคืบหน้าการโหลด VRM มาโชว์เป็นเปอร์เซ็นต์จริง
   final MindAvatarController _avatar = MindAvatarController();
@@ -101,6 +105,19 @@ class _MindBootstrapState extends State<MindBootstrap> {
     // รีโหลดทีหลัง = โหลด VRM 33MB สองรอบ ซึ่งช้ากว่ารอให้เสร็จก่อนมาก
     try {
       await InAppLocalhostServer(port: kAvatarPort).start();
+
+      // อยู่รอบแรกเพราะบทสนทนาเกิดขึ้นได้ทันทีที่เชลล์ขึ้น · ต่อทีหลัง
+      // แปลว่าข้อความแรก ๆ ไม่ถูกบันทึก โดยไม่มีอะไรบอกว่าหายไป
+      //
+      // (การกู้บทสนทนาเก่าไม่ผ่าน _push — ใช้ _context.add ตรง ๆ
+      //  จึงไม่มีการบันทึกซ้ำทุกครั้งที่เปิดแอป)
+      await _journal.load();
+      _state.attachJournal(_journal);
+      _pack.onInstalled = (pack) => _journal.record(
+            JournalKind.pack,
+            pack.nameFor(_state.lang == AppLang.th),
+          );
+
       await _state.load();
       await _pack.restore(preferId: _state.avatarPackId);
     } catch (e) {
@@ -145,6 +162,7 @@ class _MindBootstrapState extends State<MindBootstrap> {
         ChangeNotifierProvider(create: (_) => MindWatch()..refresh()),
         ChangeNotifierProvider.value(value: _perms..refresh()),
         ChangeNotifierProvider.value(value: _calendar),
+        ChangeNotifierProvider.value(value: _journal),
       ],
       child: Consumer<MindState>(
         builder: (context, state, _) => MaterialApp(

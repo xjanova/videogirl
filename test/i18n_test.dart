@@ -270,8 +270,21 @@ void main() {
       for (final w in en.weekdayNames) check('weekdayNames', w);
       for (final m in en.monthShort) check('monthShort', m);
       check('tlTitle', en.tlTitle);
-      check('tl2Title', en.tl2Title);
-      check('tl5Detail', en.tl5Detail);
+      check('tlDidToday', en.tlDidToday(3));
+      check('tlNothingToday', en.tlNothingToday);
+      check('tlEmpty', en.tlEmpty);
+      check('tlEmptyWhy', en.tlEmptyWhy);
+      check('tlStatTalk', en.tlStatTalk);
+      check('tlStatLearn', en.tlStatLearn);
+      check('tlStatMeet', en.tlStatMeet);
+      check('tlStatOther', en.tlStatOther);
+      check('tlKindAsked', en.tlKindAsked);
+      check('tlKindReplied', en.tlKindReplied);
+      check('tlKindLearned', en.tlKindLearned);
+      check('tlKindPack', en.tlKindPack);
+      check('tlClear', en.tlClear);
+      check('tlClearAsk', en.tlClearAsk);
+      check('calYesterday', en.calYesterday);
 
       expect(offenders, isEmpty,
           reason: 'ข้อความพวกนี้ยังเป็นไทยอยู่ในฝั่งอังกฤษ:\n'

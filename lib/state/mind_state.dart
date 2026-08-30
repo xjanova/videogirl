@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../memory/distiller.dart';
 import '../calendar/device_calendar.dart';
+import '../journal/mind_journal.dart';
 import '../memory/mind_memory.dart';
 import '../ai/brain_provider.dart';
 import '../ai/local_brain.dart';
@@ -57,6 +58,11 @@ class MindState extends ChangeNotifier {
 
   /// ให้เธอรู้ตารางจริง · เรียกครั้งเดียวตอนเปิดแอป
   void attachCalendar(DeviceCalendar c) => _calendar = c;
+
+  /// สมุดบันทึกเรื่องที่เกิดขึ้นจริง — ต่อเข้ามาทีหลังเหมือนปฏิทิน
+  MindJournal? _journal;
+
+  void attachJournal(MindJournal j) => _journal = j;
 
   /// ฉีดนาฬิกาเข้ามาได้เพื่อให้เทสต์โหมดอัตโนมัติได้โดยไม่ต้องรอถึงสองทุ่ม
   final DateTime Function() _clock;
@@ -842,6 +848,16 @@ class MindState extends ChangeNotifier {
     }
     _saveContext();
 
+    // ลงสมุดบันทึก — ที่เดียวที่รอดจากการปิดแอป
+    //
+    // เก็บแค่บรรทัดเดียวว่าคุยอะไรกัน ไม่ใช่สำเนาทั้งบทสนทนา
+    // (คลาสนั้นตัดให้เองที่ kJournalMaxChars) เพราะไทม์ไลน์ตอบคำถามว่า
+    // "เมื่อกี้เกิดอะไรขึ้น" ไม่ใช่ "พูดว่าอะไรบ้างคำต่อคำ"
+    unawaited(_journal?.record(
+      m.fromHer ? JournalKind.replied : JournalKind.asked,
+      m.text,
+    ) ?? Future<bool>.value(false));
+
     // สกัดความจำเป็นรอบ ไม่ใช่ทุกข้อความ — การสกัดคือการเรียกโมเดลอีกครั้ง
     // ทำทุกข้อความ = จ่ายสองเท่าช้าสองเท่าตลอดเวลา ทั้งที่คุยกันสิบประโยค
     // อาจมีเรื่องที่ควรจำแค่เรื่องเดียว
@@ -871,7 +887,14 @@ class MindState extends ChangeNotifier {
 
       var kept = 0;
       for (final f in parseDistilled(raw)) {
-        if (await memory.remember(f.text, kind: f.kind)) kept++;
+        if (await memory.remember(f.text, kind: f.kind)) {
+          kept++;
+          // ลงบันทึกทีละเรื่อง ไม่ใช่ "จำเพิ่ม 3 เรื่อง" — เจ้าของต้องเห็นว่า
+          // เธอจำ**อะไร** ไป ไม่ใช่แค่ว่าจำไปกี่เรื่อง ไม่งั้นจะตรวจไม่ได้เลย
+          // ว่าสรุปถูกหรือเปล่า
+          unawaited(_journal?.record(JournalKind.learned, f.text) ??
+              Future<bool>.value(false));
+        }
       }
       if (kept > 0) debugPrint('memory: จำเพิ่ม $kept เรื่อง');
     } catch (e) {

@@ -676,6 +676,7 @@ class S {
   String get calLoading => _('กำลังดูปฏิทินให้', 'Checking your calendar');
   String get calToday => _('วันนี้', 'Today');
   String get calTomorrow => _('พรุ่งนี้', 'Tomorrow');
+  String get calYesterday => _('เมื่อวาน', 'Yesterday');
   String get calAllDay => _('ทั้งวัน', 'All day');
   String get calNow => _('กำลังอยู่ในนัดนี้', 'Happening now');
 
@@ -699,33 +700,45 @@ class S {
   String get calGrant => _('ให้สิทธิ์อ่านปฏิทิน', 'Allow calendar access');
   String get calFailed => _('อ่านปฏิทินไม่สำเร็จ', 'Could not read the calendar');
 
-  // ═══ หน้าไทม์ไลน์ (ข้อมูลตัวอย่าง) ══════════════════════
-  String get tlTitle => _('วันนี้เธอทำให้ 14 อย่าง', 'She did 14 things for you today');
-  String get tlCalls => _('รับสาย', 'Calls');
-  String get tlMails => _('ส่งเมล', 'Emails');
-  String get tlMeetings => _('นัด', 'Meetings');
-  String get tlWaiting => _('รอคุณ', 'Waiting on you');
-  String get tl1Title => _('สรุปกล่องเมลเช้า', 'Summarised the morning inbox');
-  String get tl1Detail => _('24 ฉบับ → 3 ที่ต้องตอบ · ร่างคำตอบไว้ 2',
-      '24 messages → 3 need you · 2 replies drafted');
-  String get tl1Action => _('ดูร่าง', 'See drafts');
-  String get tl2Title => _('รับสายแทน — คุณวิชัย', 'Answered for you — Wichai');
-  String get tl2Detail => _('ใบเสนอราคา QT-2609 ขอต่อรอง 7% · จดไว้แล้ว',
-      'Quote QT-2609, asked for 7% off · noted');
-  String get tl2Action => _('ฟังเสียง · อ่านสรุป', 'Listen · read summary');
-  String get tl3Title => _('ส่งเมลตอบคุณนภา', 'Replied to Napa');
-  String get tl3Detail => _('อนุมัติเลื่อนอาร์ตเวิร์กเป็นวันจันทร์เช้า',
-      'Approved moving the artwork to Monday morning');
-  String get tl3Action => _('ย้อนกลับ (เหลือ 23 ชม.)', 'Undo (23h left)');
-  String get tl4Title => _('โทรออก — คุณต้น', 'Called out — Ton');
-  String get tl4Detail => _('เลื่อนรีวิวเป็นพฤหัส 15:00 · เขาตอบตกลง',
-      'Moved the review to Thursday 15:00 · he agreed');
-  String get tl4Action => _('ดูบทสนทนา', 'See transcript');
-  String get tl5Title => _('รอคุณอนุมัติ', 'Waiting on your approval');
-  String get tl5Detail => _('ส่วนลด QT-2609 เกินอำนาจที่ตั้งไว้ (สูงสุด 5%)',
-      'QT-2609 discount is above your limit (5% max)');
-  String get tl5Action => _('ตัดสินใจตอนนี้', 'Decide now');
-  String get tl6Title => _('เตือนกินข้าว', 'Reminded you to eat');
-  String get tl6Detail =>
-      _('เธอปิดแจ้งเตือนงานให้ 45 นาที', 'She muted work alerts for 45 minutes');
+  // ═══ หน้าไทม์ไลน์ (สมุดบันทึกจริง) ═══════════════════════
+  //
+  // ของเดิมเป็นเหตุการณ์สมมติหกอัน 08:12 ถึง 12:00 กับตัวเลขสรุป
+  // "รับสาย 3 · เมล 5" ที่เป็นค่าคงที่ในโค้ด เวลาเดิมทุกวัน จำนวนเดิมทุกวัน
+  // ลบทิ้งแล้ว — ตัวเลขที่ไม่เปลี่ยนไม่ใช่สรุป แต่เป็นภาพประกอบ
+
+  String get tlTitle => _('สมุดบันทึกของมายด์', "Mind's journal");
+  String tlDidToday(int n) =>
+      _('วันนี้บันทึกไว้ $n เรื่อง', '$n things noted today');
+  String get tlNothingToday =>
+      _('วันนี้ยังไม่มีอะไรเกิดขึ้น', 'Nothing has happened yet today');
+
+  /// สมุดว่างเปล่าตอนเปิดแอปครั้งแรก ต้องบอกว่ามันจะมีอะไร ไม่ใช่ปล่อยว่าง
+  String get tlEmpty => _('ยังไม่มีบันทึก', 'Nothing written yet');
+  String get tlEmptyWhy => _(
+        'คุยกับเธอ แล้วทุกอย่างที่เกิดขึ้นจะมาอยู่ที่นี่ '
+        'เก็บไว้ในเครื่อง ลบได้ทุกเมื่อ',
+        'Talk to her and everything that happens lands here. '
+        'Stored on this device, deletable any time.',
+      );
+
+  /// นับของวันนี้ — สี่ช่องบนสุด
+  String get tlStatTalk => _('คุยกัน', 'Messages');
+  String get tlStatLearn => _('จำได้', 'Learned');
+  String get tlStatMeet => _('นัด', 'Events');
+  String get tlStatOther => _('อื่น ๆ', 'Other');
+
+  /// ป้ายชนิดของแต่ละบรรทัด
+  String get tlKindAsked => _('คุณถาม', 'You asked');
+  String get tlKindReplied => _('มายด์ตอบ', 'Mind replied');
+  String get tlKindLearned => _('จำเรื่องใหม่', 'Learned something');
+  String get tlKindPack => _('ติดตั้งชุด', 'Installed a pack');
+  String get tlKindUpdate => _('อัปเดตแอป', 'App update');
+  String get tlKindSystem => _('ระบบ', 'System');
+
+  String get tlClear => _('ล้างบันทึกทั้งหมด', 'Clear the whole journal');
+  String get tlClearAsk => _(
+        'ลบบันทึกทั้งหมดถาวร กู้คืนไม่ได้ · ความจำของเธอไม่ถูกลบ',
+        'Permanently delete every entry. Her memories are not affected.',
+      );
+  String get tlCleared => _('ล้างบันทึกแล้ว', 'Journal cleared');
 }

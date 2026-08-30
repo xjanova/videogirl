@@ -286,6 +286,12 @@ class AvatarPacks extends ChangeNotifier {
   ///
   /// [expectedSha256] ถ้าใส่มาจะตรวจก่อนแตกไฟล์เสมอ · ไฟล์ 35MB ที่โหลดขาด
   /// จะกลายเป็น zip เสียที่แตกไม่ออก การตรวจแฮชบอกได้ตรง ๆ ว่าเป็นเพราะอะไร
+  /// เรียกเมื่อติดตั้งชุดสำเร็จ · ผู้เรียกเอาไปลงสมุดบันทึกได้
+  ///
+  /// เป็น callback ไม่ใช่การถือ [MindJournal] ไว้เอง เพราะคลาสนี้ไม่ควรรู้จัก
+  /// สมุดบันทึก — มันมีหน้าที่เดียวคือจัดการชุด ไม่ใช่เล่าเรื่อง
+  void Function(AvatarPackInfo pack)? onInstalled;
+
   Future<bool> install(String url, {String? expectedSha256}) async {
     if (_stage == AvatarPackStage.downloading ||
         _stage == AvatarPackStage.unpacking) {
@@ -380,6 +386,9 @@ class AvatarPacks extends ChangeNotifier {
       _selectedId = id;
       _set(await _serve() ? AvatarPackStage.ready : AvatarPackStage.failed,
           error: _server == null ? AvatarPackError.noServer : null);
+      if (_stage == AvatarPackStage.ready && placed != null) {
+        onInstalled?.call(placed);
+      }
       return _stage == AvatarPackStage.ready;
     } on Exception catch (e) {
       debugPrint('avatar pack: โหลดไม่สำเร็จ — $e');
