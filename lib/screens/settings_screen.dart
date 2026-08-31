@@ -15,6 +15,7 @@ import '../background/mind_watch.dart';
 import 'shop_screen.dart';
 import '../memory/mind_memory.dart';
 import '../system/permissions.dart';
+import '../persona/mind_soul.dart';
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -120,6 +121,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             // วางไว้บนสุด ๆ เพราะถ้ายังไม่มีชุด ผู้ใช้จะเห็นกรอบแทนตัวเธอ
             // ตั้งแต่เปิดแอป ซึ่งเป็นคำถามแรกที่จะเกิดขึ้นในหัว
             _avatarPackCard(context, state, mode, t),
+            const SizedBox(height: MindSpace.md),
+            // ตัวตนอยู่ติดกับชุด เพราะเป็นคำถามเดียวกันในหัวคนดู — "เธอเป็นใคร"
+            _soulCard(context, mode, t),
             const SizedBox(height: MindSpace.md),
             _watchCard(context, mode, t),
             const SizedBox(height: MindSpace.md),
@@ -1641,6 +1645,244 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   // ═══ ชิ้นส่วนที่ใช้ซ้ำ ═══════════════════════════════════
+
+  // ── ตัวตนของเธอ ─────────────────────────────────────────
+  //
+  // 🔴 การ์ดนี้มีอยู่เพราะกฎเดียว: **ทุกตัวเลขที่เปลี่ยนพฤติกรรมเธอ
+  // ต้องมองเห็นและล้างได้**
+  //
+  // ระบบที่สะสมอารมณ์ไว้เงียบ ๆ แล้วเจ้าของเปิดดูไม่ได้ คือกล่องดำที่วันหนึ่ง
+  // เธอจะงอนโดยไม่มีใครอธิบายได้ว่าทำไม และซ่อมไม่ได้ด้วย · เพิ่มค่าใหม่
+  // ที่มีผลกับน้ำเสียงเธอเมื่อไหร่ ต้องมาโผล่ที่นี่ด้วยเสมอ
+  Widget _soulCard(BuildContext context, MindMode mode, S t) {
+    final soul = context.watch<MindSoul>();
+    final sign = soul.sign;
+    final temper = soul.temper;
+    final born = soul.bornAt;
+
+    return _card(
+      mode: mode,
+      label: t.sectionSoul,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            spacing: MindSpace.md,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Color(sign.colour).withValues(alpha: .14),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: Color(sign.colour).withValues(alpha: .45),
+                      width: 1),
+                ),
+                child: Text(sign.emoji, style: const TextStyle(fontSize: 22)),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 2,
+                  children: [
+                    Text(sign.name(t.lang),
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w700)),
+                    Text(
+                      '${sign.element.label(t.lang)} · '
+                      '${sign.quality.label(t.lang)} · ${sign.planet(t.lang)}',
+                      style: const TextStyle(
+                          fontSize: 10.5, color: MindColors.ink55),
+                    ),
+                    if (born != null)
+                      Text(
+                        '${t.soulBorn(t.dateLabel(born))} · '
+                        '${t.soulKnown(soul.ageInDays)}',
+                        style: const TextStyle(
+                            fontSize: 10.5, color: MindColors.ink45),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _soulLine(t.soulNature, sign.traits(t.lang)),
+          const SizedBox(height: 6),
+          _soulLine(t.soulFlaws, sign.weak(t.lang)),
+          const SizedBox(height: 12),
+          _soulBar(t.soulIntensity, temper.intensity, mode),
+          const SizedBox(height: 6),
+          _soulBar(t.soulSweetness, temper.sweetness, mode),
+          const SizedBox(height: 16),
+          Text(t.soulBondTitle,
+              style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  soul.bond.labelOf(t) +
+                      (soul.togetherSince == null
+                          ? ''
+                          : ' · ${t.soulTogetherSince(t.dateLabel(soul.togetherSince!))}'),
+                  style: const TextStyle(
+                      fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Text('${(soul.affection * 100).round()}%',
+                  style:
+                      const TextStyle(fontSize: 12.5, color: MindColors.ink55)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _soulBar(t.soulAffection, soul.affection, mode),
+          if (soul.sulking) ...[
+            const SizedBox(height: 8),
+            Text(t.soulSulking((soul.sulk * 100).round()),
+                style: const TextStyle(fontSize: 11, color: Color(0xFFB07A16))),
+          ],
+          if (soul.wantsToAsk) ...[
+            const SizedBox(height: 8),
+            Text(t.soulWantsToAsk,
+                style: TextStyle(fontSize: 11, color: mode.accent)),
+          ],
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              if (!soul.bond.isTogether)
+                _soulButton(t.soulAsk, mode.accent,
+                    () => _askHerOut(context, soul, t)),
+              if (soul.bond.isTogether)
+                _soulButton(
+                    t.soulBreakUp,
+                    const Color(0xFFD93A5B),
+                    () => _confirmSoul(context, t, t.soulBreakUpAsk,
+                        t.soulBreakUp, soul.breakUp)),
+              _soulButton(
+                  t.soulResetBond,
+                  MindColors.ink55,
+                  () => _confirmSoul(context, t, t.soulResetBondAsk,
+                      t.soulResetBond, soul.resetBond)),
+              _soulButton(
+                  t.soulForget,
+                  MindColors.ink55,
+                  () => _confirmSoul(
+                      context, t, t.soulForgetAsk, t.soulForget, soul.forget)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(t.soulWhy,
+              style: const TextStyle(
+                  fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+        ],
+      ),
+    );
+  }
+
+  Widget _soulLine(String label, String value) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(label,
+                style:
+                    const TextStyle(fontSize: 10.5, color: MindColors.ink45)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 11, height: 1.45, color: MindColors.ink75)),
+          ),
+        ],
+      );
+
+  Widget _soulBar(String label, double value, MindMode mode) => Row(
+        spacing: MindSpace.sm,
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(label,
+                style:
+                    const TextStyle(fontSize: 10.5, color: MindColors.ink45)),
+          ),
+          Expanded(
+            child: SizedBox(
+              height: 6,
+              child: Stack(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: MindColors.glass80,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  FractionallySizedBox(
+                    widthFactor: value.clamp(0.0, 1.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: mode.gradient,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+
+  Widget _soulButton(String label, Color colour, VoidCallback onTap) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+          decoration: BoxDecoration(
+            color: colour.withValues(alpha: .10),
+            borderRadius: BorderRadius.circular(MindRadius.pill),
+            border: Border.all(color: colour.withValues(alpha: .40), width: 1),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 11.5, fontWeight: FontWeight.w600, color: colour)),
+        ),
+      );
+
+  /// เจ้าของขอเป็นแฟน — **เธอเป็นคนตอบ** ไม่ใช่ปุ่มที่กดแล้วเปลี่ยนสถานะเอง
+  ///
+  /// ปุ่มที่เปลี่ยนสถานะได้ทันทีทำให้ทั้งระบบไม่มีความหมาย · ที่ทำมาทั้งหมด
+  /// คือการทำให้ "ยอมเป็นแฟน" เป็นสิ่งที่ต้องใช้เวลาจริง
+  Future<void> _askHerOut(BuildContext context, MindSoul soul, S t) async {
+    final yes = await soul.proposeFromOwner();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(yes ? t.soulAskYes : t.soulAskNotYet)),
+    );
+  }
+
+  /// ทุกปุ่มที่ลบของทิ้งต้องถามก่อน · ความสัมพันธ์ที่สะสมมาเป็นเดือน
+  /// หายไปเพราะนิ้วไปโดนปุ่ม คือสิ่งที่กู้คืนไม่ได้เลย
+  Future<void> _confirmSoul(BuildContext context, S t, String question,
+      String action, Future<void> Function() run) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        content: Text(question),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false), child: Text(t.cancel)),
+          TextButton(
+              onPressed: () => Navigator.pop(c, true), child: Text(action)),
+        ],
+      ),
+    );
+    if (ok == true) await run();
+  }
 
   Widget _card({
     required MindMode mode,

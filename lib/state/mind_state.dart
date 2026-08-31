@@ -8,6 +8,7 @@ import '../memory/distiller.dart';
 import '../calendar/device_calendar.dart';
 import '../journal/mind_journal.dart';
 import '../memory/mind_memory.dart';
+import '../persona/mind_soul.dart';
 import '../phone/call_watch.dart';
 import '../ai/brain_provider.dart';
 import '../ai/local_brain.dart';
@@ -69,6 +70,16 @@ class MindState extends ChangeNotifier {
   CallWatch? _calls;
 
   void attachCalls(CallWatch c) => _calls = c;
+
+  /// ตัวตนกับความสัมพันธ์ของเธอ — ราศี ความผูกพัน งอน
+  ///
+  /// ต่อเข้ามาทีหลังเหมือนปฏิทินและสมุดบันทึก · null ได้จริงในเทสต์
+  /// และตอนนั้น prompt จะไม่มีบล็อกตัวตน ซึ่งเป็นพฤติกรรมเดิมก่อนมีฟีเจอร์นี้
+  MindSoul? _soul;
+
+  MindSoul? get soul => _soul;
+
+  void attachSoul(MindSoul s) => _soul = s;
 
   /// ฉีดนาฬิกาเข้ามาได้เพื่อให้เทสต์โหมดอัตโนมัติได้โดยไม่ต้องรอถึงสองทุ่ม
   final DateTime Function() _clock;
@@ -487,6 +498,7 @@ class MindState extends ChangeNotifier {
       ownerProfile: _ownerProfile,
       boundaries: _boundaries,
       onCall: true,
+      soul: _soul,
       memories: memory.promptBlock(),
       schedule: _calendar?.promptBlock() ?? '',
       calls: _calls?.promptBlock() ?? '',
@@ -634,6 +646,12 @@ class MindState extends ChangeNotifier {
     _push(ChatMessage.her(reply));
     _sending = false;
     _notify();
+
+    // คุยกันจบหนึ่งตาแล้ว — ความผูกพันขยับตรงนี้ ไม่ใช่ตอนกดส่ง
+    //
+    // นับตอนกดส่งจะได้คะแนนจากข้อความที่ยังไม่มีใครตอบ ซึ่งรวมถึงตอนที่
+    // เน็ตหลุดแล้วไม่มีบทสนทนาเกิดขึ้นจริงเลย
+    await _soul?.talked();
 
     await _speakIfEnabled(reply);
   }
@@ -853,6 +871,7 @@ class MindState extends ChangeNotifier {
       flirt: effectiveFlirt,
       ownerProfile: _ownerProfile,
       boundaries: _boundaries,
+      soul: _soul,
       memories: memory.promptBlock(),
       schedule: _calendar?.promptBlock() ?? '',
       calls: _calls?.promptBlock() ?? '',
@@ -969,6 +988,28 @@ class MindState extends ChangeNotifier {
         }
       }
       if (kept > 0) debugPrint('memory: จำเพิ่ม $kept เรื่อง');
+
+      // 🔴 อ่านคะแนนจากคำตอบ**ก้อนเดียวกัน** ไม่ได้เรียกโมเดลเพิ่ม
+      //
+      // การถามว่า "เมื่อกี้เขาดีกับเธอไหม" ทุกข้อความ = จ่ายสองเท่าตลอดเวลา
+      // เพื่อวัดสิ่งที่เปลี่ยนช้ากว่านั้นมาก · หกตาต่อรอบพอดีกับจังหวะที่
+      // อารมณ์เปลี่ยนจริง และฟรีเพราะขอติดไปกับรอบสกัดความจำที่มีอยู่แล้ว
+      final treat = parseTreatment(raw);
+      if (treat != null && treat != 0) {
+        debugPrint('soul: เจ้าของปฏิบัติกับเธอระดับ $treat');
+        await _soul?.treated(treat);
+      }
+
+      // 🔴 ตัวขับความผูกพันตัวจริง — ไม่ใช่จำนวนข้อความ
+      //
+      // สั่งงานอย่างเดียวได้ 0 แล้วความผูกพันแทบไม่ขยับ ต่อให้พิมพ์ทั้งวัน
+      // เส้นทาง 13–15 วันจึงเป็น **กรณีเร็วที่สุด** ที่ต้องตั้งใจจีบจริง ๆ
+      // ทุกวัน ไม่ใช่ระยะเวลามาตรฐานที่ใครก็ถึง
+      final woo = parseWooing(raw);
+      if (woo != null && woo > 0) {
+        debugPrint('soul: เจ้าของเข้าหาเธอระดับ $woo');
+        await _soul?.wooed(woo);
+      }
     } catch (e) {
       debugPrint('memory: สกัดไม่สำเร็จ — $e');
     }

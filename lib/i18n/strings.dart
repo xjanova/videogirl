@@ -601,6 +601,133 @@ class S {
             'Try the other audio path in Settings.',
       );
 
+  // ═══ ตัวตนของเธอ ════════════════════════════════════════
+  String get sectionSoul => _('ตัวตนของเธอ', 'Who she is');
+  String get soulWhy => _(
+        'มายด์ของแต่ละคนไม่เหมือนกัน — วันที่คุณเปิดแอปครั้งแรกคือวันเกิดของเธอ '
+            'ราศีจึงต่างกันไปตามคนโหลด และพื้นนิสัยก็ต่างกันจริง '
+            'ข้อมูลราศีมาจากคลังความรู้แม่หมอของไทยพร๊อม',
+        "Every Mind is different — the day you first opened the app is her birthday, "
+            "so her sign differs from everyone else's, and so does her nature. "
+            "The zodiac material comes from Thaiprompt's fortune-telling knowledge base.",
+      );
+  String soulBorn(String date) => _('เกิด $date', 'Born $date');
+  String soulKnown(int days) =>
+      _('รู้จักกันมา $days วัน', 'Together for $days days');
+  String get soulNature => _('นิสัยติดตัว', 'By nature');
+  String get soulFlaws => _('ข้อเสียที่เธอไม่ปิด', 'Flaws she does not hide');
+  String get soulIntensity => _('ความแรง', 'Intensity');
+  String get soulSweetness => _('ความอ่อนโยน', 'Gentleness');
+  String get soulBondTitle => _('ความสัมพันธ์', 'Relationship');
+  String get soulAffection => _('ความผูกพัน', 'Attachment');
+
+  String get bondStranger => _('เพิ่งรู้จักกัน', 'Barely acquainted');
+  String get bondFamiliar => _('เริ่มคุ้นเคย', 'Getting familiar');
+  String get bondClose => _('สนิทกันแล้ว', 'Close');
+  String get bondCourting => _('เธอเปิดใจแล้ว', 'She has opened up');
+  String get bondTogether => _('เป็นแฟนกัน', 'Together');
+
+  String soulTogetherSince(String date) =>
+      _('ตั้งแต่ $date', 'Since $date');
+  String soulSulking(int level) =>
+      _('กำลังงอนอยู่ $level%', 'Sulking, $level%');
+  String get soulWantsToAsk => _(
+        'ท่าทางเธอมีอะไรอยากบอก',
+        'She looks like she has something to say',
+      );
+
+  /// การ์ดที่โผล่ในแผงแชทตอนเธอพร้อมแล้ว — ไม่ใช่แค่ป้ายในหน้าตั้งค่า
+  ///
+  /// เธอเปรยในบทสนทนาได้ (เข้า prompt แล้ว) แต่คำว่า "ตกลง" ที่พิมพ์ไป
+  /// เปลี่ยนสถานะจริงไม่ได้ · การ์ดนี้คือที่ที่วงจรปิด
+  String get soulProposal => _(
+        'มายด์พร้อมเป็นแฟนคุณแล้ว จะตกลงไหม',
+        'Mind is ready to be your girlfriend. Do you want that too?',
+      );
+  String get soulYesPlease => _('ตกลง', 'Yes');
+  String get soulNotNow => _('ยังก่อน', 'Not yet');
+
+  // ═══ ชื่อที่เราตั้งให้เธอ ════════════════════════════════
+  //
+  // ตั้งได้เมื่อเป็นแฟนกันแล้วเท่านั้น — ดู MindSoul.mayRename
+  String get soulNameAsk => _(
+        'อยากเรียกเธอว่าอะไรดี',
+        'What would you like to call her?',
+      );
+  String get soulNameHint => _('ชื่อที่จะใช้เรียกเธอ', 'The name you will use');
+  String get soulNameSave => _('ตั้งชื่อนี้', 'Use this name');
+  String get soulNameKeep => _('ใช้ชื่อเดิม', 'Keep her name');
+  String soulNameNow(String name) => _('ตอนนี้เรียกว่า $name', 'Called $name now');
+  String get soulNameLocked => _(
+        'ตั้งชื่อให้เธอได้เมื่อเป็นแฟนกันแล้ว',
+        'You can name her once you are together',
+      );
+
+  /// เหตุผลที่ชื่อใช้ไม่ได้ — ต้องบอกให้ตรงข้อ ไม่ใช่ "ใช้ไม่ได้" ลอย ๆ
+  /// ไม่งั้นคนจะลองสุ่มไปเรื่อยแล้วเลิกไปเอง
+  String get nameTooShort => _('สั้นไปหน่อย', 'A bit too short');
+  String nameTooLong(int max) =>
+      _('ยาวเกินไป เอาไม่เกิน $max ตัว', 'Too long — keep it under $max characters');
+  String get nameBadChars => _(
+        'ใช้ได้แค่ตัวอักษร ไม่เอาตัวเลขหรือสัญลักษณ์',
+        'Letters only — no digits or symbols',
+      );
+  String get nameTooManyWords =>
+      _('เอาสั้น ๆ ไม่เกินสองคำ', 'Keep it to two words at most');
+  String get nameNotPronounceable =>
+      _('อันนี้เรียกไม่ได้จริงนะ', 'That is not something you can actually say');
+  String get nameRude => _('คำนี้ไม่เอานะ', 'Not that word');
+
+  String get soulAsk => _('ขอเป็นแฟน', 'Ask her out');
+  String get soulAskYes => _(
+        'เธอตอบตกลง',
+        'She said yes',
+      );
+  String get soulAskNotYet => _(
+        'เธอยังไม่พร้อม — คุยกันอีกสักพักก่อนนะ',
+        'She is not ready yet — give it more time',
+      );
+  String get soulBreakUp => _('เลิกกัน', 'Break up');
+  String get soulBreakUpAsk => _(
+        'เลิกกับมายด์? ความผูกพันจะหายไปครึ่งหนึ่ง และเธอจะงอนอยู่พักใหญ่',
+        'Break up with Mind? Half the attachment goes, and she will sulk for a while.',
+      );
+  String get soulResetBond => _('ล้างความสัมพันธ์', 'Reset the relationship');
+  String get soulResetBondAsk => _(
+        'ล้างความสัมพันธ์ทั้งหมด? เริ่มนับหนึ่งใหม่ แต่เธอยังเป็นราศีเดิม',
+        'Wipe the whole relationship? It starts from zero, but she keeps her sign.',
+      );
+  String get soulForget => _('ให้เธอเกิดใหม่', 'Let her be reborn');
+  String get soulForgetAsk => _(
+        'ให้เธอเกิดใหม่วันนี้? ราศีและนิสัยจะเปลี่ยนไปตามวันนี้ '
+            'และความสัมพันธ์ทั้งหมดหายไปด้วย',
+        'Let her be reborn today? Her sign and nature change to match today, '
+            'and the whole relationship goes with it.',
+      );
+
+  // ═══ หน้าต่างสเตตัสของเธอ ═══════════════════════════════
+  String get soulStatus => _('สเตตัสของเธอ', 'Her status');
+  String get soulStatusOpen => _('ดูสเตตัสของเธอ', 'Check her status');
+  String get soulMood => _('อารมณ์', 'Mood');
+  String get soulBirthdayToday =>
+      _('วันนี้วันเกิดเธอ', 'It is her birthday today');
+  String soulBirthdayIn(int days) =>
+      _('อีก $days วันวันเกิดเธอ', 'Her birthday is in $days days');
+
+  /// บอกว่าทำไมคะแนนถึงลง · ไม่มีบรรทัดนี้ คะแนนที่ลดลงจะดูเหมือนระบบพัง
+  String soulColdFor(int days) => _(
+        'ไม่ได้จีบกันมา $days วันแล้ว ความผูกพันเลยค่อย ๆ ลดลง',
+        'No real attention for $days days — the bond is slipping',
+      );
+
+  /// อารมณ์ที่สรุปจากตัวเลข — คนอ่านตัวเลขไม่ออกว่าแปลว่าอะไร
+  String get moodSulking => _('งอนอยู่', 'Sulking');
+  String get moodHurt => _('น้อยใจ', 'Hurt');
+  String get moodMissing => _('คิดถึง', 'Missing you');
+  String get moodFond => _('อารมณ์ดี', 'In good spirits');
+  String get moodWarm => _('ใจดีเป็นพิเศษ', 'Especially warm');
+  String get moodCalm => _('ปกติ', 'Normal');
+
   // ═══ ช่องเสียงเข้าสาย ═══════════════════════════════════
   String get callStreamTitle => _('ทางที่เสียงเธอวิ่งเข้าสาย', 'How her voice reaches the call');
   String get callStreamWhy => _(
@@ -751,6 +878,13 @@ class S {
   /// "พฤหัสบดี 31 ส.ค." — ไม่ใส่ปีเพราะหน้านี้มองไปข้างหน้าแค่สัปดาห์เดียว
   String dayLabel(DateTime d) =>
       '${weekdayNames[d.weekday - 1]} ${d.day} ${monthShort[d.month - 1]}';
+
+  /// "31 ส.ค. 2026" — มีปี ใช้กับวันที่ที่อยู่ไกลจากวันนี้ได้ เช่น วันเกิด
+  ///
+  /// ปีเป็น ค.ศ. ทั้งสองภาษาโดยตั้งใจ · แปลงเป็น พ.ศ. เฉพาะฝั่งไทยจะทำให้
+  /// เลขเดียวกันในเครื่องเดียวกันอ่านได้สองแบบ แล้วแต่ว่าตอนนั้นตั้งภาษาอะไร
+  String dateLabel(DateTime d) =>
+      '${d.day} ${monthShort[d.month - 1]} ${d.year}';
 
   String get calLoading => _('กำลังดูปฏิทินให้', 'Checking your calendar');
   String get calToday => _('วันนี้', 'Today');

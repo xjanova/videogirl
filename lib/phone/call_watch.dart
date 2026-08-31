@@ -113,6 +113,14 @@ class CallWatch extends ChangeNotifier {
 
   void attachJournal(MindJournal j) => _journal = j;
 
+  /// เรียกครั้งเดียวต่อสายที่เพิ่งวาง
+  ///
+  /// แขวนไว้ตรงนี้แทนที่จะให้ผู้ฟังไปเดาเอาจาก [recent] เพราะการกันไม่ให้
+  /// นับซ้ำอยู่ที่ [_recordLatest] อยู่แล้ว (สายเก่ากว่า 5 นาที และ id ซ้ำ
+  /// ถูกตัดทิ้งที่นั่น) · ให้คนอื่นไปเขียนตรรกะเดียวกันซ้ำ = วันหนึ่งสองที่
+  /// จะไม่ตรงกัน แล้วมายด์จะงอนซ้ำสองรอบจากสายเดียว
+  void Function(CallEvent call)? onCallEnded;
+
   CallStage _stage = CallStage.idle;
   CallStage get stage => _stage;
 
@@ -267,7 +275,12 @@ class CallWatch extends ChangeNotifier {
   /// การรอเขียนดิสก์จึงไม่ได้ทำให้อะไรช้าลง · แลกมาด้วยพฤติกรรมที่กำหนด
   /// เวลาได้แน่นอน ซึ่งเป็นเงื่อนไขที่ทำให้เทสต์เรื่องนี้เชื่อถือได้
   Future<void> _recordLatest() async {
-    if (_recent.isEmpty || _journal == null) return;
+    // 🔴 ไม่เช็ค `_journal == null` ตรงนี้แล้ว
+    //
+    // เคยเช็ครวมกัน ซึ่งแปลว่าถ้าไม่มีสมุดบันทึก **[onCallEnded] ก็ไม่ยิงด้วย**
+    // ทั้งที่เป็นคนละเรื่องกันสิ้นเชิง · การผูกสองอย่างที่ไม่เกี่ยวกันไว้ด้วย
+    // เงื่อนไขเดียวคือกับดักที่ไม่มีทางเห็นจนกว่าจะมีคนใช้อีกทางโดยไม่มีอีกทาง
+    if (_recent.isEmpty) return;
     final c = _recent.first;
 
     // สายที่จบไปนานแล้วไม่ใช่สายที่เพิ่งวาง — กันการจดซ้ำตอนรีเฟรชเฉย ๆ
@@ -275,7 +288,8 @@ class CallWatch extends ChangeNotifier {
     if (c.id == _lastRecordedId) return;
     _lastRecordedId = c.id;
 
-    await _journal!.record(JournalKind.call, c.who, detail: c.type.name);
+    await _journal?.record(JournalKind.call, c.who, detail: c.type.name);
+    onCallEnded?.call(c);
   }
 
   int? _lastRecordedId;

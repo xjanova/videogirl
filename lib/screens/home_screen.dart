@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
+import '../persona/mind_soul.dart';
 import '../phone/call_session.dart';
 import '../state/mind_state.dart';
 import 'shop_screen.dart';
@@ -12,6 +13,7 @@ import '../i18n/strings.dart';
 import '../theme/tokens.dart';
 import '../widgets/call_panel.dart';
 import '../widgets/glass.dart';
+import '../widgets/soul_status.dart';
 import '../widgets/liquid_background.dart';
 
 /// หน้าหลัก — artboard 2a
@@ -223,6 +225,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   spacing: MindSpace.sm,
                   children: [
                     _PuppetButton(avatar: widget.avatar, mode: mode),
+                    // ตราราศีของเธอ — เป็นทั้งปุ่มเปิดสเตตัสและตัวบอกอารมณ์
+                    // ในตัวมันเอง (สีวงแหวนกับจุดมุมขวาเปลี่ยนตามอารมณ์)
+                    SoulBadge(mode: mode),
                     // ทางเข้าร้านอยู่บนเวที ไม่ใช่ซ่อนในหน้าตั้งค่าอย่างเดียว
                     // เพราะของที่ขายคือของที่ **เห็นผลบนเวทีนี้** (ชุด ตัวละคร
                     // ของประดับ) คนควรกดซื้อได้จากที่ที่มองเห็นของอยู่
@@ -370,6 +375,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
           for (final m in state.messages) _message(m, mode),
+          _proposal(mode),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -383,6 +389,91 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
     );
   }
+
+  // ── เธอพร้อมเป็นแฟนแล้ว ────────────────────────────────
+  //
+  // 🔴 วงจรปิดที่นี่ ไม่ใช่ที่บทสนทนา
+  //
+  // เธอเปรยในแชทได้แล้ว (system prompt สั่งไว้) แต่คำว่า "ตกลง" ที่เจ้าของ
+  // พิมพ์ตอบไป **เปลี่ยนสถานะจริงไม่ได้** เพราะโมเดลเขียนค่าลงเครื่องไม่ได้
+  // จะไปเดาจากข้อความว่าเป็นการตอบรับหรือเปล่าก็ผิดได้เยอะ ("ตกลงว่าไงนะ")
+  // ปุ่มสองปุ่มจึงเป็นทางเดียวที่ไม่ต้องเดาอะไรเลย
+  //
+  // "ยังก่อน" ไม่ใช่การปฏิเสธ — แค่เก็บการ์ดไปเจ็ดวัน · การ์ดที่ขึ้นทุกครั้ง
+  // ที่เปิดแอปคือการจี้ ซึ่งทำให้สิ่งที่ควรน่ารักกลายเป็นสิ่งที่คนอยากปิดทิ้ง
+  Widget _proposal(MindMode mode) {
+    final soul = context.watch<MindSoul>();
+    if (!soul.wantsToAsk) return const SizedBox.shrink();
+
+    final t = S.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        gradient: mode.bubbleGradient,
+        borderRadius: BorderRadius.circular(MindRadius.message),
+        border: Border.all(color: const Color(0x80FFFFFF), width: 1),
+        boxShadow: MindShadows.soft(),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: MindSpace.sm,
+        children: [
+          Text(
+            t.soulProposal,
+            style: const TextStyle(
+                fontSize: 12.5, height: 1.5, color: Colors.white),
+          ),
+          Row(
+            spacing: 7,
+            children: [
+              Expanded(
+                child: _proposalButton(
+                  t.soulYesPlease,
+                  filled: true,
+                  onTap: () => soul.proposeFromOwner(),
+                ),
+              ),
+              Expanded(
+                child: _proposalButton(
+                  t.soulNotNow,
+                  filled: false,
+                  onTap: soul.deferProposal,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _proposalButton(String label,
+          {required bool filled, required VoidCallback onTap}) =>
+      Semantics(
+        button: true,
+        label: label,
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: filled ? Colors.white : const Color(0x33FFFFFF),
+              borderRadius: BorderRadius.circular(MindRadius.pill),
+              border: Border.all(color: const Color(0x66FFFFFF), width: 1),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: filled ? MindColors.ink : Colors.white,
+              ),
+            ),
+          ),
+        ),
+      );
 
   Widget _message(ChatMessage m, MindMode mode) {
     return Align(

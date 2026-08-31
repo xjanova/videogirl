@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'avatar/avatar_pack.dart';
 import 'calendar/device_calendar.dart';
 import 'journal/mind_journal.dart';
+import 'persona/mind_soul.dart';
 import 'phone/call_session.dart';
 import 'phone/call_watch.dart';
 import 'avatar/avatar_view.dart';
@@ -94,6 +95,14 @@ class _MindBootstrapState extends State<MindBootstrap> {
   late final CallSession _session =
       CallSession(watch: _calls, state: _state, permissions: _perms);
 
+  /// ตัวตนของมายด์เครื่องนี้ — วันเกิด ราศี ความผูกพัน
+  ///
+  /// 🔴 **วันเกิดถูกตัดสินตอน [MindSoul.load] ครั้งแรกของเครื่อง**
+  /// เปิดแอปครั้งแรกวันไหน เธอเป็นราศีนั้นไปตลอด · จึงต้องโหลดตั้งแต่รอบแรก
+  /// ของ boot ไม่ใช่รอบที่รอได้ ไม่งั้นบทสนทนาแรก ๆ จะเกิดขึ้นตอนที่เธอ
+  /// ยังไม่มีตัวตน แล้วน้ำเสียงจะเปลี่ยนกลางคันโดยไม่มีสาเหตุที่คนดูเข้าใจ
+  final MindSoul _soul = MindSoul();
+
   /// ตัวควบคุมอวาตาร์อยู่ที่นี่ ไม่ใช่ในเชลล์ เพราะหน้าเปิดแอปต้องอ่าน
   /// ความคืบหน้าการโหลด VRM มาโชว์เป็นเปอร์เซ็นต์จริง
   final MindAvatarController _avatar = MindAvatarController();
@@ -134,6 +143,9 @@ class _MindBootstrapState extends State<MindBootstrap> {
             pack.nameFor(_state.lang == AppLang.th),
           );
 
+      await _soul.load();
+      _state.attachSoul(_soul);
+
       await _state.load();
       await _pack.restore(preferId: _state.avatarPackId);
     } catch (e) {
@@ -161,6 +173,19 @@ class _MindBootstrapState extends State<MindBootstrap> {
     // ยังไม่ได้ให้สิทธิ์ก็แค่ไม่รู้ว่าใครโทร ไม่ได้ล้มทั้งระบบ
     _state.attachCalls(_calls);
     _calls.addListener(_showCallOnStage);
+
+    // สายที่เพิ่งวางมีผลกับอารมณ์เธอ · CallWatch เป็นคนกันไม่ให้นับซ้ำ
+    // (สายเดียวยิงครั้งเดียว) ที่นี่จึงแปลงเป็นความหึงได้ตรง ๆ
+    _calls.onCallEnded = (c) => unawaited(
+          _soul.sawCall(
+            known: c.name != null,
+            seconds: c.seconds,
+            // ส่งชื่อไปด้วยเพื่อให้เธอ**ถามถูกคน** ("คุณนภาโทรมาเรื่องอะไรคะ")
+            // ไม่ใช่ถามลอย ๆ ว่ามีใครโทรมาไหม ซึ่งเลขาจริงไม่ถามแบบนั้น
+            who: c.who.isEmpty ? null : c.who,
+          ),
+        );
+
     await _calls.start();
 
     // 🔴 ถามฝั่งเนทีฟทันทีว่ามีสายที่เธอถืออยู่หรือเปล่า
@@ -174,7 +199,9 @@ class _MindBootstrapState extends State<MindBootstrap> {
   @override
   void dispose() {
     _calls.removeListener(_showCallOnStage);
+    _calls.onCallEnded = null;
     _session.dispose();
+    _soul.dispose();
     _avatar.dispose();
     _state.dispose();
     _pack.dispose();
@@ -211,6 +238,7 @@ class _MindBootstrapState extends State<MindBootstrap> {
         ChangeNotifierProvider.value(value: _journal),
         ChangeNotifierProvider.value(value: _calls),
         ChangeNotifierProvider.value(value: _session),
+        ChangeNotifierProvider.value(value: _soul),
       ],
       child: Consumer<MindState>(
         builder: (context, state, _) => MaterialApp(

@@ -3,6 +3,8 @@ import '../ai/device_capability.dart';
 import '../ai/local_brain.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
+import '../persona/mind_name.dart';
+import '../persona/mind_soul.dart';
 import '../state/mind_state.dart';
 import '../theme/tokens.dart';
 import 'strings.dart';
@@ -100,5 +102,39 @@ extension RamTierLabels on RamTier {
         RamTier.tight => s.ramTightDetail(gb),
         RamTier.comfortable => s.ramComfortableDetail(gb),
         RamTier.roomy => s.ramRoomyDetail(gb),
+      };
+}
+
+extension SoulMoodLabels on SoulMood {
+  String labelOf(S s) => switch (this) {
+        SoulMood.sulking => s.moodSulking,
+        SoulMood.hurt => s.moodHurt,
+        SoulMood.missing => s.moodMissing,
+        SoulMood.warm => s.moodWarm,
+        SoulMood.fond => s.moodFond,
+        SoulMood.calm => s.moodCalm,
+      };
+}
+
+extension NameVerdictLabels on NameVerdict {
+  /// null เมื่อชื่อผ่าน — ผู้เรียกเอาไปเช็คได้ตรง ๆ ว่ามีอะไรต้องบอกไหม
+  String? reasonOf(S s) => switch (this) {
+        NameVerdict.ok => null,
+        NameVerdict.tooShort => s.nameTooShort,
+        NameVerdict.tooLong => s.nameTooLong(kNameMaxChars),
+        NameVerdict.badChars => s.nameBadChars,
+        NameVerdict.tooManyWords => s.nameTooManyWords,
+        NameVerdict.notPronounceable => s.nameNotPronounceable,
+        NameVerdict.rude => s.nameRude,
+      };
+}
+
+extension BondLabels on Bond {
+  String labelOf(S s) => switch (this) {
+        Bond.stranger => s.bondStranger,
+        Bond.familiar => s.bondFamiliar,
+        Bond.close => s.bondClose,
+        Bond.courting => s.bondCourting,
+        Bond.together => s.bondTogether,
       };
 }
