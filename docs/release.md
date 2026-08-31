@@ -78,6 +78,29 @@ keyPassword=...
 
 `storeFile` เป็น path ที่นับจาก `android/app/` ไม่ใช่จากรากโปรเจกต์
 
+## ขนาด APK — ตัดอะไรออกไปบ้าง
+
+271 MB → ~79 MB · **ที่ใหญ่ไม่เคยเป็นโมเดลภาษา** (โมเดล Gemma โหลดตอนรัน
+จาก HuggingFace ไม่ได้อยู่ใน APK) แต่เป็น `.so` ของ MediaPipe/LiteRT ที่
+`flutter_gemma` ลากมา
+
+ตัดสองก้อนใน `packaging { jniLibs { excludes } }` ของ
+[build.gradle.kts](../android/app/build.gradle.kts):
+
+| ตัดอะไร | ได้คืน |
+|---|---|
+| `lib/x86*`, `lib/armeabi-v7a` | ~106 MB |
+| ไลบรารี RAG / vision / image-gen ที่แอปไม่ได้เรียก 7 ตัว | ~85 MB |
+
+**ห้ามใช้ `ndk { abiFilters }` แทน — มันไม่กรองอะไรเลย** วัดจาก APK จริงแล้ว
+ตั้ง abiFilters เป็น arm64+v7a แต่ x86_64 ยังหลุดมาครบ 71.6 MB รวม
+`libflutter.so` ของ x86_64 ด้วย ส่วน `--target-platform android-arm64` ก็คุมได้
+แค่ `.so` ที่ Flutter สร้างเอง ไม่ถึง `.so` ที่มาจาก AAR ของ plugin
+
+🔴 **วันไหนจะใช้ RAG / ความจำแบบเวกเตอร์ / วิเคราะห์ภาพ ต้องกลับไปลบบรรทัด
+ที่เกี่ยวออกจาก excludes ก่อน** ไม่งั้นได้ `UnsatisfiedLinkError` ตอนรันจริง
+โดยไม่มีอะไรเตือนตอน build
+
 ## เวอร์ชัน Flutter ถูกตรึงไว้
 
 workflow ตรึง `flutter-version: 3.41.7` ไม่ใช้ `channel: stable` ลอย ๆ

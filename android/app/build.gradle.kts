@@ -98,6 +98,31 @@ android {
                         // รุ่นนั้นไว้หมดแล้ว · ผลพลอยได้: Android ปฏิเสธการติดตั้ง
                         // ให้เองตั้งแต่แรก ไม่ต้องรอหน้ากั้นในแอป
                         "lib/armeabi-v7a/**",
+
+                        // ── ของที่ flutter_gemma ลากมาแต่แอปนี้ไม่ได้เรียกเลย ──
+                        //
+                        // รวม ~85 MB · local_brain.dart ใช้แค่ createModel กับ
+                        // createChat (คุยเป็นข้อความล้วน) ไม่แตะ embedding, RAG,
+                        // vector store, vision หรือ image generation สักตัว
+                        //
+                        // ตรวจก่อนตัดแล้วว่าปลอดภัย:
+                        //  · llvm-readelf -d บน libllm_inference_engine_jni.so
+                        //    กับ liblitertlm_jni.so — ไม่มีตัวไหนใน 7 ตัวนี้อยู่ใน
+                        //    NEEDED เลย มีแต่ system lib
+                        //  · ปลั๊กอิน flutter_gemma ไม่มี System.loadLibrary เอง
+                        //    การโหลดอยู่ใน static initializer ของคลาส MediaPipe
+                        //    แต่ละตัว = โหลดตอนใช้ ไม่ใช่ตอนเปิดแอป
+                        //
+                        // 🔴 **ถ้าวันหนึ่งจะใช้ RAG / ความจำแบบเวกเตอร์ / วิเคราะห์ภาพ
+                        // ต้องกลับมาลบบรรทัดที่เกี่ยวออกก่อน** ไม่งั้นจะได้
+                        // UnsatisfiedLinkError ตอนรันจริง ซึ่งไม่มีอะไรเตือนตอน build
+                        "lib/**/libgemma_embedding_model_jni.so",
+                        "lib/**/libgecko_embedding_model_jni.so",
+                        "lib/**/libtext_chunker_jni.so",
+                        "lib/**/libsqlite_vector_store_jni.so",
+                        "lib/**/libmediapipe_tasks_vision_jni.so",
+                        "lib/**/libmediapipe_tasks_vision_image_generator_jni.so",
+                        "lib/**/libimagegenerator_gpu.so",
                     )
                 }
             }
