@@ -86,7 +86,8 @@ class _UpdateCardState extends State<UpdateCard> {
             Text(
               up.stage == UpdateStage.verifying
                   ? S.of(context).updateVerifying
-                  : S.of(context).updateProgress((up.progress * 100).round()),
+                  : S.of(context).updateProgress(
+                      up.progressLabel, (up.progress * 100).round()),
               style: const TextStyle(fontSize: 10.5, color: MindColors.ink55),
             ),
           ],

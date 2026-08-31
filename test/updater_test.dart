@@ -37,4 +37,46 @@ void main() {
       expect(Updater.isNewer('1.0.0', ''), isTrue);
     });
   });
+
+  // ผู้ใช้ต้องไม่มีทางรู้ว่าไฟล์อัปเดตมาจากบริการไหน · ด่านนี้อยู่ฝั่งแอป
+  // เพราะรุ่นที่ปล่อยไปแล้วแก้เนื้อย้อนหลังไม่ได้ (v0.1.0-v0.1.2 มีลิงก์ติดมา)
+  // และเนื้อ release แก้ด้วยมือทีหลังได้เสมอ
+  group('ล้างบันทึกรุ่นก่อนขึ้นจอ', () {
+    test('บรรทัด Full Changelog ที่มีลิงก์ต้องหายทั้งบรรทัด', () {
+      // นี่คือเนื้อจริงของ v0.1.0 ที่ปล่อยไปแล้ว
+      const raw = '**Full Changelog**: https://github.com/xjanova/videogirl'
+          '/commits/v0.1.0';
+      expect(Updater.cleanNotes(raw), isEmpty);
+    });
+
+    test('ไม่ว่าเนื้อจะเป็นยังไง ต้องไม่มีลิงก์หลุดออกไป', () {
+      const raw = 'ซ่อมเสียง see https://example.com/a?b=1 แล้ว';
+      final out = Updater.cleanNotes(raw);
+      expect(out, isNot(contains('http')));
+      expect(out, contains('ซ่อมเสียง'));
+    });
+
+    test('ชื่อบัญชีของระบบต้นทางต้องไม่หลุดไปด้วย', () {
+      expect(Updater.cleanNotes('ซ่อมโดย @xjanova แล้ว'), isNot(contains('@')));
+    });
+
+    test('มาร์กดาวน์ที่ Text เรนเดอร์ไม่ได้ต้องไม่โผล่เป็นสัญลักษณ์เปล่า', () {
+      final out = Updater.cleanNotes('## What \n* ซ่อมเสียงแล้ว');
+      expect(out, isNot(contains('#')));
+      expect(out, isNot(contains('*')));
+      expect(out, contains('ซ่อมเสียงแล้ว'));
+    });
+
+    test('ข้อความปกติต้องอยู่ครบ ไม่ใช่ล้างจนหมด', () {
+      const raw = '· ซ่อมเสียง\n· กันเครื่องสเปคไม่ถึง';
+      final out = Updater.cleanNotes(raw);
+      expect(out.split('\n').length, 2);
+      expect(out, contains('กันเครื่องสเปคไม่ถึง'));
+    });
+
+    test('เนื้อว่างต้องไม่พัง', () {
+      expect(Updater.cleanNotes(''), isEmpty);
+      expect(Updater.cleanNotes('\n\n  \n'), isEmpty);
+    });
+  });
 }

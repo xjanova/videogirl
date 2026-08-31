@@ -753,16 +753,22 @@ class S {
   String get updateReady => _('พร้อมติดตั้งแล้ว', 'Ready to install');
   String updateCurrent(String v) =>
       _('รุ่นปัจจุบัน $v — ใหม่ล่าสุดแล้ว', 'Version $v — up to date');
+  /// 🔴 **ห้ามบอกว่าไฟล์มาจากที่ไหน** — ผู้ใช้ควรเห็นแค่ว่า "แอปนี้อัปเดตตัวเอง"
+  /// ไม่ใช่ชื่อบริการที่เราไปฝากไฟล์ไว้ · บรรทัดนี้ยังคงคำมั่นเรื่องความปลอดภัย
+  /// ไว้ครบ เพราะทั้งสองอย่างเป็นเรื่องจริงและเป็นสิ่งที่ผู้ใช้ต้องรู้จริง ๆ
   String get updateSource => _(
-        'อ่านจาก GitHub Releases · ตรวจ SHA-256 ก่อนติดตั้งทุกครั้ง',
-        'Read from GitHub Releases · SHA-256 verified before every install',
+        'ตรวจ SHA-256 ทุกไฟล์ก่อนติดตั้ง · ติดตั้งเมื่อคุณกดเท่านั้น',
+        'Every file is SHA-256 verified · installs only when you tap',
       );
   String get updateRecheck => _('เช็คใหม่', 'Check again');
   String get updateVerifying => _(
         'กำลังตรวจว่าไฟล์ตรงกับที่ประกาศไว้…',
         'Verifying the file matches what was published…',
       );
-  String updateProgress(int pct) => _('ดาวน์โหลดแล้ว $pct%', 'Downloaded $pct%');
+  /// บอกเป็นเมกะไบต์ด้วย ไม่ใช่เปอร์เซ็นต์ลอย ๆ — ผู้ใช้ต้องประเมินได้ว่า
+  /// เหลืออีกเท่าไหร่และควรรอต่อไหม (หลักเดียวกับตัวโหลดโมเดลใน local_brain)
+  String updateProgress(String done, int pct) =>
+      _('ดาวน์โหลดแล้ว $done · $pct%', 'Downloaded $done · $pct%');
   String updateInstall(String size) =>
       _('ดาวน์โหลดและติดตั้ง · $size', 'Download and install · $size');
 

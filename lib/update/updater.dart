@@ -74,6 +74,16 @@ class Updater extends ChangeNotifier {
   double _progress = 0;
   double get progress => _progress;
 
+  int _received = 0;
+  int _total = 0;
+
+  /// "12.4 / 80.0 MB" — ผู้ใช้ต้องเห็นว่าเหลืออีกเท่าไหร่ ไม่ใช่เปอร์เซ็นต์ลอย ๆ
+  /// (หลักเดียวกับตัวโหลดโมเดลใน local_brain.dart)
+  String get progressLabel =>
+      '${_mb(_received)} / ${_mb(_total)} MB';
+
+  static String _mb(int bytes) => (bytes / 1048576).toStringAsFixed(1);
+
   String? _error;
   String? get error => _error;
 
@@ -133,7 +143,7 @@ class Updater extends ChangeNotifier {
       final apkName = '${apk['name']}';
       _pending = UpdateInfo(
         version: latest,
-        notes: '${json['body'] ?? ''}'.trim(),
+        notes: cleanNotes('${json['body'] ?? ''}'),
         apkUrl: '${apk['browser_download_url']}',
         apkName: apkName,
         sizeBytes: (apk['size'] as num?)?.toInt() ?? 0,
@@ -143,7 +153,7 @@ class Updater extends ChangeNotifier {
       _set(UpdateStage.available);
       return _pending;
     } on Exception {
-      _set(UpdateStage.failed, error: _s().updateNoGithub);
+      _set(UpdateStage.failed, error: _s().updateNoConnection);
       return null;
     }
   }
@@ -207,12 +217,15 @@ class Updater extends ChangeNotifier {
       final sink = file.openWrite();
       final total = res.contentLength ?? info.sizeBytes;
       var received = 0;
+      _total = total;
+      _received = 0;
 
       // สตรีมลงไฟล์ ไม่ buffer ทั้งก้อนในหน่วยความจำ APK หลายสิบเมกจะทำให้แอปตาย
       await for (final chunk in res.stream) {
         sink.add(chunk);
         received += chunk.length;
         if (total > 0 && !_disposed) {
+          _received = received;
           _progress = received / total;
           notifyListeners();
         }
@@ -269,6 +282,45 @@ class Updater extends ChangeNotifier {
     }
     input.close();
     return output.events.single.toString().toLowerCase();
+  }
+
+  /// ล้างบันทึกรุ่นก่อนเอาไปขึ้นจอ
+  ///
+  /// เนื้อที่ระบบปล่อยไฟล์สร้างให้อัตโนมัติจะมีลิงก์กับชื่อบัญชีของระบบนั้น
+  /// ปนมาเสมอ เช่นบรรทัด "Full Changelog: https://…/commits/v0.1.0"
+  /// ซึ่งบอกผู้ใช้ตรง ๆ ว่าไฟล์มาจากไหน — และลิงก์ในการ์ดนี้ก็กดไม่ได้อยู่ดี
+  ///
+  /// 🔴 **ต้องล้างที่ฝั่งแอป ไม่ใช่แค่ฝั่ง CI** — รุ่นที่ปล่อยไปแล้วแก้เนื้อ
+  /// ย้อนหลังไม่ได้ และเนื้อ release แก้ด้วยมือทีหลังได้เสมอ ด่านสุดท้าย
+  /// จึงต้องอยู่ตรงที่กำลังจะวาดลงจอ
+  @visibleForTesting
+  static String cleanNotes(String raw) {
+    final out = <String>[];
+
+    for (final original in raw.split('\n')) {
+      final hadLink = RegExp('https?://').hasMatch(original);
+
+      var line = original
+          .replaceAll(RegExp(r'https?://\S+'), '')
+          // ชื่อบัญชีของระบบต้นทาง ไม่ใช่ข้อมูลที่ผู้ใช้ต้องรู้
+          .replaceAll(RegExp(r'(^|\s)@[\w.-]+'), ' ')
+          // มาร์กดาวน์ที่ Text ธรรมดาเรนเดอร์ไม่ได้ จะโผล่เป็นดอกจันเปล่า ๆ
+          .replaceAll('**', '')
+          .replaceFirst(RegExp(r'^#+\s*'), '')
+          .replaceFirst(RegExp(r'^[*-]\s+'), '· ')
+          .replaceAll(RegExp(r'[ \t]+'), ' ')
+          .trim();
+
+      // บรรทัดที่เหลือแต่หัวข้อหลังตัดลิงก์ออก ("Full Changelog:") ไม่ต้องเก็บ
+      if (hadLink && (line.isEmpty || line.endsWith(':'))) continue;
+      // เหลือแต่เครื่องหมายวรรคตอน ไม่ใช่ข้อความ
+      if (line.isEmpty || !RegExp(r'[\w\u0E00-\u0E7F]').hasMatch(line)) {
+        continue;
+      }
+      out.add(line);
+    }
+
+    return out.join('\n').trim();
   }
 
   static String _normalize(String tag) =>

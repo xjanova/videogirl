@@ -98,6 +98,7 @@ jobs:
           CODE=$((MA * 10000 + MI * 100 + PA))
 
           echo "version=$NEXT"  >> "$GITHUB_OUTPUT"
+          echo "prev=$LATEST"   >> "$GITHUB_OUTPUT"
           echo "code=$CODE"     >> "$GITHUB_OUTPUT"
           echo "### จะออก \`v$NEXT\` (versionCode $CODE)" >> "$GITHUB_STEP_SUMMARY"
 
@@ -179,6 +180,21 @@ jobs:
           # --obfuscate ทำให้ stack trace อ่านไม่ออก ถ้าไม่เก็บ symbol ไว้ด้วย
           # แนบไปกับ release เลย จะได้ไม่ต้องไปไล่หาว่า build ไหนใช้ symbol ชุดไหน
           (cd build/symbols && zip -qr "$GITHUB_WORKSPACE/dist/debug-symbols-$VERSION.zip" .)
+          # เขียนบันทึกรุ่นเอง ไม่ใช้ generate_release_notes ของแพลตฟอร์ม
+          #
+          # ตัวที่มันสร้างให้จะมีลิงก์ของบริการนั้นติดมาเสมอ เช่น
+          # "**Full Changelog**: https://.../commits/v0.1.0" ซึ่งแอปเอาไปขึ้นจอ
+          # ตรง ๆ = บอกผู้ใช้ว่าไฟล์มาจากไหน · เขียนเองจึงคุมได้ว่ามีอะไรบ้าง
+          #
+          # (ฝั่งแอปยังล้างซ้ำอีกชั้นใน Updater.cleanNotes เพราะรุ่นที่ปล่อยไป
+          #  แล้วแก้ย้อนหลังไม่ได้ และเนื้อ release แก้ด้วยมือทีหลังได้เสมอ)
+          PREV="${{ steps.ver.outputs.prev }}"
+          RANGE=HEAD
+          if [ -n "$PREV" ]; then RANGE="$PREV..HEAD"; fi
+          git log --no-merges --format='%s' -n 30 "$RANGE" | sed 's/ *\[skip release\]//' | sed 's/^/· /' > NOTES.md
+          if [ ! -s NOTES.md ]; then echo "· ปรับปรุงเล็กน้อย" > NOTES.md; fi
+          cat NOTES.md
+
           cd dist
           sha256sum "giggok-$VERSION.apk" > SHA256SUMS.txt
           cat SHA256SUMS.txt
@@ -193,7 +209,7 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
-          generate_release_notes: true
+          body_path: NOTES.md
           files: |
             dist/giggok-${{ steps.ver.outputs.version }}.apk
             dist/SHA256SUMS.txt

@@ -192,7 +192,12 @@ extension AiStrings on S {
       pick('เช็ครุ่นใหม่ไม่ได้ ($code)', 'Could not check for updates ($code)');
   String get updateNoApk =>
       pick('release นี้ไม่มีไฟล์ APK แนบมา', 'That release has no APK attached');
-  String get updateNoGithub => pick('ต่อ GitHub ไม่ได้', 'Cannot reach GitHub');
+  /// ห้ามเอ่ยชื่อบริการที่เราไปฝากไฟล์ไว้ — ผู้ใช้แก้อะไรจากข้อมูลนั้นไม่ได้
+  /// สิ่งที่เขาทำได้จริงคือเช็คเน็ตตัวเอง ข้อความจึงควรพาไปตรงนั้น
+  String get updateNoConnection => pick(
+        'เช็ครุ่นใหม่ไม่ได้ตอนนี้ · ลองใหม่เมื่อเน็ตกลับมา',
+        'Cannot check for updates right now · try again when you are back online',
+      );
   String updateDownloadFailed(int code) =>
       pick('ดาวน์โหลดไม่สำเร็จ ($code)', 'Download failed ($code)');
   String updateNoHash(String asset) => pick(

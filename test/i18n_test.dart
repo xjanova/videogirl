@@ -224,6 +224,8 @@ void main() {
       check('updateChecking', en.updateChecking);
       check('updateReady', en.updateReady);
       check('updateSource', en.updateSource);
+      check('updateProgress', en.updateProgress('1.0 / 2.0 MB', 50));
+      check('updateNoConnection', en.updateNoConnection);
       check('updateInstall', en.updateInstall('12 MB'));
 
       // ฝั่ง AI
