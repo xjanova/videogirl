@@ -20,6 +20,10 @@
     <string name="call_answer">รับสาย</string>
     <string name="call_decline">ปฏิเสธ</string>
     <string name="call_hangup">วางสาย</string>
+    <string name="call_mind_answer">ให้มายด์รับ</string>
+    <string name="call_mind_talking">มายด์กำลังคุยสายนี้</string>
+    <string name="call_mind_barge">แทรกสาย</string>
+    <string name="call_mind_mute_warn">เปิดลำโพงไม่ได้ ปลายสายจะไม่ได้ยินเธอ</string>
     <string name="dial_call">โทร</string>
     <string name="dial_hint">กดเบอร์</string>
 </resources>

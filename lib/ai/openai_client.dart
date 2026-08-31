@@ -127,6 +127,52 @@ class OpenAiClient {
     return _post('/audio/speech', body);
   }
 
+  /// ถอดเสียงเป็นข้อความ · คืนสตริงว่างเมื่อไม่มีเสียงพูดอยู่ในไฟล์
+  ///
+  /// 🔴 **ตัวว่างไม่ใช่ความผิดพลาด** ปลายสายเงียบไปสามวินาทีก็ได้ตัวว่าง
+  /// เหมือนกับตอนที่เครื่องไม่ยอมให้อัดเสียงระหว่างมีสาย · ผู้เรียกต้องแยก
+  /// สองกรณีนี้เอง (ดูระดับเสียงที่วัดได้ ไม่ใช่ดูข้อความที่ถอดได้)
+  ///
+  /// ส่งเป็น multipart ไม่ใช่ JSON — endpoint นี้รับไฟล์ ไม่ใช่ base64
+  /// และ `response_format: text` ทำให้ได้ข้อความเปล่า ๆ ไม่ต้องแกะ JSON
+  Future<String> transcribe(
+    Uint8List wav, {
+    String? model,
+    String? language,
+  }) async {
+    if (!usable) throw OpenAiFailure(_s().errNoKey);
+    if (wav.isEmpty) return '';
+
+    final req = http.MultipartRequest(
+      'POST',
+      Uri.parse('$_baseUrl/audio/transcriptions'),
+    )
+      ..headers.addAll({
+        if (_apiKey.isNotEmpty) 'Authorization': 'Bearer $_apiKey',
+      })
+      ..fields['model'] = model ?? OpenAiConfig.sttModel
+      ..fields['response_format'] = 'text'
+      ..files.add(http.MultipartFile.fromBytes('file', wav, filename: 'call.wav'));
+
+    // บอกภาษาไปเลยดีกว่าให้เดา · เสียงจากสายโทรศัพท์ถูกบีบจนโมเดลเดาภาษา
+    // ผิดได้บ่อย แล้วผลที่ได้คือคำไทยถูกถอดเป็นอังกฤษที่อ่านไม่ออก
+    if (language != null && language.isNotEmpty) req.fields['language'] = language;
+
+    final http.Response res;
+    try {
+      res = await http.Response.fromStream(
+        await _http.send(req).timeout(_timeout),
+      );
+    } on Exception {
+      throw OpenAiFailure(_s().errOffline);
+    }
+
+    if (res.statusCode >= 400) {
+      throw OpenAiFailure(_readableError(res), status: res.statusCode);
+    }
+    return utf8.decode(res.bodyBytes).trim();
+  }
+
   Future<Uint8List> _post(String path, String body) async {
     final http.Response res;
     try {

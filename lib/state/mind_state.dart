@@ -128,6 +128,7 @@ class MindState extends ChangeNotifier {
     _voiceEnabled = p.getBool('voiceEnabled') ?? true;
     _autoAnswer = p.getBool('autoAnswer') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
+    _callStream = p.getString('callStream') ?? callStreamCall;
 
     // บทสนทนาเก่าต้องกลับมาก่อนบทตัวอย่าง — ถ้าเคยคุยจริงแล้ว
     // การเอาบทตัวอย่างมาทับคือการลบสิ่งที่ผู้ใช้พิมพ์เองทิ้ง
@@ -442,6 +443,70 @@ class MindState extends ChangeNotifier {
   String get ringLabel => _ringSeconds == 0
       ? s.ringImmediate
       : s.ringDelayNote(_ringSeconds);
+
+  /// ช่องเสียงที่ใช้ส่งเสียงเธอเข้าสาย — 'call' หรือ 'media'
+  ///
+  /// 🔴 มีสองทางให้เลือกเพราะ**ผลต่างกันตามเครื่อง อ่านจากโค้ดไม่ได้**
+  /// ตัวตัดเสียงก้องของบางชิปอ้างอิงเสียงลำโพงทั้งหมด แล้วลบเสียงเธอทิ้ง
+  /// ก่อนขึ้นสาย บางชิปอ้างอิงเฉพาะเสียงขาลงของสาย แล้วเสียงเธอรอด
+  /// เจ้าของต้องลองเองว่าเครื่องนี้ทางไหนรอด · ดู android CallAudio.kt
+  ///
+  /// คีย์ `callStream` ถูกอ่านจากฝั่ง Kotlin ด้วย (MindPrefs.KEY_CALL_STREAM)
+  /// เปลี่ยนชื่อคีย์ที่นี่ต้องเปลี่ยนที่นั่นด้วย ไม่งั้นจอสายเนทีฟจะใช้ค่าเดิม
+  /// ตลอดไปโดยไม่มีอะไรบอก
+  static const callStreamCall = 'call';
+  static const callStreamMedia = 'media';
+
+  String _callStream = callStreamCall;
+  String get callStream => _callStream;
+
+  void setCallStream(String v) {
+    _callStream = v == callStreamMedia ? callStreamMedia : callStreamCall;
+    _save('callStream', _callStream);
+    _notify();
+  }
+
+  // ═══ สายที่เธอถือเอง ═══════════════════════════════════
+  //
+  // แยกจากการคุยในแอปทั้งหมด: คนปลายสายไม่ใช่เจ้าของ บุคลิกต่างกัน
+  // เสียงต่างกัน และบทสนทนาไม่ควรปนเข้าไปในแชทของเจ้าของ
+
+  /// ประโยคแรกที่เธอพูดเมื่อรับสายแทน
+  String callGreeting() => s.callGreeting;
+
+  /// คำตอบสำหรับคนปลายสาย
+  ///
+  /// ใช้ system prompt คนละตัวกับการคุยในแอป (`onCall: true`) ซึ่งกดโหมด
+  /// ส่วนตัวทิ้งและสั่งให้แนะนำตัวว่าเป็นผู้ช่วย · [history] เป็นบทสนทนา
+  /// ของ **สายนี้เท่านั้น** ไม่ใช่แชทของเจ้าของ
+  Future<String> replyOnCall(List<({bool fromHer, String text})> history) {
+    final system = MindPersona.system(
+      lang: _lang,
+      mode: mode,
+      flirt: effectiveFlirt,
+      ownerProfile: _ownerProfile,
+      boundaries: _boundaries,
+      onCall: true,
+      memories: memory.promptBlock(),
+      schedule: _calendar?.promptBlock() ?? '',
+      calls: _calls?.promptBlock() ?? '',
+    );
+    return _askBrain(system, history);
+  }
+
+  /// สังเคราะห์เสียงสำหรับพูดเข้าสาย · คืนไบต์ ไม่ได้เล่นเอง
+  ///
+  /// ไม่ผ่าน [_speakIfEnabled] เพราะเสียงในสาย**ห้ามไปออกที่ WebView**
+  /// (ปากจะขยับตามคลื่นก็จริง แต่เสียงจะดังซ้ำสองทางแล้วก้องกลับเข้าสาย)
+  /// ตอนมีสาย ปากขยับด้วย LipSync.babble ซึ่งไม่ต้องใช้คลื่นเสียงเลย
+  Future<Utterance> speakForCall(String text) =>
+      _speech.synthesize(text, profile: voiceFor(VoiceChannel.answer));
+
+  /// ถอดเสียงปลายสายเป็นข้อความ
+  ///
+  /// อยู่ที่นี่เพราะ client กับคีย์อยู่ที่นี่ · คืนสตริงว่างเมื่อไม่ได้ยินอะไร
+  Future<String> transcribeCall(Uint8List wav) =>
+      _openai.transcribe(wav, language: _lang == AppLang.th ? 'th' : 'en');
 
   // ═══ แชท ═══════════════════════════════════════════════
   /// บทสนทนาตัวอย่างตอนเปิดครั้งแรก

@@ -3,12 +3,14 @@ import 'package:provider/provider.dart';
 
 import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
+import '../phone/call_session.dart';
 import '../state/mind_state.dart';
 import 'shop_screen.dart';
 import '../theme/app_theme.dart';
 import '../i18n/enum_labels.dart';
 import '../i18n/strings.dart';
 import '../theme/tokens.dart';
+import '../widgets/call_panel.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
 
@@ -75,10 +77,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final state = context.watch<MindState>();
+    final call = context.watch<CallSession>();
     final mode = state.mode;
 
+    // มีสายที่เธอถืออยู่ = ตัดมาหน้าจอสายทันที
+    //
+    // 🔴 พื้นหลังเปลี่ยนตามด้วย ไม่ใช่แค่แผงล่าง · จอสายที่ดูเหมือนหน้าแชท
+    // ทุกประการ ยกเว้นปุ่มสองปุ่มข้างล่าง คือจอที่คนเผลอพิมพ์คุยกับเธอ
+    // ตอนที่คำที่พิมพ์จะถูกพูดออกไปให้คนแปลกหน้าฟัง
+    final onCall = call.onStage;
+
     return LiquidBackground(
-      gradient: MindGradients.home,
+      gradient: onCall ? MindGradients.incomingCall : MindGradients.home,
       orbs: Orb.home,
       child: SafeArea(
         child: Column(
@@ -95,11 +105,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 axisAlignment: -1,
                 child: FadeTransition(opacity: anim, child: child),
               ),
-              child: state.chatOpen
+              child: onCall
                   ? KeyedSubtree(
-                      key: const ValueKey('dock'), child: _chatDock(state, mode))
-                  : KeyedSubtree(
-                      key: const ValueKey('pill'), child: _chatPill(state, mode)),
+                      key: const ValueKey('call'),
+                      child: CallPanel(session: call, mode: mode))
+                  : state.chatOpen
+                      ? KeyedSubtree(
+                          key: const ValueKey('dock'),
+                          child: _chatDock(state, mode))
+                      : KeyedSubtree(
+                          key: const ValueKey('pill'),
+                          child: _chatPill(state, mode)),
             ),
           ],
         ),

@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'avatar/avatar_pack.dart';
 import 'calendar/device_calendar.dart';
 import 'journal/mind_journal.dart';
+import 'phone/call_session.dart';
 import 'phone/call_watch.dart';
 import 'avatar/avatar_view.dart';
 import 'background/mind_background.dart';
@@ -85,6 +86,14 @@ class _MindBootstrapState extends State<MindBootstrap> {
   late final CallWatch _calls =
       CallWatch(permissions: _perms, journal: _journal);
 
+  /// สายที่ **เธอถือเอง** — คนละเรื่องกับ [_calls] ที่แค่เฝ้าดู
+  ///
+  /// ต้องเกิดหลัง [_calls] เพราะมันฟังตัวนั้นอยู่ · และ [CallWatch] เป็น
+  /// เจ้าของ handler ของช่องเนทีฟแต่เพียงผู้เดียว — ตั้งซ้อนจะไปทับของมัน
+  /// แบบเงียบ ๆ แล้วสัญญาณสายเข้าจะหายไปทั้งแอปโดยไม่มี error
+  late final CallSession _session =
+      CallSession(watch: _calls, state: _state, permissions: _perms);
+
   /// ตัวควบคุมอวาตาร์อยู่ที่นี่ ไม่ใช่ในเชลล์ เพราะหน้าเปิดแอปต้องอ่าน
   /// ความคืบหน้าการโหลด VRM มาโชว์เป็นเปอร์เซ็นต์จริง
   final MindAvatarController _avatar = MindAvatarController();
@@ -153,11 +162,19 @@ class _MindBootstrapState extends State<MindBootstrap> {
     _state.attachCalls(_calls);
     _calls.addListener(_showCallOnStage);
     await _calls.start();
+
+    // 🔴 ถามฝั่งเนทีฟทันทีว่ามีสายที่เธอถืออยู่หรือเปล่า
+    //
+    // กรณีปกติที่สุดของฟีเจอร์นี้คือ **จอสายเนทีฟเป็นคนเปิดแอปขึ้นมา**
+    // หลังเธอรับสายไปแล้ว · สัญญาณสถานะสายวิ่งไปตั้งแต่ก่อน engine เริ่ม
+    // ถ้าไม่ถามเองตรงนี้ หน้าจอสายจะไม่มีวันขึ้นในกรณีนั้นเลย
+    await _session.start();
   }
 
   @override
   void dispose() {
     _calls.removeListener(_showCallOnStage);
+    _session.dispose();
     _avatar.dispose();
     _state.dispose();
     _pack.dispose();
@@ -193,6 +210,7 @@ class _MindBootstrapState extends State<MindBootstrap> {
         ChangeNotifierProvider.value(value: _calendar),
         ChangeNotifierProvider.value(value: _journal),
         ChangeNotifierProvider.value(value: _calls),
+        ChangeNotifierProvider.value(value: _session),
       ],
       child: Consumer<MindState>(
         builder: (context, state, _) => MaterialApp(

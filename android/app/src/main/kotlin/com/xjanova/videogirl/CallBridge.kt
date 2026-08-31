@@ -147,8 +147,16 @@ class CallBridge(private val context: Context) {
         }
     }
 
-    /** วางสายที่กำลังดังหรือกำลังคุยอยู่ */
+    /**
+     * วางสายที่กำลังดังหรือกำลังคุยอยู่
+     *
+     * ลองทางแอปโทรศัพท์หลักก่อนเสมอ — `Call.disconnect()` เป็นการสั่งสายนั้น
+     * ตรง ๆ ส่วน `TelecomManager.endCall()` ถูกเลิกใช้ตั้งแต่ API 29 และบน
+     * บางรุ่นวางได้เฉพาะสายที่แอปตัวเองเป็นคนสร้าง · ทางเก่ายังต้องเก็บไว้
+     * เพราะเครื่องที่ยังไม่ได้ตั้งแอปนี้เป็นแอปหลักไม่มีทางแรกให้ใช้
+     */
     fun hangUp(): Boolean {
+        if (MindInCallService.current != null && MindInCallService.disconnect()) return true
         if (!canAnswer()) return false
         val tm = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
             ?: return false

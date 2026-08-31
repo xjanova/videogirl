@@ -61,6 +61,13 @@
     <!-- โทรออกจากแป้นของเราเอง — จำเป็นเมื่อเป็นแอปโทรศัพท์หลัก -->
     <uses-permission android:name="android.permission.CALL_PHONE"/>
 
+    <!-- เร่งเสียงช่องสายตอนเธอพูดเข้าไปในสาย แล้วคืนค่าเดิมเมื่อจบ
+         ไม่มีสิทธิ์นี้ = setStreamVolume โยน SecurityException แล้วเสียงเธอ
+         จะเบาเท่าที่เจ้าของหรี่ไว้ ซึ่งอ่านออกมาเป็น "ปลายสายไม่ได้ยิน"
+         ทั้งที่กลไกทำงานครบ · ดู CallAudio.kt
+         เป็นสิทธิ์ระดับปกติ ระบบให้ตั้งแต่ติดตั้ง ไม่ต้องขอผู้ใช้ -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+
     <!-- เครื่องที่ไม่มีซิมก็ยังลงแอปได้ แค่ไม่มีสายให้รับ -->
     <uses-feature android:name="android.hardware.telephony" android:required="false"/>
 

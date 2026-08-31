@@ -123,6 +123,37 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
 
+                    // ── สายที่เธอถือเอง ──────────────────────────
+                    //
+                    // 🔴 ฝั่ง Dart ต้อง**ถามเอา** ไม่ใช่รอให้ยิงมาบอก
+                    // จอสายเนทีฟตัดสินใจตอนที่ Flutter engine อาจยังไม่เริ่ม
+                    // ดู MindInCallService.mindHandling
+                    "callInfo" -> result.success(MindInCallService.callInfo(this))
+                    "mindAnswer" -> result.success(
+                        MindInCallService.mindAnswer(
+                            this,
+                            call.argument<String>("stream") ?: CallAudio.STREAM_CALL
+                        )
+                    )
+                    "mindHandOver" -> {
+                        MindInCallService.handOver(this)
+                        result.success(true)
+                    }
+                    "callSpeak" -> callSpeak(
+                        call.argument<String>("path"),
+                        call.argument<String>("stream"),
+                        result
+                    )
+                    "callStopSpeak" -> {
+                        CallAudio.stop()
+                        result.success(true)
+                    }
+                    "callEndAudio" -> {
+                        CallAudio.close(this)
+                        result.success(true)
+                    }
+                    "callDisconnect" -> result.success(MindInCallService.disconnect())
+
                     // ── ติดตั้งแอปที่ไม่รู้จัก ────────────────────
                     "canInstall" -> result.success(canInstall())
                     "requestInstall" -> {
@@ -137,6 +168,27 @@ class MainActivity : FlutterActivity() {
     private fun granted(permission: String) = ContextCompat.checkSelfPermission(
         this, permission
     ) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * เล่นเสียงเธอออกลำโพงให้ไมค์รับเข้าสาย แล้วตอบกลับ**เมื่อเล่นจบ**
+     *
+     * 🔴 ตอบตอนเริ่มเล่นไม่ได้ · ฝั่ง Dart ใช้ค่าที่คืนมาเป็นสัญญาณว่า
+     * "ถึงตาปลายสายพูดแล้ว" ถ้าตอบทันที เธอจะเริ่มฟังตั้งแต่ตัวเองยังพูดอยู่
+     * แล้วได้ยินเสียงตัวเองกลับเข้ามาเป็นคำถามของปลายสาย
+     *
+     * [CallAudio.play] รับประกันว่าเรียก onDone ครั้งเดียวเสมอ ทั้งตอนจบปกติ
+     * ตอนพัง และตอนถูกสั่งหยุดกลางคัน — ซึ่งจำเป็น เพราะ MethodChannel.Result
+     * ตอบซ้ำแล้วโยน IllegalStateException ทิ้งทั้ง engine
+     */
+    private fun callSpeak(path: String?, stream: String?, result: MethodChannel.Result) {
+        if (path.isNullOrEmpty()) {
+            result.success(false)
+            return
+        }
+        CallAudio.play(this, path, stream ?: CallAudio.STREAM_CALL) { ok ->
+            runOnUiThread { result.success(ok) }
+        }
+    }
 
     private fun granted() = granted(Manifest.permission.CAMERA)
 

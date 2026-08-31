@@ -62,6 +62,61 @@ void main() {
             '${missing.join('\n')}');
   });
 
+  /// 🔴 สายเป็นเรื่องที่พลาดแล้วเห็นตอนสายจริงเท่านั้น
+  ///
+  /// [CallSession] เรียกเมธอดเนทีฟอีกชุดที่ไม่ได้ผ่าน [MindPermission] เลย
+  /// (callInfo · mindAnswer · callSpeak · …) พิมพ์ชื่อผิดตัวเดียว = ได้
+  /// `notImplemented` เงียบ ๆ กลางสายจริง แล้วเธอยืนอมพะนำอยู่ในสาย
+  /// โดยที่หน้าจอบอกว่ากำลังคุยอยู่
+  test('ทุกเมธอดที่ CallSession เรียก ต้องมีอยู่ใน when ของ Kotlin', () {
+    final source = File('lib/phone/call_session.dart').readAsStringSync();
+
+    final called = <String>{};
+    for (final m in RegExp(r"""_invoke(?:<[^>]*>)?\(\s*'([A-Za-z]+)'""")
+        .allMatches(source)) {
+      called.add(m.group(1)!);
+    }
+    for (final m in RegExp(r"""invokeMethod<[^>]*>\(\s*'([A-Za-z]+)'""")
+        .allMatches(source)) {
+      called.add(m.group(1)!);
+    }
+
+    expect(called, isNotEmpty,
+        reason: 'อ่านชื่อเมธอดจากซอร์สไม่เจอเลย — รูปแบบโค้ดเปลี่ยนไป '
+            'ต้องแก้เทสต์นี้ ไม่ใช่ปล่อยผ่าน');
+
+    final missing = called.where((m) => !kotlin.contains('"$m" ->')).toList();
+
+    expect(missing, isEmpty,
+        reason: 'ฝั่ง Kotlin ไม่มีเมธอดพวกนี้ — จะได้ notImplemented เงียบ ๆ '
+            'กลางสายจริง:\n${missing.join('\n')}');
+  });
+
+  /// 🔴 จอสายเนทีฟอ่านค่าที่ตั้งไว้จากไฟล์ของ shared_preferences ตรง ๆ
+  ///
+  /// ต้องอ่านเองเพราะตอนสายดัง Flutter engine อาจยังไม่เริ่ม · สะพานนี้
+  /// ผูกกันด้วยชื่อคีย์ล้วน ๆ และเมื่อชื่อไม่ตรง **ไม่มี error อะไรเลย**
+  /// จอสายจะได้ค่าตั้งต้นทุกครั้ง แล้วสวิตช์ในหน้าตั้งค่าก็ดูเหมือนไม่มีผล
+  test('คีย์ที่ MindPrefs อ่าน ต้องเป็นคีย์ที่ MindState เขียนจริง', () {
+    final prefs = File('${kotlinDir.path}/MindPrefs.kt').readAsStringSync();
+    final state = File('lib/state/mind_state.dart').readAsStringSync();
+
+    final keys = RegExp(r'const val KEY_[A-Z_]+ = "([A-Za-z]+)"')
+        .allMatches(prefs)
+        .map((m) => m.group(1)!)
+        .toList();
+
+    expect(keys, isNotEmpty,
+        reason: 'อ่านคีย์จาก MindPrefs.kt ไม่เจอเลย — รูปแบบเปลี่ยนไป '
+            'ต้องแก้เทสต์นี้ ไม่ใช่ปล่อยผ่าน');
+
+    final missing = keys.where((k) => !state.contains("_save('$k'")).toList();
+
+    expect(missing, isEmpty,
+        reason: 'จอสายเนทีฟอ่านคีย์พวกนี้ แต่ไม่มีใครเขียนลงไป — '
+            'จะได้ค่าตั้งต้นตลอดกาลโดยไม่มีอะไรบอก:\n${missing.join(', ')}');
+  });
+
   test('ทุกรหัสคำขอที่ส่งเข้า ask/askMany ต้องอยู่ใน KNOWN_REQUESTS', () {
     // ดึงรหัสที่ถูกใช้จริงในการขอสิทธิ์ ไม่ใช่ทุกค่าคงที่ที่ประกาศไว้
     // (REQ_NOTIFY มีทางตอบของตัวเองแยกต่างหาก จึงไม่ต้องอยู่ในชุดนี้)

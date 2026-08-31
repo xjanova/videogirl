@@ -24,6 +24,17 @@ abstract final class OpenAiConfig {
   static const realtimeModel =
       String.fromEnvironment('OPENAI_REALTIME_MODEL', defaultValue: 'gpt-realtime-2.1');
 
+  /// ถอดเสียงปลายสายเป็นข้อความ
+  ///
+  /// ตั้งไว้ที่ `whisper-1` โดยตั้งใจ ทั้งที่มีรุ่นใหม่กว่า — รุ่นนี้เป็นรุ่น
+  /// ที่**ทุกบัญชีเรียกได้แน่นอน** ส่วนตระกูล gpt-4o-transcribe ต้องเช็ค
+  /// กับบัญชีก่อน · เลือกผิดจะได้ 404 ตอนสายจริง ซึ่งผู้ใช้เห็นเป็น
+  /// "เธอฟังไม่ออก" ไม่ใช่ "เรียกโมเดลไม่ได้"
+  ///
+  /// เปลี่ยนได้ตอน build: --dart-define=OPENAI_STT_MODEL=gpt-4o-mini-transcribe
+  static const sttModel =
+      String.fromEnvironment('OPENAI_STT_MODEL', defaultValue: 'whisper-1');
+
   static const baseUrl = 'https://api.openai.com/v1';
 
   static bool get configured => apiKey.isNotEmpty;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'avatar/avatar_view.dart';
+import 'phone/call_session.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/mail_screen.dart';
@@ -92,6 +93,13 @@ class _MindShellState extends State<MindShell> {
     final mode = context.select<MindState, MindMode>((s) => s.mode);
     final speaking = context.select<MindState, bool>((s) => s.speaking);
 
+    // มีสายที่เธอถืออยู่ = ตัดมาแท็บของเธอ แล้วเก็บแถบนำทางไปก่อน
+    //
+    // 🔴 ไม่แตะ `_tab` โดยตั้งใจ · เขียนทับตอน build คือ setState ระหว่างวาด
+    // และแปลว่าพอสายจบ เจ้าของจะถูกทิ้งไว้ที่แท็บของเธอ แทนที่จะกลับไป
+    // ที่หน้าที่ค้างอยู่ก่อนสายเข้า
+    final onCall = context.select<CallSession, bool>((c) => c.onStage);
+
     return Scaffold(
       // ให้แผงแชทเลื่อนขึ้นเองตอนคีย์บอร์ดเด้ง ไม่งั้นช่องพิมพ์จะโดนบัง
       resizeToAvoidBottomInset: true,
@@ -102,7 +110,7 @@ class _MindShellState extends State<MindShell> {
       // SafeArea ในแต่ละหน้าจอจึงยังกันเนื้อหาไม่ให้มุดใต้แถบเหมือนเดิม
       extendBody: true,
       body: IndexedStack(
-        index: _tab,
+        index: onCall ? 0 : _tab,
         children: [
           HomeScreen(avatar: _avatar),
           const MailScreen(),
@@ -112,20 +120,22 @@ class _MindShellState extends State<MindShell> {
         ],
       ),
       // ฟังเฉพาะตัวอวาตาร์ เพื่อไม่ให้ ready/error ลากทั้ง Scaffold มา rebuild
-      bottomNavigationBar: ListenableBuilder(
-        listenable: _avatar,
-        builder: (context, _) => MindNavBar(
-          items: [for (final i in _order) _tabsFor(S.of(context))[i]],
-          current: _tab,
-          centerIndex: 0,
-          mode: mode,
-          // ที่เปลี่ยนชุดหรือทรงผม · null = ปุ่มใช้ไอคอนสำรอง
-          face: _avatar.faceImage,
-          avatarReady: _avatar.ready,
-          speaking: speaking,
-          onSelect: (i) => setState(() => _tab = i),
-        ),
-      ),
+      bottomNavigationBar: onCall
+          ? null
+          : ListenableBuilder(
+              listenable: _avatar,
+              builder: (context, _) => MindNavBar(
+                items: [for (final i in _order) _tabsFor(S.of(context))[i]],
+                current: _tab,
+                centerIndex: 0,
+                mode: mode,
+                // ที่เปลี่ยนชุดหรือทรงผม · null = ปุ่มใช้ไอคอนสำรอง
+                face: _avatar.faceImage,
+                avatarReady: _avatar.ready,
+                speaking: speaking,
+                onSelect: (i) => setState(() => _tab = i),
+              ),
+            ),
     );
   }
 }

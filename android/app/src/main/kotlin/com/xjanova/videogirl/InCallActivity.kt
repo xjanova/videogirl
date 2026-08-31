@@ -11,6 +11,8 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.telecom.Call
 import android.telecom.VideoProfile
 import android.util.TypedValue
@@ -39,6 +41,15 @@ import java.io.File
  *
  * รูปหน้าเธอใช้ไฟล์ที่แคชไว้แล้ว (mind_face.png) ถ้ามี · ไม่มีก็ไม่เป็นไร
  * จอต้องขึ้นทันทีเสมอ ไม่ว่ามีรูปหรือไม่
+ *
+ * ## 🔴 จอนี้ไม่ตายเมื่อมายด์รับสาย
+ *
+ * พอเธอรับ เราเปิดจอ Flutter (ที่มีตัวเธอยกโทรศัพท์จริง ๆ) ทับขึ้นไป
+ * แต่**ไม่ปิดจอนี้ทิ้ง** เพราะจอนี้คือทางหนีเมื่อ Flutter ไม่ขึ้นหรือถูกปัดทิ้ง
+ * ถ้าปิดแล้ว Flutter ไม่ขึ้น เจ้าของจะเหลือสายที่วางไม่ได้อยู่ในมือ
+ *
+ * และตอนจอล็อกอยู่ **ไม่ย้ายไป Flutter เลย** — MainActivity ไม่ได้ตั้ง
+ * showWhenLocked ไว้ เปิดไปก็เห็นแต่จอล็อก ส่วนจอนี้ขึ้นทับจอล็อกได้
  */
 class InCallActivity : Activity() {
 
@@ -47,6 +58,16 @@ class InCallActivity : Activity() {
     private lateinit var answer: Button
     private lateinit var decline: Button
     private lateinit var speaker: Button
+    private lateinit var mind: Button
+
+    private val ui = Handler(Looper.getMainLooper())
+
+    /// นาฬิกาปล่อยกริ่งก่อนเธอรับ · ต้องยกเลิกได้ทุกทางที่สายจบ
+    private var autoAnswer: Runnable? = null
+    private var autoArmed = false
+
+    /// ย้ายไปจอ Flutter ไปแล้วหรือยัง — กันการเด้งซ้ำทุกครั้งที่ render
+    private var handedOver = false
 
     private val onChanged = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) = render()
@@ -68,6 +89,7 @@ class InCallActivity : Activity() {
 
     override fun onDestroy() {
         if (open === this) open = null
+        cancelAutoAnswer()
         try {
             unregisterReceiver(onChanged)
         } catch (e: IllegalArgumentException) {
@@ -136,7 +158,13 @@ class InCallActivity : Activity() {
         root.addView(who, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(status, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
-        speaker = pill("🔊", "#5A4DE0") { toggleSpeaker() }
+        // ปุ่มของมายด์ — "ให้มายด์รับ" ตอนสายดัง เปลี่ยนเป็น "แทรกสาย" ตอนเธอคุยอยู่
+        // ปุ่มเดียวสองความหมายเพราะเป็นสวิตช์เดียวกัน: ใครถือสายนี้อยู่
+        mind = pill(getString(R.string.call_mind_answer), "#5A4DE0") { toggleMind() }
+        root.addView(mind, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+            .also { it.bottomMargin = dp(14) })
+
+        speaker = pill("🔊", "#7A7490") { toggleSpeaker() }
         root.addView(speaker, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
             .also { it.bottomMargin = dp(28) })
 
@@ -168,6 +196,7 @@ class InCallActivity : Activity() {
     private fun render() {
         val call = MindInCallService.current
         if (call == null) {
+            cancelAutoAnswer()
             finishAndRemoveTask()
             return
         }
@@ -176,29 +205,125 @@ class InCallActivity : Activity() {
         val name = CallBridge(this).nameFor(number)
         who.text = name ?: number ?: getString(R.string.call_unknown)
 
-        val state = if (Build.VERSION.SDK_INT >= 31) call.details.state else {
-            @Suppress("DEPRECATION") call.state
-        }
+        val state = MindInCallService.stateOf(call)
+        val ringing = state == Call.STATE_RINGING
+        val mindOn = MindInCallService.mindHandling
 
         status.setText(
-            when (state) {
-                Call.STATE_RINGING -> R.string.call_incoming
-                Call.STATE_DIALING, Call.STATE_CONNECTING -> R.string.call_dialing
-                Call.STATE_ACTIVE -> R.string.call_active
-                Call.STATE_HOLDING -> R.string.call_holding
-                Call.STATE_DISCONNECTED -> R.string.call_ended
+            when {
+                mindOn && state == Call.STATE_ACTIVE -> R.string.call_mind_talking
+                ringing -> R.string.call_incoming
+                state == Call.STATE_DIALING || state == Call.STATE_CONNECTING ->
+                    R.string.call_dialing
+                state == Call.STATE_ACTIVE -> R.string.call_active
+                state == Call.STATE_HOLDING -> R.string.call_holding
+                state == Call.STATE_DISCONNECTED -> R.string.call_ended
                 else -> R.string.call_connecting
             }
         )
 
         // ปุ่มรับมีเฉพาะตอนสายกำลังดัง · ปุ่มแดงเปลี่ยนความหมายจาก "ปฏิเสธ"
         // เป็น "วางสาย" ตามสถานะ ซึ่งเป็นสิ่งเดียวกันในทางเทคนิคแต่คนละคำ
-        val ringing = state == Call.STATE_RINGING
         answer.visibility = if (ringing) View.VISIBLE else View.GONE
         decline.text = getString(
             if (ringing) R.string.call_decline else R.string.call_hangup
         )
-        speaker.visibility = if (ringing) View.GONE else View.VISIBLE
+        speaker.visibility = if (ringing || mindOn) View.GONE else View.VISIBLE
+
+        // ปุ่มของเธอมีได้ก็ต่อเมื่อระบบผูกกับบริการเราอยู่จริง — ไม่งั้นกดแล้ว
+        // เปิดลำโพงไม่ได้ ซึ่งแปลว่าเธอรับแล้วปลายสายเงียบสนิท
+        val canMind = MindInCallService.service != null &&
+            (ringing || state == Call.STATE_ACTIVE)
+        mind.visibility = if (canMind) View.VISIBLE else View.GONE
+        mind.text = getString(
+            if (mindOn) R.string.call_mind_barge else R.string.call_mind_answer
+        )
+
+        if (ringing) armAutoAnswer() else cancelAutoAnswer()
+        if (mindOn && state == Call.STATE_ACTIVE) handToFlutter()
+    }
+
+    // ── ให้เธอรับเอง ────────────────────────────────────────
+
+    /**
+     * ตั้งเวลาให้เธอรับเองถ้าเจ้าของไม่คว้าเครื่องทัน
+     *
+     * 🔴 ตั้งได้ครั้งเดียวต่อสาย · [render] ถูกเรียกทุกครั้งที่สถานะขยับ
+     * ถ้าไม่กันไว้ นาฬิกาจะถูกตั้งใหม่ทุกรอบแล้วเลื่อนออกไปเรื่อย ๆ
+     * จนไม่มีวันถึงเวลา — เงียบสนิท ดูเหมือนสวิตช์ในหน้าตั้งค่าไม่มีผล
+     */
+    private fun armAutoAnswer() {
+        if (autoArmed) return
+        if (!MindPrefs.autoAnswer(this)) return
+        if (MindInCallService.service == null) return
+
+        // 🔴 เฉพาะเบอร์ในสมุดโทรศัพท์ — ตรงตามที่หน้าตั้งค่าเขียนไว้
+        //
+        // ("เฉพาะเบอร์ในสมุดโทรศัพท์ · สายแปลกให้คัดกรองก่อน") · ถ้ารับทุกสาย
+        // สวิตช์นั้นจะโกหกผู้ใช้ และเบอร์ที่ซ่อนเลขหรือเบอร์ขายประกันจะได้คุย
+        // กับผู้ช่วยที่รู้ตารางงานของเจ้าของ
+        val number = MindInCallService.current?.details?.handle?.schemeSpecificPart
+        if (CallBridge(this).nameFor(number) == null) return
+
+        autoArmed = true
+
+        val delay = MindPrefs.ringSeconds(this) * 1000L
+        val task = Runnable {
+            autoAnswer = null
+            if (MindInCallService.stateOf(MindInCallService.current) == Call.STATE_RINGING) {
+                letMindAnswer()
+            }
+        }
+        autoAnswer = task
+        ui.postDelayed(task, delay)
+    }
+
+    private fun cancelAutoAnswer() {
+        autoAnswer?.let { ui.removeCallbacks(it) }
+        autoAnswer = null
+    }
+
+    private fun toggleMind() {
+        if (MindInCallService.mindHandling) {
+            MindInCallService.handOver(this)
+            render()
+        } else {
+            letMindAnswer()
+        }
+    }
+
+    private fun letMindAnswer() {
+        cancelAutoAnswer()
+        val ok = MindInCallService.mindAnswer(this, MindPrefs.callStream(this))
+        if (!ok) {
+            // รับไปแล้วแต่เปิดลำโพงไม่ได้ = ปลายสายจะไม่ได้ยินเธอเลย
+            // ต้องบอก ไม่ใช่ปล่อยให้เห็นว่า "กำลังคุย" แล้วสงสัยเองว่าทำไมเงียบ
+            status.setText(R.string.call_mind_mute_warn)
+        }
+        render()
+    }
+
+    /**
+     * ย้ายไปจอ Flutter ที่มีตัวเธอยกโทรศัพท์จริง ๆ
+     *
+     * ไม่ปิดจอนี้ทิ้ง (ดูหัวคลาส) และ**ไม่ย้ายตอนจอล็อก** เพราะ MainActivity
+     * ไม่ได้ตั้ง showWhenLocked ไว้ ย้ายไปก็เห็นแต่จอล็อกแทนที่จะเห็นปุ่มวางสาย
+     */
+    private fun handToFlutter() {
+        if (handedOver) return
+        val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+        if (keyguard?.isKeyguardLocked == true) return
+        handedOver = true
+
+        try {
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            )
+        } catch (e: Exception) {
+            // เปิดไม่ได้ = อยู่จอนี้ต่อ ซึ่งวางสายได้อยู่แล้ว
+            handedOver = false
+        }
     }
 
     private fun pickUp() {
@@ -206,11 +331,8 @@ class InCallActivity : Activity() {
     }
 
     private fun hangUp() {
-        val call = MindInCallService.current ?: return
-        val state = if (Build.VERSION.SDK_INT >= 31) call.details.state else {
-            @Suppress("DEPRECATION") call.state
-        }
-        if (state == Call.STATE_RINGING) call.reject(false, null) else call.disconnect()
+        cancelAutoAnswer()
+        MindInCallService.disconnect()
     }
 
     private fun toggleSpeaker() {

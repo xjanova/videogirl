@@ -1509,6 +1509,82 @@ class _SettingsScreenState extends State<SettingsScreen>
                   fontSize: 10.5, height: 1.5, color: MindColors.ink55),
             ),
           ],
+
+          // ── ทางที่เสียงเธอวิ่งเข้าสาย ──────────────────────
+          //
+          // 🔴 สวิตช์นี้มีอยู่เพราะ**ผลต่างกันตามเครื่อง และไม่มีทางรู้
+          // ล่วงหน้าว่าเครื่องนี้ทางไหนรอด** ไม่ใช่ตัวเลือกเพื่อความยืดหยุ่น
+          // เจ้าของที่เจอ "ปลายสายไม่ได้ยิน" ต้องมีอะไรให้กดลองทันที
+          // ไม่ใช่รอรุ่นหน้า · ดู android CallAudio.kt
+          const SizedBox(height: 16),
+          Text(S.of(context).callStreamTitle,
+              style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
+          const SizedBox(height: 8),
+          Row(
+            spacing: 7,
+            children: [
+              for (final choice in const [
+                MindState.callStreamCall,
+                MindState.callStreamMedia,
+              ])
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => state.setCallStream(choice),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 9),
+                      decoration: BoxDecoration(
+                        gradient:
+                            state.callStream == choice ? mode.gradient : null,
+                        color: state.callStream == choice
+                            ? null
+                            : MindColors.glass80,
+                        borderRadius: BorderRadius.circular(MindRadius.control),
+                        border:
+                            Border.all(color: MindColors.glassBorder, width: 1),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: 2,
+                        children: [
+                          Text(
+                            choice == MindState.callStreamCall
+                                ? S.of(context).callStreamCall
+                                : S.of(context).callStreamMedia,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: state.callStream == choice
+                                  ? Colors.white
+                                  : MindColors.ink60,
+                            ),
+                          ),
+                          Text(
+                            choice == MindState.callStreamCall
+                                ? S.of(context).callStreamCallHint
+                                : S.of(context).callStreamMediaHint,
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              height: 1.4,
+                              color: state.callStream == choice
+                                  ? const Color(0xE6FFFFFF)
+                                  : MindColors.ink45,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            S.of(context).callStreamWhy,
+            style: const TextStyle(
+                fontSize: 10.5, height: 1.5, color: MindColors.ink55),
+          ),
         ],
       ),
     );

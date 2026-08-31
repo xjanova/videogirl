@@ -573,6 +573,53 @@ class S {
         'Rings for $s seconds; if you do not pick up, she will',
       );
 
+  // ═══ สายที่เธอถือเอง ════════════════════════════════════
+  String get callGreeting => _(
+        'สวัสดีค่ะ มายด์เป็นผู้ช่วยของเจ้าของเบอร์นี้นะคะ '
+            'ตอนนี้เขาไม่สะดวกรับสาย ไม่ทราบว่าติดต่อเรื่องอะไรคะ',
+        'Hello, this is Mind, assistant to the owner of this number. '
+            'They cannot take the call right now — may I ask what it is about?',
+      );
+  String get callOnAir => _('มายด์กำลังคุยสายนี้', 'Mind is on this call');
+  String get callTalking => _('กำลังพูด', 'Speaking');
+  String get callListening => _('กำลังฟัง', 'Listening');
+  String get callThinking => _('กำลังคิด', 'Thinking');
+  String get callHandedOver => _('คุณรับสายเองแล้ว', 'You have taken the call');
+  String get callBargeIn => _('แทรกสาย', 'Take over');
+  String get callHangUp => _('วางสาย', 'Hang up');
+  String get callAnswerNow => _('ให้มายด์รับ', 'Let Mind answer');
+  String get callSayHint => _('พิมพ์ให้เธอพูดเข้าสาย', 'Type what she should say');
+  String get callDeaf => _(
+        'เครื่องนี้ไม่ยอมให้เธอฟังเสียงในสาย พิมพ์ให้เธอพูดแทนได้ '
+            'ปลายสายยังได้ยินเธอปกติ',
+        'This phone will not let her hear the call. Type and she will say it — '
+            'the caller still hears her fine.',
+      );
+  String get callMuteWarn => _(
+        'เปิดลำโพงเข้าสายไม่ได้ ปลายสายจะไม่ได้ยินเธอ ลองสลับช่องเสียงในหน้าตั้งค่า',
+        'Speakerphone was refused — the caller will not hear her. '
+            'Try the other audio path in Settings.',
+      );
+
+  // ═══ ช่องเสียงเข้าสาย ═══════════════════════════════════
+  String get callStreamTitle => _('ทางที่เสียงเธอวิ่งเข้าสาย', 'How her voice reaches the call');
+  String get callStreamWhy => _(
+        'เธอพูดออกลำโพงแล้วให้ไมค์ของเครื่องรับเข้าไปในสาย เพราะ Android '
+            'ไม่มีทางป้อนเสียงเข้าสายตรง ๆ · บางเครื่องตัดเสียงก้องแรงจนลบเสียงเธอทิ้ง '
+            'ถ้าปลายสายไม่ได้ยิน ให้สลับมาอีกทางแล้วลองใหม่',
+        'She speaks out the loudspeaker and the phone mic carries it into the call — '
+            'Android has no way to inject audio directly. Some phones cancel it as echo. '
+            'If the caller cannot hear her, switch to the other path and try again.',
+      );
+  String get callStreamCall => _('ช่องเสียงสาย', 'Call stream');
+  String get callStreamCallHint =>
+      _('ค่าตั้งต้น · ดังตามระดับเสียงสาย', 'Default — follows the in-call volume');
+  String get callStreamMedia => _('ช่องเสียงสื่อ', 'Media stream');
+  String get callStreamMediaHint => _(
+        'ลองทางนี้ถ้าปลายสายไม่ได้ยิน',
+        'Try this one if the caller hears nothing',
+      );
+
   // ═══ อัปเดต ════════════════════════════════════════════
   String get updateChecking => _('กำลังเช็ครุ่นใหม่…', 'Checking for updates…');
   String updateAvailable(String v) => _('มีรุ่นใหม่ $v', 'Version $v available');
