@@ -155,24 +155,17 @@ jobs:
           keyPassword=$KEY_PASSWORD
           EOF
 
-      # หมายเหตุความปลอดภัย: คีย์ที่ --dart-define เข้าไปจะ **ฝังอยู่ใน APK**
-      # ใครโหลด APK จาก release สาธารณะไปแกะก็อ่านคีย์ได้ (--obfuscate ก็ไม่ช่วย
-      # เพราะค่าคงที่ยังเป็นสตริงเปล่า ๆ อยู่ดี) ใช้ได้เฉพาะช่วงทดลองเท่านั้น
-      # ก่อนเปิดให้คนอื่นใช้ต้องย้ายไปเรียกผ่าน backend ของเราเอง (ดู docs/security.md)
+      # **ไม่ --dart-define คีย์อะไรเข้าไปเลย โดยตั้งใจ**
+      #
+      # release นี้ตั้งใจให้เธอคิดด้วย Gemma บนเครื่อง ไม่ต้องพึ่งคีย์ของใคร
+      # และคีย์ที่ --dart-define เข้าไปจะ **ฝังอยู่ใน APK** ใครโหลดจาก release
+      # สาธารณะไปแกะก็อ่านได้ (--obfuscate ไม่ช่วย ค่าคงที่ยังเป็นสตริงเปล่า ๆ)
+      # ถ้าวันหนึ่งต้องใช้บริการที่มีคีย์จริง ๆ ให้ต่อผ่าน backend ของเราเอง
+      # แล้วให้แอปถือ token ของผู้ใช้แทน ไม่ใช่กลับมายัดคีย์ตรงนี้ (docs/security.md)
       - name: Build APK
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "::warning::ไม่มี secret OPENAI_API_KEY — APK จะ build ผ่าน แต่แอปจะคุยไม่ได้จนกว่าจะตั้งคีย์"
-          fi
-          flutter build apk --release \
-            --build-name="${{ steps.ver.outputs.version }}" \
-            --build-number="${{ steps.ver.outputs.code }}" \
-            --obfuscate --split-debug-info=build/symbols \
-            --dart-define=OPENAI_API_KEY="$OPENAI_API_KEY" \
-            --dart-define=OPENAI_MODEL=gpt-5.6-sol
+          flutter build apk --release --build-name="${{ steps.ver.outputs.version }}" --build-number="${{ steps.ver.outputs.code }}" --obfuscate --split-debug-info=build/symbols
 
       # ต้องแนบ SHA256SUMS.txt ไปด้วยเสมอ ไม่งั้นแอปจะปฏิเสธการติดตั้ง
       # (ดู lib/update/updater.dart — ไม่มีแฮช = ไม่ติดตั้ง โดยตั้งใจ)
