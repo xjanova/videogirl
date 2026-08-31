@@ -1,25 +1,105 @@
 name: release
 
-# ปล่อย APK ขึ้น GitHub Releases ให้ระบบ auto-update ในแอปมาโหลดต่อ
+# ออก release เองอัตโนมัติ: push ขึ้น main → คิดเวอร์ชันถัดไป → build APK →
+# ทำ SHA256SUMS.txt → สร้าง GitHub Release ให้ระบบ auto-update ในแอปมาโหลดต่อ
 #
-# ยิงเมื่อ push tag ที่ขึ้นต้นด้วย v เช่น v0.2.0
-# ต้องแนบ SHA256SUMS.txt ไปด้วยเสมอ ไม่งั้นแอปจะปฏิเสธการติดตั้ง
-# (ดู lib/update/updater.dart — ไม่มีแฮช = ไม่ติดตั้ง โดยตั้งใจ)
+# ไม่ต้องแท็กเอง ไม่ต้องแก้ pubspec.yaml — **แท็กใน repo คือแหล่งความจริงของเวอร์ชัน**
+# (ถ้าให้ workflow commit เลขเวอร์ชันกลับเข้า main จะวนลูปกับตัวเอง และพังทันที
+#  ที่ main ถูกป้องกัน — อ่านจากแท็กแทนจึงไม่มีทั้งสองปัญหา)
+#
+# ข้ามการออก release ชั่วคราว: ใส่ [skip release] ในข้อความ commit
+# อยากขยับ minor/major หรือกำหนดเวอร์ชันเอง: กด Run workflow แล้วเลือก
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - '.gitattributes'
+      - '.idea/**'
   workflow_dispatch:
+    inputs:
+      bump:
+        description: 'ขยับเวอร์ชันระดับไหน'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: 'กำหนดเวอร์ชันเอง เช่น 1.2.0 (ใส่แล้วจะไม่สนใจ bump)'
+        type: string
+        default: ''
 
 permissions:
   contents: write
 
+# สอง push ติดกันต้องไม่แย่งกันคิดเลขเวอร์ชันเดียวกัน ให้ต่อคิวแทน ห้ามยกเลิก
+# ตัวที่กำลัง build อยู่ ไม่งั้น release ที่ทำค้างไว้ครึ่งทางจะหายไปเฉย ๆ
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  build:
+  release:
+    if: "!contains(github.event.head_commit.message, '[skip release]')"
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # ต้องได้แท็กมาครบ ไม่งั้นคิดเวอร์ชันถัดไปไม่ได้
+
+      - name: คิดเลขเวอร์ชันถัดไปจากแท็กล่าสุด
+        id: ver
+        env:
+          BUMP: ${{ inputs.bump || 'patch' }}
+          PINNED: ${{ inputs.version || '' }}
+        run: |
+          set -euo pipefail
+
+          # กรองด้วย grep ซ้ำอีกชั้น — glob ของ git tag ปล่อย v1.2.3-beta ผ่านมาได้
+          # แล้ว $((PA + 1)) จะพังเพราะ PA เป็น "3-beta" ไม่ใช่ตัวเลข
+          LATEST="$(git tag -l 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+
+          if [ -n "$PINNED" ]; then
+            NEXT="${PINNED#v}"
+          elif [ -z "$LATEST" ]; then
+            # ยังไม่เคยออก release เลย — ใช้เวอร์ชันใน pubspec ตรง ๆ ไม่ต้องขยับ
+            NEXT="$(sed -n 's/^version:[[:space:]]*\([0-9][0-9.]*\).*/\1/p' pubspec.yaml | head -n1)"
+          else
+            IFS=. read -r MA MI PA <<< "${LATEST#v}"
+            case "$BUMP" in
+              major) MA=$((MA + 1)); MI=0; PA=0 ;;
+              minor) MI=$((MI + 1)); PA=0 ;;
+              *)     PA=$((PA + 1)) ;;
+            esac
+            NEXT="$MA.$MI.$PA"
+          fi
+
+          if ! printf '%s' "$NEXT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::เวอร์ชัน '$NEXT' ผิดรูป ต้องเป็น X.Y.Z"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$NEXT" >/dev/null; then
+            echo "::error::แท็ก v$NEXT มีอยู่แล้ว — ลบ release/แท็กเดิมก่อน หรือกด Run workflow แล้วกำหนดเวอร์ชันเอง"
+            exit 1
+          fi
+
+          IFS=. read -r MA MI PA <<< "$NEXT"
+          if [ "$MI" -gt 99 ] || [ "$PA" -gt 99 ]; then
+            echo "::error::minor/patch เกิน 99 — สูตร versionCode รองรับไม่ได้ ต้องขยับ major"
+            exit 1
+          fi
+
+          # versionCode ต้องเพิ่มขึ้นทุกครั้ง ไม่งั้น Android ปฏิเสธการติดตั้งทับ
+          # ผูกกับเลขเวอร์ชันตรง ๆ ไม่ใช่เลข run ของ Actions เพราะเลข run รีเซ็ต
+          # ได้เมื่อเปลี่ยนชื่อไฟล์ workflow แล้ว versionCode จะเดินถอยหลัง
+          CODE=$((MA * 10000 + MI * 100 + PA))
+
+          echo "version=$NEXT"  >> "$GITHUB_OUTPUT"
+          echo "code=$CODE"     >> "$GITHUB_OUTPUT"
+          echo "### จะออก \`v$NEXT\` (versionCode $CODE)" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-java@v4
         with:
@@ -44,45 +124,71 @@ jobs:
       - name: เตรียม keystore
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           if [ -z "$KEYSTORE_B64" ]; then
             echo "::error::ยังไม่ได้ตั้ง secret ANDROID_KEYSTORE_BASE64 — release ที่เซ็นด้วย debug key จะอัปเดตทับไม่ได้"
             exit 1
           fi
           echo "$KEYSTORE_B64" | base64 -d > android/app/release.jks
+          # เขียนผ่าน env ไม่ใช่ ${{ }} ตรง ๆ รหัสที่มีอักขระพิเศษจะได้ไม่ทำ heredoc พัง
           cat > android/key.properties <<EOF
           storeFile=release.jks
-          storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
           EOF
 
       # หมายเหตุความปลอดภัย: คีย์ที่ --dart-define เข้าไปจะ **ฝังอยู่ใน APK**
-      # ใครโหลด APK จาก release สาธารณะไปแกะก็อ่านคีย์ได้
-      # ใช้ได้เฉพาะช่วงทดลองเท่านั้น ก่อนเปิดให้คนอื่นใช้ต้องย้ายไปเรียกผ่าน
-      # backend ของเราเอง แล้วให้แอปถือ token ของผู้ใช้แทน (ดู docs/security.md)
+      # ใครโหลด APK จาก release สาธารณะไปแกะก็อ่านคีย์ได้ (--obfuscate ก็ไม่ช่วย
+      # เพราะค่าคงที่ยังเป็นสตริงเปล่า ๆ อยู่ดี) ใช้ได้เฉพาะช่วงทดลองเท่านั้น
+      # ก่อนเปิดให้คนอื่นใช้ต้องย้ายไปเรียกผ่าน backend ของเราเอง (ดู docs/security.md)
       - name: Build APK
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          set -euo pipefail
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::warning::ไม่มี secret OPENAI_API_KEY — APK จะ build ผ่าน แต่แอปจะคุยไม่ได้จนกว่าจะตั้งคีย์"
+          fi
           flutter build apk --release \
+            --build-name="${{ steps.ver.outputs.version }}" \
+            --build-number="${{ steps.ver.outputs.code }}" \
+            --obfuscate --split-debug-info=build/symbols \
             --dart-define=OPENAI_API_KEY="$OPENAI_API_KEY" \
             --dart-define=OPENAI_MODEL=gpt-5.6-sol
 
-      - name: ตั้งชื่อไฟล์ตาม tag และทำ SHA256SUMS.txt
-        id: pack
+      # ต้องแนบ SHA256SUMS.txt ไปด้วยเสมอ ไม่งั้นแอปจะปฏิเสธการติดตั้ง
+      # (ดู lib/update/updater.dart — ไม่มีแฮช = ไม่ติดตั้ง โดยตั้งใจ)
+      - name: ตั้งชื่อไฟล์และทำ SHA256SUMS.txt
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          set -euo pipefail
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk "dist/giggok-$VERSION.apk"
+          # --obfuscate ทำให้ stack trace อ่านไม่ออก ถ้าไม่เก็บ symbol ไว้ด้วย
+          # แนบไปกับ release เลย จะได้ไม่ต้องไปไล่หาว่า build ไหนใช้ symbol ชุดไหน
+          (cd build/symbols && zip -qr "$GITHUB_WORKSPACE/dist/debug-symbols-$VERSION.zip" .)
           cd dist
           sha256sum "giggok-$VERSION.apk" > SHA256SUMS.txt
           cat SHA256SUMS.txt
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          ls -lh
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/giggok-${{ steps.pack.outputs.version }}.apk
-            dist/SHA256SUMS.txt
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: v${{ steps.ver.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          # แอปข้าม draft/prerelease ทิ้ง และอ่านจาก /releases/latest เท่านั้น
+          draft: false
+          prerelease: false
+          make_latest: true
           generate_release_notes: true
+          files: |
+            dist/giggok-${{ steps.ver.outputs.version }}.apk
+            dist/SHA256SUMS.txt
+            dist/debug-symbols-${{ steps.ver.outputs.version }}.zip

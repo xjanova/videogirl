@@ -267,8 +267,12 @@ void main() {
       check('permCalendarWhy', en.permCalendarWhy);
       // ชื่อวันกับชื่อเดือนฝั่งอังกฤษต้องไม่ใช่ไทย ไม่งั้นวันที่จะโผล่เป็นไทย
       // กลางหน้าจอภาษาอังกฤษ ซึ่งเป็นจุดที่คนสังเกตเห็นทันที
-      for (final w in en.weekdayNames) check('weekdayNames', w);
-      for (final m in en.monthShort) check('monthShort', m);
+      for (final w in en.weekdayNames) {
+        check('weekdayNames', w);
+      }
+      for (final m in en.monthShort) {
+        check('monthShort', m);
+      }
       check('tlTitle', en.tlTitle);
       check('tlDidToday', en.tlDidToday(3));
       check('tlNothingToday', en.tlNothingToday);

@@ -28,47 +28,81 @@ workflow จะหยุดทันทีถ้าไม่มี secret `ANDRO
 ### 3. tag ต้องขึ้นต้นด้วย `v` และเวอร์ชันต้องเพิ่มขึ้น
 
 แอปเทียบเวอร์ชันเป็นตัวเลขทีละส่วน `1.10.0` > `1.9.0` (ไม่ใช่เทียบสตริง)
-และต้องขยับ `version:` ใน `pubspec.yaml` ให้ตรงกับ tag ด้วย
+
+**แท็กคือแหล่งความจริงของเวอร์ชัน ไม่ใช่ `pubspec.yaml`** — workflow อ่านแท็ก
+ล่าสุดแล้ว `+1` เอง จากนั้นส่งเข้า build ผ่าน `--build-name` / `--build-number`
+ค่า `version:` ใน pubspec เป็นแค่ค่าตั้งต้นตอนยังไม่มี release สักตัว
+
+`versionCode` คิดจากเลขเวอร์ชันตรง ๆ (`major*10000 + minor*100 + patch`)
+ไม่ใช่เลข run ของ Actions เพราะเลข run รีเซ็ตได้เวลาเปลี่ยนชื่อไฟล์ workflow
+แล้ว versionCode จะเดินถอยหลัง ซึ่ง Android จะปฏิเสธการติดตั้งทับทันที
+(ผลพลอยได้: minor กับ patch ห้ามเกิน 99 — เกินแล้ว workflow จะหยุดพร้อมบอกเหตุ)
 
 ## ครั้งแรก — สร้าง keystore
 
+> ทำไปแล้วสำหรับ repo นี้ (31 ส.ค. 2026) — เก็บไว้เป็นวิธีทำถ้าต้องเริ่มใหม่
+> ของจริงอยู่ที่ `android/app/release.jks` และสำรองไว้ที่ `~/.videogirl-release-key/`
+> secrets ใน repo ตั้งครบแล้ว ยกเว้น `OPENAI_API_KEY` (ตั้งใจไม่ตั้ง — ดูข้างล่าง)
+
 ```bash
-keytool -genkey -v -keystore videogirl-release.jks -keyalg RSA -keysize 4096 -validity 10000 -alias videogirl
+keytool -genkeypair -v -keystore android/app/release.jks -storetype PKCS12   -keyalg RSA -keysize 4096 -validity 10000 -alias videogirl
 ```
 
 **เก็บไฟล์นี้ให้ดีที่สุด** ทำหายแล้วออกอัปเดตให้เครื่องที่ลงไปแล้วไม่ได้อีกเลย
-สำรองไว้นอกเครื่องอย่างน้อยหนึ่งที่
+สำรองไว้นอกเครื่องอย่างน้อยหนึ่งที่ — และอย่าคิดว่า GitHub secret คือสำเนา
+**secret อ่านกลับออกมาไม่ได้** เขียนทับได้อย่างเดียว
 
 ตั้ง secrets ใน repo:
 
 ```bash
-gh secret set ANDROID_KEYSTORE_BASE64 < <(base64 -w0 videogirl-release.jks)
+base64 -w0 android/app/release.jks | gh secret set ANDROID_KEYSTORE_BASE64
 gh secret set ANDROID_STORE_PASSWORD
 gh secret set ANDROID_KEY_ALIAS
 gh secret set ANDROID_KEY_PASSWORD
-gh secret set OPENAI_API_KEY
 ```
 
-> คีย์ OpenAI ที่ใส่ตรงนี้จะ**ฝังอยู่ใน APK สาธารณะ** ใครโหลดไปก็อ่านได้
-> ดู [security.md](security.md) — ก่อนเปิดให้คนอื่นใช้ต้องย้ายไป backend ก่อน
+> **ยังไม่ได้ตั้ง `OPENAI_API_KEY` โดยตั้งใจ** — คีย์ที่ `--dart-define` เข้าไปจะ
+> **ฝังอยู่ใน APK สาธารณะ** ใครโหลดไปแกะก็อ่านได้ (`--obfuscate` ไม่ช่วย เพราะ
+> ค่าคงที่ยังเป็นสตริงเปล่า ๆ อยู่ดี) ตอนนี้ APK build ผ่านแต่แอปยังคุยไม่ได้
+> ดู [security.md](security.md) — ต้องย้ายไป backend ก่อนถึงจะเปิดให้คนอื่นใช้ได้
 
 สำหรับ build ในเครื่อง สร้าง `android/key.properties` (ถูก gitignore แล้ว):
 
 ```properties
-storeFile=/path/ที่/เก็บ/videogirl-release.jks
+storeFile=release.jks
 storePassword=...
 keyAlias=videogirl
 keyPassword=...
 ```
 
+`storeFile` เป็น path ที่นับจาก `android/app/` ไม่ใช่จากรากโปรเจกต์
+
 ## ออก release
 
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
+**ปกติไม่ต้องทำอะไร** — push ขึ้น `main` แล้ว
+[workflow](../.github/workflows/release.yml) จะ
+คิดเวอร์ชันถัดไป → analyze → test → build APK → ทำแฮช → ออก release ให้เอง
 
-[workflow](../.github/workflows/release.yml) จะ analyze → test → build → ทำแฮช → สร้าง release ให้เอง
+| อยากได้ | ทำ |
+|---|---|
+| patch อัตโนมัติ (`0.1.0` → `0.1.1`) | push ขึ้น `main` เฉย ๆ |
+| ไม่ต้องออก release รอบนี้ | ใส่ `[skip release]` ในข้อความ commit |
+| minor / major | Actions → release → Run workflow → เลือก bump |
+| กำหนดเวอร์ชันเอง | Actions → release → Run workflow → กรอกช่อง version |
+
+push ที่แตะแค่ `*.md`, `docs/`, `.gitignore`, `.gitattributes`, `.idea/`
+จะไม่ปลุก workflow (ดู `paths-ignore`)
+
+release ที่ออกมาจะมี 3 ไฟล์: APK, `SHA256SUMS.txt` และ `debug-symbols-*.zip`
+(ตัวหลังเก็บไว้อ่าน stack trace เพราะ build จริงใช้ `--obfuscate`)
+
+### ต้องออก release ซ้ำเวอร์ชันเดิม
+
+workflow จะหยุดถ้าแท็กนั้นมีอยู่แล้ว ลบทั้ง release และแท็กก่อน แล้วสั่งใหม่:
+
+```bash
+gh release delete v0.1.1 --cleanup-tag --yes
+```
 
 ## ชุดตัวมายด์ (avatar pack) — ต้องแยกจาก release เสมอ
 
