@@ -134,7 +134,8 @@ jobs:
             exit 1
           fi
           echo "$KEYSTORE_B64" | base64 -d > android/app/release.jks
-          # เขียนผ่าน env ไม่ใช่ ${{ }} ตรง ๆ รหัสที่มีอักขระพิเศษจะได้ไม่ทำ heredoc พัง
+          # เขียนผ่านตัวแปร env ไม่ใช่แทนค่า expression ลงมาตรง ๆ
+          # รหัสที่มีอักขระพิเศษจะได้ไม่ทำ heredoc พัง
           cat > android/key.properties <<EOF
           storeFile=release.jks
           storePassword=$STORE_PASSWORD
