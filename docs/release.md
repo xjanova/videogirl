@@ -77,6 +77,19 @@ keyPassword=...
 
 `storeFile` เป็น path ที่นับจาก `android/app/` ไม่ใช่จากรากโปรเจกต์
 
+## เวอร์ชัน Flutter ถูกตรึงไว้
+
+workflow ตรึง `flutter-version: 3.41.7` ไม่ใช้ `channel: stable` ลอย ๆ
+
+`flutter analyze` นับ info เป็น error ด้วย พอ Flutter ออก stable ใหม่ที่มี
+deprecation warning เพิ่ม release จะพังเองทั้งที่ไม่มีใครแตะโค้ด — เกิดมาแล้วจริง
+ตอน CI ได้ 3.47.2 แล้วเตือน `axisAlignment` ใน `home_screen.dart` ซึ่งเครื่องที่ใช้
+3.41.7 มองไม่เห็น และแก้ตามที่มันบอกก็ไม่ได้ เพราะ `alignment` ที่เป็นตัวแทน
+ยังไม่มีใน 3.41.7 — แก้แล้วเครื่องจะ build ไม่ผ่านแทน
+
+เวลาจะขยับ Flutter: ขยับในเครื่องก่อน แก้ deprecation ที่โผล่ให้หมด แล้วค่อยแก้
+เลขใน workflow **เป็น commit แยก** จะได้แยกออกว่าอะไรพังเพราะ Flutter ไม่ใช่โค้ดเรา
+
 ## ออก release
 
 **ปกติไม่ต้องทำอะไร** — push ขึ้น `main` แล้ว

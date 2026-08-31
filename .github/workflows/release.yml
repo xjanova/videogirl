@@ -106,8 +106,20 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # ตรึงเวอร์ชันไว้ ไม่ใช้ channel: stable ลอย ๆ
+      #
+      # stable เป็นเป้าที่ขยับตลอด และ `flutter analyze` นับ info เป็น error ด้วย
+      # วันที่ Flutter ออก stable ใหม่พร้อม deprecation warning สักตัว release จะ
+      # พังเองทั้งที่ไม่มีใครแตะโค้ด (เกิดจริงมาแล้ว: 3.47.2 เตือน axisAlignment
+      # ใน home_screen.dart ซึ่งเครื่องที่ใช้ 3.41.7 มองไม่เห็น แล้วแก้ตามก็ไม่ได้
+      # เพราะตัวแทนอย่าง alignment ยังไม่มีใน 3.41.7)
+      #
+      # ตรึงไว้แล้วได้ของแถม: commit เดิมให้ APK เดิมเสมอ ไม่ขึ้นกับว่า build วันไหน
+      # เวลาจะขยับเวอร์ชัน ให้แก้บรรทัดล่างนี้เป็น commit แยก จะได้เห็นชัดว่า
+      # อะไรพังเพราะ Flutter ไม่ใช่เพราะโค้ดเรา — และต้องขยับในเครื่องให้ตรงกันด้วย
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: 3.41.7
           channel: stable
           cache: true
 
