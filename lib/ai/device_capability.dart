@@ -76,6 +76,12 @@ abstract final class DeviceCapability {
   static const _comfortableForE2b = 6600; // เหนือชั้น 6GB ใต้ชั้น 8GB
   static const _minForE4b = 9500; // เหนือชั้น 8GB ใต้ชั้น 12GB
 
+  /// เกณฑ์ขั้นต่ำเป็น GB ทศนิยมหนึ่งตำแหน่ง — สำหรับเสียบเข้าข้อความที่ผู้ใช้อ่าน
+  ///
+  /// อ่านจากค่าคงที่ตัวเดียวกับที่ใช้ตัดสินจริง ไม่ใช่พิมพ์เลขซ้ำในข้อความ
+  /// ไม่งั้นวันที่ขยับเกณฑ์ หน้าจอจะบอกเลขเก่าโดยไม่มีอะไรเตือน
+  static String get minLocalGb => (_minForLocal / 1024).toStringAsFixed(1);
+
   static DeviceVerdict verdictFor(int? ramMb) {
     if (ramMb == null || ramMb <= 0) {
       return const DeviceVerdict(

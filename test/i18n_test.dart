@@ -234,6 +234,10 @@ void main() {
       check('brainOnDevice', en.brainOnDevice);
       check('brainOnDeviceTradeoff', en.brainOnDeviceTradeoff);
       check('homeServerHint', en.homeServerHint);
+      check('ramBlockedTitle', en.ramBlockedTitle);
+      check('ramBlockedDetail', en.ramBlockedDetail('3.6', '4.5'));
+      check('ramBlockedHint', en.ramBlockedHint);
+      check('ramBlockedAnyway', en.ramBlockedAnyway);
       check('ramTooSmall', en.ramTooSmall);
       check('ramTooSmallDetail', en.ramTooSmallDetail('3.6'));
       check('ramTightDetail', en.ramTightDetail('5.4'));

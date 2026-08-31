@@ -16,7 +16,9 @@ import 'avatar/avatar_view.dart';
 import 'background/mind_background.dart';
 import 'background/mind_watch.dart';
 import 'system/permissions.dart';
+import 'ai/device_capability.dart';
 import 'screens/splash_screen.dart';
+import 'screens/unsupported_screen.dart';
 import 'shell.dart';
 import 'i18n/strings.dart';
 import 'state/mind_state.dart';
@@ -39,11 +41,13 @@ Future<void> main() async {
   ]);
 
   // พื้นหลังไล่สีของแต่ละหน้าจอวิ่งขึ้นไปใต้แถบสถานะ
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.dark,
-    systemNavigationBarColor: Colors.transparent,
-  ));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+    ),
+  );
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   // 🔴 วาดจอแรกทันที **ห้ามรออะไรก่อนบรรทัดนี้**
@@ -84,16 +88,21 @@ class _MindBootstrapState extends State<MindBootstrap> {
   final MindJournal _journal = MindJournal();
 
   /// สายโทรเข้า — เธอต้องรู้ว่าใครโทรมาถึงจะเป็นเลขาได้
-  late final CallWatch _calls =
-      CallWatch(permissions: _perms, journal: _journal);
+  late final CallWatch _calls = CallWatch(
+    permissions: _perms,
+    journal: _journal,
+  );
 
   /// สายที่ **เธอถือเอง** — คนละเรื่องกับ [_calls] ที่แค่เฝ้าดู
   ///
   /// ต้องเกิดหลัง [_calls] เพราะมันฟังตัวนั้นอยู่ · และ [CallWatch] เป็น
   /// เจ้าของ handler ของช่องเนทีฟแต่เพียงผู้เดียว — ตั้งซ้อนจะไปทับของมัน
   /// แบบเงียบ ๆ แล้วสัญญาณสายเข้าจะหายไปทั้งแอปโดยไม่มี error
-  late final CallSession _session =
-      CallSession(watch: _calls, state: _state, permissions: _perms);
+  late final CallSession _session = CallSession(
+    watch: _calls,
+    state: _state,
+    permissions: _perms,
+  );
 
   /// ตัวตนของมายด์เครื่องนี้ — วันเกิด ราศี ความผูกพัน
   ///
@@ -117,6 +126,20 @@ class _MindBootstrapState extends State<MindBootstrap> {
   /// วิดีโอเล่นจบ (หรือถูกแตะข้าม) แล้วหรือยัง
   bool _splashDone = false;
 
+  /// ผลตรวจสเปคเครื่อง — null คือยังตรวจไม่เสร็จ ยังไม่ตัดสินอะไร
+  DeviceVerdict? _device;
+
+  /// ผู้ใช้กด "เข้าใช้ต่อทั้งที่รู้" บนหน้ากั้นแล้ว
+  bool _ignoredDeviceWarning = false;
+
+  /// เครื่องนี้ต่ำกว่าเกณฑ์จนควรกั้นไว้ก่อนไหม
+  ///
+  /// กั้นเฉพาะ [RamTier.tooSmall] เท่านั้น ไม่รวม [RamTier.unknown] —
+  /// อ่านแรมไม่ได้ไม่ใช่หลักฐานว่าเครื่องไม่ไหว การกั้นคนที่ใช้ได้จริงออกไป
+  /// แย่กว่าการปล่อยเครื่องที่ไม่ไหวเข้ามาแล้วไปเจอคำเตือนในหน้าตั้งค่า
+  bool get _deviceBlocked =>
+      _device?.tier == RamTier.tooSmall && !_ignoredDeviceWarning;
+
   @override
   void initState() {
     super.initState();
@@ -139,15 +162,21 @@ class _MindBootstrapState extends State<MindBootstrap> {
       await _journal.load();
       _state.attachJournal(_journal);
       _pack.onInstalled = (pack) => _journal.record(
-            JournalKind.pack,
-            pack.nameFor(_state.lang == AppLang.th),
-          );
+        JournalKind.pack,
+        pack.nameFor(_state.lang == AppLang.th),
+      );
 
       await _soul.load();
       _state.attachSoul(_soul);
 
       await _state.load();
       await _pack.restore(preferId: _state.avatarPackId);
+
+      // อยู่รอบแรกเพราะต้องกั้น **ก่อน** เชลล์เกิด ไม่งั้น WebView จะเริ่มโหลด
+      // VRM 33MB ไปแล้วบนเครื่องที่แบกไม่ไหวตั้งแต่ต้น · อ่านแรมเป็นการเรียก
+      // ระบบครั้งเดียว หลักมิลลิวินาที ไม่ได้ถ่วง boot จริง และล้มเองไม่ได้
+      // (totalRamMb จับ exception คืน null ซึ่งตกเป็น tier unknown = ไม่กั้น)
+      _device = await DeviceCapability.detect();
     } catch (e) {
       debugPrint('boot: เตรียมของไม่ครบ — $e');
     }
@@ -177,14 +206,14 @@ class _MindBootstrapState extends State<MindBootstrap> {
     // สายที่เพิ่งวางมีผลกับอารมณ์เธอ · CallWatch เป็นคนกันไม่ให้นับซ้ำ
     // (สายเดียวยิงครั้งเดียว) ที่นี่จึงแปลงเป็นความหึงได้ตรง ๆ
     _calls.onCallEnded = (c) => unawaited(
-          _soul.sawCall(
-            known: c.name != null,
-            seconds: c.seconds,
-            // ส่งชื่อไปด้วยเพื่อให้เธอ**ถามถูกคน** ("คุณนภาโทรมาเรื่องอะไรคะ")
-            // ไม่ใช่ถามลอย ๆ ว่ามีใครโทรมาไหม ซึ่งเลขาจริงไม่ถามแบบนั้น
-            who: c.who.isEmpty ? null : c.who,
-          ),
-        );
+      _soul.sawCall(
+        known: c.name != null,
+        seconds: c.seconds,
+        // ส่งชื่อไปด้วยเพื่อให้เธอ**ถามถูกคน** ("คุณนภาโทรมาเรื่องอะไรคะ")
+        // ไม่ใช่ถามลอย ๆ ว่ามีใครโทรมาไหม ซึ่งเลขาจริงไม่ถามแบบนั้น
+        who: c.who.isEmpty ? null : c.who,
+      ),
+    );
 
     await _calls.start();
 
@@ -217,7 +246,9 @@ class _MindBootstrapState extends State<MindBootstrap> {
   /// บทสนทนาที่จบไปแล้วก่อนสายเข้า จำไว้แล้วคืนทีหลังจะได้สีหน้าที่ค้าง
   /// มาจากเรื่องที่ผ่านไปนานแล้ว
   void _showCallOnStage() {
-    final want = _calls.state == CallState.idle ? MindMood.neutral : MindMood.calling;
+    final want = _calls.state == CallState.idle
+        ? MindMood.neutral
+        : MindMood.calling;
     if (want == _stageMood) return;
     _stageMood = want;
     unawaited(_avatar.setMood(want));
@@ -252,27 +283,33 @@ class _MindBootstrapState extends State<MindBootstrap> {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-          home: Stack(
-            fit: StackFit.expand,
-            children: [
-              // เชลล์เกิดตั้งแต่วิดีโอยังเล่นอยู่ WebView จึงเริ่มโหลด VRM
-              // ไปพร้อมกัน แทนที่จะรอวิดีโอจบแล้วค่อยเริ่มนับหนึ่ง
-              if (_canBuildShell) const MindShell(),
-              if (!_splashDone)
-                // 🔴 รอ `visible` ไม่ใช่ `ready`
-                //
-                // เจ้าของสั่งว่าเข้าแอปแล้วต้องเห็นตัวเธอเลย ไม่ใช่โครงร่าง
-                // `visible` = VRM ขึ้นจอแล้ว · `ready` = คลิปท่าทางครบด้วย
-                // ซึ่งมาช้ากว่าอีกหลายวินาทีโดยที่เธอยืนอยู่แล้ว
-                Consumer<MindAvatarController>(
-                  builder: (context, avatar, _) => MindSplash(
-                    appReady: avatar.visible || avatar.error != null,
-                    loadPercent: avatar.loadPercent,
-                    onDone: () => setState(() => _splashDone = true),
-                  ),
+          home: _deviceBlocked
+              ? UnsupportedDeviceScreen(
+                  verdict: _device!,
+                  onContinueAnyway: () =>
+                      setState(() => _ignoredDeviceWarning = true),
+                )
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // เชลล์เกิดตั้งแต่วิดีโอยังเล่นอยู่ WebView จึงเริ่มโหลด VRM
+                    // ไปพร้อมกัน แทนที่จะรอวิดีโอจบแล้วค่อยเริ่มนับหนึ่ง
+                    if (_canBuildShell) const MindShell(),
+                    if (!_splashDone)
+                      // 🔴 รอ `visible` ไม่ใช่ `ready`
+                      //
+                      // เจ้าของสั่งว่าเข้าแอปแล้วต้องเห็นตัวเธอเลย ไม่ใช่โครงร่าง
+                      // `visible` = VRM ขึ้นจอแล้ว · `ready` = คลิปท่าทางครบด้วย
+                      // ซึ่งมาช้ากว่าอีกหลายวินาทีโดยที่เธอยืนอยู่แล้ว
+                      Consumer<MindAvatarController>(
+                        builder: (context, avatar, _) => MindSplash(
+                          appReady: avatar.visible || avatar.error != null,
+                          loadPercent: avatar.loadPercent,
+                          onDone: () => setState(() => _splashDone = true),
+                        ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
         ),
       ),
     );

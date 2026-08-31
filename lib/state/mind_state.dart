@@ -111,7 +111,7 @@ class MindState extends ChangeNotifier {
     _boundaries = p.getString('boundaries') ?? MindPersona.defaultBoundaries(_lang);
     _brain = BrainProvider.values.firstWhere(
       (e) => e.name == p.getString('brain'),
-      orElse: () => BrainProvider.openai,
+      orElse: () => BrainProvider.onDevice,
     );
     _homeServerUrl = p.getString('homeServerUrl') ?? HomeServerDefaults.baseUrl;
     _homeServerModel = p.getString('homeServerModel') ?? HomeServerDefaults.model;
@@ -288,7 +288,12 @@ class MindState extends ChangeNotifier {
   }
 
   // ═══ สมอง — เลือกผู้ประมวลผลได้ ═════════════════════════
-  BrainProvider _brain = BrainProvider.openai;
+  /// ตั้งต้นที่ [BrainProvider.onDevice] — เธอคิดเองบนเครื่อง ไม่ต้องมีคีย์ของใคร
+  ///
+  /// เคยตั้งต้นเป็น openai ซึ่งแปลว่าเครื่องที่เพิ่งลง APK จาก release จะคุยไม่ได้
+  /// เลยจนกว่าจะมีคนไปเปลี่ยนเองในหน้าตั้งค่า — build สาธารณะไม่มีคีย์ติดมาด้วย
+  /// โดยตั้งใจ (ดู docs/security.md) ค่าตั้งต้นจึงต้องเป็นทางที่ทำงานได้จริง
+  BrainProvider _brain = BrainProvider.onDevice;
   BrainProvider get brain => _brain;
 
   /// สมองที่รันบนมือถือ สร้างเมื่อเลือกใช้จริงเท่านั้น
@@ -512,7 +517,7 @@ class MindState extends ChangeNotifier {
   /// (ปากจะขยับตามคลื่นก็จริง แต่เสียงจะดังซ้ำสองทางแล้วก้องกลับเข้าสาย)
   /// ตอนมีสาย ปากขยับด้วย LipSync.babble ซึ่งไม่ต้องใช้คลื่นเสียงเลย
   Future<Utterance> speakForCall(String text) =>
-      _speech.synthesize(text, profile: voiceFor(VoiceChannel.answer));
+      synthesizeWithFallback(text, voiceFor(VoiceChannel.answer));
 
   /// ถอดเสียงปลายสายเป็นข้อความ
   ///
@@ -828,16 +833,11 @@ class MindState extends ChangeNotifier {
       return;
     }
     final profile = voiceFor(channel);
-    // เครื่อง Android พูดได้แม้ไม่มีคีย์ OpenAI จึงเช็คเฉพาะทางที่ต้องใช้คีย์
-    if (profile.engine == TtsEngine.openai && !OpenAiConfig.configured) {
-      debugPrint('เสียง: เลือก OpenAI ไว้แต่ build นี้ไม่มีคีย์');
-      return;
-    }
 
     try {
       debugPrint('เสียง[${channel.name}]: ${profile.engine.name} '
           '· ${profile.model} · ${profile.voice}');
-      final utterance = await _speech.synthesize(text, profile: profile);
+      final utterance = await synthesizeWithFallback(text, profile);
       if (_disposed) return;
 
       debugPrint('เสียง: ได้ ${utterance.bytes.length} ไบต์ '
@@ -859,6 +859,34 @@ class MindState extends ChangeNotifier {
     }
   }
 
+
+  /// สังเคราะห์เสียง · ตกมาที่เสียงของเครื่อง (Google TTS) เมื่อทางที่เลือกใช้ไม่ได้
+  ///
+  /// ทางที่ต้องพึ่งของนอกเครื่องล้มได้หลายแบบและล้มบ่อย — build นี้ไม่มีคีย์,
+  /// เน็ตหลุด, เซิร์ฟเวอร์โคลนเสียงไม่ตอบ · ของเดิมเจอกรณีไม่มีคีย์แล้ว `return`
+  /// เงียบ ๆ ซึ่งผู้ใช้อ่านว่า "เธอไม่ยอมพูดกับเรา" ไม่ใช่ "ตั้งค่าเสียงไม่ครบ"
+  ///
+  /// เสียงของเครื่องไม่เพราะเท่าและทิ้งคำสั่งน้ำเสียงทั้งหมด แต่ทำงานออฟไลน์
+  /// และไม่มีค่าใช้จ่าย จึงเป็นตาข่ายรับที่ดีกว่าความเงียบเสมอ
+  ///
+  /// ถ้าตกมาถึงเสียงเครื่องแล้วยังล้มอีก ปล่อยให้ error ลอยขึ้นไปตามเดิม
+  /// คนเรียกจับไว้แล้วและบทสนทนาไม่พังเพราะเสียงไม่ออก
+  @visibleForTesting
+  Future<Utterance> synthesizeWithFallback(
+      String text, VoiceProfile profile) async {
+    if (profile.engine != TtsEngine.device) {
+      try {
+        return await _speech.synthesize(text, profile: profile);
+      } on OpenAiFailure catch (e) {
+        debugPrint('เสียง: ${profile.engine.name} ไม่สำเร็จ (${e.message}) '
+            '— ตกมาใช้เสียงของเครื่อง');
+      }
+    }
+    return _speech.synthesize(
+      text,
+      profile: profile.copyWith(engine: TtsEngine.device),
+    );
+  }
 
   /// ส่งบทสนทนาไปให้ผู้ประมวลผลที่เลือกไว้
   ///

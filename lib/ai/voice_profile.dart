@@ -65,10 +65,18 @@ class VoiceProfile {
 
   /// ค่าตั้งต้นของแต่ละช่อง — ต่างกันโดยตั้งใจ ไม่ใช่ก๊อปกัน
   /// และผูกกับภาษา เพราะคำสั่งน้ำเสียงต้องเขียนด้วยภาษาที่เธอจะพูด
+  ///
+  /// `engine` ตั้งต้นเป็น [TtsEngine.device] (Google TTS ที่ติดมากับ Android)
+  /// เพราะแอปนี้ตั้งใจให้ใช้ได้**ออฟไลน์และไม่มีค่าใช้จ่าย**ตั้งแต่เปิดครั้งแรก
+  /// ตั้งเป็น openai ไว้จะเงียบสนิทในเครื่องที่ไม่มีคีย์ ซึ่งผู้ใช้อ่านว่าแอปพัง
+  ///
+  /// ส่วน voice/model/instructions ยังคงค่า OpenAI ที่เลือกมาแล้วไว้เหมือนเดิม
+  /// ทั้งที่เสียงเครื่องไม่ได้ใช้ — เพื่อให้วันที่สลับไป openai ได้ของที่ตั้งไว้ดี
+  /// อยู่แล้วทันที ไม่ใช่ค่าว่างที่ต้องมานั่งกรอกใหม่
   static VoiceProfile defaultFor(VoiceChannel c, AppLang lang) => switch (c) {
         // คุยกับเจ้าของ: นุ่ม อบอุ่น เป็นตัวเธอ
         VoiceChannel.chat => VoiceProfile(
-            engine: TtsEngine.openai,
+            engine: TtsEngine.device,
             voice: 'coral',
             model: 'gpt-4o-mini-tts',
             instructions: MindPersona.defaultVoiceInstructions(lang),
@@ -76,7 +84,7 @@ class VoiceProfile {
 
         // รับสายแทน: คนปลายสายเป็นคนแปลกหน้า ต้องสุภาพ ชัด ไม่หวาน
         VoiceChannel.answer => VoiceProfile(
-            engine: TtsEngine.openai,
+            engine: TtsEngine.device,
             voice: 'sage',
             model: 'gpt-4o-mini-tts',
             instructions: MindPersona.answerVoiceInstructions(lang),
@@ -84,7 +92,7 @@ class VoiceProfile {
 
         // โทรออก: ต้องฟังชัดที่สุดเพราะสายโทรศัพท์บีบเสียงอยู่แล้ว
         VoiceChannel.outgoing => VoiceProfile(
-            engine: TtsEngine.openai,
+            engine: TtsEngine.device,
             voice: 'shimmer',
             model: 'gpt-4o-mini-tts',
             instructions: MindPersona.outgoingVoiceInstructions(lang),

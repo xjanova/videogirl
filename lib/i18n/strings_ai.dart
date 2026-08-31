@@ -114,6 +114,27 @@ extension AiStrings on S {
             'on a download that will crash the app anyway.',
       );
 
+  // ═══ หน้ากั้นตอนเปิดแอปบนเครื่องที่สเปคไม่ถึง ═══════════
+  //
+  // ต่างจาก ramTooSmall* ข้างบนโดยตั้งใจ: ชุดนั้นอยู่ในหน้าตั้งค่าและ**แนะนำ
+  // ทางเลือกอื่น** ส่วนชุดนี้เป็นกำแพงตอนเปิดแอป ต้องบอกข้อเท็จจริงตรง ๆ
+  String get ramBlockedTitle =>
+      pick('เครื่องนี้สเปคไม่ถึง', 'This phone is below spec');
+  String ramBlockedDetail(String gb, String need) => pick(
+        'ระบบรายงานแรม $gb GB แต่ต้องมีอย่างน้อย $need GB\n'
+            'เธอต้องแบกทั้งอวาตาร์ 3D และโมเดลภาษาไว้ในแรมพร้อมกัน '
+            'เครื่องนี้จะถูกระบบฆ่าทิ้งกลางบทสนทนา หลังเสียเน็ตโหลดโมเดลไป 2 GB แล้ว',
+        'The system reports $gb GB, but at least $need GB is needed.\n'
+            'She has to hold the 3D avatar and a language model in memory at once. '
+            'This phone would be killed mid-conversation, after spending 2 GB of data on the model.',
+      );
+  String get ramBlockedHint => pick(
+        'เข้าไปได้อยู่ แต่เธอจะคุยได้ต่อเมื่อไปตั้งเซิร์ฟเวอร์ในบ้านในหน้าตั้งค่าก่อน',
+        'You can still go in, but she can only talk once you set up a home server in Settings.',
+      );
+  String get ramBlockedAnyway =>
+      pick('เข้าใช้ต่อทั้งที่รู้', 'Continue anyway');
+
   String get ramTight => pick('ไหว แต่ตึงมือ', 'Workable, but tight');
   String ramTightDetail(String gb) => pick(
         'ระบบรายงานแรม $gb GB ใช้ E2B แบบ GPU ได้ (ไฟล์เล็กที่สุด 2.0 GB)\n'

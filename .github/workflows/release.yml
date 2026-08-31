@@ -165,7 +165,7 @@ jobs:
       - name: Build APK
         run: |
           set -euo pipefail
-          flutter build apk --release --build-name="${{ steps.ver.outputs.version }}" --build-number="${{ steps.ver.outputs.code }}" --obfuscate --split-debug-info=build/symbols
+          flutter build apk --release --build-name="${{ steps.ver.outputs.version }}" --build-number="${{ steps.ver.outputs.code }}" --target-platform android-arm64 --obfuscate --split-debug-info=build/symbols
 
       # ต้องแนบ SHA256SUMS.txt ไปด้วยเสมอ ไม่งั้นแอปจะปฏิเสธการติดตั้ง
       # (ดู lib/update/updater.dart — ไม่มีแฮช = ไม่ติดตั้ง โดยตั้งใจ)

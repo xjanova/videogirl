@@ -77,10 +77,29 @@ android {
             // เราเองยัง build ผ่าน — เขียนไว้เองปลอดภัยกว่าและไม่มีผลข้างเคียง
             proguardFiles("proguard-rules.pro")
 
-            ndk {
-                // universal APK ใส่ .so ครบทั้ง 4 ABI = ใหญ่ขึ้นเท่าตัวโดยเปล่าประโยชน์
-                // มือถือจริงไม่มี x86 แล้ว เก็บไว้แค่สองตัวที่ใช้จริง
-                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            // ⚠️ ไม่ใช้ `ndk { abiFilters }` ตรงนี้ — **มันไม่กรองอะไรเลย**
+            //
+            // วัดจริงจาก APK ที่ build ออกมา: ตั้ง abiFilters เป็น arm64+v7a แล้ว
+            // x86_64 ยังหลุดมาครบ 71.6 MB รวมถึง libflutter.so ของ x86_64 ด้วย
+            // (Flutter gradle plugin ตั้ง abiFilters ของมันเองทับทีหลัง)
+            //
+            // และ `flutter build apk --target-platform android-arm64` ก็ไม่พอ
+            // เพราะคุมได้แค่ .so ที่ Flutter สร้างเอง ส่วนก้อนใหญ่จริง ๆ มาจาก
+            // AAR ของ flutter_gemma (MediaPipe/LiteRT) ซึ่งแพ็ก .so มาครบทุก ABI
+            //
+            // ตัดที่ขั้นแพ็กจึงเป็นที่เดียวที่ได้ผลจริงกับทั้งสองแหล่ง
+            packaging {
+                jniLibs {
+                    excludes += setOf(
+                        "lib/x86/**",
+                        "lib/x86_64/**",
+                        // 32-bit ตัดได้เพราะโปรเซส 32-bit แอดเดรสได้ไม่ถึงพอจะ
+                        // แบกโมเดล 2 GB อยู่แล้ว และด่านแรม 4.5 GB ก็กันเครื่อง
+                        // รุ่นนั้นไว้หมดแล้ว · ผลพลอยได้: Android ปฏิเสธการติดตั้ง
+                        // ให้เองตั้งแต่แรก ไม่ต้องรอหน้ากั้นในแอป
+                        "lib/armeabi-v7a/**",
+                    )
+                }
             }
         }
         debug {
