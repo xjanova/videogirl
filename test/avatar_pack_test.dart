@@ -101,5 +101,44 @@ void main() {
       final info = await AvatarPackInfo.read(tmp, 'base');
       expect(info!.providesClips, isTrue);
     });
+
+    // ชุดตั้งต้นที่ขึ้นร้านประกาศ providesClips มาตรง ๆ ในไฟล์ ไม่ได้ให้เดา
+    // จากการมี clips.json — เดิมเทสต์คลุมแต่ทางเดา ทางที่ของจริงใช้จึงไม่มีใครเฝ้า
+    test('pack.json ประกาศ providesClips มาเอง ต้องเชื่อโดยไม่ต้องเดาจากไฟล์',
+        () async {
+      await File('${tmp.path}${Platform.pathSeparator}minde.vrm')
+          .writeAsBytes([0]);
+      await File('${tmp.path}${Platform.pathSeparator}clips.json')
+          .writeAsString('[]');
+      await File('${tmp.path}${Platform.pathSeparator}pack.json')
+          .writeAsString('{"id":"mind-default","kind":"character",'
+              '"model":"minde.vrm","providesClips":true,'
+              '"name":{"th":"มายด์","en":"Mind"}}');
+
+      final info = await AvatarPackInfo.read(tmp, 'mind-default');
+
+      expect(info, isNotNull);
+      expect(info!.providesClips, isTrue);
+      expect(info.model, 'minde.vrm');
+      expect(info.kind, AvatarPackKind.character);
+      expect(info.nameTh, 'มายด์');
+      expect(info.nameEn, 'Mind');
+    });
+
+    // ตรงข้ามกัน: ประกาศ false ทั้งที่มี clips.json อยู่ ต้องไม่ถูกกลบเป็น true
+    // ไม่งั้นชุดเสื้อผ้าที่ตั้งใจไม่แบ่งคลิป จะแอบดันคลิปตัวเองขึ้นกองกลาง
+    // ไปทับของตัวละครอื่นที่สัดส่วนกระดูกไม่เหมือนกัน
+    test('ประกาศ providesClips false ทั้งที่มี clips.json ต้องไม่ถูกกลบเป็น true',
+        () async {
+      await File('${tmp.path}${Platform.pathSeparator}a.vrm').writeAsBytes([0]);
+      await File('${tmp.path}${Platform.pathSeparator}clips.json')
+          .writeAsString('[]');
+      await File('${tmp.path}${Platform.pathSeparator}pack.json')
+          .writeAsString('{"id":"outfit","kind":"outfit","providesClips":false}');
+
+      final info = await AvatarPackInfo.read(tmp, 'outfit');
+
+      expect(info!.providesClips, isFalse);
+    });
   });
 }

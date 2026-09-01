@@ -131,7 +131,10 @@ class AvatarPackInfo {
     String? model;
     var kind = AvatarPackKind.character;
     var nameTh = id, nameEn = id;
-    var providesClips = false;
+
+    /// null = ชุดนี้ไม่ได้ประกาศ providesClips มา ต้องไปเดาจากไฟล์เอา
+    /// ต่างจาก false ที่แปลว่า "ประกาศมาแล้วว่าไม่แบ่ง"
+    bool? declaredClips;
 
     final manifest = File('${dir.path}${Platform.pathSeparator}$kPackManifest');
     if (await manifest.exists()) {
@@ -147,7 +150,12 @@ class AvatarPackInfo {
           } else if (name is String) {
             nameTh = nameEn = name;
           }
-          providesClips = j['providesClips'] == true;
+          // ต้องเช็ค containsKey ก่อน — ถ้ายุบ "ไม่ได้ประกาศ" กับ "ประกาศว่า
+          // false" ให้เป็น false เหมือนกัน ตัวเดาข้างล่างจะกลบ false ที่ตั้งใจ
+          // เป็น true ทุกครั้งที่ชุดนั้นมี clips.json ติดมาด้วย
+          if (j.containsKey('providesClips')) {
+            declaredClips = j['providesClips'] == true;
+          }
         }
       } on FormatException catch (e) {
         debugPrint('avatar pack: $kPackManifest ของ $id อ่านไม่ออก — $e');
@@ -162,11 +170,10 @@ class AvatarPackInfo {
     }
     if (model == null) return null;
 
-    // ไม่ได้ประกาศว่ามีคลิป ก็ดูจากของจริงว่ามี clips.json ไหม
-    if (!providesClips) {
-      providesClips =
-          await File('${dir.path}${Platform.pathSeparator}clips.json').exists();
-    }
+    // ไม่ได้ประกาศมา ก็ดูจากของจริงว่ามี clips.json ไหม (ตาม docs/packs.md)
+    // ประกาศมาแล้วเชื่อตามนั้น ทั้ง true และ false
+    final providesClips = declaredClips ??
+        await File('${dir.path}${Platform.pathSeparator}clips.json').exists();
 
     return AvatarPackInfo(
       id: id,
