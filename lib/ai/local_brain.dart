@@ -143,6 +143,69 @@ class LocalBrain extends ChangeNotifier {
   String? _loadedSystem;
   bool _disposed = false;
 
+  /// 🔴 ปลั๊กอินต้องถูก initialize ก่อนเรียกอะไรก็ตาม
+  ///
+  /// ไม่ทำ = ทุกทางที่แตะปลั๊กอินโยน StateError "FlutterGemma not initialized!"
+  /// ซึ่งเป็นข้อความยาวเหยียดพร้อมโค้ดตัวอย่างของนักพัฒนา แล้วมันไปโผล่บนหน้า
+  /// ตั้งค่าให้ผู้ใช้อ่านทั้งดุ้น
+  ///
+  /// **จงใจไม่เรียกใน `main()`** ตามที่เอกสารปลั๊กอินบอก เพราะ `main()` ของแอปนี้
+  /// มีกฎว่า**ห้าม await อะไรก่อน `runApp`** (ของเดิมรอจนจอขาวค้าง 10.2 วิ)
+  /// จึงทำเป็น lazy แทน แล้วให้ทุกทางที่แตะปลั๊กอินรอ future ตัวเดียวกัน
+  ///
+  /// เก็บเป็น `Future` ไม่ใช่ `bool` เพราะสองทางที่เรียกพร้อมกัน (เช่น
+  /// `detectDevice()` กับปุ่มโหลด) ต้องรอรอบเดียว ไม่ใช่ initialize ซ้อนกัน
+  Future<void>? _pluginReady;
+
+  /// ย่อข้อความข้อผิดพลาดให้เหลือเท่าที่ผู้ใช้ควรเห็น
+  ///
+  /// ข้อผิดพลาดของปลั๊กอินบางตัวยาวเป็นสิบบรรทัด มีทั้งโค้ดตัวอย่างและลิงก์
+  /// เอกสารสำหรับนักพัฒนา · ของจริงที่เคยขึ้นบนหน้าตั้งค่าคือทั้งดุ้นของ
+  /// "FlutterGemma not initialized!" พร้อม `void main() async {...}`
+  /// ซึ่งผู้ใช้ทำอะไรกับมันไม่ได้เลย นอกจากตกใจ
+  ///
+  /// เอาบรรทัดแรกพอ ตัดคำนำหน้าชนิดข้อผิดพลาดออก แล้วจำกัดความยาว
+  /// ส่วนของเต็มยังอยู่ใน debugPrint สำหรับตอนไล่ปัญหา
+  ///
+  /// 🔴 คำนำหน้าของ `Error` ใน Dart **ไม่ได้ใช้ชื่อคลาส** — `StateError`
+  /// พิมพ์ออกมาเป็น `Bad state:` ไม่ใช่ `StateError:` (และ `ArgumentError`
+  /// เป็น `Invalid argument(s):`) · ของจริงที่ผู้ใช้เจอคือ
+  /// `Bad state: FlutterGemma not initialized!` ถ้าดักแต่ `*Error:`
+  /// คำว่า "Bad state:" จะหลุดถึงหน้าจอ
+  @visibleForTesting
+  static String shortenError(Object e) {
+    final first = e
+        .toString()
+        .split('\n')
+        .firstWhere((l) => l.trim().isNotEmpty, orElse: () => '')
+        .replaceFirst(
+          RegExp(r'^\s*(\w*(Exception|Error)|Bad state'
+              r'|Invalid argument\(s\)|Unsupported operation)\s*:\s*'),
+          '',
+        )
+        .trim();
+    if (first.isEmpty) return e.runtimeType.toString();
+    return first.length <= 140 ? first : '${first.substring(0, 139)}…';
+  }
+
+  Future<void> _ensurePlugin() async {
+    final pending = _pluginReady ??= FlutterGemma.initialize();
+    try {
+      await pending;
+    } on Object catch (e) {
+      // ล้มแล้วต้องลองใหม่ได้ · ถ้าปล่อย future ที่พังไว้ ทุกครั้งต่อจากนี้
+      // จะพังตามด้วยข้อผิดพลาดเดิมโดยไม่ได้ลองจริงสักครั้ง
+      _pluginReady = null;
+      debugPrint('gemma: initialize ไม่สำเร็จ — $e');
+
+      // 🔴 ห่อเป็น Exception เสมอ · ทุกที่ที่เรียกดักด้วย `on Exception`
+      // แต่ initialize() ล้มด้วย **Error** ได้ (StateError เป็น Error ไม่ใช่
+      // Exception) ซึ่งจะลอดทุกตัวดักออกไปเป็นข้อผิดพลาดที่ไม่มีใครรับ
+      // = จอแดง แทนที่จะเป็นข้อความบอกผู้ใช้ว่าเกิดอะไรขึ้น
+      throw Exception(shortenError(e));
+    }
+  }
+
   void _set(LocalModelStage s, {String? error}) {
     if (_disposed) return;
     _stage = s;
@@ -171,11 +234,13 @@ class LocalBrain extends ChangeNotifier {
   /// เช็คว่าโมเดลอยู่ในเครื่องแล้วหรือยัง
   Future<void> refresh() async {
     try {
+      await _ensurePlugin();
       final installed = await FlutterGemmaPlugin.instance.modelManager
           .isModelInstalled(_spec(_variant));
       _set(installed ? LocalModelStage.ready : LocalModelStage.missing);
     } on Exception catch (e) {
-      _set(LocalModelStage.failed, error: _s().errCheckModel(e.toString()));
+      debugPrint('gemma: เช็คโมเดลไม่ได้ — $e');
+      _set(LocalModelStage.failed, error: _s().errCheckModel(shortenError(e)));
     }
   }
 
@@ -186,6 +251,7 @@ class LocalBrain extends ChangeNotifier {
     _startedAt = DateTime.now();
     _set(LocalModelStage.downloading);
     try {
+      await _ensurePlugin();
       final stream = FlutterGemmaPlugin.instance.modelManager
           .downloadModelWithProgress(_spec(_variant));
       await for (final p in stream) {
@@ -201,13 +267,15 @@ class LocalBrain extends ChangeNotifier {
       }
       _set(LocalModelStage.ready);
     } on Exception catch (e) {
-      _set(LocalModelStage.failed, error: _s().errDownloadModel(e.toString()));
+      debugPrint('gemma: โหลดโมเดลไม่สำเร็จ — $e');
+      _set(LocalModelStage.failed, error: _s().errDownloadModel(shortenError(e)));
     }
   }
 
   Future<void> remove() async {
     await _release();
     try {
+      await _ensurePlugin();
       await FlutterGemmaPlugin.instance.modelManager.deleteModel(_spec(_variant));
     } on Exception {
       // ลบไม่ได้ก็ไม่เป็นไร refresh จะบอกสถานะจริงเอง
@@ -249,11 +317,13 @@ class LocalBrain extends ChangeNotifier {
     } on OpenAiFailure {
       rethrow;
     } on Exception catch (e) {
-      throw OpenAiFailure(_s().errLocalFailed(e.toString()));
+      debugPrint('gemma: โมเดลในเครื่องทำงานไม่สำเร็จ — $e');
+      throw OpenAiFailure(_s().errLocalFailed(shortenError(e)));
     }
   }
 
   Future<void> _ensureChat(String system) async {
+    await _ensurePlugin();
     if (_model == null) {
       _model = await FlutterGemmaPlugin.instance.createModel(
         modelType: ModelType.gemmaIt,
