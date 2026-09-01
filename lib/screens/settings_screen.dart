@@ -5,6 +5,7 @@ import '../ai/brain_provider.dart';
 import '../i18n/enum_labels.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
+import '../ai/device_capability.dart';
 import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
 import '../ai/openai_config.dart';
@@ -131,7 +132,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: MindSpace.md),
             _memoryCard(context, state, mode, t),
             const SizedBox(height: MindSpace.md),
-            if (!OpenAiConfig.configured) _noKeyBanner(),
+            // เตือนเฉพาะตอนที่ "เลือกใช้คีย์ตัวเองแล้วแต่ยังไม่ได้ใส่คีย์"
+            // เดิมเตือนทุกครั้งที่ไม่มีคีย์ตอน build ซึ่งตอนนี้คือ **ทุกเครื่อง
+            // ที่ปล่อยจริง** และไม่เกี่ยวกับคนที่ใช้สมองในเครื่องหรือพร็อกซีเลย
+            if (state.brain.needsOwnKey && !state.hasOwnKey) _noKeyBanner(),
             _modeCard(state, mode),
             const SizedBox(height: MindSpace.md),
             _flirtCard(state, mode),
@@ -1021,7 +1025,53 @@ class _SettingsScreenState extends State<SettingsScreen>
               ],
             ),
           ),
+          // บริการของเรา — ต้องมีรหัสสิทธิ์ ไม่งั้นหลังบ้านตอบ 401
+          //
+          // รุ่นที่ใช้ตอบเลือกที่เซิร์ฟเวอร์ ไม่ใช่ที่นี่ จึงไม่มีรายการรุ่นให้กด
+          if (state.brain == BrainProvider.mindProxy) ...[
+            const SizedBox(height: 12),
+            _linkRow(
+              title: S.of(context).licenseTitle,
+              value: state.licenseKey.isEmpty
+                  ? S.of(context).licenseNotSet
+                  : state.licenseKey,
+              mode: mode,
+              onTap: () => _editText(
+                state: state,
+                mode: mode,
+                title: S.of(context).licenseTitle,
+                hint: S.of(context).licenseHint,
+                value: state.licenseKey,
+                onSave: state.setLicenseKey,
+                onReset: () => '',
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              state.licenseKey.isEmpty
+                  ? S.of(context).licenseNeeded
+                  : S.of(context).proxyModelNote,
+              style: TextStyle(
+                fontSize: 10.5,
+                height: 1.5,
+                color: state.licenseKey.isEmpty
+                    ? const Color(0xFFB46A00)
+                    : MindColors.ink55,
+              ),
+            ),
+          ],
           if (state.brain == BrainProvider.openai) ...[
+            const SizedBox(height: 12),
+            _linkRow(
+              title: S.of(context).ownKeyTitle,
+              // 🔴 โชว์ค่าที่ปิดบังแล้วเท่านั้น ไม่ใช่คีย์เต็ม — หน้าจอถูกแคปได้
+              // และคนข้าง ๆ ก็อ่านได้ · คีย์เต็มโผล่แค่ตอนกดเข้าไปแก้
+              value: state.openAiKey.isEmpty
+                  ? S.of(context).ownKeyNotSet
+                  : state.openAiKeyMasked,
+              mode: mode,
+              onTap: () => _editOpenAiKey(state, mode),
+            ),
             const SizedBox(height: 12),
             Text(S.of(context).sectionBrain,
                 style: mindMono(
@@ -1095,18 +1145,44 @@ class _SettingsScreenState extends State<SettingsScreen>
                 style: mindMono(
                     size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
             const SizedBox(height: 7),
-            for (final v in GemmaVariant.values)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: _choiceRow(
-                  title: v.label,
-                  subtitle: v.hintOf(S.of(context)),
-                  trailing: v.sizeLabel,
-                  selected: lb.variant == v,
-                  mode: mode,
-                  onTap: () => lb.selectVariant(v),
+
+            // เครื่องเล็กเกินจะรันอะไรได้เลย — บอกตรง ๆ ดีกว่าโชว์รายการเปล่า
+            // ที่อ่านได้ว่า "แอปพัง"
+            if (lb.deviceTooSmall)
+              Container(
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(
+                  color: MindColors.glass80,
+                  borderRadius: BorderRadius.circular(MindRadius.control),
+                  border: Border.all(color: MindColors.glassBorder, width: 1),
                 ),
-              ),
+                child: Text(
+                  S.of(context).gemmaDeviceTooSmall(
+                      lb.device?.gb ?? '?', DeviceCapability.minLocalGb),
+                  style: const TextStyle(
+                      fontSize: 11, height: 1.5, color: Color(0xFFB46A00)),
+                ),
+              )
+            else
+              // 🔴 `lb.selectable` ไม่ใช่ `GemmaVariant.values` — รุ่นที่เครื่องนี้
+              // รันไม่ไหวต้องไม่โผล่มาให้กด · เดิมโชว์ครบทุกรุ่น เครื่องแรม 6 GB
+              // จึงกดโหลด E4B 2.8 GB ได้ แล้วระบบฆ่าแอปทิ้งตอนรัน = เสียเน็ตฟรี
+              for (final v in lb.selectable)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 7),
+                  child: _choiceRow(
+                    title: v.label,
+                    subtitle: v.hintOf(S.of(context)),
+                    // โหลดไว้แล้วบอกไปเลย ไม่ใช่บอกขนาดไฟล์ซ้ำ — คนที่โหลดไว้
+                    // หลายรุ่นต้องรู้ว่ารุ่นไหนกดแล้วใช้ได้ทันที รุ่นไหนต้องโหลดก่อน
+                    trailing: lb.isInstalled(v)
+                        ? S.of(context).gemmaInstalledTag
+                        : v.sizeLabel,
+                    selected: lb.variant == v,
+                    mode: mode,
+                    onTap: () => lb.selectVariant(v),
+                  ),
+                ),
             const SizedBox(height: 4),
             switch (lb.stage) {
               LocalModelStage.ready => Row(
@@ -2186,5 +2262,45 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
     );
     if (result != null) onSave(result);
+  }
+
+  /// แก้คีย์ OpenAI ของผู้ใช้เอง
+  ///
+  /// แยกจาก [_editText] เพราะสามอย่าง: ค่าที่ส่งเข้าไปแก้ต้องเป็นคีย์**เต็ม**
+  /// (ไม่ใช่ค่าที่ปิดบังแล้ว ไม่งั้นเซฟทับด้วยจุดไข่ปลา) · การเซฟเป็น async
+  /// เพราะลง Keystore · และต้องบอกผลให้เห็น เพราะคนกรอกคีย์ผิดจะไม่รู้เลย
+  /// จนกว่าจะทักแล้วเธอตอบด้วยประโยคสำเร็จรูป
+  Future<void> _editOpenAiKey(MindState state, MindMode mode) async {
+    final t = S.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+
+    final result = await Navigator.of(context).push<String?>(
+      MaterialPageRoute(
+        builder: (_) => TextEditorScreen(
+          title: t.ownKeyTitle,
+          hint: t.ownKeyHint,
+          initial: state.openAiKey,
+          mode: mode,
+          onReset: () => '',
+        ),
+      ),
+    );
+    if (result == null) return;
+
+    final key = result.trim();
+    await state.setOpenAiKey(key);
+    if (!mounted) return;
+
+    // เตือนอย่างเดียวเมื่อรูปแบบดูไม่ใช่ — ไม่ปฏิเสธ เพราะวันหนึ่งเขาอาจ
+    // เปลี่ยนรูปแบบคีย์ แล้วการปฏิเสธจะกลายเป็นกำแพงที่ข้ามไม่ได้ทั้งที่คีย์ถูก
+    final msg = key.isEmpty
+        ? t.ownKeyRemoved
+        : MindState.looksLikeOpenAiKey(key)
+            ? t.ownKeySaved
+            : t.ownKeyLooksWrong;
+
+    messenger
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
   }
 }

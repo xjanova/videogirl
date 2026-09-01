@@ -54,6 +54,10 @@ dependencies:
   archive: ^4.2.0
   flutter_background_service: ^5.1.0
   url_launcher: ^6.3.2
+  # คีย์ OpenAI ของผู้ใช้ · SharedPreferences เป็น XML ธรรมดาในเครื่อง
+  # ตัวนี้ใช้ EncryptedSharedPreferences ที่มี Android Keystore หนุนอยู่
+  # (Java/Kotlin ล้วน ไม่มี .so จึงไม่กระทบรายการตัด .so ใน build.gradle.kts)
+  flutter_secure_storage: ^11.0.0
 
 dev_dependencies:
   flutter_test:

@@ -228,15 +228,69 @@ class LocalBrain extends ChangeNotifier {
     if (_variant == v) return;
     await _release(); // โมเดลเดิมยังกินแรมอยู่ ต้องปล่อยก่อนสลับ
     _variant = v;
-    await refresh();
+
+    // ไม่เรียก refresh() ซ้ำ — เรารู้อยู่แล้วว่ารุ่นไหนโหลดไว้บ้างจากการสแกน
+    // ครั้งก่อน · การสแกนใหม่คือยิงข้ามแพลตฟอร์มอีกสามรอบ แล้วปุ่มจะหน่วง
+    // ทุกครั้งที่แตะเลือกรุ่น ทั้งที่คำตอบไม่เปลี่ยน
+    _set(_installed.contains(v)
+        ? LocalModelStage.ready
+        : LocalModelStage.missing);
   }
 
-  /// เช็คว่าโมเดลอยู่ในเครื่องแล้วหรือยัง
+  /// รุ่นที่โหลดลงเครื่องไว้แล้ว — มีได้หลายรุ่นพร้อมกัน
+  ///
+  /// ต้องรู้ทีละรุ่น ไม่ใช่แค่ "รุ่นที่เลือกอยู่โหลดแล้วหรือยัง" เพราะผู้ใช้
+  /// โหลดไว้หลายรุ่นแล้วสลับไปมาได้ · ถ้ารู้แค่รุ่นที่เลือก การสลับกลับไป
+  /// รุ่นที่เคยโหลดไว้แล้วจะขึ้นปุ่ม "โหลด 2.4 GB" ทั้งที่ไฟล์อยู่ในเครื่อง
+  final Set<GemmaVariant> _installed = {};
+
+  /// สำเนาที่แก้ไม่ได้ ให้ UI อ่าน
+  Set<GemmaVariant> get installed => Set.unmodifiable(_installed);
+
+  bool isInstalled(GemmaVariant v) => _installed.contains(v);
+
+  /// รุ่นที่ควรเอาไปแสดงให้ผู้ใช้เลือก
+  ///
+  /// **ตัดรุ่นที่เครื่องนี้รันไม่ไหวออกก่อนเสมอ** — โชว์รุ่นที่กดแล้วโหลด 3 GB
+  /// มาเพื่อให้ระบบฆ่าทิ้งตอนรัน คือการกินเน็ตของเขาฟรี ๆ
+  ///
+  /// รุ่นที่ "โหลดไว้แล้ว" ไม่ถูกตัดทิ้งแม้จะเกินเกณฑ์ เพราะไฟล์อยู่ในเครื่อง
+  /// เขาแล้ว การซ่อนทิ้งเฉย ๆ จะกลายเป็นพื้นที่ที่หายไปโดยลบไม่ได้
+  List<GemmaVariant> get selectable => selectableFor(_device, _installed);
+
+  /// ตรรกะล้วน แยกออกมาให้เทสต์ได้โดยไม่ต้องมีเครื่องจริง
+  ///
+  /// ยังไม่ได้ตรวจแรม (`device == null`) ให้แสดงทุกรุ่นไปก่อน — ซ่อนทิ้งตอนที่
+  /// ยังไม่รู้ผล จะกลายเป็นรายการที่กะพริบเปลี่ยนไปมาตอนผลตรวจมาถึง
+  @visibleForTesting
+  static List<GemmaVariant> selectableFor(
+    DeviceVerdict? device,
+    Set<GemmaVariant> installed,
+  ) {
+    final ok = device?.allowed ?? GemmaVariant.values;
+    return GemmaVariant.values
+        .where((v) => ok.contains(v) || installed.contains(v))
+        .toList();
+  }
+
+  /// เครื่องนี้รันโมเดลในเครื่องไม่ไหวเลย
+  bool get deviceTooSmall => _device != null && _device!.allowed.isEmpty;
+
+  /// เช็คว่าโมเดลอยู่ในเครื่องแล้วหรือยัง — ไล่ **ทุกรุ่น** ไม่ใช่เฉพาะรุ่นที่เลือก
   Future<void> refresh() async {
     try {
       await _ensurePlugin();
-      final installed = await FlutterGemmaPlugin.instance.modelManager
-          .isModelInstalled(_spec(_variant));
+
+      _installed.clear();
+      for (final v in GemmaVariant.values) {
+        // ถามทีละรุ่น · ปลั๊กอินไม่มี API บอกรายการที่ติดตั้งไว้ทั้งหมด
+        if (await FlutterGemmaPlugin.instance.modelManager
+            .isModelInstalled(_spec(v))) {
+          _installed.add(v);
+        }
+      }
+
+      final installed = _installed.contains(_variant);
       _set(installed ? LocalModelStage.ready : LocalModelStage.missing);
     } on Exception catch (e) {
       debugPrint('gemma: เช็คโมเดลไม่ได้ — $e');
@@ -265,6 +319,9 @@ class LocalBrain extends ChangeNotifier {
 
         notifyListeners();
       }
+      // โหลดจบแล้วต้องเข้าทะเบียนทันที ไม่ต้องรอสแกนรอบหน้า ไม่งั้นสลับไป
+      // รุ่นอื่นแล้วกลับมาจะขึ้นปุ่มโหลดซ้ำทั้งที่เพิ่งโหลดเสร็จ
+      _installed.add(_variant);
       _set(LocalModelStage.ready);
     } on Exception catch (e) {
       debugPrint('gemma: โหลดโมเดลไม่สำเร็จ — $e');
@@ -277,6 +334,7 @@ class LocalBrain extends ChangeNotifier {
     try {
       await _ensurePlugin();
       await FlutterGemmaPlugin.instance.modelManager.deleteModel(_spec(_variant));
+      _installed.remove(_variant);
     } on Exception {
       // ลบไม่ได้ก็ไม่เป็นไร refresh จะบอกสถานะจริงเอง
     }

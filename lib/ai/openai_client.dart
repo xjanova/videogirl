@@ -28,12 +28,14 @@ class OpenAiClient {
     Duration? timeout,
     String? baseUrl,
     String? apiKey,
+    String Function()? apiKeyOf,
+    String Function()? baseUrlOf,
     S Function()? strings,
   })  : _s = strings ?? _thai,
         _http = httpClient ?? http.Client(),
         _timeout = timeout ?? const Duration(seconds: 30),
-        _baseUrl = baseUrl ?? OpenAiConfig.baseUrl,
-        _apiKey = apiKey ?? OpenAiConfig.apiKey;
+        _baseUrlOf = baseUrlOf ?? (() => baseUrl ?? OpenAiConfig.baseUrl),
+        _apiKeyOf = apiKeyOf ?? (() => apiKey ?? OpenAiConfig.apiKey);
 
   /// อ่านภาษา ณ ตอนที่ error เกิดจริง ไม่ใช่ตอนสร้าง client
   /// เพราะผู้ใช้สลับภาษาได้ระหว่างแอปเปิดอยู่
@@ -43,20 +45,32 @@ class OpenAiClient {
   final http.Client _http;
   final Duration _timeout;
 
-  /// เปลี่ยนปลายทางได้ เพื่อชี้ไปเซิร์ฟเวอร์ในบ้าน (Ollama, llama.cpp, LM Studio)
-  /// ที่พูดภาษาเดียวกับ /v1/chat/completions ของ OpenAI
-  final String _baseUrl;
+  /// 🔴 อ่านค่าตอนใช้จริง ไม่ใช่ตอนสร้าง client — เหตุผลเดียวกับ [_s]
+  ///
+  /// ผู้ใช้กรอกคีย์เอง แก้คีย์ หรือสลับไปพร็อกซีหลังบ้านได้ทุกเมื่อขณะแอปเปิดอยู่
+  /// ถ้าอ่านค่าตอนสร้าง client จะต้องสร้างใหม่ทุกครั้งที่มีการแก้ ซึ่งเป็นเรื่อง
+  /// ที่ลืมได้ง่ายและจะเงียบ — คนใช้กรอกคีย์แล้วยังโดนบอกว่ายังไม่ได้ตั้งคีย์
+  ///
+  /// เปลี่ยนปลายทางได้เพื่อชี้ไปเซิร์ฟเวอร์ในบ้าน (Ollama, llama.cpp, LM Studio)
+  /// หรือพร็อกซีของเรา ที่พูดภาษาเดียวกับ /v1/chat/completions ของ OpenAI
+  final String Function() _baseUrlOf;
 
   /// เซิร์ฟเวอร์ในบ้านส่วนใหญ่ไม่ต้องใช้คีย์ ปล่อยว่างได้
-  final String _apiKey;
+  final String Function() _apiKeyOf;
 
-  Map<String, String> get _headers => {
-        if (_apiKey.isNotEmpty) 'Authorization': 'Bearer $_apiKey',
-        'Content-Type': 'application/json; charset=utf-8',
-      };
+  String get _baseUrl => _baseUrlOf();
+
+  Map<String, String> get _headers {
+    final key = _apiKeyOf();
+    return {
+      if (key.isNotEmpty) 'Authorization': 'Bearer $key',
+      'Content-Type': 'application/json; charset=utf-8',
+    };
+  }
 
   /// ใช้คีย์อยู่ไหม — เซิร์ฟเวอร์ในบ้านไม่ต้องมีคีย์ก็เรียกได้
-  bool get usable => _apiKey.isNotEmpty || _baseUrl != OpenAiConfig.baseUrl;
+  bool get usable =>
+      _apiKeyOf().isNotEmpty || _baseUrl != OpenAiConfig.baseUrl;
 
   /// ให้เธอคิดคำตอบ
   ///
@@ -147,8 +161,11 @@ class OpenAiClient {
       'POST',
       Uri.parse('$_baseUrl/audio/transcriptions'),
     )
+      // ใช้ _headers ไม่ได้เพราะ multipart ต้องให้ http ตั้ง Content-Type เอง
+      // (มี boundary ต่อท้าย) แต่ต้องอ่านคีย์ตอนนี้เหมือนกัน
       ..headers.addAll({
-        if (_apiKey.isNotEmpty) 'Authorization': 'Bearer $_apiKey',
+        for (final e in _headers.entries)
+          if (e.key != 'Content-Type') e.key: e.value,
       })
       ..fields['model'] = model ?? OpenAiConfig.sttModel
       ..fields['response_format'] = 'text'

@@ -228,6 +228,23 @@ void main() {
       check('updateInstall', en.updateInstall('12 MB'));
 
       // ฝั่ง AI
+      check('brainProxy', en.brainProxy);
+      check('brainProxySummary', en.brainProxySummary);
+      check('brainProxyTradeoff', en.brainProxyTradeoff);
+      check('licenseTitle', en.licenseTitle);
+      check('licenseNotSet', en.licenseNotSet);
+      check('licenseHint', en.licenseHint);
+      check('licenseNeeded', en.licenseNeeded);
+      check('proxyModelNote', en.proxyModelNote);
+      check('ownKeyTitle', en.ownKeyTitle);
+      check('ownKeyHint', en.ownKeyHint);
+      check('ownKeyNotSet', en.ownKeyNotSet);
+      check('ownKeySaved', en.ownKeySaved);
+      check('ownKeyRemoved', en.ownKeyRemoved);
+      check('ownKeyLooksWrong', en.ownKeyLooksWrong);
+      check('ownKeyNeeded', en.ownKeyNeeded);
+      check('gemmaInstalledTag', en.gemmaInstalledTag);
+      check('gemmaDeviceTooSmall', en.gemmaDeviceTooSmall('4.0', '4.5'));
       check('brainOpenAiSummary', en.brainOpenAiSummary);
       check('brainOpenAiTradeoff', en.brainOpenAiTradeoff);
       check('brainHome', en.brainHome);

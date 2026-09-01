@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:videogirl/ai/device_capability.dart';
 import 'package:videogirl/ai/local_brain.dart';
+import 'package:videogirl/ai/secret_store.dart';
+import 'package:videogirl/state/mind_state.dart';
 
 /// สิ่งที่ผู้ใช้เห็นตอนโมเดลในเครื่องมีปัญหา
 ///
@@ -65,6 +68,80 @@ void main() {
 
       expect(urls.length, GemmaVariant.values.length,
           reason: 'สองรุ่นชี้ไฟล์เดียวกัน = เลือกรุ่นแล้วได้ของเดิม');
+    });
+  });
+
+  group('รุ่นที่เอาไปให้ผู้ใช้เลือก', () {
+    test('เครื่องเล็ก ต้องไม่เห็นรุ่นที่รันไม่ไหว', () {
+      // แรม 6 GB (ระบบรายงานราว 5500) — ไหวแค่ E2B GPU
+      final verdict = DeviceCapability.verdictFor(5500);
+
+      final list = LocalBrain.selectableFor(verdict, const {});
+
+      expect(list, contains(GemmaVariant.e2bGpu));
+      expect(list, isNot(contains(GemmaVariant.e4bGpu)),
+          reason: 'โชว์ E4B ให้เครื่องที่รันไม่ไหว = เขาเสียเน็ตโหลด 2.8 GB ฟรี');
+    });
+
+    test('เครื่องใหญ่ เห็นครบทุกรุ่น', () {
+      final verdict = DeviceCapability.verdictFor(11000);
+
+      expect(LocalBrain.selectableFor(verdict, const {}),
+          GemmaVariant.values.toList());
+    });
+
+    test('รุ่นที่โหลดไว้แล้ว ต้องไม่ถูกซ่อนแม้เกินเกณฑ์', () {
+      // เคยโหลด E4B ไว้ตอนใช้เครื่องอื่น หรือเกณฑ์เพิ่งถูกขยับ
+      // ซ่อนทิ้งเฉย ๆ = พื้นที่ 2.8 GB ที่หายไปโดยลบไม่ได้
+      final verdict = DeviceCapability.verdictFor(5500);
+
+      final list =
+          LocalBrain.selectableFor(verdict, const {GemmaVariant.e4bGpu});
+
+      expect(list, contains(GemmaVariant.e4bGpu));
+    });
+
+    test('ยังไม่ได้ตรวจแรม ให้เห็นทุกรุ่นไปก่อน ไม่ใช่รายการเปล่า', () {
+      // รายการเปล่าชั่วครู่แล้วค่อยโผล่ = จอกะพริบ อ่านได้ว่าแอปพัง
+      expect(LocalBrain.selectableFor(null, const {}),
+          GemmaVariant.values.toList());
+    });
+
+    test('เครื่องเล็กเกินไปจริง ๆ ไม่เหลือรุ่นให้เลือกเลย', () {
+      final verdict = DeviceCapability.verdictFor(3000);
+
+      expect(verdict.allowed, isEmpty);
+      expect(LocalBrain.selectableFor(verdict, const {}), isEmpty);
+    });
+  });
+
+  group('คีย์ของผู้ใช้', () {
+    test('ปิดบังแล้วยังพอรู้ว่าใส่ถูกตัว แต่เอาไปใช้ต่อไม่ได้', () {
+      const key = 'sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
+
+      final masked = SecretStore.mask(key);
+
+      expect(masked, isNot(contains('MnOpQrSt')));
+      expect(masked.length, lessThan(key.length));
+      expect(masked, startsWith('sk-proj'));
+      expect(masked, endsWith('6789'));
+    });
+
+    test('ค่าว่างไม่กลายเป็นจุดไข่ปลาหลอกว่ามีคีย์', () {
+      expect(SecretStore.mask(''), '');
+      expect(SecretStore.mask('   '), '');
+    });
+
+    test('สั้นผิดปกติ ปิดทั้งหมด ไม่เผยแม้แต่ต้นคีย์', () {
+      expect(SecretStore.mask('sk-abc'), '••••••');
+    });
+
+    test('รูปแบบคีย์ OpenAI — เตือนได้ว่าน่าจะใส่ผิดช่อง', () {
+      expect(MindState.looksLikeOpenAiKey('sk-proj-xxxx'), isTrue);
+      expect(MindState.looksLikeOpenAiKey('  sk-abc  '), isTrue);
+      // คนวางคีย์ Groq/Claude มาผิดช่องเป็นเรื่องที่เกิดจริง
+      expect(MindState.looksLikeOpenAiKey('gsk_abc'), isFalse);
+      expect(MindState.looksLikeOpenAiKey(''), isFalse);
     });
   });
 }

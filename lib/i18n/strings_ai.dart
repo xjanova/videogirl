@@ -6,14 +6,66 @@ import 'strings.dart';
 /// ส่วนข้อความพวกนี้เปลี่ยนตอนแก้ตรรกะของโมเดล เอาไว้ไฟล์เดียวกันแล้วจะชนกันบ่อย
 extension AiStrings on S {
   // ═══ ผู้ให้บริการสมอง ══════════════════════════════════
-  String get brainOpenAi => pick('OpenAI', 'OpenAI');
+  String get brainProxy => pick('ผ่านบริการของเรา', 'Through our service');
+  String get brainProxySummary => pick(
+        'ใช้ได้เลย ไม่ต้องมีคีย์ของตัวเอง',
+        'Works right away — no key of your own needed',
+      );
+  String get brainProxyTradeoff => pick(
+        'ข้อความถูกส่งผ่านเซิร์ฟเวอร์ของเรา · ต้องมีเน็ต · มีโควตาต่อวัน',
+        'Messages pass through our server · needs internet · has a daily quota',
+      );
+
+  // ── รหัสสิทธิ์ (license) ──
+  //
+  // ตัวเดียวกับที่ร้านใช้ยืนยันว่าซื้ออะไรไปแล้ว · เดิมไม่มีช่องกรอกเลย
+  // แปลว่า /api/packs/mine ไม่เคยใช้ได้จริงสักครั้ง และพร็อกซีก็จะใช้ไม่ได้ด้วย
+  String get licenseTitle => pick('รหัสสิทธิ์', 'License code');
+  String get licenseNotSet => pick('ยังไม่ได้ใส่รหัส', 'No code entered');
+  String get licenseHint => pick(
+        'รหัสที่ได้ตอนซื้อ ใช้ยืนยันว่าเครื่องนี้เป็นของคุณ\n'
+        'ใช้ทั้งกับบริการสมองของเรา และกับของที่ซื้อในร้าน',
+        'The code you got when you bought it, proving this phone is yours\n'
+        'Used both for our assistant service and for what you own in the shop',
+      );
+  String get licenseNeeded => pick(
+        'ต้องใส่รหัสสิทธิ์ก่อนถึงจะใช้บริการของเราได้',
+        'Enter a license code before using our service',
+      );
+  String get proxyModelNote => pick(
+        'รุ่นที่ใช้ตอบ เราเป็นคนเลือกให้ที่เซิร์ฟเวอร์ ไม่ต้องตั้งเอง',
+        'We pick the model on our server — nothing to set here',
+      );
+
+  // ── คีย์ของผู้ใช้เอง ──
+  String get ownKeyTitle => pick('คีย์ของคุณเอง', 'Your own key');
+  String get ownKeyHint => pick(
+        'วางคีย์ที่ขึ้นต้นด้วย sk- จาก platform.openai.com\n'
+        'เก็บไว้ในเครื่องนี้เท่านั้น เข้ารหัสด้วย Keystore ของ Android',
+        'Paste a key starting with sk- from platform.openai.com\n'
+        'Kept on this phone only, encrypted by the Android Keystore',
+      );
+  String get ownKeyNotSet => pick('ยังไม่ได้ใส่คีย์', 'No key set');
+  String get ownKeyClear => pick('ลบคีย์', 'Remove key');
+  String get ownKeySaved => pick('เก็บคีย์แล้ว', 'Key saved');
+  String get ownKeyRemoved => pick('ลบคีย์แล้ว', 'Key removed');
+  String get ownKeyLooksWrong => pick(
+        'คีย์ของ OpenAI ขึ้นต้นด้วย sk- — ตรวจอีกทีนะคะ',
+        'OpenAI keys start with sk- — please check it again',
+      );
+  String get ownKeyNeeded => pick(
+        'เลือก "คีย์ของคุณเอง" แล้วแต่ยังไม่ได้ใส่คีย์',
+        'You picked your own key but have not entered one yet',
+      );
+
+  String get brainOpenAi => pick('คีย์ของคุณเอง', 'Your own key');
   String get brainOpenAiSummary => pick(
-        'ฉลาดที่สุด ตอบไทยเป็นธรรมชาติที่สุด',
-        'The smartest, and the most natural in Thai',
+        'ต่อ OpenAI ตรงด้วยคีย์ที่คุณกรอกเอง',
+        'Straight to OpenAI with a key you enter yourself',
       );
   String get brainOpenAiTradeoff => pick(
-        'ข้อความทุกคำถูกส่งออกอินเทอร์เน็ต · ต้องมีเน็ต · มีค่าใช้จ่ายต่อครั้ง',
-        'Every word leaves your phone · needs internet · costs money per message',
+        'ฉลาดที่สุด · ไม่มีโควตาจำกัด · แต่ค่าใช้จ่ายเข้าบัญชีของคุณเอง',
+        'The smartest · no quota · but the bill lands on your own account',
       );
 
   String get brainHome => pick('เซิร์ฟเวอร์ในบ้าน', 'Home server');
@@ -74,6 +126,18 @@ extension AiStrings on S {
 
   // ═══ Gemma ในเครื่อง ═══════════════════════════════════
   String get gemmaVariant => pick('รุ่นที่ใช้', 'Model variant');
+
+  /// ป้ายบอกว่ารุ่นนี้อยู่ในเครื่องแล้ว กดใช้ได้เลย ไม่ต้องโหลดซ้ำ
+  String get gemmaInstalledTag => pick('โหลดแล้ว', 'Installed');
+
+  /// เครื่องเล็กเกินจะรันโมเดลในเครื่องได้เลยสักรุ่น
+  String gemmaDeviceTooSmall(String has, String need) => pick(
+        'เครื่องนี้แรม $has GB ซึ่งไม่พอสำหรับโมเดลในเครื่อง (ต้องการอย่างน้อย $need GB)\n'
+        'ใช้ "ผ่านบริการของเรา" หรือ "คีย์ของคุณเอง" แทนได้นะคะ',
+        'This phone has $has GB of RAM, not enough for an on-device model '
+        '(at least $need GB needed)\n'
+        'You can use "Through our service" or "Your own key" instead',
+      );
   String get gemmaE2bGpuHint => pick(
       'เร็วที่สุดบนมือถือที่มี GPU ดี · แนะนำ', 'Fastest on phones with a decent GPU · recommended');
   String get gemmaE2bCpuHint =>

@@ -16,6 +16,7 @@ import '../ai/mind_persona.dart';
 import '../i18n/strings.dart';
 import '../ai/openai_client.dart';
 import '../ai/openai_config.dart';
+import '../ai/secret_store.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
 import '../theme/tokens.dart';
@@ -42,9 +43,12 @@ class MindState extends ChangeNotifier {
     SpeechService? speech,
     MindMemory? memory,
   })  : _clock = clock ?? DateTime.now,
-        _openai = openai ?? OpenAiClient(),
         _speech = speech ?? SpeechService(),
-        memory = memory ?? MindMemory();
+        memory = memory ?? MindMemory() {
+    // ส่งเป็นฟังก์ชัน ไม่ใช่ค่า — ผู้ใช้กรอก/แก้/ลบคีย์ได้ตลอดขณะแอปเปิดอยู่
+    // ถ้าอ่านค่าตอนสร้าง client จะต้องสร้างใหม่ทุกครั้งที่แก้ ซึ่งลืมง่ายและเงียบ
+    _openai = openai ?? OpenAiClient(apiKeyOf: () => effectiveOpenAiKey);
+  }
 
   /// สิ่งที่เธอจำได้จากที่เคยคุยกัน
   ///
@@ -83,7 +87,7 @@ class MindState extends ChangeNotifier {
 
   /// ฉีดนาฬิกาเข้ามาได้เพื่อให้เทสต์โหมดอัตโนมัติได้โดยไม่ต้องรอถึงสองทุ่ม
   final DateTime Function() _clock;
-  final OpenAiClient _openai;
+  late final OpenAiClient _openai;
   final SpeechService _speech;
 
   bool _disposed = false;
@@ -123,6 +127,9 @@ class MindState extends ChangeNotifier {
     // เครื่องพวกนั้นจะเปิดร้านไม่ได้ตลอดไปและไม่มีทางแก้เองด้วย
     final savedStore = p.getString('storeBaseUrl')?.trim() ?? '';
     _storeBaseUrl = savedStore.isEmpty ? _storeDefault : savedStore;
+
+    // คีย์อยู่คนละที่กับค่าอื่น (Keystore ไม่ใช่ SharedPreferences) จึงอ่านแยก
+    _openAiKey = await SecretStore.read(SecretStore.kOpenAiKey);
     _licenseKey = p.getString('licenseKey') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
     _realtimeModel = p.getString('realtimeModel') ?? OpenAiConfig.realtimeModel;
@@ -401,6 +408,41 @@ class MindState extends ChangeNotifier {
     _save('licenseKey', _licenseKey);
     _notify();
   }
+
+  // ═══ คีย์ OpenAI ของผู้ใช้เอง ═══════════════════════════
+  //
+  // 🔴 **ไม่ได้อยู่ใน SharedPreferences** เหมือนค่าอื่นในไฟล์นี้ทั้งหมด
+  // ตัวนั้นเป็น XML ธรรมดาที่หลุดไปกับ backup ของ Android ได้ · คีย์นี้อยู่ใน
+  // SecretStore ที่มี Keystore หนุน จึงต้องโหลดแยกและเป็น async
+  String _openAiKey = '';
+
+  /// คีย์ที่ผู้ใช้กรอกเอง — ว่าง = ยังไม่ได้ตั้ง
+  String get openAiKey => _openAiKey;
+
+  /// มีคีย์ใช้งานได้ไหม (ของผู้ใช้ หรือที่ฝังมาตอน build ถ้ามี)
+  bool get hasOwnKey => effectiveOpenAiKey.isNotEmpty;
+
+  /// คีย์ที่จะใช้จริง — ของผู้ใช้มาก่อนเสมอ
+  ///
+  /// ที่ยังดู [OpenAiConfig.apiKey] ต่อ เพราะ build ภายในบ้านยังส่งคีย์เข้ามา
+  /// ทาง --dart-define ได้อยู่ · ตัว release ที่ปล่อยจริงไม่เคยมีค่านี้
+  String get effectiveOpenAiKey =>
+      _openAiKey.isNotEmpty ? _openAiKey : OpenAiConfig.apiKey;
+
+  /// คีย์ที่ปลอดภัยพอจะเอาไปโชว์ — `sk-proj…wxyz`
+  String get openAiKeyMasked => SecretStore.mask(_openAiKey);
+
+  Future<void> setOpenAiKey(String v) async {
+    _openAiKey = v.trim();
+    await SecretStore.write(SecretStore.kOpenAiKey, _openAiKey);
+    _notify();
+  }
+
+  /// คีย์ของ OpenAI ขึ้นต้นด้วย `sk-` ทุกตัว
+  ///
+  /// เตือนอย่างเดียว ไม่ปฏิเสธ — วันหนึ่งเขาอาจเปลี่ยนรูปแบบ แล้วการปฏิเสธ
+  /// จะกลายเป็นกำแพงที่ผู้ใช้ข้ามไม่ได้ทั้งที่คีย์ถูก
+  static bool looksLikeOpenAiKey(String v) => v.trim().startsWith('sk-');
 
   // ═══ เสียงและโมเดล ═════════════════════════════════════
   String _brainModel = OpenAiConfig.brainModel;
@@ -934,8 +976,37 @@ class MindState extends ChangeNotifier {
     List<({bool fromHer, String text})> history,
   ) async {
     switch (_brain) {
+      // ผ่านหลังบ้านของเรา — คีย์อยู่ที่นั่น ไม่เคยลงมาถึงเครื่องนี้
+      //
+      // หลังบ้านพูด /v1/chat/completions เหมือนกัน จึงใช้ client ตัวเดิมได้
+      // แค่เปลี่ยนปลายทาง · ที่ส่งเป็น bearer คือ **license key ของแอป**
+      // ไม่ใช่คีย์ OpenAI — หลุดไปก็ใช้ยิง OpenAI ตรง ๆ ไม่ได้ ทำได้แค่กิน
+      // โควตาของไลเซนส์นั้น ซึ่งหลังบ้านจำกัดไว้อยู่แล้ว
+      case BrainProvider.mindProxy:
+        final base = _storeBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+        if (base.isEmpty) return _cannedReply();
+        debugPrint('สมอง: พร็อกซีหลังบ้าน $_brainModel');
+        final proxy = OpenAiClient(
+          baseUrl: '$base/api/ai/v1',
+          apiKey: _licenseKey,
+          // ผ่านหลังบ้านอีกชั้นก่อนถึง OpenAI จึงช้ากว่ายิงตรง
+          timeout: const Duration(seconds: 60),
+        );
+        try {
+          return await proxy.reply(
+            system: system,
+            history: history,
+            model: _brainModel,
+          );
+        } finally {
+          proxy.close();
+        }
+
       case BrainProvider.openai:
-        if (!OpenAiConfig.configured) return _cannedReply();
+        // ดูคีย์ที่ใช้ได้จริง ไม่ใช่ OpenAiConfig.configured ซึ่งดูแค่คีย์
+        // ตอน build · ผู้ใช้ที่กรอกคีย์เองจะโดนตอบด้วยประโยคสำเร็จรูปทั้งที่
+        // ใส่คีย์ถูกแล้ว ถ้ายังเช็คตัวเดิม
+        if (!hasOwnKey) return _cannedReply();
         debugPrint('สมอง: OpenAI $_brainModel');
         return _openai.reply(system: system, history: history, model: _brainModel);
 

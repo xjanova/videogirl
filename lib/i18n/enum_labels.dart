@@ -17,18 +17,21 @@ import 'strings_ai.dart';
 /// จะไปเปลี่ยนค่าที่บันทึกไว้ในเครื่องผู้ใช้ด้วย ซึ่งพังทันที
 extension BrainProviderLabels on BrainProvider {
   String labelOf(S s) => switch (this) {
+        BrainProvider.mindProxy => s.brainProxy,
         BrainProvider.openai => s.brainOpenAi,
         BrainProvider.homeServer => s.brainHome,
         BrainProvider.onDevice => s.brainOnDevice,
       };
 
   String summaryOf(S s) => switch (this) {
+        BrainProvider.mindProxy => s.brainProxySummary,
         BrainProvider.openai => s.brainOpenAiSummary,
         BrainProvider.homeServer => s.brainHomeSummary,
         BrainProvider.onDevice => s.brainOnDeviceSummary,
       };
 
   String tradeoffOf(S s) => switch (this) {
+        BrainProvider.mindProxy => s.brainProxyTradeoff,
         BrainProvider.openai => s.brainOpenAiTradeoff,
         BrainProvider.homeServer => s.brainHomeTradeoff,
         BrainProvider.onDevice => s.brainOnDeviceTradeoff,
