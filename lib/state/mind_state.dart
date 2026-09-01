@@ -117,7 +117,12 @@ class MindState extends ChangeNotifier {
     _homeServerModel = p.getString('homeServerModel') ?? HomeServerDefaults.model;
     _avatarPackUrl = p.getString('avatarPackUrl') ?? _packUrlDefault;
     _avatarPackId = p.getString('avatarPackId') ?? '';
-    _storeBaseUrl = p.getString('storeBaseUrl') ?? _storeDefault;
+    // 🔴 `?? _storeDefault` อย่างเดียวไม่พอ — เครื่องที่เคยลงรุ่นก่อนหน้า
+    // **เซฟค่าว่างไว้แล้ว** (ดีฟอลต์เก่าคือ '' และช่องกรอกเซฟทุกครั้งที่พิมพ์)
+    // ค่าว่างไม่ใช่ null จึงรอด ?? มาได้ พอช่องกรอกถูกถอดออกจากหน้าตั้งค่า
+    // เครื่องพวกนั้นจะเปิดร้านไม่ได้ตลอดไปและไม่มีทางแก้เองด้วย
+    final savedStore = p.getString('storeBaseUrl')?.trim() ?? '';
+    _storeBaseUrl = savedStore.isEmpty ? _storeDefault : savedStore;
     _licenseKey = p.getString('licenseKey') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
     _realtimeModel = p.getString('realtimeModel') ?? OpenAiConfig.realtimeModel;
@@ -361,10 +366,19 @@ class MindState extends ChangeNotifier {
 
   // ═══ ร้านของมายด์ ══════════════════════════════════════
   //
-  // ที่อยู่หลังบ้าน xman studio ที่ขายชุด · ตั้งตอน build ได้ และแก้ในแอปได้
-  // เพื่อให้ย้ายร้านหรือชี้ไปเซิร์ฟเวอร์ทดสอบได้โดยไม่ต้อง build ใหม่
-  static const _storeDefault =
-      String.fromEnvironment('STORE_BASE_URL', defaultValue: '');
+  // ที่อยู่หลังบ้านที่ขายชุด — **ผู้ใช้ไม่เห็นค่านี้และไม่ต้องกรอก**
+  // ในหน้าตั้งค่ามีแค่ปุ่มเปิดร้าน ที่อยู่จริงฝังมากับแอป
+  //
+  // ดีฟอลต์ต้องไม่ว่าง ไม่งั้นแอปที่ปล่อยจริงเปิดร้านแล้วเจอ "ยังไม่ได้ตั้ง
+  // ที่อยู่ร้าน" ตลอดไป — workflow release จงใจไม่ --dart-define อะไรเลย
+  // (ดู .github/workflows/release.yml) ค่านี้จึงต้องเป็นค่าที่ใช้ได้จริง
+  // ไม่ใช่ค่าว่างที่รอให้ใครมาเติม
+  //
+  // ยัง --dart-define ทับได้ตอน build เพื่อชี้ไปเซิร์ฟเวอร์ทดสอบ
+  static const _storeDefault = String.fromEnvironment(
+    'STORE_BASE_URL',
+    defaultValue: 'https://xman4289.com',
+  );
 
   String _storeBaseUrl = _storeDefault;
   String get storeBaseUrl => _storeBaseUrl;

@@ -80,7 +80,6 @@ void main() {
       check('shopUnreachableWhy', en.shopUnreachableWhy);
       check('shopNoUrl', en.shopNoUrl);
       check('shopEmpty', en.shopEmpty);
-      check('shopUrlLabel', en.shopUrlLabel);
       check('shopOwned', en.shopOwned);
       check('shopFree', en.shopFree);
       check('shopBuy', en.shopBuy);

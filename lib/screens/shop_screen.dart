@@ -214,7 +214,11 @@ class _ShopScreenState extends State<ShopScreen> {
             ],
           ),
           const SizedBox(height: MindSpace.md),
-          if (item.owned)
+          // ของแจกฟรีต้องโหลดได้เลย ไม่ใช่เด้งไปหน้าจ่ายเงินบนเว็บ
+          // (`owned` มาจาก /api/packs/mine ซึ่งต้องมีไลเซนส์ เครื่องที่เพิ่งลง
+          // ยังไม่มี ของฟรีจึงขึ้นเป็น owned=false เสมอ ถ้าดูแค่ owned
+          // ผู้ใช้จะโดนพาไปจ่ายเงินค่าของที่ราคา 0)
+          if (item.owned || item.price <= 0)
             MindButton(
               label: t.shopGet,
               kind: MindButtonKind.primary,

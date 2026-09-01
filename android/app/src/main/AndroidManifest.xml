@@ -166,6 +166,30 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- 🔴 ตัวนี้คือเหตุผลที่โหลดโมเดล Gemma ไม่ได้ (แก้ 1 ก.ย. 2026)
+             ห้ามลบ และห้ามคิดว่าซ้ำกับตัวบน — คนละ service คนละปลั๊กอิน
+
+             flutter_gemma โหลดไฟล์ผ่าน background_downloader ซึ่งเปิด
+             โหมด foreground ให้เองเมื่อไฟล์ **ใหญ่กว่า 500 MB**
+             (ดู download_service.dart: "auto-detect based on file size")
+             โมเดล Gemma ทุกตัวคือ 2.0-3.0 GB จึงเข้าทางนี้ทุกครั้ง
+
+             เส้นทางจริง: TaskWorker.setForeground(ForegroundInfo(...))
+             → androidx.work.impl.foreground.SystemForegroundService
+             ซึ่ง androidx.work **ไม่ได้ประกาศ foregroundServiceType มาให้**
+             (background_downloader ประกาศไว้แต่บน UIDTJobService ของตัวเอง
+             ซึ่งเป็นคนละเส้นทาง จึงช่วยตรงนี้ไม่ได้)
+
+             targetSdk = 36 → กฎ Android 14+ มีผล: startForeground จาก
+             service ที่ไม่ประกาศประเภท = MissingForegroundServiceTypeException
+             ทันที ผลคือ **ดาวน์โหลดตายตั้งแต่เริ่ม** ส่วนงานเน็ตอย่างอื่น
+             ในแอป (ร้าน, ชุดอวาตาร์, อัปเดตตัวเอง) ต่ำกว่า 500 MB ทั้งหมด
+             จึงไม่เคยเจอบั๊กนี้ — อาการเลยดูเหมือนเสียเฉพาะ Gemma -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

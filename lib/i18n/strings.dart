@@ -141,7 +141,6 @@ class S {
       );
   String get shopNoUrl => _('ยังไม่ได้ตั้งที่อยู่ร้าน', 'No shop address set');
   String get shopEmpty => _('ยังไม่มีของขาย', 'Nothing on sale yet');
-  String get shopUrlLabel => _('ที่อยู่ร้าน', 'Shop address');
 
   String get shopOwned => _('มีแล้ว', 'Owned');
   String get shopFree => _('ฟรี', 'Free');

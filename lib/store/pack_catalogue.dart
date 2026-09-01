@@ -211,11 +211,16 @@ class PackCatalogue extends ChangeNotifier {
   ) async {
     final base = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     try {
+      final key = licenseKey.trim();
       final res = await _http.post(
         Uri.parse('$base/api/packs/$id/download'),
         headers: {
           'Accept': 'application/json',
-          'Authorization': 'Bearer $licenseKey',
+          // ไม่มีไลเซนส์ = **ไม่ส่งหัวข้อนี้เลย** ไม่ใช่ส่ง "Bearer " เปล่า ๆ
+          // ของฟรีโหลดได้โดยไม่ต้องมีไลเซนส์ แต่หัวข้อ Authorization ที่ว่าง
+          // เป็นค่าที่ผิดรูป WAF/พร็อกซีบางตัวตัดทิ้งหรือตอบ 400 กลับมา
+          // ซึ่งจะกลายเป็น "โหลดของฟรีไม่ได้" โดยที่หลังบ้านไม่ผิดอะไรเลย
+          if (key.isNotEmpty) 'Authorization': 'Bearer $key',
         },
       ).timeout(const Duration(seconds: 20));
       if (res.statusCode >= 400) {

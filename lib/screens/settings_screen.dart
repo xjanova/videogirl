@@ -612,29 +612,14 @@ class _SettingsScreenState extends State<SettingsScreen>
           ],
 
           const SizedBox(height: MindSpace.md),
-          // ที่อยู่ร้าน — ไม่มีตัวนี้ หน้าร้านเปิดไปก็ไม่รู้จะไปคุยกับใคร
-          MindSectionLabel(t.shopUrlLabel),
-          const SizedBox(height: MindSpace.sm),
-          Container(
-            decoration: BoxDecoration(
-              color: MindColors.glass80,
-              borderRadius: BorderRadius.circular(MindRadius.control),
-              border: Border.all(color: MindColors.glassBorder, width: 1),
-            ),
-            child: TextFormField(
-              initialValue: state.storeBaseUrl,
-              enabled: !busy,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              style: MindType.body.copyWith(fontSize: 12.5),
-              decoration: const InputDecoration(hintText: 'https://…'),
-              onChanged: state.setStoreBaseUrl,
-            ),
-          ),
-          const SizedBox(height: MindSpace.sm),
 
           // ทางเข้าร้าน — ปลายทางจริงของการได้ชุดใหม่ ส่วนช่อง .zip ข้างล่าง
           // เก็บไว้สำหรับทดสอบชุดที่ยังไม่ขึ้นร้าน
+          //
+          // **ไม่มีช่องกรอกที่อยู่ร้านตรงนี้แล้ว โดยตั้งใจ** ที่อยู่ฝังมากับแอป
+          // (MindState._storeDefault) ผู้ใช้ไม่ควรเห็นว่าของมาจากเซิร์ฟเวอร์ไหน
+          // และไม่ควรต้องรู้ว่าต้องกรอกอะไรถึงจะเปิดร้านได้ — เหตุผลเดียวกับ
+          // ที่ตัวอัปเดตไม่โชว์ที่มาของไฟล์
           MindButton(
             label: t.shopOpen,
             kind: MindButtonKind.primary,
