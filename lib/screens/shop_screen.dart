@@ -31,6 +31,13 @@ class ShopScreen extends StatefulWidget {
 class _ShopScreenState extends State<ShopScreen> {
   late final PackCatalogue _shop = PackCatalogue();
 
+  /// ชิ้นที่กำลังติดตั้งอยู่ — null = ไม่ได้ติดตั้งอะไรอยู่
+  ///
+  /// `AvatarPacks` บอกได้แค่ว่า "กำลังโหลดอยู่" ไม่ได้บอกว่าโหลดของชิ้นไหน
+  /// หน้านี้มีหลายการ์ด จึงต้องจำเองว่ากดของชิ้นไหนไป ไม่งั้นแถบความคืบหน้า
+  /// จะขึ้นพร้อมกันทุกใบ
+  String? _installingId;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +60,11 @@ class _ShopScreenState extends State<ShopScreen> {
   Widget build(BuildContext context) {
     final t = S.of(context);
     final mode = context.select<MindState, MindMode>((s) => s.mode);
+
+    // 🔴 `watch` ไม่ใช่ `read` — ตัวรู้ความคืบหน้าการโหลดคือ AvatarPacks
+    // ไม่ใช่ `_shop` · เดิมหน้านี้ฟังแค่ `_shop` ซึ่งไม่ขยับเลยระหว่างโหลด
+    // ผลคือกดโหลดแล้วจอนิ่งสนิททั้งที่ไฟล์กำลังวิ่งอยู่จริง
+    context.watch<AvatarPacks>();
 
     return Scaffold(
       body: LiquidBackground(
@@ -160,6 +172,22 @@ class _ShopScreenState extends State<ShopScreen> {
         ? t.shopFree
         : t.shopPrice(item.price.toStringAsFixed(0), item.currency);
 
+    final packs = context.read<AvatarPacks>();
+    final anyBusy = _installingId != null;
+
+    // ป้ายบอกขั้นตอน ขึ้นเฉพาะการ์ดใบที่กดไป · ระหว่างรอลิงก์ที่มีลายเซ็น
+    // ตัวติดตั้งยังไม่เริ่ม stage จึงยังเป็นค่าเดิม — ต้องมีป้ายให้ตรงนั้นด้วย
+    // ไม่งั้นช่วงต้นจะยังนิ่งอยู่ดี
+    final busyLabel = _installingId != item.id
+        ? null
+        : switch (packs.stage) {
+            AvatarPackStage.downloading =>
+              '${t.packDownloading} · ${packs.sizeLabel}',
+            AvatarPackStage.verifying => t.packVerifying,
+            AvatarPackStage.unpacking => t.packUnpacking,
+            _ => t.packDownloading,
+          };
+
     return GlassPanel(
       radius: MindRadius.card,
       fill: MindColors.glass62,
@@ -214,18 +242,42 @@ class _ShopScreenState extends State<ShopScreen> {
             ],
           ),
           const SizedBox(height: MindSpace.md),
+          // ชิ้นที่กำลังติดตั้งอยู่ ให้แถบความคืบหน้าแทนปุ่ม — ปุ่มที่กดแล้ว
+          // ไม่ขยับคืออาการเดียวกับปุ่มเสียในสายตาผู้ใช้
+          if (busyLabel != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(busyLabel,
+                    textAlign: TextAlign.center, style: MindType.caption),
+                const SizedBox(height: MindSpace.sm),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  // ตอนแตกไฟล์ไม่รู้ความคืบหน้า ให้แถบวิ่งไปเรื่อย ๆ ดีกว่า
+                  // แถบ 0% ที่ค้างนิ่ง ซึ่งอ่านได้ว่าค้างจริง
+                  child: LinearProgressIndicator(
+                    value: packs.stage == AvatarPackStage.downloading
+                        ? packs.progress
+                        : null,
+                  ),
+                ),
+              ],
+            )
           // ของแจกฟรีต้องโหลดได้เลย ไม่ใช่เด้งไปหน้าจ่ายเงินบนเว็บ
           // (`owned` มาจาก /api/packs/mine ซึ่งต้องมีไลเซนส์ เครื่องที่เพิ่งลง
           // ยังไม่มี ของฟรีจึงขึ้นเป็น owned=false เสมอ ถ้าดูแค่ owned
           // ผู้ใช้จะโดนพาไปจ่ายเงินค่าของที่ราคา 0)
-          if (item.owned || item.price <= 0)
+          else if (item.owned || item.price <= 0)
             MindButton(
               label: t.shopGet,
               kind: MindButtonKind.primary,
               icon: Icons.download_rounded,
               mode: mode,
               expand: true,
-              onTap: () => _install(context, item),
+              // กำลังโหลดชิ้นอื่นอยู่ = กดชิ้นนี้ไม่ได้ · ตัวติดตั้งรับได้ทีละ
+              // ชุด (install() คืน false ทันทีถ้าไม่ว่าง) ซึ่งถ้าปล่อยให้กดได้
+              // จะเงียบเหมือนปุ่มเสียอีกแบบหนึ่ง
+              onTap: anyBusy ? null : () => _install(context, item),
             )
           else ...[
             MindButton(
@@ -234,7 +286,9 @@ class _ShopScreenState extends State<ShopScreen> {
               icon: Icons.open_in_new_rounded,
               mode: mode,
               expand: true,
-              onTap: () => _buy(context, item),
+              // ปิดไว้ระหว่างติดตั้งด้วย — เด้งออกเบราว์เซอร์กลางคันแล้วกลับมา
+              // เจอชุดติดตั้งค้างครึ่งทางเป็นทางที่ไม่ควรเปิดให้เดินตั้งแต่แรก
+              onTap: anyBusy ? null : () => _buy(context, item),
             ),
             const SizedBox(height: MindSpace.xs),
             Text(t.shopBuyOnWeb,
@@ -262,23 +316,55 @@ class _ShopScreenState extends State<ShopScreen> {
   /// ขอลิงก์ที่มีลายเซ็นแล้วส่งต่อให้ตัวติดตั้งชุดที่มีอยู่
   ///
   /// ตัวติดตั้งเดิมรับ url + sha256 อยู่แล้ว จึงไม่ต้องแก้อะไรฝั่งนั้นเลย
+  ///
+  /// 🔴 **ต้องมีสัญญาณตอบกลับทุกทางที่ออกจากเมธอดนี้** ของก้อนหนึ่งหนัก 18 MB
+  /// ใช้เวลาเป็นนาทีบน 4G · เดิมกดแล้วไม่มีอะไรขยับเลยสักอย่าง เพราะหน้านี้
+  /// ฟังแค่ `_shop` ไม่ได้ฟัง `AvatarPacks` ที่เป็นตัวรู้ความคืบหน้าจริง
+  /// ผู้ใช้จึงอ่านได้ทางเดียวว่าปุ่มเสีย แล้วกดซ้ำ ๆ
   Future<void> _install(BuildContext context, ShopItem item) async {
+    // อ่าน context ให้ครบก่อน await ตัวแรก — หลัง await หน้าอาจถูกปิดไปแล้ว
     final state = context.read<MindState>();
     final packs = context.read<AvatarPacks>();
     final messenger = ScaffoldMessenger.maybeOf(context);
     final t = S.of(context);
 
-    final link = await _shop.downloadLink(
-      state.storeBaseUrl,
-      state.licenseKey,
-      item.id,
-    );
-    if (link == null) {
+    setState(() => _installingId = item.id);
+    try {
+      final link = await _shop.downloadLink(
+        state.storeBaseUrl,
+        state.licenseKey,
+        item.id,
+      );
+      if (link == null) {
+        messenger
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(t.shopUnreachable)));
+        return;
+      }
+
+      final ok = await packs.install(link.url, expectedSha256: link.sha256);
+
+      // บอกผลเสมอ ทั้งสำเร็จและล้มเหลว · ล้มเหลวต้องบอกด้วยว่าเพราะอะไร
+      // ไม่ใช่เงียบไปเฉย ๆ ให้เดาเอง
       messenger
         ?..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(t.shopUnreachable)));
-      return;
+        ..showSnackBar(SnackBar(
+          content: Text(ok
+              ? '${item.nameFor(t.isThai)} · ${t.packReady}'
+              : _errorLabel(t, packs.error)),
+        ));
+    } finally {
+      // หน้าอาจถูกปิดไปแล้วระหว่างโหลด — setState ตอนนั้นคือ crash
+      if (mounted) setState(() => _installingId = null);
     }
-    await packs.install(link.url, expectedSha256: link.sha256);
   }
+
+  String _errorLabel(S t, AvatarPackError? e) => switch (e) {
+        AvatarPackError.noUrl => t.packErrNoUrl,
+        AvatarPackError.network => t.packErrNetwork,
+        AvatarPackError.hashMismatch => t.packErrHash,
+        AvatarPackError.badPack => t.packErrBadPack,
+        AvatarPackError.noServer => t.packErrServer,
+        null => t.shopUnreachable,
+      };
 }
