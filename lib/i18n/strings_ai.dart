@@ -16,6 +16,29 @@ extension AiStrings on S {
         'Messages pass through our server · needs internet · has a daily quota',
       );
 
+  // ── พิมพ์ชื่อรุ่นเอง ──
+  String get modelCustom => pick('พิมพ์ชื่อรุ่นเอง', 'Type a model name');
+  String get modelCustomHint => pick(
+        'ใช้รุ่นที่ไม่มีในรายการได้',
+        'Use a model that is not in the list',
+      );
+  String get modelCustomEditor => pick(
+        'ใส่ชื่อรุ่นให้ตรงกับที่ผู้ให้บริการใช้ เช่น gpt-5.6-sol\n'
+        'พิมพ์ผิดจะเรียกไม่ได้ และจะรู้ตอนทักเธอครั้งถัดไป',
+        'Type the model id exactly as the provider spells it, e.g. gpt-5.6-sol\n'
+        'A typo will simply fail, and you will find out on your next message',
+      );
+  String get voiceModelCustomEditor => pick(
+        'ใส่ชื่อรุ่นเสียงให้ตรงกับที่ผู้ให้บริการใช้ เช่น gpt-4o-mini-tts\n'
+        'ถ้ารุ่นนั้นไม่รับคำสั่งน้ำเสียง ช่องน้ำเสียงจะหายไปเอง',
+        'Type the voice model id as the provider spells it, e.g. gpt-4o-mini-tts\n'
+        'If it does not accept tone instructions, that field disappears on its own',
+      );
+  String get voiceNameCustomEditor => pick(
+        'ใส่ชื่อเสียงให้ตรงกับที่ผู้ให้บริการใช้ เช่น coral',
+        'Type the voice name as the provider spells it, e.g. coral',
+      );
+
   // ── รหัสสิทธิ์ (license) ──
   //
   // ตัวเดียวกับที่ร้านใช้ยืนยันว่าซื้ออะไรไปแล้ว · เดิมไม่มีช่องกรอกเลย
@@ -33,8 +56,8 @@ extension AiStrings on S {
         'Enter a license code before using our service',
       );
   String get proxyModelNote => pick(
-        'รุ่นที่ใช้ตอบ เราเป็นคนเลือกให้ที่เซิร์ฟเวอร์ ไม่ต้องตั้งเอง',
-        'We pick the model on our server — nothing to set here',
+        'ถ้าบริการยังไม่เปิดรุ่นที่เลือกไว้ จะใช้รุ่นที่เราตั้งไว้ให้แทน',
+        'If the service does not offer the model you picked, ours is used instead',
       );
 
   // ── คีย์ของผู้ใช้เอง ──

@@ -228,6 +228,11 @@ void main() {
       check('updateInstall', en.updateInstall('12 MB'));
 
       // ฝั่ง AI
+      check('modelCustom', en.modelCustom);
+      check('modelCustomHint', en.modelCustomHint);
+      check('modelCustomEditor', en.modelCustomEditor);
+      check('voiceModelCustomEditor', en.voiceModelCustomEditor);
+      check('voiceNameCustomEditor', en.voiceNameCustomEditor);
       check('brainProxy', en.brainProxy);
       check('brainProxySummary', en.brainProxySummary);
       check('brainProxyTradeoff', en.brainProxyTradeoff);

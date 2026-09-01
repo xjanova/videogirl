@@ -1046,18 +1046,45 @@ class _SettingsScreenState extends State<SettingsScreen>
                 onReset: () => '',
               ),
             ),
-            const SizedBox(height: 7),
-            Text(
-              state.licenseKey.isEmpty
-                  ? S.of(context).licenseNeeded
-                  : S.of(context).proxyModelNote,
-              style: TextStyle(
-                fontSize: 10.5,
-                height: 1.5,
-                color: state.licenseKey.isEmpty
-                    ? const Color(0xFFB46A00)
-                    : MindColors.ink55,
+            if (state.licenseKey.isEmpty) ...[
+              const SizedBox(height: 7),
+              Text(
+                S.of(context).licenseNeeded,
+                style: const TextStyle(
+                    fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00)),
               ),
+            ],
+            const SizedBox(height: 12),
+            Text(S.of(context).sectionBrain,
+                style: mindMono(
+                    size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+            const SizedBox(height: 7),
+            for (final m in OpenAiConfig.brainChoices)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: _choiceRow(
+                  title: m.label,
+                  subtitle: S.of(context).brainModelHint(m.id),
+                  trailing: m.id,
+                  selected: state.brainModel == m.id,
+                  mode: mode,
+                  onTap: () => state.setBrainModel(m.id),
+                ),
+              ),
+            _customModelRow(
+              current: state.brainModel,
+              presets: OpenAiConfig.brainChoices.map((m) => m.id).toList(),
+              mode: mode,
+              title: S.of(context).sectionBrain,
+              hint: S.of(context).modelCustomEditor,
+              onSave: state.setBrainModel,
+            ),
+            // บอกตรง ๆ ว่าฝั่งบริการมีสิทธิ์เปลี่ยน — เงินที่จ่ายค่ารุ่นเป็นของเรา
+            // ถ้าปล่อยให้เลือกอะไรก็ได้แล้วเงียบ ผู้ใช้จะคิดว่าได้รุ่นที่เลือกจริง
+            Text(
+              S.of(context).proxyModelNote,
+              style: const TextStyle(
+                  fontSize: 10.5, height: 1.5, color: MindColors.ink55),
             ),
           ],
           if (state.brain == BrainProvider.openai) ...[
@@ -1089,6 +1116,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                   onTap: () => state.setBrainModel(m.id),
                 ),
               ),
+            _customModelRow(
+              current: state.brainModel,
+              presets: OpenAiConfig.brainChoices.map((m) => m.id).toList(),
+              mode: mode,
+              title: S.of(context).sectionBrain,
+              hint: S.of(context).modelCustomEditor,
+              onSave: state.setBrainModel,
+            ),
           ],
           if (state.brain == BrainProvider.homeServer) ...[
             const SizedBox(height: 12),
@@ -1369,6 +1404,15 @@ class _SettingsScreenState extends State<SettingsScreen>
                         state.setVoice(channel, profile.copyWith(model: m)),
                   ),
                 ),
+              _customModelRow(
+                current: profile.model,
+                presets: OpenAiConfig.ttsChoices,
+                mode: mode,
+                title: S.of(context).voiceModel,
+                hint: S.of(context).voiceModelCustomEditor,
+                onSave: (v) =>
+                    state.setVoice(channel, profile.copyWith(model: v)),
+              ),
               const SizedBox(height: 7),
               Text(S.of(context).voicePick,
                   style: mindMono(
@@ -1385,6 +1429,15 @@ class _SettingsScreenState extends State<SettingsScreen>
                         state.setVoice(channel, profile.copyWith(voice: v)),
                   ),
                 ),
+              _customModelRow(
+                current: profile.voice,
+                presets: OpenAiConfig.voiceChoices,
+                mode: mode,
+                title: S.of(context).voicePick,
+                hint: S.of(context).voiceNameCustomEditor,
+                onSave: (v) =>
+                    state.setVoice(channel, profile.copyWith(voice: v)),
+              ),
               if (canInstruct)
                 _linkRow(
                   title: S.of(context).voiceInstructions,
@@ -2024,6 +2077,54 @@ class _SettingsScreenState extends State<SettingsScreen>
           style: MindType.button.copyWith(
             color: selected ? Colors.white : MindColors.ink60,
           ),
+        ),
+      ),
+    );
+  }
+
+  /// แถวท้ายรายการรุ่น — "พิมพ์ชื่อรุ่นเอง"
+  ///
+  /// รายการสำเร็จรูปในแอปเป็นภาพนิ่ง ณ วันที่เขียน · ผู้ให้บริการออกรุ่นใหม่
+  /// และปลดรุ่นเก่าตลอดเวลา (Groq เคยปลดรุ่นจนผู้ช่วยบนเว็บตายมาแล้ว)
+  /// ถ้าเลือกได้แค่ในรายการ วันที่รุ่นใหม่ออก ผู้ใช้ต้องรอแอปเวอร์ชันใหม่
+  ///
+  /// ติ๊กเลือกอยู่เมื่อค่าปัจจุบัน**ไม่อยู่**ในรายการสำเร็จรูป — นั่นแปลว่า
+  /// ผู้ใช้พิมพ์เองไว้ ต้องเห็นว่ากำลังใช้ตัวนั้นอยู่ ไม่ใช่ดูเหมือนไม่ได้เลือกอะไร
+  Widget _customModelRow({
+    required String current,
+    required List<String> presets,
+    required MindMode mode,
+    required String title,
+    required String hint,
+    required void Function(String) onSave,
+  }) {
+    final isCustom = current.isNotEmpty && !presets.contains(current);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: _choiceRow(
+        title: S.of(context).modelCustom,
+        subtitle: isCustom ? current : S.of(context).modelCustomHint,
+        selected: isCustom,
+        mode: mode,
+        onTap: () => _editText(
+          state: context.read<MindState>(),
+          mode: mode,
+          title: title,
+          hint: hint,
+          value: current,
+          // ปุ่มรีเซ็ตพากลับไปตัวแรกของรายการสำเร็จรูป ซึ่งเป็นตัวที่รู้ว่าใช้ได้
+          onReset: () => presets.isEmpty ? '' : presets.first,
+          onSave: (v) {
+            final id = v.trim();
+            // ว่าง = ยกเลิกการพิมพ์เอง ไม่ใช่ตั้งชื่อรุ่นเป็นค่าว่าง
+            // ซึ่งจะทำให้ยิงไปโดยไม่มีชื่อรุ่นแล้วได้ error ที่อ่านไม่ออก
+            if (id.isEmpty) {
+              if (presets.isNotEmpty) onSave(presets.first);
+              return;
+            }
+            onSave(id);
+          },
         ),
       ),
     );
