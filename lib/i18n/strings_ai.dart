@@ -76,6 +76,10 @@ extension AiStrings on S {
         'คีย์ของ OpenAI ขึ้นต้นด้วย sk- — ตรวจอีกทีนะคะ',
         'OpenAI keys start with sk- — please check it again',
       );
+  String get voiceNeedsKey => pick(
+        'เสียงของ OpenAI ต้องมีคีย์ ยังไม่ใส่จะได้เสียงของเครื่องแทน',
+        'The OpenAI voice needs a key — without one you get the device voice',
+      );
   String get ownKeyNeeded => pick(
         'เลือก "คีย์ของคุณเอง" แล้วแต่ยังไม่ได้ใส่คีย์',
         'You picked your own key but have not entered one yet',

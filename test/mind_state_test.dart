@@ -84,14 +84,32 @@ void main() {
       expect(s.messages.length, lessThanOrEqualTo(6));
     });
 
-    test('น้ำเสียงที่ตอบเปลี่ยนตามโหมด', () async {
-      final work = MindState();
-      await work.send('ช่วยหน่อย');
-      expect(work.messages.last.text, contains('มายด์จัดการให้'));
+    // เทสต์เดิมยืนยันว่าเวลาสมองล้ม เธอตอบ "มายด์จัดการให้แล้ว" — ซึ่งคือ
+    // ตัวบั๊กเอง ไม่ใช่พฤติกรรมที่ถูก · ในเทสต์ไม่มีคีย์ ไม่มีโมเดล จึงล้มเสมอ
+    // เทสต์นั้นจึงล็อกไว้ว่า "ล้มแล้วโกหกว่าสำเร็จ" ถือว่าใช้ได้
+    test('สมองล้ม ต้องบอกตามจริง ไม่ใช่ตอบเหมือนทำให้แล้ว', () async {
+      final s = MindState();
+      await s.send('ช่วยหน่อย');
 
-      final love = MindState()..setPersona(PersonaSetting.love);
-      await love.send('ช่วยหน่อย');
-      expect(love.messages.last.text, contains('คำชม'));
+      final reply = s.messages.last.text;
+
+      expect(reply, isNot(contains('มายด์จัดการให้')),
+          reason: 'ตอบเหมือนสำเร็จทั้งที่ไม่มีอะไรถูกส่งออกไปเลย');
+      expect(reply, contains('ไม่ได้'), reason: 'ต้องบอกว่าทำให้ไม่ได้');
+      // และต้องบอกเหตุผลที่พอเอาไปแก้ได้ ไม่ใช่ล้มเฉย ๆ
+      expect(s.lastError, isNotNull);
+      expect(reply, contains(s.lastError!));
+    });
+
+    test('ข้อผิดพลาดปิดได้ และปิดแล้วหายจริง', () async {
+      final s = MindState();
+      await s.send('ช่วยหน่อย');
+      expect(s.lastError, isNotNull);
+
+      s.clearError();
+
+      // ถ้าไม่หาย แถบเตือนบนจอจะค้างอยู่ตลอดกาล
+      expect(s.lastError, isNull);
     });
   });
 

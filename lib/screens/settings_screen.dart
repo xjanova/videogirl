@@ -1370,7 +1370,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             Row(
               spacing: 7,
               children: [
-                for (final e in TtsEngine.values)
+                // .wired ไม่ใช่ .values — เสียงโคลนยังไม่ได้ต่อสาย
+                // (ดู TtsEngine.wired) เลือกได้แต่ไม่ทำงานคือฟีเจอร์ปลอม
+                for (final e in TtsEngine.wired)
                   Expanded(
                     child: _segment(
                       text: e.labelOf(S.of(context)),
@@ -1387,6 +1389,29 @@ class _SettingsScreenState extends State<SettingsScreen>
                 style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
 
             if (usingOpenAi) ...[
+              // 🔴 ช่องกรอกคีย์ต้องมาอยู่ตรงนี้ด้วย
+              //
+              // เดิมมันอยู่ใต้การ์ดสมองเฉพาะตอนเลือกสมอง = OpenAI เท่านั้น
+              // คนที่ใช้สมองในเครื่อง (ค่าตั้งต้น) หรือผ่านบริการเรา แล้วอยากได้
+              // เสียง OpenAI จึงไม่มีที่ให้ใส่คีย์เลยทั้งแอป — เห็นแต่ตัวเลือก
+              // รุ่นเสียงกับชื่อเสียงที่กดแล้วได้เสียงเครื่องเงียบ ๆ
+              const SizedBox(height: 14),
+              _linkRow(
+                title: S.of(context).ownKeyTitle,
+                value: state.openAiKey.isEmpty
+                    ? S.of(context).ownKeyNotSet
+                    : state.openAiKeyMasked,
+                mode: mode,
+                onTap: () => _editOpenAiKey(state, mode),
+              ),
+              if (!state.hasOwnKey) ...[
+                const SizedBox(height: 7),
+                Text(
+                  S.of(context).voiceNeedsKey,
+                  style: const TextStyle(
+                      fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00)),
+                ),
+              ],
               const SizedBox(height: 14),
               Text(S.of(context).voiceModel,
                   style: mindMono(

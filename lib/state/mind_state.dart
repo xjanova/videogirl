@@ -14,6 +14,7 @@ import '../ai/brain_provider.dart';
 import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
 import '../i18n/strings.dart';
+import '../i18n/strings_ai.dart';
 import '../ai/openai_client.dart';
 import '../ai/openai_config.dart';
 import '../ai/secret_store.dart';
@@ -43,11 +44,26 @@ class MindState extends ChangeNotifier {
     SpeechService? speech,
     MindMemory? memory,
   })  : _clock = clock ?? DateTime.now,
-        _speech = speech ?? SpeechService(),
         memory = memory ?? MindMemory() {
     // ส่งเป็นฟังก์ชัน ไม่ใช่ค่า — ผู้ใช้กรอก/แก้/ลบคีย์ได้ตลอดขณะแอปเปิดอยู่
     // ถ้าอ่านค่าตอนสร้าง client จะต้องสร้างใหม่ทุกครั้งที่แก้ ซึ่งลืมง่ายและเงียบ
     _openai = openai ?? OpenAiClient(apiKeyOf: () => effectiveOpenAiKey);
+
+    // 🔴 เสียงต้องได้ client ที่รู้จักคีย์ของผู้ใช้ด้วย
+    //
+    // ของเดิมเป็น `SpeechService()` เปล่า ๆ ซึ่งข้างในสร้าง `OpenAiClient()`
+    // ของตัวเองที่ตกไปอ่าน `OpenAiConfig.apiKey` — ค่าที่ **ว่างเสมอ**ในตัว
+    // release (workflow ไม่ส่ง --dart-define) ผลคือเลือกเสียง OpenAI แล้ว
+    // `usable` เป็น false ทุกครั้ง โยน errNoKey แล้วถูกกลืนเป็นเสียงเครื่อง
+    // เงียบ ๆ — ผู้ใช้กรอกคีย์ถูกต้องก็ไม่มีอะไรเปลี่ยน อ่านได้ว่าปุ่มเลือกเสียงเป็นของปลอม
+    _speech = speech ??
+        SpeechService(
+          openai: OpenAiClient(
+            apiKeyOf: () => effectiveOpenAiKey,
+            strings: () => s,
+          ),
+          strings: () => s,
+        );
   }
 
   /// สิ่งที่เธอจำได้จากที่เคยคุยกัน
@@ -88,7 +104,7 @@ class MindState extends ChangeNotifier {
   /// ฉีดนาฬิกาเข้ามาได้เพื่อให้เทสต์โหมดอัตโนมัติได้โดยไม่ต้องรอถึงสองทุ่ม
   final DateTime Function() _clock;
   late final OpenAiClient _openai;
-  final SpeechService _speech;
+  late final SpeechService _speech;
 
   bool _disposed = false;
 
@@ -699,7 +715,16 @@ class MindState extends ChangeNotifier {
       reply = await _think();
     } on OpenAiFailure catch (e) {
       _lastError = e.message;
-      reply = _cannedReply();
+
+      // 🔴 ห้ามตอบด้วยประโยคสำเร็จรูปตอนที่สมองล้มจริง
+      //
+      // ของเดิมตอบ "รับทราบค่ะ มายด์จัดการให้แล้วจะสรุปกลับมานะคะ" ทั้งที่
+      // ไม่มีอะไรถูกส่งไปถึงสมองเลย · คีย์ผิด ไลเซนส์หมดอายุ โควตาหมด เน็ตหลุด
+      // โมเดลยังไม่โหลด — ทุกกรณีหน้าตาเหมือนกันหมดคือ "เธอโง่ลง" แทนที่จะเป็น
+      // "ตั้งค่าไม่ครบ" และเธอก็ไม่เคยสรุปกลับมาจริงเพราะไม่มีงานอยู่แล้ว
+      //
+      // ตอบตามจริงว่าไม่ได้ยิงออกไป แล้วบอกเหตุผลที่พอแก้ได้
+      reply = s.brainFailedReply(e.message);
     }
 
     if (_disposed) return;
@@ -984,7 +1009,14 @@ class MindState extends ChangeNotifier {
       // โควตาของไลเซนส์นั้น ซึ่งหลังบ้านจำกัดไว้อยู่แล้ว
       case BrainProvider.mindProxy:
         final base = _storeBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-        if (base.isEmpty) return _cannedReply();
+        // 🔴 บอกให้ตรงกับสิ่งที่ผู้ใช้ต้องไปทำ
+        //
+        // เดิมสองกรณีนี้ตกไปที่ประโยคสำเร็จรูป แล้วถ้าปล่อยผ่าน หลังบ้านจะตอบ
+        // 401 ซึ่ง client แปลเป็น "คีย์ OpenAI ใช้ไม่ได้แล้ว" — พูดถึงคีย์ที่
+        // เขาไม่เคยกรอกและถูกบอกว่าไม่ต้องมี · คนที่เลือกทางนี้ต้องได้ยินว่า
+        // "ยังไม่ได้ใส่รหัสสิทธิ์" ไม่ใช่เรื่องคีย์
+        if (base.isEmpty) throw OpenAiFailure(s.shopNoUrl);
+        if (_licenseKey.trim().isEmpty) throw OpenAiFailure(s.licenseNeeded);
         debugPrint('สมอง: พร็อกซีหลังบ้าน $_brainModel');
         final proxy = OpenAiClient(
           baseUrl: '$base/api/ai/v1',
@@ -1006,7 +1038,8 @@ class MindState extends ChangeNotifier {
         // ดูคีย์ที่ใช้ได้จริง ไม่ใช่ OpenAiConfig.configured ซึ่งดูแค่คีย์
         // ตอน build · ผู้ใช้ที่กรอกคีย์เองจะโดนตอบด้วยประโยคสำเร็จรูปทั้งที่
         // ใส่คีย์ถูกแล้ว ถ้ายังเช็คตัวเดิม
-        if (!hasOwnKey) return _cannedReply();
+        // บอกว่ายังไม่ได้ใส่คีย์ แทนที่จะตอบเหมือนคิดให้เสร็จแล้ว
+        if (!hasOwnKey) throw OpenAiFailure(s.ownKeyNeeded);
         debugPrint('สมอง: OpenAI $_brainModel');
         return _openai.reply(system: system, history: history, model: _brainModel);
 
@@ -1036,7 +1069,6 @@ class MindState extends ChangeNotifier {
     }
   }
 
-  String _cannedReply() => mode.isWork ? s.cannedWork : s.cannedLove;
 
   void _push(ChatMessage m) {
     // ฟองแสดงเฉพาะสิ่งที่ **เธอ** พูด ข้อความของเราไม่ต้องมีฟองเหนือหัวเธอ

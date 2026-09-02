@@ -403,6 +403,15 @@ class S {
         'Free from 2pm, but Ton asked to move the review to 3. Shall I call and sort it out?',
       );
 
+  /// คำตอบตอนสมองล้มจริง — **ห้ามหน้าตาเหมือนตอบสำเร็จ**
+  ///
+  /// เธอต้องบอกว่าไม่ได้คิดให้จริง ๆ พร้อมเหตุผลที่พอเอาไปแก้ได้
+  /// ไม่ใช่ตอบ "จัดการให้แล้ว" ทั้งที่ไม่มีอะไรถูกส่งออกไปเลย
+  String brainFailedReply(String why) => _(
+        'ขอโทษค่ะ มายด์คิดให้ไม่ได้ตอนนี้ — $why',
+        "Sorry, I couldn't think that through right now — $why",
+      );
+
   String get cannedWork => _(
         'รับทราบค่ะ มายด์จัดการให้แล้วจะสรุปกลับมานะคะ',
         'On it. I will take care of it and report back.',

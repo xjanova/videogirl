@@ -509,6 +509,61 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _composer(MindState state, MindMode mode) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (state.lastError != null) _errorStrip(state),
+        _composerRow(state, mode),
+      ],
+    );
+  }
+
+  /// แถบบอกว่าทำไมเธอตอบไม่ได้ — ปิดเองได้
+  ///
+  /// 🔴 ก่อนหน้านี้ `lastError` ถูกเขียนทุกครั้งที่สมองหรือเสียงล้ม
+  /// แต่**ไม่มีใครอ่านเลยสักที่** (grep แล้วไม่เจอนอกไฟล์ state)
+  /// คีย์ผิด ไลเซนส์หมดอายุ โควตาหมด เน็ตหลุด โมเดลยังไม่โหลด — ทุกอย่าง
+  /// หน้าตาเหมือนกันหมดคือเธอตอบสั้น ๆ แล้วไม่มีอะไรเกิดขึ้น เจ้าของแยกไม่ออก
+  /// ว่าเป็นปัญหาเงิน เน็ต หรือพิมพ์รหัสผิด
+  Widget _errorStrip(MindState state) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(11, 9, 7, 9),
+        decoration: BoxDecoration(
+          color: const Color(0x1AB46A00),
+          borderRadius: BorderRadius.circular(MindRadius.control),
+          border: Border.all(color: const Color(0x33B46A00), width: 1),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 8,
+          children: [
+            const Icon(Icons.error_outline_rounded,
+                size: 15, color: Color(0xFFB46A00)),
+            Expanded(
+              child: Text(
+                state.lastError!,
+                style: const TextStyle(
+                    fontSize: 10.5, height: 1.5, color: Color(0xFF8A5200)),
+              ),
+            ),
+            GestureDetector(
+              onTap: state.clearError,
+              behavior: HitTestBehavior.opaque,
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.close_rounded,
+                    size: 14, color: Color(0xFFB46A00)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _composerRow(MindState state, MindMode mode) {
     return Row(
       spacing: 7,
       children: [

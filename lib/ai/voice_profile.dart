@@ -54,7 +54,13 @@ class VoiceProfile {
 
   static VoiceProfile fromJson(Map<String, dynamic> j, VoiceProfile fallback) =>
       VoiceProfile(
-        engine: TtsEngine.values.firstWhere(
+        // 🔴 ต้องอยู่ใน `wired` ไม่ใช่แค่ `values`
+        //
+        // เครื่องที่เคยเลือก "เสียงโคลน" ไว้ตอนที่มันยังโผล่ในรายการ จะโหลด
+        // ค่านั้นกลับมาได้ปกติ แต่หน้าตั้งค่าไม่แสดงตัวเลือกนั้นแล้ว → เห็นเป็น
+        // "ไม่ได้เลือกอะไรเลย" และกดอะไรก็ไม่ตรง จนกว่าจะบังเอิญกดทับ
+        // ตกกลับไปที่ค่าตั้งต้นแทน ซึ่งเป็นทางที่ใช้งานได้จริง
+        engine: TtsEngine.wired.firstWhere(
           (e) => e.name == j['engine'],
           orElse: () => fallback.engine,
         ),

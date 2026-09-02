@@ -65,6 +65,8 @@ void main() {
       check('seedGreeting', en.seedGreeting);
       check('seedAsk', en.seedAsk);
       check('seedAnswer', en.seedAnswer);
+      check('brainFailedReply', en.brainFailedReply('x'));
+      check('voiceNeedsKey', en.voiceNeedsKey);
       check('cannedWork', en.cannedWork);
       check('cannedLove', en.cannedLove);
       for (final lv in [0.1, 0.3, 0.6, 0.9]) {
