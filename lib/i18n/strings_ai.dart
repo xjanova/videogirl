@@ -266,9 +266,85 @@ extension AiStrings on S {
   String errRequestFailed(int code) =>
       pick('เรียก OpenAI ไม่สำเร็จ ($code)', 'OpenAI request failed ($code)');
 
+  /// สมองล้มด้วยเหตุที่เราไม่ได้เตรียมข้อความไว้ให้
+  ///
+  /// ห้ามเอาข้อความดิบของ error มาโชว์แทน — ในนั้นมีทั้ง URL ปลายทาง
+  /// ชื่อคลาสภายใน และบางครั้งมี header ติดมาด้วย · ผู้ใช้เอาไปทำอะไรไม่ได้
+  /// สิ่งที่เขาทำได้จริงคือลองใหม่ ข้อความจึงพาไปตรงนั้น (ของเต็มอยู่ใน log)
+  String get errBrainUnexpected => pick(
+        'สมองของมายด์สะดุดกลางทาง ลองส่งใหม่อีกครั้งนะคะ',
+        'Her train of thought broke off — please send that again',
+      );
+
   String get errModelNotDownloaded =>
       pick('ยังไม่ได้โหลดโมเดลลงเครื่อง', 'The model is not downloaded yet');
+
+  /// กำลังโหลดอยู่ — คนละเรื่องกับยังไม่ได้โหลด
+  ///
+  /// บอกให้ไปโหลดของที่กำลังโหลดอยู่ 60% คือการบอกให้ทำสิ่งที่ทำอยู่แล้ว
+  /// สิ่งที่เขาต้องรู้จริงคือ **รออีกเท่าไหร่** ไม่ใช่ต้องไปกดอะไรเพิ่ม
+  String errModelDownloading(int pct) => pick(
+        'กำลังโหลดสมองลงเครื่องอยู่ $pct% · รออีกสักครู่แล้วทักใหม่นะคะ',
+        'Her brain is still downloading — $pct% · try again in a moment',
+      );
+
+  /// เครื่องนี้รันโมเดลในเครื่องไม่ไหวเลยสักรุ่น
+  ///
+  /// บอกให้ไปโหลดคือการให้เขาเสียเน็ตหลาย GB ไปกับของที่ระบบจะฆ่าทิ้งตอนรัน
+  /// ทางออกจริงของเขาคือเปลี่ยนไปใช้สมองทางอื่น
+  String get errDeviceTooSmallForLocal => pick(
+        'เครื่องนี้แรมไม่พอจะรันสมองในเครื่อง · เลือกสมองทางอื่นในหน้าตั้งค่านะคะ',
+        "This phone hasn't the memory to run her brain locally — pick another brain in settings",
+      );
   String get errNothingToAnswer => pick('ไม่มีข้อความให้ตอบ', 'Nothing to reply to');
+
+  // ═══ พูดใส่ไมค์แทนการพิมพ์ ═════════════════════════════
+  //
+  // 🔴 เสียงไปที่เดียวกับที่ข้อความไป · สมองในเครื่องจึงใช้ไมค์ไม่ได้
+  // เพราะการถอดเสียงต้องมีบริการนอกเครื่อง ซึ่งขัดกับสัญญาข้อเดียว
+  // ที่ทางนั้นให้ไว้ · บอกตรง ๆ ดีกว่าแอบส่งออกไปให้มันทำงาน
+
+  String get micNeedsCloudBrain => pick(
+        'สมองในเครื่องถอดเสียงไม่ได้ · เปลี่ยนสมองในหน้าตั้งค่าก่อนถึงจะพูดใส่ไมค์ได้',
+        'The on-device brain cannot transcribe — switch brains in settings to talk to her',
+      );
+
+  String get homeServerNoUrl => pick(
+        'ยังไม่ได้ใส่ที่อยู่เซิร์ฟเวอร์ในบ้าน',
+        'No address set for your home server',
+      );
+
+  String get micDenied => pick(
+        'ยังไม่ได้อนุญาตให้ใช้ไมค์',
+        'Microphone permission has not been given',
+      );
+  String get micFailed => pick(
+        'เปิดไมค์ไม่สำเร็จ',
+        'Could not open the microphone',
+      );
+
+  /// อัดแล้วแต่ไม่มีเสียงพูดอยู่ในนั้น
+  ///
+  /// **ไม่ใช่ความผิดพลาด** — คนกดค้างแล้วไม่ทันพูดก็เจอ · ห้ามพูดเหมือน
+  /// ระบบพัง ไม่งั้นเขาจะไปไล่หาสาเหตุที่ไม่มีอยู่จริง
+  String get micHeardNothing => pick(
+        'ไม่ได้ยินเสียงพูดเลย ลองพูดใกล้ ๆ ไมค์อีกครั้งนะคะ',
+        'Did not catch anything — try again a little closer to the mic',
+      );
+
+  String get micListening => pick('กำลังฟังอยู่…', 'Listening…');
+  String get micWorking => pick('กำลังถอดเสียง…', 'Writing it down…');
+  String get micStart => pick('พูดแทนการพิมพ์', 'Speak instead of typing');
+  String get micStop => pick('หยุดฟัง', 'Stop listening');
+
+  /// หัวข้อของบทสนทนาย้อนหลังที่แนบไปให้สมองในเครื่องอ่าน
+  ///
+  /// ผู้ใช้ไม่เห็นข้อความนี้ แต่ต้องตามภาษาที่เขาเลือก — โมเดลอ่าน prompt
+  /// ที่ปนสองภาษาแล้วมีโอกาสตอบผิดภาษามากขึ้น
+  String get localRecap => pick(
+        'นี่คือบทสนทนาก่อนหน้าระหว่างเรา (อ่านเพื่อจำบริบท ไม่ต้องตอบซ้ำ):',
+        'Here is our conversation so far — for context, not to answer again:',
+      );
   String get errLocalEmpty =>
       pick('โมเดลในเครื่องตอบกลับมาว่าง', 'The on-device model returned nothing');
 

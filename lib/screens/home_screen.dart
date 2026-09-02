@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../ai/voice_input.dart';
 import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
 import '../persona/mind_soul.dart';
 import '../phone/call_session.dart';
 import '../state/mind_state.dart';
+import '../system/permissions.dart';
 import 'shop_screen.dart';
 import '../theme/app_theme.dart';
 import '../i18n/enum_labels.dart';
@@ -15,6 +17,8 @@ import '../widgets/call_panel.dart';
 import '../widgets/glass.dart';
 import '../widgets/soul_status.dart';
 import '../widgets/liquid_background.dart';
+import '../widgets/mic_button.dart';
+import '../widgets/thinking.dart';
 
 /// หน้าหลัก — artboard 2a
 /// อวาตาร์อยู่ในแสงสี แชทเป็นแผ่นกระจกเหลวลอยทับ
@@ -32,16 +36,65 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   final _focus = FocusNode();
   late final AnimationController _ring;
 
+  /// ไมค์ของช่องแชท — เกิดที่นี่เพราะมันมีอายุเท่าหน้าจอนี้
+  /// ออกจากหน้าไปแล้วต้องหยุดอัดทันที ไม่ใช่อัดต่อไปเงียบ ๆ
+  late final VoiceInput _voice;
+
   @override
   void initState() {
     super.initState();
     // liqRing — วงแหวนขยายออกแล้วจางหาย 3 วินาทีต่อรอบ
     _ring = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
 
+    final state = context.read<MindState>();
+    final perms = context.read<MindPermissions>();
+    _voice = VoiceInput(
+      // ขอสิทธิ์ตอนกดจริงเท่านั้น · กล่องขอสิทธิ์ที่เด้งตอนเปิดแอปโดยที่
+      // ยังไม่มีใครจะใช้ไมค์ คือกล่องที่คนกดปฏิเสธเพราะไม่รู้ว่าขอไปทำไม
+      ensureMic: () async {
+        if (perms.of(MindPermission.mic)) return true;
+        await perms.request(MindPermission.mic);
+        return perms.of(MindPermission.mic);
+      },
+      transcribe: state.transcribeChat,
+      strings: () => state.s,
+    );
+
     // แผงแชทพับเองเมื่อเงียบ — แต่ต้องไม่พับตอนคนกำลังพิมพ์ค้างอยู่
     // ซึ่งเป็นสิ่งที่แย่ที่สุดที่จะเกิดขึ้นได้ · ช่องพิมพ์เป็นคนบอก state
     _focus.addListener(_reportTyping);
     _draft.addListener(_reportTyping);
+  }
+
+  /// กดไมค์ — เปิดฟัง หรือปิดแล้วเอาข้อความที่ได้มาใส่ช่องพิมพ์
+  ///
+  /// 🔴 **ไม่ส่งทันที** · การถอดเสียงผิดได้เสมอ โดยเฉพาะภาษาไทยผ่านไมค์มือถือ
+  /// ส่งเลยแปลว่าเธอได้ยินผิดแล้วตอบไปแล้ว ก่อนที่เจ้าของจะทันเห็นว่าเพี้ยน
+  Future<void> _toggleMic(MindState state) async {
+    _voice.clearError();
+
+    // ถอดเสียงไม่ได้ด้วยสมองที่เลือกไว้ — บอกเหตุผลตรงแถบเดียวกับที่บอก
+    // เรื่องสมองล้ม ไม่ใช่กดแล้วเงียบให้เดาเอาเอง
+    if (!state.canTranscribe) {
+      state.reportError(state.whyNoMic);
+      return;
+    }
+
+    if (_voice.stage == VoiceInputStage.listening) {
+      final heard = await _voice.stop();
+      if (!mounted || heard == null) return;
+
+      // ต่อท้ายของที่พิมพ์ค้างไว้ ไม่ใช่เขียนทับ — คนพิมพ์ครึ่งประโยค
+      // แล้วพูดที่เหลือมีจริง และการลบสิ่งที่เขาพิมพ์เองทิ้งคือสิ่งที่ให้อภัยยาก
+      final base = _draft.text.trimRight();
+      _draft.text = base.isEmpty ? heard : '$base $heard';
+      _draft.selection =
+          TextSelection.collapsed(offset: _draft.text.length);
+      _focus.requestFocus();
+      return;
+    }
+
+    await _voice.start();
   }
 
   void _reportTyping() {
@@ -56,19 +109,44 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _draft.dispose();
     _focus.dispose();
     _ring.dispose();
+    // ไมค์ที่ยังเปิดค้างหลังออกจากหน้าจอ = เครื่องอัดเสียงในห้องต่อไปเงียบ ๆ
+    _voice.dispose();
     super.dispose();
   }
 
-  Future<void> _send(MindState state) async {
+  Future<void> _send(MindState state) {
     final text = _draft.text;
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty) return Future<void>.value();
     _draft.clear();
+    return _sendText(state, text);
+  }
+
+  /// ทางส่งข้อความทางเดียวของทั้งหน้า — ช่องพิมพ์และชิปคำถามใช้ตัวนี้ร่วมกัน
+  ///
+  /// 🔴 ชิปเคยเรียก `state.send` ตรง ๆ ข้ามตรงนี้ไปทั้งดุ้น ผลคือกดชิป
+  /// แล้วเธอไม่หันมา ไม่ทำหน้าคิด และกล้องไม่ดึงเข้า — ทั้งที่เป็นการคุย
+  /// แบบเดียวกันเป๊ะ · ทางส่งสองทางที่ทำงานไม่เหมือนกันคือของที่จะเพี้ยน
+  /// จากกันเรื่อย ๆ ทุกครั้งที่มีใครแก้ทางใดทางหนึ่ง
+  Future<void> _sendText(MindState state, String text) async {
+    if (text.trim().isEmpty) return;
+
+    // แถบเดียวโชว์ได้ทีละเรื่อง · ถ้าไม่ล้างของเก่าตรงนี้ ข้อผิดพลาดจากไมค์
+    // ที่ค้างอยู่จะบังเหตุผลใหม่ที่เพิ่งเกิดจากการส่งข้อความ
+    _voice.clearError();
+
+    // 🔴 ยิงเข้าแชทก่อน **ไม่รอเวที**
+    //
+    // สองบรรทัดล่างคุยข้ามไปฝั่ง WebView ซึ่งตอนที่มันกำลังโหลดตัวเธอ
+    // (VRM 33MB) ตอบกลับช้าได้เป็นวินาที · ของเดิม await ไว้ก่อนเรียก
+    // `state.send` ข้อความของผู้ใช้จึงยังไม่ขึ้นจอตลอดช่วงนั้น ทั้งที่
+    // ช่องพิมพ์ถูกล้างไปแล้ว = หน้าตาเหมือนกดส่งแล้วข้อความหายไปเฉย ๆ
+    final sending = state.send(text);
 
     // เธอหันมาใกล้ ๆ ตอนคุย แล้วถอยกลับเป็นเต็มตัวเมื่อจบ
     await widget.avatar.setFraming(MindFraming.bust);
     await widget.avatar.setMood(MindMood.thinking);
 
-    await state.send(text);
+    await sending;
     if (!mounted) return;
 
     await widget.avatar.setMood(state.mode.isWork ? MindMood.pleased : MindMood.happy);
@@ -162,6 +240,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _stage(MindState state, MindMode mode) {
     final bubble = state.bubbleText;
+    final thinkingOverHead = state.sending && state.bubbleEnabled;
 
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: _artboardStage.height * .66),
@@ -256,21 +335,36 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               // ฟองคำพูด — ซ่อนถ้ายังไม่ได้พูดอะไร (ฟองเปล่าดูเสีย)
               // และซ่อนระหว่างที่เธอกำลังพูด เพราะกล้องดึงเข้าเป็น bust
               // ฟองจะไปคร่อมหน้าเธอพอดี ข้อความเดียวกันอยู่ในแผงแชทอยู่แล้ว
-              if (bubble.isNotEmpty)
+              //
+              // 🔴 ระหว่างคิด ฟองนี้เปลี่ยนเป็นจุดสามจุด ไม่ใช่ค้างคำตอบเก่าไว้
+              //
+              // ค้างไว้คือการโกหกด้วยของเก่า: เจ้าของเพิ่งถามคำถามใหม่ไป
+              // แล้วเหนือหัวเธอยังเป็นคำตอบของคำถามก่อนหน้า ซึ่งอ่านได้ว่า
+              // เธอตอบคำถามใหม่ด้วยประโยคเดิม — แย่กว่าฟองว่างเปล่า
+              // ปิดฟองคำพูดไว้ = ปิดฟองกำลังคิดด้วย · มันกินที่เดียวกัน
+              // และคนที่ปิดมันปิดเพราะอยากเห็นหน้าเธอโล่ง ๆ ไม่ใช่เพราะ
+              // ไม่อยากอ่านคำตอบ · สัญญาณยังอยู่ครบในแผงแชทกับปุ่มพับ
+              if (bubble.isNotEmpty || (state.sending && state.bubbleEnabled))
                 Positioned(
                   left: w * _bubbleLeft,
                   top: h * _bubbleTop,
                   // IgnorePointer ตอนจาง ไม่งั้นฟองที่มองไม่เห็นยังกินการแตะอยู่
                   // แล้วแตะตัวเธอเพื่อเรียกฟองกลับจะไม่ทำงานในบริเวณนั้น
                   child: IgnorePointer(
-                    ignoring: !state.bubbleVisible,
+                    ignoring: !state.bubbleVisible && !thinkingOverHead,
                     child: AnimatedOpacity(
-                      opacity: state.bubbleVisible ? 1 : 0,
+                      opacity: state.bubbleVisible || thinkingOverHead ? 1 : 0,
                       duration: const Duration(milliseconds: 320),
                       curve: Curves.easeOut,
-                      child: SpeechBubble(
-                        text: bubble,
-                        maxWidth: w * _bubbleMaxWidth,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        child: thinkingOverHead
+                            ? const ThinkingPuff(key: ValueKey('puff'))
+                            : SpeechBubble(
+                                key: const ValueKey('said'),
+                                text: bubble,
+                                maxWidth: w * _bubbleMaxWidth,
+                              ),
                       ),
                     ),
                   ),
@@ -326,15 +420,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Text(
                   // เอาสิ่งที่เธอพูดล่าสุดมาโชว์ ดีกว่าข้อความชวนกดลอย ๆ
                   // เพราะบอกได้ด้วยว่าคุยค้างไว้ตรงไหน
-                  last.isEmpty ? t.chatTapToOpen : last,
+                  //
+                  // ระหว่างคิดต้องบอกว่ากำลังคิด — แผงหุบไปแล้ว ปุ่มนี้คือ
+                  // **ที่เดียวที่เหลือ**ให้รู้ว่าคำถามที่เพิ่งส่งไปยังมีชีวิตอยู่
+                  state.sending
+                      ? t.thinkingLabel
+                      : last.isEmpty
+                          ? t.chatTapToOpen
+                          : last,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: MindType.body.copyWith(fontSize: 12.5),
                 ),
               ),
               const SizedBox(width: MindSpace.sm),
-              Icon(Icons.keyboard_arrow_up_rounded,
-                  size: 20, color: MindColors.ink45),
+              if (state.sending)
+                ThinkingDots(color: mode.accent, size: 5, gap: 4)
+              else
+                Icon(Icons.keyboard_arrow_up_rounded,
+                    size: 20, color: MindColors.ink45),
             ],
           ),
         ),
@@ -375,13 +479,33 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
           for (final m in state.messages) _message(m, mode),
+
+          // ฟอง "กำลังคิด" อยู่ต่อจากข้อความสุดท้ายพอดี ตรงที่คำตอบจะมาโผล่
+          // ไม่ใช่ลอยอยู่หัวแผงหรือท้ายแผง · ที่ที่ตาจับจ้องอยู่แล้วคือที่ที่
+          // สัญญาณควรอยู่ ไม่งั้นมันจะกลายเป็นของประดับที่ไม่มีใครเห็น
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            transitionBuilder: (child, anim) => SizeTransition(
+              sizeFactor: anim,
+              axisAlignment: -1,
+              child: FadeTransition(opacity: anim, child: child),
+            ),
+            child: state.sending
+                ? Padding(
+                    key: const ValueKey('thinking'),
+                    padding: const EdgeInsets.only(top: MindSpace.gap),
+                    child: ThinkingBubble(mode: mode),
+                  )
+                : const SizedBox(key: ValueKey('idle'), width: double.infinity),
+          ),
+
           _proposal(mode),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
               for (final label in mode.chipsOf(S.of(context)))
-                GlassChip(label: label, onTap: () => state.send(label)),
+                GlassChip(label: label, onTap: () => _sendText(state, label)),
             ],
           ),
           _composer(state, mode),
@@ -512,7 +636,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (state.lastError != null) _errorStrip(state),
+        // ไมค์ล้มก็ขึ้นแถบเดียวกัน — ที่เดียวที่คนมองหาว่า "ทำไมไม่ทำงาน"
+        ListenableBuilder(
+          listenable: _voice,
+          builder: (context, _) {
+            final why = _voice.error ?? state.lastError;
+            if (why == null) return const SizedBox.shrink();
+            return _errorStrip(why, () {
+              _voice.clearError();
+              state.clearError();
+            });
+          },
+        ),
         _composerRow(state, mode),
       ],
     );
@@ -525,7 +660,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   /// คีย์ผิด ไลเซนส์หมดอายุ โควตาหมด เน็ตหลุด โมเดลยังไม่โหลด — ทุกอย่าง
   /// หน้าตาเหมือนกันหมดคือเธอตอบสั้น ๆ แล้วไม่มีอะไรเกิดขึ้น เจ้าของแยกไม่ออก
   /// ว่าเป็นปัญหาเงิน เน็ต หรือพิมพ์รหัสผิด
-  Widget _errorStrip(MindState state) {
+  Widget _errorStrip(String message, VoidCallback onClose) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),
       child: Container(
@@ -543,13 +678,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 size: 15, color: Color(0xFFB46A00)),
             Expanded(
               child: Text(
-                state.lastError!,
+                message,
                 style: const TextStyle(
                     fontSize: 10.5, height: 1.5, color: Color(0xFF8A5200)),
               ),
             ),
             GestureDetector(
-              onTap: state.clearError,
+              onTap: onClose,
               behavior: HitTestBehavior.opaque,
               child: const Padding(
                 padding: EdgeInsets.all(2),
@@ -567,27 +702,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return Row(
       spacing: 7,
       children: [
-        // ไมค์
-        GestureDetector(
-          onTap: state.toggleMic,
-          child: Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: state.mic ? const Color(0x33FF5C8A) : MindColors.glass80,
-              borderRadius: BorderRadius.circular(MindRadius.control),
-              border: Border.all(
-                color: state.mic ? const Color(0x66FF5C8A) : MindColors.glassBorder,
-                width: 1,
-              ),
-            ),
-            child: Icon(
-              state.mic ? Icons.mic_rounded : Icons.mic_none_rounded,
-              size: 18,
-              color: state.mic ? const Color(0xFFFF5C8A) : MindColors.ink60,
-            ),
-          ),
+        // ไมค์ — อัดจริง ถอดเสียงจริง แล้วหย่อนลงช่องพิมพ์ให้ตรวจก่อนส่ง
+        MicButton(
+          voice: _voice,
+          mode: mode,
+          enabled: state.canTranscribe,
+          onTap: () => _toggleMic(state),
         ),
 
         Expanded(
@@ -601,7 +721,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               style: const TextStyle(fontSize: 12.5, color: MindColors.ink),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: S.of(context).composerHint,
+                hintText: S.of(context).composerHint(canSpeak: state.canTranscribe),
                 hintStyle: const TextStyle(fontSize: 12.5, color: MindColors.ink45),
                 filled: true,
                 fillColor: MindColors.glass80,
@@ -623,9 +743,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
 
-        // ปุ่มส่ง — จางลงตอนกำลังส่งอยู่ กันกดซ้ำ
-        Opacity(
-          opacity: state.sending ? .5 : 1,
+        // ปุ่มส่ง — ตอนกำลังคิดอยู่ กลายเป็นวงกำลังหมุน
+        //
+        // 🔴 ของเดิมจางลงเหลือ 50% เฉย ๆ ซึ่งบนพื้นกระจกที่โปร่งอยู่แล้ว
+        // แทบแยกไม่ออกจากปุ่มปกติ · จุดที่นิ้วเพิ่งแตะคือจุดแรกที่ตามองหา
+        // คำยืนยันว่า "กดติดแล้ว" ตรงนี้จึงต้องเปลี่ยนให้เห็นชัด ไม่ใช่แค่จาง
+        Semantics(
+          button: true,
+          enabled: !state.sending,
+          label: state.sending
+              ? S.of(context).thinkingLabel
+              : S.of(context).send,
           child: GestureDetector(
             onTap: state.sending ? null : () => _send(state),
             child: Container(
@@ -639,7 +767,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   BoxShadow(color: mode.accentSoft, blurRadius: 18, offset: const Offset(0, 6)),
                 ],
               ),
-              child: const Icon(Icons.send_rounded, size: 16, color: Colors.white),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: state.sending
+                    ? const SizedBox(
+                        key: ValueKey('busy'),
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.send_rounded,
+                        key: ValueKey('send'), size: 16, color: Colors.white),
+              ),
             ),
           ),
         ),

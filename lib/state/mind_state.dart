@@ -47,7 +47,15 @@ class MindState extends ChangeNotifier {
         memory = memory ?? MindMemory() {
     // ส่งเป็นฟังก์ชัน ไม่ใช่ค่า — ผู้ใช้กรอก/แก้/ลบคีย์ได้ตลอดขณะแอปเปิดอยู่
     // ถ้าอ่านค่าตอนสร้าง client จะต้องสร้างใหม่ทุกครั้งที่แก้ ซึ่งลืมง่ายและเงียบ
-    _openai = openai ?? OpenAiClient(apiKeyOf: () => effectiveOpenAiKey);
+    //
+    // 🔴 `strings` ต้องส่งด้วยเสมอ · ไม่ส่ง = client ตกไปใช้ตารางไทยตายตัว
+    // แล้วคนที่สลับแอปเป็นอังกฤษจะเจอข้อความผิดพลาดภาษาไทยโผล่กลางแชท
+    // ทั้งที่ทั้งจอเป็นอังกฤษหมด (เส้นทางเสียงส่งอยู่แล้ว เส้นทางสมองลืม)
+    _openai = openai ??
+        OpenAiClient(
+          apiKeyOf: () => effectiveOpenAiKey,
+          strings: () => s,
+        );
 
     // 🔴 เสียงต้องได้ client ที่รู้จักคีย์ของผู้ใช้ด้วย
     //
@@ -182,6 +190,11 @@ class MindState extends ChangeNotifier {
     // ผลคือนาฬิกาไม่เคยเริ่มเดิน แผงจึงไม่พับเลยจนกว่าจะคุยสักคำ
     // — เจอตอนลองจริงบนเครื่อง รอ 17 วินาทีแล้วแผงยังอยู่เหมือนเดิม
     _startChatCountdown();
+
+    // สมองในเครื่องต้องรู้ตัวว่าโหลดโมเดลไว้แล้วหรือยัง **ก่อน**คำแรกจะถูกพิมพ์
+    // ไม่ await เพราะมันไปแตะปลั๊กอินกับดิสก์ ซึ่งช้ากว่าค่าอื่นในนี้มาก
+    // และไม่มีอะไรในจอแรกที่ต้องรอมัน (`reply()` กันตัวเองอีกชั้นอยู่แล้ว)
+    warmLocalBrain();
     _notify();
   }
 
@@ -327,7 +340,8 @@ class MindState extends ChangeNotifier {
   /// สมองที่รันบนมือถือ สร้างเมื่อเลือกใช้จริงเท่านั้น
   /// (โหลดปลั๊กอินและจอง native handle ตั้งแต่ตอนสร้าง)
   LocalBrain? _lazyLocal;
-  LocalBrain get localBrain => _lazyLocal ??= LocalBrain();
+  LocalBrain get localBrain =>
+      _lazyLocal ??= LocalBrain(strings: () => s);
 
   /// มี LocalBrain อยู่แล้วไหม — ใช้ตอน dispose จะได้ไม่ไปสร้างขึ้นมาใหม่
   bool get hasLocalBrain => _lazyLocal != null;
@@ -342,7 +356,25 @@ class MindState extends ChangeNotifier {
     _brain = v;
     _save('brain', v.name);
     _notify();
-    if (v == BrainProvider.onDevice) localBrain.refresh();
+    if (v == BrainProvider.onDevice) unawaited(localBrain.detectDevice());
+  }
+
+  /// ปลุกสมองในเครื่องให้รู้สถานะจริงของตัวเอง
+  ///
+  /// 🔴 ต้องเรียกตั้งแต่เปิดแอป ไม่ใช่รอให้ใครไปกดในหน้าตั้งค่า
+  ///
+  /// [LocalBrain] เกิดมาที่ `stage == unknown` และมีแค่ `refresh()` ที่เปลี่ยนมันได้
+  /// ของเดิมเรียกจาก [setBrain] ทางเดียว = เรียกเฉพาะตอนผู้ใช้ **สลับ** สมอง
+  /// แต่ค่าตั้งต้นคือในเครื่องอยู่แล้ว คนส่วนใหญ่จึงไม่เคยสลับ · ผลจริงคือ
+  /// เปิดแอปมาทักคำแรก เธอตอบว่า "ยังไม่ได้โหลดโมเดล" ทั้งที่โหลดไว้ตั้งแต่เมื่อวาน
+  /// และจะเป็นอย่างนั้นทุกครั้งที่เปิดแอปใหม่ จนกว่าจะบังเอิญไปสลับสมองไป-กลับ
+  ///
+  /// พ่วงการตรวจแรมมาด้วย (`detectDevice` เรียก `refresh` ให้เองตอนท้าย)
+  /// ซึ่งเดิม**ไม่มีใครเรียกเลยทั้งแอป** — รายการรุ่นจึงโชว์ครบทุกรุ่นเสมอ
+  /// รวมรุ่นที่เครื่องนี้รันไม่ไหว
+  void warmLocalBrain() {
+    if (_brain != BrainProvider.onDevice) return;
+    unawaited(localBrain.detectDevice());
   }
 
   void setHomeServerUrl(String v) {
@@ -594,8 +626,11 @@ class MindState extends ChangeNotifier {
   /// ถอดเสียงปลายสายเป็นข้อความ
   ///
   /// อยู่ที่นี่เพราะ client กับคีย์อยู่ที่นี่ · คืนสตริงว่างเมื่อไม่ได้ยินอะไร
-  Future<String> transcribeCall(Uint8List wav) =>
-      _openai.transcribe(wav, language: _lang == AppLang.th ? 'th' : 'en');
+  ///
+  /// 🔴 ไปตามสมองที่เลือกไว้ เหมือนกับไมค์ในช่องแชท · ของเดิมยิงเข้า [_openai]
+  /// ตรง ๆ เสมอ แปลว่าคนที่ใช้พร็อกซีของเรา (ซึ่ง**ถูกบอกว่าไม่ต้องมีคีย์**)
+  /// รับสายแล้วเธอหูดับทุกครั้ง เพราะไม่มีคีย์ OpenAI ให้ตัวนั้นใช้
+  Future<String> transcribeCall(Uint8List wav) => transcribeChat(wav);
 
   // ═══ แชท ═══════════════════════════════════════════════
   /// บทสนทนาตัวอย่างตอนเปิดครั้งแรก
@@ -686,6 +721,16 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
+  /// ให้หน้าจออื่นฝากข้อความผิดพลาดขึ้นแถบเดียวกันได้
+  ///
+  /// มีที่เดียวที่ผู้ใช้มองหาว่า "ทำไมไม่ทำงาน" — แถบใต้ช่องพิมพ์ · ของที่
+  /// ล้มคนละเรื่องกันแต่โผล่คนละที่ ทำให้เขาต้องเรียนรู้ว่าเรื่องไหนอ่านที่ไหน
+  void reportError(String message) {
+    if (message.isEmpty || _lastError == message) return;
+    _lastError = message;
+    _notify();
+  }
+
   Future<void>? _inFlight;
 
   /// กันกดส่งซ้อน
@@ -710,36 +755,60 @@ class MindState extends ChangeNotifier {
     _push(ChatMessage.me(text));
     _notify();
 
-    String reply;
-    try {
-      reply = await _think();
-    } on OpenAiFailure catch (e) {
-      _lastError = e.message;
-
-      // 🔴 ห้ามตอบด้วยประโยคสำเร็จรูปตอนที่สมองล้มจริง
-      //
-      // ของเดิมตอบ "รับทราบค่ะ มายด์จัดการให้แล้วจะสรุปกลับมานะคะ" ทั้งที่
-      // ไม่มีอะไรถูกส่งไปถึงสมองเลย · คีย์ผิด ไลเซนส์หมดอายุ โควตาหมด เน็ตหลุด
-      // โมเดลยังไม่โหลด — ทุกกรณีหน้าตาเหมือนกันหมดคือ "เธอโง่ลง" แทนที่จะเป็น
-      // "ตั้งค่าไม่ครบ" และเธอก็ไม่เคยสรุปกลับมาจริงเพราะไม่มีงานอยู่แล้ว
-      //
-      // ตอบตามจริงว่าไม่ได้ยิงออกไป แล้วบอกเหตุผลที่พอแก้ได้
-      reply = s.brainFailedReply(e.message);
-    }
-
-    if (_disposed) return;
-
-    _push(ChatMessage.her(reply));
-    _sending = false;
-    _notify();
-
-    // คุยกันจบหนึ่งตาแล้ว — ความผูกพันขยับตรงนี้ ไม่ใช่ตอนกดส่ง
+    // 🔴 ธง `sending` ต้องถูกปลด **ทุกทางออก** ไม่ใช่เฉพาะทางที่คิดไว้
     //
-    // นับตอนกดส่งจะได้คะแนนจากข้อความที่ยังไม่มีใครตอบ ซึ่งรวมถึงตอนที่
-    // เน็ตหลุดแล้วไม่มีบทสนทนาเกิดขึ้นจริงเลย
-    await _soul?.talked();
+    // ปุ่มส่งอ่านธงนี้เพื่อปิดตัวเอง (`onTap: sending ? null : ...`) ธงที่ค้าง
+    // จึงไม่ใช่แค่ไอคอนจาง แต่คือ**ปุ่มส่งที่ตายไปทั้งรอบการใช้งาน** แก้ได้
+    // ทางเดียวคือปิดแอปแล้วเปิดใหม่ · ของเดิมดักแค่ [OpenAiFailure] ส่วนทาง
+    // ที่หลุดออกมาได้จริงมีอยู่: `jsonDecode` เจอ HTML จากพร็อกซี/เซิร์ฟเวอร์
+    // ในบ้าน (FormatException) · `choices` ที่ไม่ใช่ List (TypeError) ·
+    // และ Error จากปลั๊กอินในเครื่องที่ไม่ใช่ Exception
+    try {
+      String reply;
+      try {
+        reply = await _think();
+      } on OpenAiFailure catch (e) {
+        _lastError = e.message;
 
-    await _speakIfEnabled(reply);
+        // 🔴 ห้ามตอบด้วยประโยคสำเร็จรูปตอนที่สมองล้มจริง
+        //
+        // ของเดิมตอบ "รับทราบค่ะ มายด์จัดการให้แล้วจะสรุปกลับมานะคะ" ทั้งที่
+        // ไม่มีอะไรถูกส่งไปถึงสมองเลย · คีย์ผิด ไลเซนส์หมดอายุ โควตาหมด เน็ตหลุด
+        // โมเดลยังไม่โหลด — ทุกกรณีหน้าตาเหมือนกันหมดคือ "เธอโง่ลง" แทนที่จะเป็น
+        // "ตั้งค่าไม่ครบ" และเธอก็ไม่เคยสรุปกลับมาจริงเพราะไม่มีงานอยู่แล้ว
+        //
+        // ตอบตามจริงว่าไม่ได้ยิงออกไป แล้วบอกเหตุผลที่พอแก้ได้
+        reply = s.brainFailedReply(e.message);
+      } on Object catch (e, st) {
+        // รายละเอียดอยู่ใน log สำหรับไล่ปัญหา · ผู้ใช้เห็นแค่ว่าคิดไม่ได้
+        // (ข้อความดิบของ error มี URL และบางทีมี header ติดมาด้วย)
+        debugPrint('สมอง: ล้มแบบที่ไม่ได้เตรียมรับไว้ — $e\n$st');
+        _lastError = s.errBrainUnexpected;
+        reply = s.brainFailedReply(_lastError!);
+      }
+
+      if (_disposed) return;
+
+      _push(ChatMessage.her(reply));
+      _sending = false;
+      _notify();
+
+      // คุยกันจบหนึ่งตาแล้ว — ความผูกพันขยับตรงนี้ ไม่ใช่ตอนกดส่ง
+      //
+      // นับตอนกดส่งจะได้คะแนนจากข้อความที่ยังไม่มีใครตอบ ซึ่งรวมถึงตอนที่
+      // เน็ตหลุดแล้วไม่มีบทสนทนาเกิดขึ้นจริงเลย
+      await _soul?.talked();
+
+      await _speakIfEnabled(reply);
+    } finally {
+      // ตาข่ายรับสุดท้าย — ทางปกติปลดไปแล้วข้างบน (ก่อนเธอเริ่มพูด
+      // ปุ่มจะได้กลับมากดได้ทันทีโดยไม่ต้องรอเสียงจบ) ที่นี่จึงเหลือแค่
+      // กรณีที่หลุดออกมากลางคัน
+      if (_sending) {
+        _sending = false;
+        _notify();
+      }
+    }
   }
 
   /// ให้เธอพูดตัวอย่างในหน้าตั้งค่า — ผู้ใช้จะได้ยินผลของเสียงที่เลือกทันที
@@ -1000,6 +1069,33 @@ class MindState extends ChangeNotifier {
     String system,
     List<({bool fromHer, String text})> history,
   ) async {
+    if (_brain == BrainProvider.onDevice) {
+      debugPrint('สมอง: ในเครื่อง ${localBrain.variant.label}');
+      return localBrain.reply(system: system, history: history);
+    }
+
+    final (:client, :model, :ours) = _networkBrain();
+    try {
+      return await client.reply(
+        system: system,
+        history: history,
+        model: model,
+      );
+    } finally {
+      if (!ours) client.close();
+    }
+  }
+
+  /// ปลายทางของสมองที่ไม่ได้อยู่ในเครื่อง — พร้อมโมเดลที่ต้องเรียก
+  ///
+  /// แยกออกมาเพราะมีคนใช้สองที่: การคุย กับการถอดเสียงจากไมค์ · ทั้งสองต้อง
+  /// ไปที่**เดียวกันเสมอ** เพราะผู้ใช้เลือกไว้ทางเดียวว่าข้อมูลของเขาไปไหน
+  /// ถ้าแยกกันเขียน วันหนึ่งจะมีทางใดทางหนึ่งที่ยังส่งไปที่เก่าหลังจากเขา
+  /// เปลี่ยนไปแล้ว ซึ่งเป็นเรื่องความเป็นส่วนตัว ไม่ใช่แค่บั๊ก
+  ///
+  /// `ours` = client ตัวที่ [MindState] เป็นเจ้าของและใช้ซ้ำ **ห้ามปิด**
+  /// ตัวที่ไม่ใช่สร้างใหม่ทุกครั้ง ผู้เรียกต้องปิดเองเมื่อใช้เสร็จ
+  ({OpenAiClient client, String model, bool ours}) _networkBrain() {
     switch (_brain) {
       // ผ่านหลังบ้านของเรา — คีย์อยู่ที่นั่น ไม่เคยลงมาถึงเครื่องนี้
       //
@@ -1018,21 +1114,17 @@ class MindState extends ChangeNotifier {
         if (base.isEmpty) throw OpenAiFailure(s.shopNoUrl);
         if (_licenseKey.trim().isEmpty) throw OpenAiFailure(s.licenseNeeded);
         debugPrint('สมอง: พร็อกซีหลังบ้าน $_brainModel');
-        final proxy = OpenAiClient(
-          baseUrl: '$base/api/ai/v1',
-          apiKey: _licenseKey,
-          // ผ่านหลังบ้านอีกชั้นก่อนถึง OpenAI จึงช้ากว่ายิงตรง
-          timeout: const Duration(seconds: 60),
+        return (
+          client: OpenAiClient(
+            baseUrl: '$base/api/ai/v1',
+            apiKey: _licenseKey,
+            // ผ่านหลังบ้านอีกชั้นก่อนถึง OpenAI จึงช้ากว่ายิงตรง
+            timeout: const Duration(seconds: 60),
+            strings: () => s,
+          ),
+          model: _brainModel,
+          ours: false,
         );
-        try {
-          return await proxy.reply(
-            system: system,
-            history: history,
-            model: _brainModel,
-          );
-        } finally {
-          proxy.close();
-        }
 
       case BrainProvider.openai:
         // ดูคีย์ที่ใช้ได้จริง ไม่ใช่ OpenAiConfig.configured ซึ่งดูแค่คีย์
@@ -1041,34 +1133,82 @@ class MindState extends ChangeNotifier {
         // บอกว่ายังไม่ได้ใส่คีย์ แทนที่จะตอบเหมือนคิดให้เสร็จแล้ว
         if (!hasOwnKey) throw OpenAiFailure(s.ownKeyNeeded);
         debugPrint('สมอง: OpenAI $_brainModel');
-        return _openai.reply(system: system, history: history, model: _brainModel);
+        return (client: _openai, model: _brainModel, ours: true);
 
       case BrainProvider.homeServer:
+        // 🔴 ที่อยู่ว่างต้องบอกตรง ๆ · ปล่อยผ่านจะไปจบที่ `Uri.parse('')`
+        // แล้วผู้ใช้ได้ยินว่า "ต่อเน็ตไม่ได้" ซึ่งพาไปไล่ปัญหาผิดทางทั้งหมด
+        if (_homeServerUrl.trim().isEmpty) {
+          throw OpenAiFailure(s.homeServerNoUrl);
+        }
         debugPrint('สมอง: เซิร์ฟเวอร์ในบ้าน $_homeServerModel @ $_homeServerUrl');
         // เซิร์ฟเวอร์ในบ้านพูดภาษาเดียวกับ /v1/chat/completions จึงใช้ client
         // ตัวเดิมได้ แค่เปลี่ยนปลายทางและไม่ต้องส่งคีย์
-        final home = OpenAiClient(
-          baseUrl: _homeServerUrl,
-          apiKey: '',
-          // โมเดลบนคอมบ้านช้ากว่า OpenAI มาก ให้เวลามากกว่า
-          timeout: const Duration(seconds: 120),
+        return (
+          client: OpenAiClient(
+            baseUrl: _homeServerUrl.trim(),
+            apiKey: '',
+            // โมเดลบนคอมบ้านช้ากว่า OpenAI มาก ให้เวลามากกว่า
+            timeout: const Duration(seconds: 120),
+            strings: () => s,
+          ),
+          model: _homeServerModel,
+          ours: false,
         );
-        try {
-          return await home.reply(
-            system: system,
-            history: history,
-            model: _homeServerModel,
-          );
-        } finally {
-          home.close();
-        }
 
       case BrainProvider.onDevice:
-        debugPrint('สมอง: ในเครื่อง ${localBrain.variant.label}');
-        return localBrain.reply(system: system, history: history);
+        // ผู้เรียกทั้งสองที่กันกรณีนี้ไว้ก่อนแล้ว · มาถึงนี่ได้แปลว่ามีทางใหม่
+        // ที่ลืมกัน ซึ่งต้องดังตอนนั้นเลย ไม่ใช่เงียบแล้วยิงข้อความออกเน็ต
+        throw OpenAiFailure(s.micNeedsCloudBrain);
     }
   }
 
+  // ═══ พูดใส่ไมค์แทนการพิมพ์ ══════════════════════════════
+  //
+  // 🔴 **เสียงต้องไปที่เดียวกับที่ข้อความไป** ไม่ใช่ที่ที่บังเอิญมีคีย์
+  //
+  // คนที่เลือกสมองในเครื่องเลือกเพราะไม่อยากให้อะไรออกนอกเครื่อง · การแอบ
+  // ส่งเสียงเขาไปถอดที่ OpenAI เพราะ "เขามีคีย์อยู่พอดี" คือการผิดสัญญา
+  // ข้อเดียวที่ทางนั้นให้ไว้ — และเสียงพูดเป็นข้อมูลที่อ่อนไหวกว่าข้อความอีก
+
+  /// ตอนนี้ถอดเสียงได้ไหม — ไมค์จะเปิดใช้ก็ต่อเมื่อจริง
+  bool get canTranscribe => switch (_brain) {
+        BrainProvider.onDevice => false,
+        BrainProvider.openai => hasOwnKey,
+        BrainProvider.mindProxy =>
+          _storeBaseUrl.trim().isNotEmpty && _licenseKey.trim().isNotEmpty,
+        BrainProvider.homeServer => _homeServerUrl.trim().isNotEmpty,
+      };
+
+  /// ทำไมถึงยังใช้ไมค์ไม่ได้ — ว่างถ้าใช้ได้อยู่แล้ว
+  ///
+  /// ต้องบอกให้ตรงกับสิ่งที่เขาต้องไปทำ ไม่ใช่ปุ่มที่กดแล้วเงียบ
+  String get whyNoMic => switch (_brain) {
+        _ when canTranscribe => '',
+        BrainProvider.onDevice => s.micNeedsCloudBrain,
+        BrainProvider.openai => s.ownKeyNeeded,
+        BrainProvider.mindProxy => s.licenseNeeded,
+        BrainProvider.homeServer => s.homeServerNoUrl,
+      };
+
+  /// ถอดเสียงที่อัดจากช่องแชท
+  ///
+  /// ไปตามสมองที่เลือกไว้เสมอ (ดู [_networkBrain]) · คืนสตริงว่างเมื่อ
+  /// ไม่มีเสียงพูดอยู่ในไฟล์ ซึ่ง**ไม่ใช่ความผิดพลาด** ผู้เรียกต้องแยกเอง
+  Future<String> transcribeChat(Uint8List wav) async {
+    if (_brain == BrainProvider.onDevice) {
+      throw OpenAiFailure(s.micNeedsCloudBrain);
+    }
+    final (:client, :model, :ours) = _networkBrain();
+    try {
+      return await client.transcribe(wav, language: _sttLang);
+    } finally {
+      if (!ours) client.close();
+    }
+  }
+
+  /// ภาษาที่บอกตัวถอดเสียง — เดาเองมักได้คำไทยที่ถูกถอดเป็นอังกฤษที่อ่านไม่ออก
+  String get _sttLang => _lang == AppLang.th ? 'th' : 'en';
 
   void _push(ChatMessage m) {
     // ฟองแสดงเฉพาะสิ่งที่ **เธอ** พูด ข้อความของเราไม่ต้องมีฟองเหนือหัวเธอ
@@ -1160,14 +1300,6 @@ class MindState extends ChangeNotifier {
     }
   }
 
-  // ═══ ไมค์ ══════════════════════════════════════════════
-  bool _mic = false;
-  bool get mic => _mic;
-
-  void toggleMic() {
-    _mic = !_mic;
-    _notify();
-  }
 
   @override
   void dispose() {

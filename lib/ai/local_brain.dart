@@ -7,6 +7,8 @@
 /// ขนาดไฟล์ยืนยันจาก Hugging Face เมื่อ 2026-08-29 ไม่ได้เดา
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 
@@ -86,19 +88,23 @@ class LocalBrain extends ChangeNotifier {
   /// ถ้าเลือกเองแล้ว การตรวจอัตโนมัติต้องไม่ไปเปลี่ยนทับ
   bool _userPicked = false;
 
-  /// ตรวจแรมแล้วเลือกรุ่นที่เหมาะให้เอง
+  /// ตรวจแรมแล้วเลือกรุ่นที่เหมาะให้เอง แล้วอ่านสถานะโมเดลในเครื่อง
   ///
-  /// เรียกตอนเปิดหน้าตั้งค่า ทำครั้งเดียวพอ แรมของเครื่องไม่เปลี่ยนระหว่างใช้งาน
+  /// แรมตรวจครั้งเดียวพอ (ไม่เปลี่ยนระหว่างใช้งาน) แต่ **[refresh] ต้องวิ่งทุกครั้ง**
+  /// ที่ถูกเรียก · ของเดิม `if (_device != null) return;` คร่อมทั้งเมธอด ทำให้
+  /// การเรียกซ้ำเงียบไปทั้งดุ้นรวมถึงการอ่านสถานะไฟล์ ซึ่งเป็นคนละเรื่องกัน
+  /// และเปลี่ยนได้จริงระหว่างใช้งาน (โหลดเสร็จ ลบทิ้ง สลับรุ่น)
   Future<void> detectDevice() async {
-    if (_device != null) return;
-    _device = await DeviceCapability.detect();
+    if (_device == null) {
+      _device = await DeviceCapability.detect();
 
-    final best = _device!.best;
-    if (!_userPicked && best != null && best != _variant) {
-      await _release();
-      _variant = best;
+      final best = _device!.best;
+      if (!_userPicked && best != null && best != _variant) {
+        await _release();
+        _variant = best;
+      }
+      if (!_disposed) notifyListeners();
     }
-    if (!_disposed) notifyListeners();
     await refresh();
   }
 
@@ -142,6 +148,18 @@ class LocalBrain extends ChangeNotifier {
   InferenceChat? _chat;
   String? _loadedSystem;
   bool _disposed = false;
+
+  /// บทสนทนาที่ **session ปัจจุบันเห็นมาแล้ว** เรียงเก่า→ใหม่
+  ///
+  /// 🔴 จำเป็นเพราะประวัติของ [InferenceChat] อยู่ฝั่งเนทีฟ และหายทั้งหมด
+  /// ทุกครั้งที่ session ถูกสร้างใหม่ — ซึ่งเกิด**บ่อยกว่าที่คิดมาก**:
+  /// systemInstruction ผูกกับ session ตอนสร้าง และ system prompt ของแอปนี้
+  /// ขยับเกือบทุกตา (ความผูกพันเป็น %, ระดับงอน, ตารางนัดที่เลื่อนไป)
+  /// ยังไม่นับการสกัดความจำที่ยิงเข้ามาด้วย prompt คนละตัวทุก 6 ตา
+  ///
+  /// ของเดิมส่งเข้าโมเดลแค่ข้อความล่าสุดโดยเชื่อว่าเนทีฟจำที่เหลือไว้ให้
+  /// ผลจริงคือเธอลืมบทสนทนากลางคันเป็นระยะ โดยไม่มีอะไรบอกว่าลืม
+  List<String> _fed = const [];
 
   /// 🔴 ปลั๊กอินต้องถูก initialize ก่อนเรียกอะไรก็ตาม
   ///
@@ -345,23 +363,78 @@ class LocalBrain extends ChangeNotifier {
   ///
   /// [system] เปลี่ยนได้ทุกครั้ง (โหมด/ระดับการจีบ/ข้อมูลเจ้าของ)
   /// systemInstruction ผูกกับ session ตอนสร้าง จึงต้องสร้าง chat ใหม่เมื่อมันเปลี่ยน
+  /// คิวของงานที่ยิงเข้าโมเดลตัวเดียวกัน
+  ///
+  /// 🔴 **มีสองคนเรียกพร้อมกันได้จริง** — การคุยปกติ กับการสกัดความจำที่ถูก
+  /// ยิงแบบ `unawaited` ทุก 6 ตา · ทั้งคู่ใช้ session ฝั่งเนทีฟตัวเดียวกัน
+  /// และการสกัดใช้ system prompt คนละตัว ซึ่งแปลว่ามันจะ **ปิด session
+  /// ที่อีกฝั่งกำลังรอคำตอบอยู่** แล้วผลที่ได้คือ error จากเนทีฟ หรือคำตอบ
+  /// ที่ปนกันสองงาน · ต่อคิวให้เข้าทีละคน
+  ///
+  /// แลกมาด้วยการที่ข้อความถัดไปต้องรอรอบสกัดจบก่อน (1 ใน 6 ตา)
+  /// ซึ่งช้ากว่าเดิม แต่เป็นความช้าที่ถูกต้อง ไม่ใช่ความเร็วที่พัง
+  Future<void> _queue = Future<void>.value();
+
   Future<String> reply({
     required String system,
     required List<Turn> history,
+  }) {
+    final done = Completer<String>();
+    _queue = _queue.then((_) async {
+      try {
+        done.complete(await _reply(system: system, history: history));
+      } on Object catch (e, st) {
+        // คิวต้องไม่พังตามงานที่ล้ม ไม่งั้นทุกคำถามหลังจากนี้จะล้มตามกันหมด
+        done.completeError(e, st);
+      }
+    });
+    return done.future;
+  }
+
+  Future<String> _reply({
+    required String system,
+    required List<Turn> history,
   }) async {
-    if (_stage != LocalModelStage.ready) {
-      throw OpenAiFailure(_s().errModelNotDownloaded);
+    // 🔴 `unknown` ไม่ใช่ "ยังไม่ได้โหลด" แต่คือ "ยังไม่ได้ดู"
+    //
+    // ถ้าไม่แยกสองอย่างนี้ ทุกครั้งที่ยังไม่มีใครเรียก [refresh] มาก่อน
+    // (เช่นเพิ่งเปิดแอปแล้วทักคำแรกเลย) เธอจะตอบว่ายังไม่ได้โหลดโมเดล
+    // ทั้งที่ไฟล์อยู่ในเครื่องมาตั้งแต่เมื่อวาน · ดูก่อนแล้วค่อยตัดสิน
+    if (_stage == LocalModelStage.unknown) await refresh();
+
+    // 🔴 สี่กรณีนี้ผู้ใช้ต้อง**ทำคนละอย่าง** จึงห้ามพูดเหมือนกันหมด
+    //
+    // ของเดิมทุกทางที่ไม่ใช่ ready ตอบว่า "ยังไม่ได้โหลดโมเดล" เหมือนกันหมด
+    // คนที่กำลังโหลดอยู่ 60% ถูกบอกให้ไปโหลด · คนที่เครื่องรันไม่ไหวก็ถูกบอก
+    // ให้ไปโหลดของที่โหลดมาก็ใช้ไม่ได้ · และข้อผิดพลาดจริงที่ refresh อ่านมาได้
+    // ถูกกลืนหายไปทั้งที่เป็นข้อมูลชิ้นเดียวที่พาไปหาสาเหตุได้
+    switch (_stage) {
+      case LocalModelStage.ready:
+        break;
+      case LocalModelStage.downloading:
+        throw OpenAiFailure(_s().errModelDownloading(_progress));
+      case LocalModelStage.failed:
+        throw OpenAiFailure(_error ?? _s().errModelNotDownloaded);
+      case LocalModelStage.unknown:
+      case LocalModelStage.missing:
+        throw OpenAiFailure(deviceTooSmall
+            ? _s().errDeviceTooSmallForLocal
+            : _s().errModelNotDownloaded);
     }
 
+    final last = history.isEmpty ? '' : history.last.text.trim();
+    if (last.isEmpty) throw OpenAiFailure(_s().errNothingToAnswer);
+
     try {
-      await _ensureChat(system);
+      final continued = await _ensureChat(system, history);
       final chat = _chat!;
 
-      // ส่งเฉพาะข้อความล่าสุดของผู้ใช้ ตัว InferenceChat เก็บประวัติให้เองแล้ว
-      final last = history.isEmpty ? '' : history.last.text;
-      if (last.isEmpty) throw OpenAiFailure(_s().errNothingToAnswer);
-
-      await chat.addQuery(Message.text(text: last, isUser: true));
+      // ต่อจากของเดิมได้ = เนทีฟถือประวัติไว้ครบแล้ว ส่งแค่คำล่าสุดพอ
+      // ต่อไม่ได้ = session เพิ่งเกิดใหม่และว่างเปล่า ต้องเล่าย้อนให้ฟังก่อน
+      await chat.addQuery(Message.text(
+        text: continued ? last : _withTranscript(history),
+        isUser: true,
+      ));
       final res = await chat.generateChatResponse();
 
       final text = switch (res) {
@@ -371,16 +444,70 @@ class LocalBrain extends ChangeNotifier {
       if (text.trim().isEmpty) {
         throw OpenAiFailure(_s().errLocalEmpty);
       }
+
+      // session ถือครบทั้งบทสนทนา **บวกคำตอบที่เพิ่งสร้าง** แล้ว
+      // จดไว้เพื่อให้ตาถัดไปรู้ว่าต่อจากตรงนี้ได้เลย
+      _fed = [for (final t in history) t.text, text.trim()];
       return text.trim();
     } on OpenAiFailure {
       rethrow;
-    } on Exception catch (e) {
+    } on Object catch (e) {
+      // 🔴 `on Exception` ไม่พอ · ปลั๊กอินนี้ล้มด้วย **Error** ได้จริง
+      // (StateError เป็น Error ไม่ใช่ Exception — เจอมาแล้วกับ
+      //  "Bad state: FlutterGemma not initialized!") ตัวที่ลอดออกไปจะไม่มี
+      // ใครรับ แล้วจบที่จอแดง พร้อมปุ่มส่งที่ค้างอยู่ในสถานะกำลังส่งตลอดกาล
       debugPrint('gemma: โมเดลในเครื่องทำงานไม่สำเร็จ — $e');
+
+      // session อาจค้างอยู่ในสภาพที่ไม่รู้ว่าเนทีฟเห็นอะไรไปแล้วบ้าง
+      // ตาถัดไปต้องเล่าย้อนใหม่ทั้งหมด ดีกว่าต่อจากประวัติที่อาจขาดหาย
+      _fed = const [];
       throw OpenAiFailure(_s().errLocalFailed(shortenError(e)));
     }
   }
 
-  Future<void> _ensureChat(String system) async {
+  String _withTranscript(List<Turn> history) => transcriptFor(history, _s());
+
+  /// บทสนทนาก่อนหน้าเป็นข้อความก้อนเดียว ต่อท้ายด้วยคำที่เพิ่งพิมพ์มา
+  ///
+  /// 🔴 **ไม่ยัดตาเก่าเข้าไปทีละตาผ่าน `addQuery`** ทั้งที่ดูเป็นวิธีที่ตรงกว่า
+  /// เพราะไฟล์ `.litertlm` บนแอนดรอยด์ส่งข้อความดิบลงเนทีฟโดย**ไม่ได้ติดป้าย
+  /// ว่าใครพูด** (ดู Message.transformToChatPrompt) เนทีฟถือว่าทุกก้อนที่ป้อน
+  /// เข้ามาคือฝั่งผู้ใช้ แล้วคำตอบเก่าของเธอจะกลายเป็นคำที่เจ้าของพูด
+  /// ติดป้ายเองในข้อความจึงเป็นวิธีเดียวที่บทบาทไม่สลับ
+  @visibleForTesting
+  static String transcriptFor(List<Turn> history, S s) {
+    if (history.isEmpty) return '';
+    final past = history.sublist(0, history.length - 1);
+    if (past.isEmpty) return history.last.text.trim();
+
+    final lines = past
+        .map((t) => '${t.fromHer ? s.speakerHer : s.speakerMe}: ${t.text}')
+        .join('\n');
+    return '${s.localRecap}\n$lines\n\n'
+        '${s.speakerMe}: ${history.last.text.trim()}';
+  }
+
+  bool _continues(List<Turn> history) => continues(_fed, history);
+
+  /// [history] ต่อจากสิ่งที่ session เห็นมาแล้วพอดีไหม
+  ///
+  /// เทียบจาก**ท้าย** ไม่ใช่หัว เพราะฝั่งเรียกตัดบทสนทนาเก่าทิ้งเมื่อยาวเกิน
+  /// เพดาน · เทียบจากหัวจะเจอว่า "ไม่ตรง" ทุกตาหลังจากนั้น แล้วเธอจะโดน
+  /// เล่าย้อนทั้งบทใหม่ทุกครั้งที่พิมพ์ ซึ่งช้าโดยไม่ได้อะไรเพิ่ม
+  @visibleForTesting
+  static bool continues(List<String> fed, List<Turn> history) {
+    if (history.isEmpty) return false;
+    final past = history.sublist(0, history.length - 1);
+    if (past.length > fed.length) return false;
+    final offset = fed.length - past.length;
+    for (var i = 0; i < past.length; i++) {
+      if (fed[offset + i] != past[i].text) return false;
+    }
+    return true;
+  }
+
+  /// คืนค่าว่า session ที่ได้ **ต่อจากบทสนทนาเดิมได้เลย** หรือเพิ่งเกิดใหม่
+  Future<bool> _ensureChat(String system, List<Turn> history) async {
     await _ensurePlugin();
     if (_model == null) {
       _model = await FlutterGemmaPlugin.instance.createModel(
@@ -388,22 +515,27 @@ class LocalBrain extends ChangeNotifier {
         fileType: ModelFileType.litertlm,
         preferredBackend: _variant.backend,
         // มายด์ตอบสั้น แต่ system prompt (ข้อมูลเจ้าของ + ขอบเขต) ยาวพอควร
-        maxTokens: 4096,
+        // และตอนที่ต้องเล่าบทสนทนาย้อนหลัง คำถามเดียวก็ยาวได้หลายพันตัวอักษร
+        maxTokens: 8192,
       );
       _loadedSystem = null;
     }
 
-    if (_chat == null || _loadedSystem != system) {
-      await _chat?.close();
-      _chat = await _model!.createChat(
-        temperature: .8,
-        topK: 40,
-        topP: .95,
-        randomSeed: 1,
-        systemInstruction: system,
-      );
-      _loadedSystem = system;
+    if (_chat != null && _loadedSystem == system && _continues(history)) {
+      return true;
     }
+
+    await _chat?.close();
+    _chat = await _model!.createChat(
+      temperature: .8,
+      topK: 40,
+      topP: .95,
+      randomSeed: 1,
+      systemInstruction: system,
+    );
+    _loadedSystem = system;
+    _fed = const [];
+    return false;
   }
 
   Future<void> _release() async {
@@ -416,6 +548,9 @@ class LocalBrain extends ChangeNotifier {
     _chat = null;
     _model = null;
     _loadedSystem = null;
+    // session ที่ถือประวัติไว้ตายไปพร้อมกัน · ไม่ล้างที่นี่ = ตาถัดไปเชื่อว่า
+    // เนทีฟยังจำบทสนทนาเดิมได้ แล้วส่งไปแค่คำเดียวให้ session ที่ว่างเปล่า
+    _fed = const [];
   }
 
   @override
