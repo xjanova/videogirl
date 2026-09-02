@@ -255,13 +255,40 @@ export class Avatar {
         return this.mocap.active && this.mocap.phase === 'live';
     }
 
+    /**
+     * ระยะกล้องที่โหมดเชิดหุ่นล็อกไว้ · 'face' | 'bust' | 'full'
+     *
+     * 🔴 **ทำไมต้องล็อก** — ตอนเชิดหุ่น เจ้าของกำลังดูสีหน้าตัวเองกลับมาอยู่
+     * บนหน้าเธอ · กล้องที่ขยับเองตอนนั้นคือกล้องที่ทิ้งเทคที่กำลังถ่ายอยู่
+     *
+     * ของเดิมไม่มีอะไรล็อก: พอเธอพูด `speak()` ดึงเข้า bust แล้วดีดกลับ full
+     * และฝั่ง Flutter ก็สั่ง `frame()` ตอนส่งข้อความอีกทาง — ทั้งสองทาง
+     * กระชากกล้องออกจากหน้าที่กำลังเชิดอยู่ โดยไม่มีใครสั่ง
+     */
+    mocapShot = 'face';
+
+    /** เลือกระยะกล้องของโหมดเชิดหุ่น · มีผลทันทีถ้ากำลังเชิดอยู่ */
+    setMocapShot(name) {
+        if (!['face', 'bust', 'full'].includes(name)) return this.mocapShot;
+        this.mocapShot = name;
+        if (this.mocap.active) this.framing?.hold(name);
+        return this.mocapShot;
+    }
+
     async startMocap() {
+        // ล็อกกล้องตั้งแต่ก่อนกล้องหน้าจะติด — ช่วงขอสิทธิ์กับโหลด wasm
+        // กินเวลาหลายวินาที ถ้ารอจนเชิดจริงค่อยล็อก กล้องจะกระชากหนึ่งรอบ
+        // ตรงกลางระหว่างนั้นพอดี
+        this.framing?.hold(this.mocapShot);
         await this.mocap.start();
         return this.mocap.status();
     }
 
     stopMocap() {
         this.mocap.stop();
+        // คืนกล้องให้ตัวจัดฉากอัตโนมัติ · มันจำได้ว่าระหว่างล็อกมันอยากได้ช็อต
+        // ไหน จึงคืนกลับกลางประโยคได้โดยไม่กระโดด
+        this.framing?.release();
         return this.mocap.status();
     }
 

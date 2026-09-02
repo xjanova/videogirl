@@ -16,6 +16,7 @@ import '../persona/mind_soul.dart';
 import '../phone/call_watch.dart';
 import '../ai/brain_provider.dart';
 import '../ai/device_speech.dart';
+import '../avatar/avatar_view.dart';
 import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
 import '../i18n/strings.dart';
@@ -162,6 +163,7 @@ class MindState extends ChangeNotifier {
     );
     _homeServerUrl = p.getString('homeServerUrl') ?? HomeServerDefaults.baseUrl;
     _homeServerModel = p.getString('homeServerModel') ?? HomeServerDefaults.model;
+    _mocapShot = MindMocapShot.parse(p.getString('mocapShot'));
     _avatarPackUrl = p.getString('avatarPackUrl') ?? _packUrlDefault;
     _avatarPackId = p.getString('avatarPackId') ?? '';
     // 🔴 `?? _storeDefault` อย่างเดียวไม่พอ — เครื่องที่เคยลงรุ่นก่อนหน้า
@@ -466,6 +468,22 @@ class MindState extends ChangeNotifier {
   void setHomeServerModel(String v) {
     _homeServerModel = v.trim();
     _save('homeServerModel', _homeServerModel);
+    _notify();
+  }
+
+  // ═══ โหมดเชิดหุ่น ═══════════════════════════════════════
+  //
+  // 🔴 สามโหมดนี้ต่างกันที่ **ระยะกล้อง** ไม่ใช่ที่ปริมาณสิ่งที่จับได้
+  // mocap ที่มีคือ FaceLandmarker ล้วน — ใบหน้าเท่านั้น ทั้งสามโหมด
+  // (ดู MindMocapShot ใน avatar_view.dart)
+
+  MindMocapShot _mocapShot = MindMocapShot.face;
+  MindMocapShot get mocapShot => _mocapShot;
+
+  void setMocapShot(MindMocapShot v) {
+    if (_mocapShot == v) return;
+    _mocapShot = v;
+    _save('mocapShot', v.name);
     _notify();
   }
 

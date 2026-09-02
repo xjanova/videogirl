@@ -449,6 +449,33 @@ class S {
       _('นั่งนิ่ง ๆ หน้าตรงแป๊บนึงนะคะ มายด์กำลังจำหน้าปกติของคุณ',
         'Hold still and look straight ahead — learning your resting face');
   String get puppetRecalibrate => _('จำหน้าใหม่', 'Re-learn my face');
+
+  // ── ระยะกล้องตอนเชิดหุ่น ──
+  //
+  // 🔴 ป้ายต้องไม่ทำให้เข้าใจว่า "เต็มตัว" = จับทั้งตัว
+  //
+  // ที่จับได้จริงคือ**ใบหน้าเท่านั้น** ทั้งสามโหมด (FaceLandmarker ล้วน
+  // ไม่มี PoseLandmarker) สามโหมดต่างกันที่ระยะกล้อง · ชื่อโหมดพูดแทน
+  // ความจริงข้อนี้ไม่ได้ จึงต้องมีบรรทัดบอกใต้ปุ่ม
+  String get puppetShot => _('ระยะกล้องตอนเชิด', 'Shot while puppeteering');
+  String get puppetShotFace => _('หน้า', 'Face');
+  String get puppetShotBust => _('ครึ่งตัว', 'Half');
+  String get puppetShotFull => _('เต็มตัว', 'Full');
+
+  /// บอกความจริงว่าจับอะไรได้จริง — ก่อนที่เขาจะเลือกเต็มตัวแล้วผิดหวัง
+  String get puppetShotNote => _(
+        'ทั้งสามโหมดจับใบหน้าอย่างเดียว (ปาก ตา สายตา อารมณ์ ท่าหัว) '
+        'ต่างกันที่ระยะกล้อง · ลำตัวกับแขนเล่นท่าของเธอเอง',
+        'All three capture the face only — mouth, eyes, gaze, mood, head pose. '
+        'They differ in how close the camera sits; her body and arms keep '
+        'playing her own clips.',
+      );
+
+  /// ล็อกกล้องไว้ระหว่างเชิด
+  String get puppetShotLocked => _(
+        'กล้องล็อกไว้ระหว่างเชิด จะได้ไม่ถูกดึงออกตอนเธอพูด',
+        'The camera is pinned while you puppet her, so speaking cannot pull it away',
+      );
   String get puppetNoFace =>
       _('มายด์ไม่เห็นหน้าคุณในกล้องค่ะ', "I can't see your face");
   String get puppetStarting => _('กำลังเปิดกล้อง…', 'Starting the camera…');

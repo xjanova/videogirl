@@ -261,6 +261,13 @@ window.minde = {
   // ── กล้องเชิดหุ่น ────────────────────────────────────────
   // start เป็น async เพราะต้องขอสิทธิ์กล้องกับโหลด wasm 11MB
   // ฝั่ง Flutter ต้องเรียกด้วย callAsyncJavaScript ไม่ใช่ evaluateJavascript
+  /**
+   * ระยะกล้องของโหมดเชิดหุ่น — 'face' | 'bust' | 'full'
+   *
+   * แยกจาก `frame()` โดยตั้งใจ · `frame()` เป็นคำขอของตัวจัดฉากอัตโนมัติ
+   * ซึ่งถูกล็อกทับได้ ส่วนตัวนี้คือคำสั่งของเจ้าของที่ไม่มีอะไรมาทับ
+   */
+  mocapShot:      (n)  => avatar?.setMocapShot(n) ?? null,
   mocapStart:     ()  => avatar?.startMocap() ?? null,
   mocapStop:      ()  => avatar?.stopMocap() ?? null,
   mocapCalibrate: ()  => avatar?.recalibrate() ?? null,

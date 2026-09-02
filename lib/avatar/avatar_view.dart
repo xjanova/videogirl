@@ -33,8 +33,44 @@ enum MindMood {
   calling,
 }
 
-/// ระยะกล้อง — 'bust' ตอนคุย, 'full' ตอนยืนเฉย
-enum MindFraming { bust, full }
+/// ระยะกล้อง — 'bust' ตอนคุย, 'full' ตอนยืนเฉย, 'face' ตอนเชิดหุ่นเฉพาะหน้า
+///
+/// 🔴 `face` มีอยู่ใน framing.js มาตั้งแต่ต้น (fit 0.34) แต่**ไม่มีทางเรียก
+/// จากฝั่ง Dart เลย** เพราะ enum นี้มีแค่สองตัว — ช็อตที่เขียนไว้แล้วแต่ไม่มี
+/// ใครไปถึงได้ คือของที่มีต้นทุนแล้วไม่เคยได้ใช้
+enum MindFraming { face, bust, full }
+
+/// ระยะกล้องที่โหมดเชิดหุ่นล็อกไว้
+///
+/// 🔴 **จับได้แค่ใบหน้าเท่านั้น ทั้งสามโหมด**
+///
+/// mocap ที่มีอยู่คือ FaceLandmarker ล้วน (ปาก ตา สายตา อารมณ์ ท่าหัว/คอ)
+/// ไม่มี PoseLandmarker เลย → ไหล่ แขน ลำตัว ขา **ไม่ได้ตามตัวจริง**
+/// สามโหมดนี้จึงต่างกันที่ **ระยะกล้อง** ไม่ใช่ที่ปริมาณสิ่งที่จับได้
+///
+/// เขียนไว้ตรงนี้เพราะชื่อ `full` ชวนให้เข้าใจว่าจับทั้งตัว · ป้ายในหน้าจอ
+/// ต้องบอกความจริงข้อนี้ด้วย ไม่ใช่ปล่อยให้ชื่อโหมดพูดแทน
+enum MindMocapShot {
+  /// ใกล้ที่สุด — เห็นสีหน้าที่เชิดอยู่ชัดที่สุด
+  face,
+
+  /// ครึ่งตัว — เห็นท่าหัวกับไหล่ในกรอบเดียวกัน
+  bust,
+
+  /// เต็มตัว — เห็นท่าที่คลิปเล่นอยู่ด้วย
+  full;
+
+  MindFraming get framing => switch (this) {
+        MindMocapShot.face => MindFraming.face,
+        MindMocapShot.bust => MindFraming.bust,
+        MindMocapShot.full => MindFraming.full,
+      };
+
+  static MindMocapShot parse(Object? v) => MindMocapShot.values.firstWhere(
+        (s) => s.name == '$v',
+        orElse: () => MindMocapShot.face,
+      );
+}
 
 /// สะพานขอสิทธิ์กล้องระดับระบบ — คู่กับ MainActivity.kt
 ///
@@ -355,8 +391,25 @@ class MindAvatarController extends ChangeNotifier {
     }
   }
 
+  /// คำขอของตัวจัดฉากอัตโนมัติ — **ถูกล็อกทับได้** ระหว่างเชิดหุ่น
   Future<void> setFraming(MindFraming f) =>
       _call("window.minde.frame('${f.name}')");
+
+  /// ระยะกล้องที่โหมดเชิดหุ่นล็อกไว้ · null = ยังไม่ได้ตั้ง (ใช้ค่าตั้งต้น)
+  MindMocapShot _mocapShot = MindMocapShot.face;
+  MindMocapShot get mocapShot => _mocapShot;
+
+  /// เลือกระยะกล้องของโหมดเชิดหุ่น
+  ///
+  /// 🔴 ไม่ผ่าน [setFraming] โดยตั้งใจ · ตัวนั้นเป็น**คำขอ**ของตัวจัดฉาก
+  /// ซึ่งถูกทับได้ตอนเธอพูดหรือตอนส่งข้อความ · ตัวนี้เป็น**คำสั่ง**ของเจ้าของ
+  /// ที่ไม่มีอะไรมาทับ ตราบใดที่ยังเชิดอยู่
+  Future<void> setMocapShot(MindMocapShot s) async {
+    if (_mocapShot == s) return;
+    _mocapShot = s;
+    notifyListeners();
+    await _call("window.minde.mocapShot('${s.name}')");
+  }
 
   Future<void> _call(String js) async {
     final web = _web;

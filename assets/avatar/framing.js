@@ -46,6 +46,11 @@ export class Framing {
         this.vrm = vrm;
         this.shot = 'full';
 
+        /** Pinned by the owner (puppet mode). The state machine cannot win. */
+        this.held = false;
+        /** What the state machine asked for while we were holding. */
+        this.wanted = 'full';
+
         /** Fraction of the visible width to push her off-centre. */
         this.lateral = 0;
         /** Wheel zoom. 1 is the shot as designed; smaller is closer. */
@@ -123,10 +128,47 @@ export class Framing {
         return this;
     }
 
-    /** @param {'full'|'bust'|'face'} name */
+    /**
+     * The shot the STATE MACHINE wants. Ignored while held.
+     *
+     * @param {'full'|'bust'|'face'} name
+     */
     set(name) {
-        if (name === this.shot || !SHOTS[name]) return this;
+        if (!SHOTS[name]) return this;
+        this.wanted = name;
+        if (this.held) return this;
         this.shot = name;
+        return this;
+    }
+
+    /**
+     * Pin the shot until `release()`. Nothing else can change it.
+     *
+     * WHY THIS EXISTS. Puppeteering her face and having the camera decide on
+     * its own to pull out to a full shot are incompatible. The automatic
+     * framing is right when nobody is driving her: it pushes in for speech and
+     * back out for the body, and that is a good camera operator. But the moment
+     * the owner is ACTING — watching their own expression come back on her face
+     * — a camera that moves on its own is a camera that throws away the take.
+     *
+     * The state machine keeps running underneath and its wish is remembered, so
+     * releasing hands the shot back mid-sentence without a jump: whatever it
+     * asked for while we were holding is what it gets.
+     *
+     * @param {'full'|'bust'|'face'} name
+     */
+    hold(name) {
+        if (!SHOTS[name]) return this;
+        this.held = true;
+        this.shot = name;
+        return this;
+    }
+
+    /** Hand the camera back to the state machine. */
+    release() {
+        if (!this.held) return this;
+        this.held = false;
+        this.shot = this.wanted ?? this.shot;
         return this;
     }
 

@@ -236,6 +236,72 @@ void main() {
             '${missing.join(', ')}');
   });
 
+  /// 🔴 ระยะกล้องที่ฝั่ง JS ไม่รู้จัก **ตกเป็น full เงียบ ๆ**
+  ///
+  /// `target()` ใน framing.js เขียนว่า `SHOTS[name] ?? SHOTS.full`
+  /// ส่งชื่อที่ไม่มีไปจึงได้ช็อตเต็มตัวโดยไม่มี error — ซึ่งอ่านได้ว่า
+  /// "กล้องไม่ยอมซูม" ไม่ใช่ "ชื่อช็อตผิด" · กับดักเดียวกับ MOOD_EXPRESSION
+  ///
+  /// เคยเกิดจริงในทางกลับกัน: `face` มีอยู่ใน SHOTS มาตั้งแต่ต้นแต่ฝั่ง Dart
+  /// ไม่มีทางเรียกถึงเลย เพราะ enum มีแค่ bust/full
+  test('ทุกระยะกล้องใน MindFraming ต้องมีใน SHOTS ของ framing.js', () {
+    final js = File('assets/avatar/framing.js').readAsStringSync();
+
+    final block =
+        RegExp(r'const SHOTS = \{([\s\S]*?)\n\};').firstMatch(js)?.group(1);
+
+    expect(block, isNotNull,
+        reason: 'หา SHOTS ใน framing.js ไม่เจอ — รูปแบบเปลี่ยนไป '
+            'ต้องแก้เทสต์นี้ ไม่ใช่ปล่อยผ่าน');
+
+    final known = RegExp(r'^\s*(\w+):', multiLine: true)
+        .allMatches(block!)
+        .map((m) => m.group(1)!)
+        .toSet();
+
+    final missing = MindFraming.values
+        .map((f) => f.name)
+        .where((n) => !known.contains(n))
+        .toList();
+
+    expect(missing, isEmpty,
+        reason: 'ระยะพวกนี้จะตกเป็นเต็มตัวเงียบ ๆ ฝั่ง JS: '
+            '${missing.join(', ')}');
+
+    // และทางกลับกัน — ช็อตที่เขียนไว้แล้วไม่มีใครเรียกถึงได้
+    final unreachable =
+        known.where((n) => !MindFraming.values.any((f) => f.name == n));
+    expect(unreachable, isEmpty,
+        reason: 'ช็อตที่มีใน framing.js แต่ฝั่ง Dart เรียกไม่ได้: '
+            '${unreachable.join(', ')}');
+  });
+
+  test('ทุกโหมดเชิดหุ่นต้องชี้ไปช็อตที่มีจริง', () {
+    for (final s in MindMocapShot.values) {
+      expect(MindFraming.values, contains(s.framing));
+    }
+  });
+
+  /// 🔴 ล็อกกล้องต้องกันคำสั่งของตัวจัดฉากอัตโนมัติได้จริง
+  ///
+  /// สิ่งที่พังตอนเชิดหุ่นคือ `speak()` ดึงกล้องเข้า bust แล้วดีดกลับ full
+  /// กลางที่เจ้าของกำลังดูสีหน้าตัวเองอยู่ · ถ้า `hold()` หายไปจาก JS
+  /// เมื่อไหร่ อาการนั้นกลับมาทันทีโดยไม่มีอะไรฟ้อง
+  test('framing.js ต้องมีทางล็อกกล้อง และ set ต้องเคารพมัน', () {
+    final js = File('assets/avatar/framing.js').readAsStringSync();
+
+    expect(js, contains('hold(name)'));
+    expect(js, contains('release()'));
+    expect(js, contains('if (this.held) return this;'),
+        reason: 'set() ต้องไม่เปลี่ยนช็อตระหว่างล็อก ไม่งั้นล็อกไม่มีผลจริง');
+
+    final avatar = File('assets/avatar/avatar.js').readAsStringSync();
+    expect(avatar, contains('this.framing?.hold('),
+        reason: 'startMocap ต้องล็อกกล้อง');
+    expect(avatar, contains('this.framing?.release()'),
+        reason: 'stopMocap ต้องคืนกล้องให้ตัวจัดฉาก');
+  });
+
   /// คลิปที่ผูกกับอารมณ์ต้องผูกกับอารมณ์ที่มีอยู่จริง
   test('mood ใน clips.json ต้องเป็นอารมณ์ที่รู้จัก', () {
     final manifest = File('assets/avatar/model/clips.json');

@@ -307,7 +307,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Column(
                   spacing: MindSpace.sm,
                   children: [
-                    _PuppetButton(avatar: widget.avatar, mode: mode),
+                    _PuppetButton(
+                      avatar: widget.avatar,
+                      mode: mode,
+                      shot: state.mocapShot,
+                      onPickShot: (v) {
+                        state.setMocapShot(v);
+                        widget.avatar.setMocapShot(v);
+                      },
+                    ),
                     // ตราราศีของเธอ — เป็นทั้งปุ่มเปิดสเตตัสและตัวบอกอารมณ์
                     // ในตัวมันเอง (สีวงแหวนกับจุดมุมขวาเปลี่ยนตามอารมณ์)
                     SoulBadge(mode: mode),
@@ -893,10 +901,19 @@ class _StageIconButton extends StatelessWidget {
 /// เปลี่ยนสีตามสถานะจริงสามขั้น ไม่ใช่แค่ เปิด/ปิด: กำลังคาลิเบรตกับเชิดอยู่จริง
 /// เป็นคนละเรื่องกัน คนกดต้องแยกออกว่าตอนนี้ต้อง**นิ่ง**หรือ**ขยับได้แล้ว**
 class _PuppetButton extends StatefulWidget {
-  const _PuppetButton({required this.avatar, required this.mode});
+  const _PuppetButton({
+    required this.avatar,
+    required this.mode,
+    required this.shot,
+    required this.onPickShot,
+  });
 
   final MindAvatarController avatar;
   final MindMode mode;
+
+  /// ระยะกล้องที่จำไว้ข้ามการเปิดปิดแอป
+  final MindMocapShot shot;
+  final void Function(MindMocapShot) onPickShot;
 
   @override
   State<_PuppetButton> createState() => _PuppetButtonState();
@@ -914,6 +931,10 @@ class _PuppetButtonState extends State<_PuppetButton> {
       if (widget.avatar.mocapOn) {
         await widget.avatar.stopMocap();
       } else {
+        // 🔴 บอกระยะกล้องที่จำไว้**ก่อน**เริ่ม · ฝั่ง JS ล็อกกล้องตั้งแต่
+        // ก่อนกล้องหน้าจะติด (ช่วงขอสิทธิ์ + โหลด wasm กินหลายวินาที)
+        // ถ้าส่งทีหลัง กล้องจะกระชากหนึ่งรอบตรงกลางระหว่างนั้นพอดี
+        await widget.avatar.setMocapShot(widget.shot);
         await widget.avatar.startMocap();
       }
     } finally {
@@ -938,6 +959,76 @@ class _PuppetButtonState extends State<_PuppetButton> {
                 ? MindColors.ink55
                 : MindColors.ink45;
 
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          spacing: MindSpace.sm,
+          children: [
+            _puppetToggle(context, s, a, live, warming, tint),
+            // ตัวเลือกระยะกล้อง — โผล่เฉพาะตอนเชิดอยู่
+            //
+            // ก่อนเริ่มไม่ต้องมี เพราะค่าที่เลือกไว้ถูกจำข้ามการเปิดปิดแอป
+            // และเวทีนี้แคบ ปุ่มที่ไม่ได้ใช้ตอนนั้นคือของที่บังตัวเธอเปล่า ๆ
+            if (a.mocapOn) _shotPicker(context, s),
+          ],
+        );
+      },
+    );
+  }
+
+  /// สามระยะเรียงจากใกล้ไปไกล — ลำดับเดียวกับที่เจ้าของพูดถึงมัน
+  Widget _shotPicker(BuildContext context, S s) {
+    const shots = MindMocapShot.values;
+    return GlassPanel(
+      radius: MindRadius.pill,
+      fill: MindColors.glass72,
+      padding: const EdgeInsets.all(3),
+      shadows: MindShadows.soft(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final v in shots)
+            Semantics(
+              button: true,
+              selected: v == widget.shot,
+              label: '${s.puppetShot} · ${_shotLabel(s, v)}',
+              child: GestureDetector(
+                onTap: () => widget.onPickShot(v),
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 34,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: v == widget.shot ? widget.mode.gradient : null,
+                    borderRadius: BorderRadius.circular(MindRadius.pill),
+                  ),
+                  child: Text(
+                    _shotLabel(s, v),
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                      color: v == widget.shot
+                          ? Colors.white
+                          : MindColors.ink55,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static String _shotLabel(S s, MindMocapShot v) => switch (v) {
+        MindMocapShot.face => s.puppetShotFace,
+        MindMocapShot.bust => s.puppetShotBust,
+        MindMocapShot.full => s.puppetShotFull,
+      };
+
+  Widget _puppetToggle(BuildContext context, S s, MindAvatarController a,
+      bool live, bool warming, Color tint) {
         return Semantics(
           button: true,
           toggled: a.mocapOn,
@@ -971,8 +1062,6 @@ class _PuppetButtonState extends State<_PuppetButton> {
             ),
           ),
         );
-      },
-    );
   }
 }
 
@@ -1017,6 +1106,27 @@ class _PuppetStatus extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 10, color: MindColors.ink45),
                 ),
+
+              // 🔴 บอกว่าจับอะไรได้จริง **ก่อน**เขาเลือกเต็มตัวแล้วผิดหวัง
+              //
+              // ชื่อโหมด "เต็มตัว" ชวนให้เข้าใจว่าจับทั้งตัว แต่ที่จับได้จริง
+              // คือใบหน้าเท่านั้นทั้งสามโหมด · วางไว้ตรงนี้เพราะทุกเซสชัน
+              // ต้องผ่านช่วงเปิดกล้อง/คาลิเบรตเสมอ = จังหวะเดียวที่มีคนอ่านจริง
+              if (avatar.mocapPhase == MindMocapPhase.starting ||
+                  avatar.mocapPhase == MindMocapPhase.calibrating) ...[
+                Text(
+                  s.puppetShotNote,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 10, height: 1.45, color: MindColors.ink45),
+                ),
+                Text(
+                  s.puppetShotLocked,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 10, height: 1.45, color: MindColors.ink45),
+                ),
+              ],
               if (progress != null)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(3),
