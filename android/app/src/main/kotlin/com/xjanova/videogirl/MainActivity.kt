@@ -41,6 +41,10 @@ class MainActivity : FlutterActivity() {
 
     private val calls by lazy { CallBridge(this) }
 
+    /// ถอดเสียงในเครื่อง — ช่องแยกจาก giggok/system โดยตั้งใจ
+    /// (ฝั่ง Dart ของช่องนั้นมี CallWatch เป็นเจ้าของ handler แต่ผู้เดียว)
+    private val speech by lazy { MindSpeech(this) }
+
     /// ช่องคุยกับ Dart — เก็บไว้เพื่อ **ยิงกลับ** ตอนสายเข้า
     /// ไม่ใช่แค่ตอบคำถามที่ Dart ถามมา
     private var channel: MethodChannel? = null
@@ -57,6 +61,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         ensureWatchChannel()
+        speech.attach(flutterEngine.dartExecutor.binaryMessenger)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel!!.setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -292,6 +297,15 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             openAppSettings()
         }
+    }
+
+    /// ปล่อยตัวถอดเสียงตอนแอปถูกทำลาย
+    ///
+    /// SpeechRecognizer จองไมค์กับบริการของระบบไว้ · ไม่ปล่อยแล้วปิดแอป
+    /// ตอนที่ยังฟังอยู่ = ไมค์ค้างจนกว่าระบบจะเก็บกวาดเอง ซึ่งอาจนาน
+    override fun onDestroy() {
+        speech.dispose()
+        super.onDestroy()
     }
 
     override fun onRequestPermissionsResult(

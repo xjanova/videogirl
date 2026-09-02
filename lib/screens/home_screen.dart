@@ -58,6 +58,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       },
       transcribe: state.transcribeChat,
       strings: () => state.s,
+      device: state.deviceSpeech,
+      // 🔴 เสียงต้องถอดในเครื่องเมื่อผู้ใช้เลือกสมองในเครื่อง
+      // ไม่ใช่ตกไปใช้ทางข้างนอกเพราะมันแม่นกว่า
+      preferDevice: () => state.transcribesOnDevice,
     );
 
     // แผงแชทพับเองเมื่อเงียบ — แต่ต้องไม่พับตอนคนกำลังพิมพ์ค้างอยู่
@@ -640,6 +644,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ListenableBuilder(
           listenable: _voice,
           builder: (context, _) {
+            // กำลังฟังอยู่และได้ยินอะไรแล้ว — โชว์สิ่งที่ได้ยิน**ตอนนี้**
+            //
+            // นี่คือสิ่งเดียวที่พิสูจน์ว่าไมค์ทำงานจริงระหว่างที่ยังพูดไม่จบ
+            // วงที่เต้นบอกได้แค่ว่ามีเสียงเข้า ไม่ได้บอกว่ามันฟังออก
+            if (_voice.stage == VoiceInputStage.listening &&
+                _voice.heard.isNotEmpty) {
+              return _listeningStrip(_voice.heard, mode);
+            }
             final why = _voice.error ?? state.lastError;
             if (why == null) return const SizedBox.shrink();
             return _errorStrip(why, () {
@@ -660,6 +672,42 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   /// คีย์ผิด ไลเซนส์หมดอายุ โควตาหมด เน็ตหลุด โมเดลยังไม่โหลด — ทุกอย่าง
   /// หน้าตาเหมือนกันหมดคือเธอตอบสั้น ๆ แล้วไม่มีอะไรเกิดขึ้น เจ้าของแยกไม่ออก
   /// ว่าเป็นปัญหาเงิน เน็ต หรือพิมพ์รหัสผิด
+  /// สิ่งที่ได้ยินอยู่ตอนนี้ — ยังไม่ใช่ผลสุดท้าย ระบบแก้คำได้จนกว่าจะพูดจบ
+  ///
+  /// ใช้ที่เดียวกับแถบบอกข้อผิดพลาดโดยตั้งใจ · สองเรื่องนี้ไม่มีทางเกิด
+  /// พร้อมกัน และการมีที่เดียวที่ตาต้องมองแปลว่าไม่ต้องเรียนรู้ว่าเรื่องไหน
+  /// อ่านตรงไหน
+  Widget _listeningStrip(String text, MindMode mode) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(11, 9, 11, 9),
+        decoration: BoxDecoration(
+          color: mode.accent.withValues(alpha: .10),
+          borderRadius: BorderRadius.circular(MindRadius.control),
+          border:
+              Border.all(color: mode.accent.withValues(alpha: .28), width: 1),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 8,
+          children: [
+            Icon(Icons.graphic_eq_rounded, size: 15, color: mode.accent),
+            Expanded(
+              child: Text(
+                text,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11, height: 1.5, color: mode.accent),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _errorStrip(String message, VoidCallback onClose) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),

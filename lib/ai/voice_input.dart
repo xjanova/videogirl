@@ -19,6 +19,7 @@ import 'package:record/record.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
 import '../phone/call_session.dart';
+import 'device_speech.dart';
 import 'openai_client.dart';
 
 /// อยู่ขั้นไหนของการพูดหนึ่งครั้ง
@@ -44,9 +45,29 @@ class VoiceInput extends ChangeNotifier {
     required this.ensureMic,
     required this.transcribe,
     required S Function() strings,
+    this.device,
+    this.preferDevice,
     AudioRecorder? recorder,
   })  : _s = strings,
         _injected = recorder;
+
+  /// ตัวถอดเสียงในเครื่อง — null = ไม่มีทางนี้ (เช่นในเทสต์)
+  final DeviceSpeech? device;
+
+  /// ตอนนี้ควรใช้ทางในเครื่องไหม
+  ///
+  /// 🔴 จริงเมื่อผู้ใช้เลือก "สมองในเครื่อง" — ทางนั้นสัญญาว่าไม่มีอะไรออก
+  /// นอกเครื่อง การส่งเสียงไปถอดข้างนอกจึงเป็นการผิดสัญญา · ส่วนคนที่เลือก
+  /// สมองทางอื่นอยู่แล้ว ใช้ทางข้างนอกซึ่งแม่นกว่ามากสำหรับภาษาไทย
+  final bool Function()? preferDevice;
+
+  /// รอบนี้ใช้ทางในเครื่องอยู่ไหม
+  bool _onDevice = false;
+  bool get onDevice => _onDevice;
+
+  /// ข้อความที่ได้ยินระหว่างพูด — มีเฉพาะทางในเครื่อง
+  String _heard = '';
+  String get heard => _heard;
 
   /// ขอสิทธิ์ไมค์ · คืน true เมื่อใช้ได้
   final Future<bool> Function() ensureMic;
@@ -118,12 +139,27 @@ class VoiceInput extends ChangeNotifier {
   Future<bool> start() async {
     if (busy) return false;
     _set(VoiceInputStage.opening);
+    _heard = '';
 
     if (!await ensureMic()) {
       _set(VoiceInputStage.failed, error: _s().micDenied);
       return false;
     }
     if (_disposed) return false;
+
+    // ทางในเครื่องมาก่อนเมื่อผู้ใช้เลือกสมองในเครื่อง — เสียงต้องไม่ออกไปไหน
+    final dev = device;
+    if (dev != null && (preferDevice?.call() ?? false)) {
+      if (await dev.available()) {
+        _onDevice = true;
+        return _startOnDevice(dev);
+      }
+      // มีสิทธิ์ครบแต่เครื่องทำไม่ได้ · บอกตรง ๆ ดีกว่าแอบส่งเสียงออกไป
+      // ให้ทางข้างนอกถอดแทน ซึ่งเป็นการผิดสัญญาที่ผู้ใช้ไม่มีทางรู้
+      _set(VoiceInputStage.failed, error: _s().micNoOnDevice);
+      return false;
+    }
+    _onDevice = false;
 
     final pcm = _pcm = BytesBuilder(copy: false);
     try {
@@ -170,12 +206,77 @@ class VoiceInput extends ChangeNotifier {
     return true;
   }
 
+  /// ทางในเครื่อง — ระบบเป็นเจ้าของไมค์เอง เราแค่รอผล
+  ///
+  /// ต่างจากทางอัดเสียงตรงที่ **ไม่มีไฟล์ให้ถือ** ระบบฟังแล้วคืนข้อความมาเลย
+  /// จึงไม่มีขั้น "กำลังถอดเสียง" แยกออกมา
+  Future<bool> _startOnDevice(DeviceSpeech dev) async {
+    dev
+      ..onLevel = (v) {
+        _level = v;
+        if (!_disposed) notifyListeners();
+      }
+      ..onPartial = (t) {
+        _heard = t;
+        if (!_disposed) notifyListeners();
+      };
+
+    // ไม่ await ตรงนี้ · future นี้จบเมื่อ**ผู้ใช้พูดจบ** ซึ่งอาจอีกหลายวินาที
+    // ผู้เรียกต้องได้ปุ่มที่กดหยุดได้ทันที ไม่ใช่ค้างรออยู่ใน start()
+    unawaited(dev.listen(locale: _s().isThai ? 'th-TH' : 'en-US').then((text) {
+      if (_disposed) return;
+      _level = 0;
+      if (text != null && text.trim().isNotEmpty) {
+        _pending = text.trim();
+        _set(VoiceInputStage.idle);
+      } else {
+        _set(VoiceInputStage.failed, error: _faultText(dev.fault));
+      }
+      _done?.call(_pending);
+      _done = null;
+      _pending = null;
+    }));
+
+    _cap = Timer(maxTake, () => unawaited(dev.stop()));
+    if (_stage != VoiceInputStage.opening) return false;
+    _set(VoiceInputStage.listening);
+    return true;
+  }
+
+  /// ข้อความที่รอส่งกลับให้ผู้เรียก [stop]
+  String? _pending;
+  void Function(String?)? _done;
+
+  String _faultText(SttFault? f) => switch (f) {
+        SttFault.unavailable => _s().micNoOnDevice,
+        SttFault.language => _s().micNoLanguagePack,
+        SttFault.noMatch || null => _s().micHeardNothing,
+        SttFault.permission => _s().micDenied,
+        SttFault.busy => _s().micBusy,
+        _ => _s().micFailed,
+      };
+
   /// หยุดฟังแล้วถอดเสียง · คืนข้อความที่ได้ (null = ไม่ได้อะไร)
   Future<String?> stop() async {
     if (_stage != VoiceInputStage.listening &&
         _stage != VoiceInputStage.opening) {
       return null;
     }
+
+    if (_onDevice) {
+      final dev = device!;
+      _cap?.cancel();
+      _cap = null;
+      _set(VoiceInputStage.working);
+
+      // ผลมาทางเหตุการณ์จากระบบ ไม่ใช่ค่าที่ส่งกลับจาก stop()
+      // จึงต้องรอที่นี่จนกว่ามันจะมาถึง
+      final wait = Completer<String?>();
+      _done = wait.complete;
+      await dev.stop();
+      return wait.future;
+    }
+
     _set(VoiceInputStage.working);
 
     final pcm = _pcm;
@@ -212,12 +313,15 @@ class VoiceInput extends ChangeNotifier {
   /// ทิ้งเสียงที่อัดไว้โดยไม่ถอด — ใช้ตอนออกจากหน้าจอกลางคัน
   Future<void> cancel() async {
     if (!busy) return;
+    if (_onDevice) await device?.cancel();
     await _teardown();
     _pcm = null;
     _set(VoiceInputStage.idle);
   }
 
   Future<void> _teardown() async {
+    _done = null;
+    _pending = null;
     _cap?.cancel();
     _cap = null;
     await _mic?.cancel();
@@ -234,6 +338,7 @@ class VoiceInput extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    if (_onDevice) unawaited(device?.cancel() ?? Future<void>.value());
     _cap?.cancel();
     unawaited(_mic?.cancel());
     // อย่าแตะ getter ตรงนี้ ไม่งั้นการปิดหน้าจอจะไปสร้าง AudioRecorder ใหม่

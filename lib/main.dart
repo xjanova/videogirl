@@ -17,6 +17,7 @@ import 'background/mind_background.dart';
 import 'background/mind_watch.dart';
 import 'system/permissions.dart';
 import 'ai/device_capability.dart';
+import 'ai/device_speech.dart';
 import 'screens/splash_screen.dart';
 import 'store/mind_store.dart';
 import 'store/mind_vault.dart';
@@ -168,6 +169,12 @@ class _MindBootstrapState extends State<MindBootstrap>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(_state.saveVaultNow());
+      return;
+    }
+    // กลับเข้าแอป — ผู้ใช้อาจเพิ่งไปโหลดชุดภาษาสำหรับถอดเสียงในเครื่องมา
+    // ถ้าจำคำตอบเก่าไว้ ปุ่มไมค์จะยังใช้ไม่ได้จนกว่าจะปิดเปิดแอป
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_state.refreshDeviceStt(forget: true));
     }
   }
 
@@ -208,6 +215,8 @@ class _MindBootstrapState extends State<MindBootstrap>
       await _soul.load(kv: _store!.kv);
       _state.attachSoul(_soul);
 
+      // ต่อตัวถอดเสียงในเครื่องก่อนโหลดค่า · `load()` ถามความพร้อมของมันต่อ
+      _state.attachDeviceSpeech(DeviceSpeech.instance);
       await _state.load(store: _store);
       await _pack.restore(preferId: _state.avatarPackId);
 

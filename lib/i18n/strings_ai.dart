@@ -304,9 +304,15 @@ extension AiStrings on S {
   // เพราะการถอดเสียงต้องมีบริการนอกเครื่อง ซึ่งขัดกับสัญญาข้อเดียว
   // ที่ทางนั้นให้ไว้ · บอกตรง ๆ ดีกว่าแอบส่งออกไปให้มันทำงาน
 
+  /// เสียงถูกกันไม่ให้ออกนอกเครื่อง เพราะผู้ใช้เลือกสมองในเครื่องไว้
+  ///
+  /// 🔴 นี่คือ**ด่านกัน ไม่ใช่ข้อความบอกความล้มเหลว** · ทางปกติจะไม่มีวัน
+  /// มาถึงตรงนี้ (ปุ่มไมค์ใช้ทางในเครื่องอยู่แล้ว — ดู device_speech.dart)
+  /// ถ้าผู้ใช้เห็นข้อความนี้ แปลว่ามีทางใหม่ที่ลืมกัน ซึ่งต้องดังตอนนั้นเลย
+  /// ไม่ใช่เงียบแล้วยิงเสียงเขาออกเน็ตไป
   String get micNeedsCloudBrain => pick(
-        'สมองในเครื่องถอดเสียงไม่ได้ · เปลี่ยนสมองในหน้าตั้งค่าก่อนถึงจะพูดใส่ไมค์ได้',
-        'The on-device brain cannot transcribe — switch brains in settings to talk to her',
+        'เลือกสมองในเครื่องไว้ เสียงจึงไม่ถูกส่งออกนอกเครื่อง',
+        'The on-device brain is selected, so audio never leaves this phone',
       );
 
   String get homeServerNoUrl => pick(
@@ -330,6 +336,32 @@ extension AiStrings on S {
   String get micHeardNothing => pick(
         'ไม่ได้ยินเสียงพูดเลย ลองพูดใกล้ ๆ ไมค์อีกครั้งนะคะ',
         'Did not catch anything — try again a little closer to the mic',
+      );
+
+  /// เครื่องนี้ถอดเสียงในเครื่องไม่ได้ (แอนดรอยด์เก่ากว่า 12)
+  ///
+  /// 🔴 ห้ามแอบตกไปใช้ทางข้างนอกแทน · คนที่เลือกสมองในเครื่องเลือกเพราะ
+  /// ไม่อยากให้อะไรออกนอกเครื่อง การส่งเสียงเขาออกไปเพราะ "ทางในเครื่อง
+  /// ทำไม่ได้" คือการผิดสัญญาในจังหวะที่เขาไม่มีทางรู้เลย
+  String get micNoOnDevice => pick(
+        'เครื่องนี้ถอดเสียงในเครื่องไม่ได้ · พิมพ์แทนได้ '
+        'หรือเปลี่ยนสมองเป็นทางที่ใช้เน็ตในหน้าตั้งค่า',
+        'This phone cannot transcribe on-device — type instead, '
+        'or switch to a brain that uses the internet in settings',
+      );
+
+  /// ยังไม่ได้โหลดชุดภาษาลงเครื่อง — พบบ่อยกว่าเครื่องเก่าเสียอีก
+  /// และเป็นกรณีที่**ผู้ใช้แก้เองได้** จึงต้องบอกว่าไปแก้ที่ไหน
+  String get micNoLanguagePack => pick(
+        'ยังไม่ได้โหลดชุดภาษาสำหรับถอดเสียงในเครื่อง · '
+        'โหลดได้ที่ตั้งค่าเครื่อง → ระบบ → ภาษาและการป้อนข้อมูล',
+        'The offline speech language pack is not installed — '
+        'get it from Settings → System → Languages & input',
+      );
+
+  String get micBusy => pick(
+        'ตัวถอดเสียงของเครื่องกำลังถูกใช้อยู่ ลองใหม่อีกครั้งนะคะ',
+        "The phone's recogniser is busy — try again in a moment",
       );
 
   String get micListening => pick('กำลังฟังอยู่…', 'Listening…');

@@ -46,31 +46,45 @@ void main() {
       return s;
     }
 
-    test('สมองในเครื่อง = ใช้ไมค์ไม่ได้ และต้องบอกว่าทำไม', () async {
+    test('สมองในเครื่อง + เครื่องถอดเสียงเองไม่ได้ = ใช้ไมค์ไม่ได้ และบอกว่าทำไม',
+        () async {
       final s = await stateOn(BrainProvider.onDevice);
-      expect(s.canTranscribe, isFalse,
-          reason: 'ทางนี้สัญญาว่าไม่มีอะไรออกนอกเครื่อง '
-              'เสียงพูดยิ่งเป็นข้อมูลที่อ่อนไหวกว่าข้อความ');
-      expect(s.whyNoMic, _th.micNeedsCloudBrain);
+      // ไม่ได้ต่อตัวถอดเสียงในเครื่อง = เหมือนเครื่องที่ทำไม่ได้
+      expect(s.canTranscribe, isFalse);
+      expect(s.whyNoMic, _th.micNoOnDevice);
       s.dispose();
     });
 
-    test('เลือกสมองในเครื่องแล้วยิงเสียงออกไป ต้องถูกปฏิเสธที่ต้นทาง',
-        () async {
+    test('🔴 สมองในเครื่องยิงเสียงออกเน็ตไม่ได้ ไม่ว่ากรณีใด', () async {
       final s = await stateOn(BrainProvider.onDevice);
       await expectLater(
         s.transcribeChat(Uint8List.fromList(const [1, 2, 3])),
         throwsA(isA<OpenAiFailure>()),
+        reason: 'ทางนี้สัญญาว่าไม่มีอะไรออกนอกเครื่อง '
+            'เสียงพูดยิ่งเป็นข้อมูลที่อ่อนไหวกว่าข้อความ',
       );
       s.dispose();
     });
 
-    test('มีคีย์ตัวเองอยู่ ก็ยังห้ามส่งออกถ้าเลือกสมองในเครื่องไว้', () async {
+    test('🔴 มีคีย์ตัวเองอยู่ ก็ยังห้ามส่งเสียงออก ถ้าเลือกสมองในเครื่องไว้',
+        () async {
       final s = await stateOn(BrainProvider.onDevice);
       await s.setOpenAiKey('sk-มีคีย์อยู่จริง-แต่ไม่เกี่ยว');
 
-      expect(s.canTranscribe, isFalse,
-          reason: '🔴 "บังเอิญมีคีย์" ไม่ใช่เหตุผลให้ส่งเสียงเขาออกไป');
+      await expectLater(
+        s.transcribeChat(Uint8List.fromList(const [1, 2, 3])),
+        throwsA(isA<OpenAiFailure>()),
+        reason: '"บังเอิญมีคีย์" ไม่ใช่เหตุผลให้ส่งเสียงเขาออกไป',
+      );
+      s.dispose();
+    });
+
+    test('สมองในเครื่องต้องถอดเสียง**ในเครื่อง** ไม่ใช่ส่งออกไป', () async {
+      final s = await stateOn(BrainProvider.onDevice);
+      expect(s.transcribesOnDevice, isTrue);
+
+      s.setBrain(BrainProvider.openai);
+      expect(s.transcribesOnDevice, isFalse);
       s.dispose();
     });
 

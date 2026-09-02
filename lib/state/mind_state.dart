@@ -15,6 +15,7 @@ import '../memory/mind_memory.dart';
 import '../persona/mind_soul.dart';
 import '../phone/call_watch.dart';
 import '../ai/brain_provider.dart';
+import '../ai/device_speech.dart';
 import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
 import '../i18n/strings.dart';
@@ -221,6 +222,9 @@ class MindState extends ChangeNotifier {
     // ไม่ await เพราะมันไปแตะปลั๊กอินกับดิสก์ ซึ่งช้ากว่าค่าอื่นในนี้มาก
     // และไม่มีอะไรในจอแรกที่ต้องรอมัน (`reply()` กันตัวเองอีกชั้นอยู่แล้ว)
     warmLocalBrain();
+    // ถามเครื่องว่าถอดเสียงในเครื่องได้ไหม — ตัวตัดสินว่าปุ่มไมค์ใช้ได้หรือเปล่า
+    // ตอนใช้สมองในเครื่อง ซึ่งเป็นค่าตั้งต้นของแอป
+    unawaited(refreshDeviceStt());
     _notify();
   }
 
@@ -1312,21 +1316,55 @@ class MindState extends ChangeNotifier {
   // ส่งเสียงเขาไปถอดที่ OpenAI เพราะ "เขามีคีย์อยู่พอดี" คือการผิดสัญญา
   // ข้อเดียวที่ทางนั้นให้ไว้ — และเสียงพูดเป็นข้อมูลที่อ่อนไหวกว่าข้อความอีก
 
+  /// เครื่องนี้ถอดเสียง **ในเครื่อง** ได้ไหม
+  ///
+  /// ถามระบบครั้งเดียวแล้วจำไว้ เพราะ [canTranscribe] ถูกอ่านตอนวาดจอ
+  /// ซึ่งเป็นที่ที่รอคำตอบจากช่องเนทีฟไม่ได้
+  bool _deviceSttReady = false;
+  bool get deviceSttReady => _deviceSttReady;
+
+  /// ถามใหม่ว่าเครื่องถอดเสียงในเครื่องได้หรือยัง
+  ///
+  /// เรียกตอนเปิดแอป และตอนกลับเข้าแอป — ผู้ใช้อาจเพิ่งไปโหลดชุดภาษามา
+  /// ถ้าจำคำตอบเก่าไว้ตลอด เขาจะโหลดมาแล้วปุ่มยังใช้ไม่ได้จนกว่าจะปิดเปิดแอป
+  Future<void> refreshDeviceStt({bool forget = false}) async {
+    final dev = deviceSpeech;
+    if (dev == null) return;
+    if (forget) dev.forget();
+    final ok = await dev.available();
+    if (_disposed || ok == _deviceSttReady) return;
+    _deviceSttReady = ok;
+    _notify();
+  }
+
+  /// ตัวถอดเสียงในเครื่อง — ฉีดเข้ามาได้เพื่อให้เทสต์ไม่ต้องมีช่องเนทีฟ
+  DeviceSpeech? _speechEngine;
+
+  DeviceSpeech? get deviceSpeech => _speechEngine;
+
+  void attachDeviceSpeech(DeviceSpeech? d) => _speechEngine = d;
+
   /// ตอนนี้ถอดเสียงได้ไหม — ไมค์จะเปิดใช้ก็ต่อเมื่อจริง
+  ///
+  /// 🔴 สมองในเครื่องใช้ได้ **ก็ต่อเมื่อเครื่องถอดเสียงในเครื่องได้จริง**
+  /// ไม่ใช่ตกไปใช้ทางข้างนอกแทน — ทางนั้นสัญญาว่าไม่มีอะไรออกนอกเครื่อง
   bool get canTranscribe => switch (_brain) {
-        BrainProvider.onDevice => false,
+        BrainProvider.onDevice => _deviceSttReady,
         BrainProvider.openai => hasOwnKey,
         BrainProvider.mindProxy =>
           _storeBaseUrl.trim().isNotEmpty && _licenseKey.trim().isNotEmpty,
         BrainProvider.homeServer => _homeServerUrl.trim().isNotEmpty,
       };
 
+  /// เสียงจะถูกถอด**ในเครื่อง**ไหม — ใช้บอกผู้ใช้ว่าเสียงไปไหน
+  bool get transcribesOnDevice => _brain == BrainProvider.onDevice;
+
   /// ทำไมถึงยังใช้ไมค์ไม่ได้ — ว่างถ้าใช้ได้อยู่แล้ว
   ///
   /// ต้องบอกให้ตรงกับสิ่งที่เขาต้องไปทำ ไม่ใช่ปุ่มที่กดแล้วเงียบ
   String get whyNoMic => switch (_brain) {
         _ when canTranscribe => '',
-        BrainProvider.onDevice => s.micNeedsCloudBrain,
+        BrainProvider.onDevice => s.micNoOnDevice,
         BrainProvider.openai => s.ownKeyNeeded,
         BrainProvider.mindProxy => s.licenseNeeded,
         BrainProvider.homeServer => s.homeServerNoUrl,
