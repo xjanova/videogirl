@@ -255,6 +255,9 @@ window.minde = {
       gesture: m?.gesture?.meta.id ?? null,
       clip:    m?.current?.meta.id ?? null,
       missing: m?.missing ?? [],
+      // ชุดนี้ขยับคิ้ว/ลิ้นได้ไหม — คำถามที่ตาเปล่าตอบไม่ได้ เพราะ morph
+      // ที่ไม่มีคือ**ความเงียบ** ไม่ใช่ error · รายงานดีบัคอ่านค่านี้ไปด้วย
+      morphs: avatar.morphs?.report() ?? null,
     };
   },
 

@@ -28,6 +28,7 @@ import { Idle } from './idle.js';
 import { LipSync } from './lipsync.js';
 import { Framing } from './framing.js';
 import { FaceMocap } from './mocap.js';
+import { Morphs } from './morphs.js';
 
 /**
  * Mood -> the VRM expression that carries it, and how much of it.
@@ -153,6 +154,11 @@ export class Avatar {
         // แต่ไม่ใช่ทุกรุ่นที่มี — ต้อง probe ครั้งเดียวตอนโหลด เพราะ setValue
         // ชื่อที่ไม่มีคือ no-op เงียบ ๆ แล้วเธอจะไม่ยิ้มเลยโดยไม่มีอะไรบอก
         this._hasRelaxed = !!em?.getExpression?.('relaxed');
+
+        // รูปหน้าที่ expression ไปไม่ถึง — คิ้วเป็นตัวสำคัญ (ดู morphs.js)
+        // ไล่ดูครั้งเดียวตรงนี้ แล้ว probe() บอกได้ว่าชุดนี้ทำอะไรได้บ้าง
+        this.morphs = new Morphs().bind(vrm);
+        console.info('avatar: morph ที่ขับได้', this.morphs.report());
 
         // 🔴 สายตาของรุ่นนี้ **ไม่ได้ทำด้วย expression**
         //
@@ -301,6 +307,48 @@ export class Avatar {
     mocapStatus() { return this.mocap.status(); }
 
     /**
+     * คิ้ว ตาเบิก ลิ้น — รูปหน้าที่ VRM expression ไปไม่ถึง
+     *
+     * 🔴 **ต้องลดตามสีหน้ารวมที่ใส่อยู่** ไม่ใช่ใส่เต็มค่าจากกล้อง
+     *
+     * `Fcl_ALL_Joy` / `Fcl_ALL_Angry` ฯลฯ ที่ expression ใช้ **มีการขยับคิ้ว
+     * รวมอยู่ในตัวมันเองแล้ว** · ใส่ `happy` เต็มค่าพร้อม `Fcl_BRW_Joy`
+     * เต็มค่า = คิ้วถูกดันสองรอบ หน้าบิดจนดูไม่ออกว่าเป็นอารมณ์อะไร
+     *
+     * ตัวคูณข้างล่างจึงเป็น "ส่วนที่สีหน้ารวมยัง**ไม่ได้**อธิบาย" — สีหน้า
+     * แรงเท่าไหร่ คิ้วอิสระก็เบาลงเท่านั้น · หน้านิ่งแต่คิ้วขยับ (ซึ่งเป็น
+     * กรณีที่ expression ทำไม่ได้เลย) ได้น้ำหนักเต็ม
+     */
+    _brows() {
+        const m = this.morphs;
+        if (!m) return;
+
+        if (!this.puppet) {
+            // เลิกเชิดแล้วต้องกลับเป็นศูนย์ · ไม่มีใครเขียนค่าพวกนี้อีกเลย
+            // ปิดโหมดตอนเลิกคิ้วอยู่ = คิ้วค้างอย่างนั้นทั้งเซสชัน
+            // (กับดักเดียวกับ lookUp/Down ที่เคยโดนมาแล้ว)
+            if (this._browsOn) { m.clear(); this._browsOn = false; }
+            return;
+        }
+        this._browsOn = true;
+
+        const e = this.mocap.emote;
+        const b = this.mocap.brow;
+        const loud = Math.max(e.happy, e.sad, e.angry, e.surprised, e.relaxed);
+        const room = 1 - Math.min(1, loud);
+
+        m.set('browUp', b.up * room);
+        m.set('browDown', b.down * room);
+        m.set('browSorrow', b.sorrow * room);
+        m.set('browJoy', e.relaxed * room);
+        m.set('eyeWide', b.up * room * 0.6);
+
+        // ลิ้น — ชุดที่ไม่มี morph ลิ้นจะเป็น no-op ที่**รู้ตัวแล้ว**
+        // (`morphs.missing` บอกไว้ตั้งแต่ตอนโหลด) ไม่ใช่เงียบแบบ setValue
+        m.set('tongue', this.mocap.tongue);
+    }
+
+    /**
      * 🔴 **ข้อผิดพลาดในลูปนี้เคยเงียบสนิทมาแล้ว**
      *
      * `requestAnimationFrame` ถูกต่อคิวเป็นบรรทัดแรกเสมอ (ตั้งใจ — ลูปต้อง
@@ -387,6 +435,13 @@ export class Avatar {
         // 4 — propagate, look-at, spring bones.
         vrm.update(dt);
 
+        // 4b — รูปหน้าที่ expression ไปไม่ถึง (คิ้ว ลิ้น ตาเบิก)
+        //
+        // **หลัง** vrm.update เสมอ · VRMExpressionManager รีเซ็ต morph ที่มัน
+        // ผูกไว้เป็นศูนย์ทุกเฟรมก่อนใส่ค่าใหม่ · ตัวที่ไม่มีใครผูกมันไม่แตะ
+        // แต่การเขียนทีหลังแปลว่าไม่ต้องพึ่งรายละเอียดภายในของไลบรารีเลย
+        this._brows();
+
         this.framing?.update(dt, this.speaking ? 0.65 : 1.1);
         this.renderer.render(this.scene, this.camera);
     }
@@ -429,6 +484,9 @@ export class Avatar {
             ease('sad', e.sad);
             ease('angry', e.angry);
             ease('surprised', e.surprised);
+            // ยิ้มแบบสบายใจ — คนละตัวกับ happy ของ VRoid ที่หลับตาแรง
+            // มีเฉพาะรุ่นที่ probe เจอ (ดู _hasRelaxed)
+            if (this._hasRelaxed) ease('relaxed', e.relaxed);
 
             this._aimEyes(this.mocap.look);
 

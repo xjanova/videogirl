@@ -72,7 +72,18 @@ const WANT = [
     'eyeLookInLeft', 'eyeLookInRight',
     'eyeLookOutLeft', 'eyeLookOutRight',
     'browInnerUp', 'browDownLeft', 'browDownRight',
+    'browOuterUpLeft', 'browOuterUpRight',
     'eyeWideLeft', 'eyeWideRight',
+    'eyeSquintLeft', 'eyeSquintRight',
+
+    // 🔴 เก็บไว้ **ทั้งที่โมเดลที่แถมมาขยับลิ้นไม่ได้**
+    //
+    // ตรวจไฟล์ minde.vrm แล้ว: morph target 57 ตัว ไม่มีลิ้นสักตัว
+    // (`Fcl_HA_*` คือ 歯 = ฟัน กับ 牙 = เขี้ยว ไม่ใช่ลิ้น) และ VRM 1.0
+    // ไม่มี expression มาตรฐานสำหรับลิ้น · ชุดตัวละครอื่นที่ปั้นลิ้นมาเอง
+    // จะใช้ได้ทันทีเมื่อมี morph ชื่อที่ [MORPHS] รู้จัก — เก็บค่าไว้ตั้งแต่
+    // ตอนนี้จึงไม่ต้องกลับมาแก้ตรงนี้อีก และ probe() บอกได้ว่าโมเดลไหนทำได้
+    'tongueOut',
 ];
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -107,7 +118,21 @@ export class FaceMocap {
         this.blinkL = 0;
         this.blinkR = 0;
         this.look = { up: 0, down: 0, left: 0, right: 0 };
-        this.emote = { happy: 0, sad: 0, surprised: 0, angry: 0 };
+        this.emote = { happy: 0, sad: 0, surprised: 0, angry: 0, relaxed: 0 };
+
+        /**
+         * คิ้ว — แยกจาก [emote] เพราะ **VRM ไม่มี expression สำหรับคิ้ว**
+         *
+         * expression ทั้งห้าของ VRM ผูกกับ `Fcl_ALL_*` ซึ่งเป็นรูปหน้ารวม
+         * ทั้งใบ · คิ้วจึงขยับได้ก็ต่อเมื่อขับ morph `Fcl_BRW_*` ตรง ๆ
+         * (ดู avatar.js `_brows`) ค่าตรงนี้คือวัตถุดิบของมัน
+         */
+        this.brow = { up: 0, down: 0, sorrow: 0 };
+
+        /**
+         * ลิ้น — 0..1 · โมเดลส่วนใหญ่ขยับไม่ได้ ดูเหตุผลที่ [WANT]
+         */
+        this.tongue = 0;
         this.head = new THREE.Euler(0, 0, 0, 'YXZ');
 
         this._open = 0;
@@ -366,15 +391,40 @@ export class FaceMocap {
         // แล้วมันจะกลืนรูปปากจนพูดไม่รู้เรื่อง
         const smile = avg(g('mouthSmileLeft'), g('mouthSmileRight'));
         const frown = avg(g('mouthFrownLeft'), g('mouthFrownRight'));
-        const browUp = g('browInnerUp');
+        const browInner = g('browInnerUp');
+        const browOuter = avg(g('browOuterUpLeft'), g('browOuterUpRight'));
+        const browUp = clamp01(browInner * 0.5 + browOuter * 0.5);
         const browDn = avg(g('browDownLeft'), g('browDownRight'));
         const eyeWide = avg(g('eyeWideLeft'), g('eyeWideRight'));
+        const squint = avg(g('eyeSquintLeft'), g('eyeSquintRight'));
         const ke = ease(9);
         this.emote.happy += (clamp01(smile * 0.75) - this.emote.happy) * ke;
         this.emote.sad += (clamp01(frown * 0.70) - this.emote.sad) * ke;
         this.emote.surprised +=
             (clamp01((browUp * 0.55 + eyeWide * 0.45) * 0.8) - this.emote.surprised) * ke;
         this.emote.angry += (clamp01(browDn * 0.60) - this.emote.angry) * ke;
+
+        // ยิ้มแบบสบายใจ = ปากยิ้ม **และตาเอาด้วย**
+        //
+        // ยิ้มที่ตาไม่ขยับคือยิ้มมารยาท ยิ้มที่ตาหยีตามคือยิ้มจริง (Duchenne)
+        // ซึ่งตรงกับ `Fcl_ALL_Fun` ของ VRoid พอดี · คูณกันจึงติดเฉพาะตอนที่
+        // ทั้งสองอย่างเห็นด้วยกัน ไม่ใช่เดาเอาจากปากอย่างเดียว
+        this.emote.relaxed +=
+            (clamp01(smile * squint * 1.6) - this.emote.relaxed) * ke;
+
+        // ── คิ้ว ───────────────────────────────────────────
+        //
+        // เศร้า = คิ้ว**ในยกขึ้นแต่นอกไม่ยก** ซึ่งเป็นรูปที่แยกออกจาก
+        // "ตกใจ" (ยกทั้งเส้น) ได้จริง · ใช้ผลต่างของสองตัวนี้ ไม่ใช่ผลรวม
+        const kb = ease(11);
+        this.brow.up += (browUp - this.brow.up) * kb;
+        this.brow.down += (browDn - this.brow.down) * kb;
+        this.brow.sorrow +=
+            (clamp01((browInner - browOuter) * 1.4) - this.brow.sorrow) * kb;
+
+        // ลิ้น — ตอบสนองเร็ว เพราะแลบลิ้นเป็นจังหวะสั้น ไม่ใช่สีหน้าที่ค้าง
+        const tongue = clamp01(g('tongueOut'));
+        this.tongue += (tongue - this.tongue) * ease(tongue > this.tongue ? 60 : 30);
 
         // ── หัว ────────────────────────────────────────────
         const flip = MIRROR ? -1 : 1;
