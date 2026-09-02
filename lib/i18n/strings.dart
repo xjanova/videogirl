@@ -361,6 +361,57 @@ class S {
   String messagesKept(int n) =>
       _('เก็บบทสนทนาไว้ $n ข้อความ', '$n messages kept');
 
+  // ═══ รายงานดีบัคให้ผู้พัฒนา ══════════════════════════════
+  String get debugTitle => _('ส่งข้อมูลให้ผู้พัฒนา', 'Send data to the developer');
+  String get debugSubtitle => _(
+        'ช่วยหาสาเหตุตอนมีอะไรไม่ทำงาน',
+        'Helps track down what is not working',
+      );
+
+  /// 🔴 บอกว่า **ไม่ส่ง**อะไร ก่อนบอกว่าส่งอะไร
+  ///
+  /// คนที่ลังเลกับปุ่มนี้ลังเลเพราะกลัวว่าบทสนทนาจะหลุด ไม่ใช่เพราะอยากรู้ว่า
+  /// เราเก็บรุ่นแอปไปด้วยไหม · ตอบคำถามที่เขาถามจริงก่อน
+  String get debugWhat => _(
+        'ไม่ส่ง: บทสนทนา ความจำ ไทม์ไลน์ คีย์ รหัสสิทธิ์ เบอร์โทร ชื่อคน\n'
+        'ส่ง: รุ่นแอป รุ่นแอนดรอยด์ แรม ตัวเลือกที่ตั้งไว้ ข้อความผิดพลาด '
+        'จำนวน (ไม่ใช่เนื้อหา) และบันทึกการทำงานล่าสุดที่ล้างความลับแล้ว',
+        'Never sent: conversations, memories, timeline, keys, license code, '
+        'phone numbers, names\n'
+        'Sent: app version, Android version, RAM, the options you picked, '
+        'error messages, counts (not content), and recent logs with secrets '
+        'stripped out',
+      );
+
+  /// ย้ำว่าเห็นก่อนเสมอ — เป็นข้อที่ทำให้คนกล้ากดจริง
+  String get debugPreviewFirst => _(
+        'กดดูได้ทั้งฉบับก่อนส่ง · ที่เห็นคือสิ่งที่ส่งจริง ไม่ใช่ตัวอย่าง',
+        'You can read the whole thing first — what you see is exactly what is sent',
+      );
+
+  String get debugBuild => _('เตรียมรายงาน', 'Prepare a report');
+  String get debugPreview => _('ดูก่อนส่ง', 'Read it first');
+  String get debugSend => _('ส่งให้ผู้พัฒนา', 'Send to the developer');
+  String get debugSave => _('บันทึกเป็นไฟล์', 'Save as a file');
+  String get debugSending => _('กำลังส่ง…', 'Sending…');
+  String get debugSent => _('ส่งแล้ว ขอบคุณค่ะ', 'Sent — thank you');
+  String debugSaved(String path) => _('บันทึกไว้ที่ $path', 'Saved to $path');
+  String get debugNoBase =>
+      _('ยังไม่ได้ตั้งที่อยู่หลังบ้าน', 'No server address is set');
+  String debugSendFailed(int code) =>
+      _('ส่งไม่สำเร็จ ($code)', 'Sending failed ($code)');
+  String get debugOffline =>
+      _('ส่งไม่สำเร็จ · ต่อเน็ตไม่ได้', 'Sending failed — cannot reach the internet');
+
+  String get debugNoReport =>
+      _('ยังไม่ได้เตรียมรายงาน', 'No report prepared yet');
+
+  /// หลังบ้านยังไม่มีปลายทางนี้ — คนละเรื่องกับ "ส่งไม่ผ่าน"
+  String get debugNoEndpoint => _(
+        'หลังบ้านยังไม่เปิดรับรายงาน · บันทึกเป็นไฟล์แล้วส่งทางอื่นได้',
+        'The server is not accepting reports yet — save the file and send it another way',
+      );
+
   // ═══ เฝ้างานเบื้องหลัง ══════════════════════════════════
   String get bgTitle => _('ให้เธอเฝ้างานตอนปิดแอป', 'Let her watch while the app is closed');
 

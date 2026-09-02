@@ -19,6 +19,8 @@ import 'system/permissions.dart';
 import 'ai/device_capability.dart';
 import 'ai/device_speech.dart';
 import 'screens/splash_screen.dart';
+import 'diagnostics/debug_reporter.dart';
+import 'diagnostics/mind_log.dart';
 import 'store/mind_store.dart';
 import 'store/mind_vault.dart';
 import 'screens/unsupported_screen.dart';
@@ -37,6 +39,11 @@ const kAvatarPort = 8747;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 🔴 ดักบันทึกก่อนอย่างอื่นทั้งหมด — บรรทัดที่มีค่าที่สุดตอนไล่บั๊กคือ
+  // บรรทัดแรก ๆ ของการเปิดแอป (เซิร์ฟเวอร์ ฐานข้อมูล ปลั๊กอิน) ติดตั้งทีหลัง
+  // แปลว่ารายงานจะไม่มีช่วงที่คนอยากดูที่สุดเลย
+  MindLog.install();
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -320,6 +327,8 @@ class _MindBootstrapState extends State<MindBootstrap>
         ChangeNotifierProvider.value(value: _session),
         ChangeNotifierProvider.value(value: _soul),
         ChangeNotifierProvider.value(value: _vault),
+        ChangeNotifierProvider(
+            create: (_) => DebugReporter(strings: () => _state.s)),
       ],
       child: Consumer<MindState>(
         builder: (context, state, _) => MaterialApp(

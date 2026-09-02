@@ -14,12 +14,15 @@ import '../ai/openai_config.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
 import '../avatar/avatar_pack.dart';
+import '../avatar/avatar_view.dart';
 import '../background/mind_watch.dart';
 import 'shop_screen.dart';
 import '../memory/mind_memory.dart';
 import '../system/permissions.dart';
 import '../persona/mind_soul.dart';
 import '../state/mind_state.dart';
+import '../diagnostics/debug_report.dart';
+import '../diagnostics/debug_reporter.dart';
 import '../store/mind_vault.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -152,6 +155,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             _memoryCard(context, state, mode, t),
             const SizedBox(height: MindSpace.md),
             _dataCard(context, state, mode, t),
+            const SizedBox(height: MindSpace.md),
+            _debugCard(context, state, mode, t),
             const SizedBox(height: MindSpace.md),
             // เตือนเฉพาะตอนที่ "เลือกใช้คีย์ตัวเองแล้วแต่ยังไม่ได้ใส่คีย์"
             // เดิมเตือนทุกครั้งที่ไม่มีคีย์ตอน build ซึ่งตอนนี้คือ **ทุกเครื่อง
@@ -2190,6 +2195,165 @@ class _SettingsScreenState extends State<SettingsScreen>
   static String _clockOf(DateTime t) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(t.hour)}:${two(t.minute)}';
+  }
+
+  /// รายงานดีบัคให้ผู้พัฒนา
+  ///
+  /// 🔴 **ปุ่มส่งกดไม่ได้จนกว่าจะเปิดอ่านแล้ว** ไม่ใช่แค่ "มีปุ่มให้ดู"
+  ///
+  /// คำอธิบายว่าส่งอะไรบ้างกับของที่ส่งจริงเพี้ยนจากกันได้ทุกครั้งที่มีใคร
+  /// เพิ่มฟิลด์แล้วลืมแก้คำอธิบาย · ทางเดียวที่คำสัญญานี้เป็นจริงตลอดไปคือ
+  /// บังคับให้เจ้าของเห็นของจริงก่อน แล้วของจริงเป็นคนอธิบายตัวเอง
+  Widget _debugCard(
+      BuildContext context, MindState state, MindMode mode, S t) {
+    final r = context.watch<DebugReporter>();
+    final ready = r.report != null;
+
+    return _card(
+      mode: mode,
+      label: t.debugTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(t.debugSubtitle,
+              style: const TextStyle(
+                  fontSize: 11, height: 1.5, color: MindColors.ink55)),
+          const SizedBox(height: MindSpace.sm),
+          Container(
+            padding: const EdgeInsets.all(11),
+            decoration: BoxDecoration(
+              color: MindColors.glass80,
+              borderRadius: BorderRadius.circular(MindRadius.control),
+              border: Border.all(color: MindColors.glassBorder, width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 6,
+              children: [
+                Text(t.debugWhat,
+                    style: const TextStyle(
+                        fontSize: 10.5, height: 1.55, color: MindColors.ink75)),
+                Text(t.debugPreviewFirst,
+                    style: TextStyle(
+                        fontSize: 10.5, height: 1.55, color: mode.accent)),
+              ],
+            ),
+          ),
+          const SizedBox(height: MindSpace.md),
+
+          if (r.error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: MindSpace.sm),
+              child: Text(r.error!,
+                  style: const TextStyle(
+                      fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
+            ),
+          if (r.stage == ReportStage.sent)
+            Padding(
+              padding: const EdgeInsets.only(bottom: MindSpace.sm),
+              child: Text(t.debugSent,
+                  style: const TextStyle(
+                      fontSize: 10.5, color: Color(0xFF00A894))),
+            ),
+          if (r.savedPath != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: MindSpace.sm),
+              child: Text(t.debugSaved(r.savedPath!),
+                  style: const TextStyle(
+                      fontSize: 10, height: 1.5, color: MindColors.ink55)),
+            ),
+
+          MindButton(
+            label: ready ? t.debugPreview : t.debugBuild,
+            mode: mode,
+            onTap: () => _openReport(state, r),
+          ),
+
+          // 🔴 ส่งได้ก็ต่อเมื่อเปิดอ่านแล้ว — ดูเงื่อนไขหัวเมธอด
+          if (ready) ...[
+            const SizedBox(height: MindSpace.sm),
+            Row(
+              spacing: MindSpace.sm,
+              children: [
+                Expanded(
+                  child: _plainButton(
+                    label: t.debugSave,
+                    mode: mode,
+                    onTap: () => r.saveToFile(),
+                  ),
+                ),
+                Expanded(
+                  child: _plainButton(
+                    label: r.stage == ReportStage.sending
+                        ? t.debugSending
+                        : t.debugSend,
+                    mode: mode,
+                    onTap: r.stage == ReportStage.sending
+                        ? null
+                        : () => r.send(
+                              baseUrl: state.storeBaseUrl,
+                              license: state.licenseKey,
+                            ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _plainButton({
+    required String label,
+    required MindMode mode,
+    required VoidCallback? onTap,
+  }) =>
+      Semantics(
+        button: true,
+        enabled: onTap != null,
+        label: label,
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: MindColors.glass80,
+              borderRadius: BorderRadius.circular(MindRadius.control),
+              border: Border.all(
+                  color: mode.accent.withValues(alpha: .35), width: 1),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: onTap == null ? MindColors.ink45 : mode.accent,
+                )),
+          ),
+        ),
+      );
+
+  /// เตรียมรายงานแล้วเปิดให้อ่านทั้งฉบับ
+  Future<void> _openReport(MindState state, DebugReporter r) async {
+    final avatar = context.read<MindAvatarController>();
+    final vault = context.read<MindVault>();
+    final report =
+        await r.collect(state: state, avatar: avatar, vault: vault);
+    if (!mounted) return;
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => TextEditorScreen(
+          title: S.of(context).debugTitle,
+          hint: '',
+          initial: DebugReport.pretty(report),
+          mode: state.mode,
+          onReset: () => DebugReport.pretty(report),
+        ),
+      ),
+    );
   }
 
   Widget _card({
