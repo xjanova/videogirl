@@ -22,6 +22,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../store/mind_db.dart';
+
 import '../memory/mind_memory.dart' show looksLikeSecret;
 
 /// ชนิดของเรื่องที่บันทึก — มีผลกับสีจุดบนเส้นเวลาและการนับสรุป
@@ -111,6 +113,12 @@ class MindJournal extends ChangeNotifier {
   final Directory? _injectedDir;
   final DateTime Function() _clock;
 
+  /// ฐานข้อมูล — ต่อเข้ามาทีหลัง เหมือน [MindMemory]
+  /// null = ตกกลับไปใช้ `journal.json` เหมือนก่อนย้ายมา SQLite
+  MindDb? _db;
+
+  void attachDb(MindDb? db) => _db = db;
+
   final List<JournalEntry> _entries = [];
   bool _loaded = false;
 
@@ -124,6 +132,24 @@ class MindJournal extends ChangeNotifier {
   Future<void> load() async {
     if (_loaded) return;
     _loaded = true;
+
+    final db = _db;
+    if (db != null) {
+      try {
+        _entries
+          ..clear()
+          ..addAll((await db.allJournal(limit: kJournalLimit))
+              .map(_fromRow)
+              .whereType<JournalEntry>());
+        _sort();
+        if (_entries.isEmpty) await _absorbLegacyFile();
+        notifyListeners();
+        return;
+      } on Object catch (e) {
+        debugPrint('journal: อ่านจากฐานไม่ได้ ตกไปใช้ไฟล์ — $e');
+      }
+    }
+
     try {
       final f = await _file();
       if (!await f.exists()) return;
@@ -138,6 +164,48 @@ class MindJournal extends ChangeNotifier {
       // ไฟล์เสียไม่ควรทำให้แอปเปิดไม่ได้ — เริ่มจากสมุดว่างดีกว่าค้าง
       debugPrint('journal: อ่านไฟล์ไม่ได้ — $e');
     }
+  }
+
+  /// ย้าย `journal.json` เข้าฐาน ครั้งเดียว · ไม่ลบไฟล์เก่าทิ้ง
+  Future<void> _absorbLegacyFile() async {
+    try {
+      final f = await _file();
+      if (!await f.exists()) return;
+      final raw = jsonDecode(await f.readAsString());
+      if (raw is! List) return;
+      final old =
+          raw.map(JournalEntry.fromJson).whereType<JournalEntry>().toList();
+      if (old.isEmpty) return;
+
+      _entries.addAll(old);
+      _sort();
+      for (final e in old) {
+        await _db!.putJournal(_toRow(e));
+      }
+      debugPrint('journal: ย้ายไทม์ไลน์เก่าเข้าฐาน ${old.length} รายการ');
+    } on Object catch (e) {
+      debugPrint('journal: ย้ายไทม์ไลน์เก่าไม่สำเร็จ — $e');
+    }
+  }
+
+  static Map<String, Object?> _toRow(JournalEntry e) => {
+        'id': e.id,
+        'kind': e.kind.name,
+        'text': e.title,
+        'detail': e.detail,
+        'at': e.at.millisecondsSinceEpoch,
+      };
+
+  static JournalEntry? _fromRow(Map<String, Object?> r) {
+    final title = r['text'] as String?;
+    if (title == null || title.isEmpty) return null;
+    return JournalEntry(
+      id: '${r['id']}',
+      at: DateTime.fromMillisecondsSinceEpoch((r['at'] as int?) ?? 0),
+      kind: JournalKind.parse(r['kind']),
+      title: title,
+      detail: (r['detail'] as String?) ?? '',
+    );
   }
 
   /// บันทึกหนึ่งเรื่อง · คืน false ถ้าไม่ได้บันทึก
@@ -218,6 +286,19 @@ class MindJournal extends ChangeNotifier {
   void _sort() => _entries.sort((a, b) => b.at.compareTo(a.at));
 
   Future<void> _save() async {
+    final db = _db;
+    if (db != null) {
+      try {
+        await db.clearJournal();
+        for (final e in _entries) {
+          await db.putJournal(_toRow(e));
+        }
+        await db.trimJournal(kJournalLimit);
+        return;
+      } on Object catch (e) {
+        debugPrint('journal: เขียนลงฐานไม่ได้ ตกไปใช้ไฟล์ — $e');
+      }
+    }
     try {
       final f = await _file();
       await f.parent.create(recursive: true);

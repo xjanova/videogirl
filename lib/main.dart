@@ -18,6 +18,8 @@ import 'background/mind_watch.dart';
 import 'system/permissions.dart';
 import 'ai/device_capability.dart';
 import 'screens/splash_screen.dart';
+import 'store/mind_store.dart';
+import 'store/mind_vault.dart';
 import 'screens/unsupported_screen.dart';
 import 'shell.dart';
 import 'i18n/strings.dart';
@@ -73,7 +75,8 @@ class MindBootstrap extends StatefulWidget {
   State<MindBootstrap> createState() => _MindBootstrapState();
 }
 
-class _MindBootstrapState extends State<MindBootstrap> {
+class _MindBootstrapState extends State<MindBootstrap>
+    with WidgetsBindingObserver {
   final MindState _state = MindState();
   final AvatarPacks _pack = AvatarPacks();
 
@@ -112,6 +115,13 @@ class _MindBootstrapState extends State<MindBootstrap> {
   /// ยังไม่มีตัวตน แล้วน้ำเสียงจะเปลี่ยนกลางคันโดยไม่มีสาเหตุที่คนดูเข้าใจ
   final MindSoul _soul = MindSoul();
 
+  /// สำเนาที่รอดจากการถอนแอป — อ่านสถานะสิทธิ์จากตัวเดียวกับทั้งแอป
+  late final MindVault _vault =
+      MindVault(hasAllFiles: () => _perms.of(MindPermission.allFiles));
+
+  /// ที่เก็บข้อมูลทั้งชุด — null จนกว่า boot รอบแรกจะเสร็จ
+  MindStore? _store;
+
   /// ตัวควบคุมอวาตาร์อยู่ที่นี่ ไม่ใช่ในเชลล์ เพราะหน้าเปิดแอปต้องอ่าน
   /// ความคืบหน้าการโหลด VRM มาโชว์เป็นเปอร์เซ็นต์จริง
   final MindAvatarController _avatar = MindAvatarController();
@@ -143,7 +153,22 @@ class _MindBootstrapState extends State<MindBootstrap> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _boot();
+  }
+
+  /// 🔴 สำเนาเดี๋ยวนี้ตอนแอปกำลังจะถูกพับลงพื้นหลัง
+  ///
+  /// นี่คือจังหวะสุดท้ายที่โค้ดของเรายังวิ่งอยู่แน่นอน · หลังจากนี้ระบบฆ่า
+  /// แอปทิ้งเมื่อไหร่ก็ได้โดยไม่บอก และ**วันที่ผู้ใช้ถอนแอปก็ไม่มีโค้ดเราวิ่ง
+  /// เลยแม้แต่บรรทัดเดียว** ถ้ารอสำเนาตามนาฬิกาหน่วงอย่างเดียว สิ่งที่คุย
+  /// ในนาทีสุดท้ายก่อนถอนแอปจะไม่เคยออกไปถึงสำเนา
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_state.saveVaultNow());
+    }
   }
 
   Future<void> _boot() async {
@@ -154,11 +179,25 @@ class _MindBootstrapState extends State<MindBootstrap> {
     try {
       await InAppLocalhostServer(port: kAvatarPort).start();
 
+      // 🔴 เปิดที่เก็บข้อมูล **ก่อนใครทั้งหมด**
+      //
+      // ทุกคนข้างล่างอ่านค่าจากมัน · และถ้าเพิ่งลงแอปใหม่ ขั้นนี้คือขั้นที่
+      // กู้ข้อมูลกลับมาจากสำเนาข้างนอก ซึ่งต้องเสร็จ**ก่อน**ใครเริ่มอ่าน
+      // ไม่งั้นทุกคนจะอ่านจากฐานเปล่าแล้วเขียนค่าตั้งต้นทับของที่เพิ่งกู้มา
+      // — ซึ่งจะกลายเป็นการลบข้อมูลที่กู้สำเร็จแล้วทิ้ง ในจังหวะที่ไม่มีใครดู
+      //
+      // สิทธิ์ไฟล์ต้องอ่านก่อนด้วย ไม่งั้น vault จะคิดว่าไม่มีสิทธิ์แล้วข้ามการกู้
+      await _perms.refresh();
+      _vault.restoreSwitch(await MindVault.readSwitch());
+      _store = await MindStore.open(vault: _vault);
+      _state.memory.attachDb(_store?.db);
+
       // อยู่รอบแรกเพราะบทสนทนาเกิดขึ้นได้ทันทีที่เชลล์ขึ้น · ต่อทีหลัง
       // แปลว่าข้อความแรก ๆ ไม่ถูกบันทึก โดยไม่มีอะไรบอกว่าหายไป
       //
       // (การกู้บทสนทนาเก่าไม่ผ่าน _push — ใช้ _context.add ตรง ๆ
       //  จึงไม่มีการบันทึกซ้ำทุกครั้งที่เปิดแอป)
+      _journal.attachDb(_store?.db);
       await _journal.load();
       _state.attachJournal(_journal);
       _pack.onInstalled = (pack) => _journal.record(
@@ -166,10 +205,10 @@ class _MindBootstrapState extends State<MindBootstrap> {
         pack.nameFor(_state.lang == AppLang.th),
       );
 
-      await _soul.load();
+      await _soul.load(kv: _store!.kv);
       _state.attachSoul(_soul);
 
-      await _state.load();
+      await _state.load(store: _store);
       await _pack.restore(preferId: _state.avatarPackId);
 
       // อยู่รอบแรกเพราะต้องกั้น **ก่อน** เชลล์เกิด ไม่งั้น WebView จะเริ่มโหลด
@@ -227,6 +266,7 @@ class _MindBootstrapState extends State<MindBootstrap> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _calls.removeListener(_showCallOnStage);
     _calls.onCallEnded = null;
     _session.dispose();
@@ -270,6 +310,7 @@ class _MindBootstrapState extends State<MindBootstrap> {
         ChangeNotifierProvider.value(value: _calls),
         ChangeNotifierProvider.value(value: _session),
         ChangeNotifierProvider.value(value: _soul),
+        ChangeNotifierProvider.value(value: _vault),
       ],
       child: Consumer<MindState>(
         builder: (context, state, _) => MaterialApp(

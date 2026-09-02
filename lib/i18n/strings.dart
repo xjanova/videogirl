@@ -302,6 +302,64 @@ class S {
         'and only then fails at the install step',
       );
 
+  String get permAllFiles => _('ไฟล์ทั้งเครื่อง', 'All files on this phone');
+
+  /// 🔴 ต้องบอกให้ชัดว่าขอไปทำอะไร **และไม่ได้ทำอะไร**
+  ///
+  /// สิทธิ์นี้ฟังดูน่ากลัวกว่าทุกตัวในรายการ (มันแรงจริง) คนที่อ่านแล้วไม่รู้ว่า
+  /// เอาไปทำอะไรจะกดปฏิเสธ ซึ่งถูกต้องแล้ว · หน้าที่ของข้อความนี้คือบอกว่า
+  /// แลกอะไรกับอะไร ไม่ใช่กล่อมให้กด
+  String get permAllFilesWhy => _(
+        'เก็บสำเนาข้อมูลไว้นอกพื้นที่แอป ลงแอปใหม่แล้วทุกอย่างกลับมาเอง\n'
+        'ของในเครื่องทั้งหมดถูกล้างตอนถอนแอป ไม่มีทางอื่นที่รอดได้\n'
+        'เขียนแค่โฟลเดอร์ GigGok ของตัวเอง ไม่ไปยุ่งกับไฟล์ของใคร',
+        'Keeps a copy outside the app so a reinstall brings everything back.\n'
+        'Everything inside the app is wiped on uninstall — there is no other way.\n'
+        'It only writes its own GigGok folder, and touches nobody else’s files.',
+      );
+
+  // ═══ ข้อมูลกับการสำรอง ══════════════════════════════════
+  String get dataTitle => _('ข้อมูลของมายด์', "Mind's data");
+  String get dataSubtitle => _(
+        'บทสนทนา ความจำ ไทม์ไลน์ และค่าที่ตั้งไว้ทั้งหมด',
+        'Conversations, memories, timeline and every setting',
+      );
+
+  /// สวิตช์ที่เจ้าของสั่งไว้ — ค่าตั้งต้นคือ **ไม่ติ๊ก** = ข้อมูลรอด
+  String get wipeOnUninstall =>
+      _('ลบข้อมูลทั้งหมดเมื่อถอนแอป', 'Delete everything when the app is uninstalled');
+  String get wipeOnUninstallWhy => _(
+        'ติ๊กแล้วสำเนาข้างนอกถูกลบทันที ไม่ใช่รอถึงวันถอนแอป — '
+        'เพราะวันนั้นไม่มีโค้ดของเราวิ่งอยู่แล้วที่จะไปลบให้ได้',
+        'Ticking this deletes the outside copy right away, not on the day you '
+        'uninstall — by then none of our code is running to do it.',
+      );
+
+  String get vaultReady => _('สำเนาพร้อม ลงใหม่แล้วข้อมูลกลับมาเอง',
+      'Copy is in place — a reinstall brings everything back');
+  String vaultSavedAt(String when) =>
+      _('สำเนาล่าสุด $when', 'Last copied $when');
+  String get vaultNeedsPermission => _(
+        'ยังไม่ได้ให้สิทธิ์ไฟล์ทั้งเครื่อง — ตอนนี้ถอนแอปแล้วข้อมูลหายหมด',
+        'No all-files permission yet — right now an uninstall loses everything',
+      );
+  String get vaultOff => _(
+        'ปิดไว้ตามที่เลือก — ถอนแอปแล้วข้อมูลหายหมด',
+        'Off, as you chose — an uninstall loses everything',
+      );
+  String get vaultFailed => _(
+        'เขียนสำเนาไม่สำเร็จ · ลองเช็คพื้นที่ว่างในเครื่อง',
+        'Could not write the copy — check the free space on this phone',
+      );
+  String get vaultSaveNow => _('สำเนาเดี๋ยวนี้', 'Copy now');
+  String get vaultRestored => _(
+        'กู้ข้อมูลกลับมาจากสำเนาแล้ว',
+        'Restored everything from the outside copy',
+      );
+
+  String messagesKept(int n) =>
+      _('เก็บบทสนทนาไว้ $n ข้อความ', '$n messages kept');
+
   // ═══ เฝ้างานเบื้องหลัง ══════════════════════════════════
   String get bgTitle => _('ให้เธอเฝ้างานตอนปิดแอป', 'Let her watch while the app is closed');
 

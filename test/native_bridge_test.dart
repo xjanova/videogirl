@@ -176,10 +176,14 @@ void main() {
       'RECEIVE_BOOT_COMPLETED',
       'WAKE_LOCK',
       'VIBRATE',
-      // สามตัวนี้ขอผ่าน Intent ไปหน้าตั้งค่า ไม่ได้ผ่าน Manifest.permission
+      // สี่ตัวนี้ขอผ่าน Intent ไปหน้าตั้งค่า ไม่ได้ผ่าน Manifest.permission
       'REQUEST_INSTALL_PACKAGES',
       'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
       'POST_NOTIFICATIONS',
+      // เช็คด้วย Environment.isExternalStorageManager() และขอด้วย
+      // ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION — ไม่มีชื่อสิทธิ์
+      // โผล่ในโค้ดเลยตามการออกแบบของ Android เอง
+      'MANAGE_EXTERNAL_STORAGE',
     };
 
     // เฉพาะ <uses-permission> เท่านั้น

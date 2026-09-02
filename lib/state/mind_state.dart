@@ -4,6 +4,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../store/mind_kv.dart';
+import '../store/mind_vault.dart';
+import '../store/mind_store.dart';
+
 import '../memory/distiller.dart';
 import '../calendar/device_calendar.dart';
 import '../journal/mind_journal.dart';
@@ -121,12 +125,26 @@ class MindState extends ChangeNotifier {
   Future<void> Function(Utterance)? speaker;
 
   // ═══ บันทึกค่า ═════════════════════════════════════════
-  SharedPreferences? _prefs;
+  //
+  // ย้ายจาก SharedPreferences มา SQLite (ดู store/mind_db.dart) แต่หน้าตา
+  // ของ [MindKv] เลียนแบบของเดิมไว้ โค้ดที่อ่าน/เขียนค่าจึงไม่ต้องรื้อทั้งไฟล์
+  MindKv? _kv;
+
+  /// ที่เก็บทั้งชุด — null ได้ในเทสต์ที่ไม่ได้เปิดฐาน
+  MindStore? _store;
+  MindStore? get store => _store;
+
+  /// ข้อมูลอยู่ในฐานจริงไหม (ไม่ใช่ตัวสำรอง) — หน้าตั้งค่าต้องบอกผู้ใช้
+  bool get durableStore => _store?.durable ?? false;
 
   /// เรียกครั้งเดียวตอนแอปเริ่ม โหลดค่าที่ผู้ใช้เคยตั้งไว้กลับมา
-  Future<void> load() async {
-    _prefs = await SharedPreferences.getInstance();
-    final p = _prefs!;
+  ///
+  /// [store] ไม่ส่งมาก็ได้ — จะตกไปใช้ SharedPreferences ตรง ๆ ซึ่งเป็น
+  /// พฤติกรรมเดียวกับก่อนย้ายมา SQLite · จำเป็นจริงบนเครื่องที่ฐานเปิดไม่ขึ้น
+  Future<void> load({MindStore? store}) async {
+    _store = store;
+    _kv = store?.kv ?? PrefsKv(await SharedPreferences.getInstance());
+    final p = _kv!;
 
     _lang = AppLang.fromCode(p.getString('lang'));
     _persona = PersonaSetting.values.firstWhere(
@@ -179,7 +197,15 @@ class MindState extends ChangeNotifier {
 
     // บทสนทนาเก่าต้องกลับมาก่อนบทตัวอย่าง — ถ้าเคยคุยจริงแล้ว
     // การเอาบทตัวอย่างมาทับคือการลบสิ่งที่ผู้ใช้พิมพ์เองทิ้ง
-    _loadContext();
+    if (_store?.db != null) {
+      await _loadContextFromDb();
+      // ครั้งแรกหลังอัปเดตแอป ฐานยังว่างแต่ของเก่ายังอยู่ใน prefs
+      // ดูดเข้ามาให้ครบก่อน ไม่งั้นเจ้าของจะเปิดแอปมาเจอว่าเธอลืมทุกอย่าง
+      // ทั้งที่เพิ่งกดอัปเดตแอปเฉย ๆ
+      if (_context.isEmpty) await _absorbLegacyContext();
+    } else {
+      _loadContext();
+    }
     await memory.load();
     _seedConversation();
 
@@ -198,18 +224,68 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
+  /// คีย์ที่ **ฝั่ง Kotlin อ่านเองจาก SharedPreferences** (MindPrefs.kt)
+  ///
+  /// 🔴 จอสายเนทีฟไม่ได้ผ่าน Dart เลย มันอ่านค่าจากไฟล์ prefs ตรง ๆ
+  /// ย้ายมา SQLite แล้วไม่ทิ้งกระจกเงาไว้ = จอสายใช้ค่าตั้งต้นตลอดไป
+  /// โดยไม่มี error ไม่มี log — ตั้งค่าในแอปแล้วไม่มีผลจริง ซึ่งเป็นอาการ
+  /// ที่หาสาเหตุยากที่สุดแบบหนึ่ง
+  static const _mirroredToPrefs = {'autoAnswer', 'ringSeconds', 'callStream'};
+
   void _save(String key, Object value) {
-    final p = _prefs;
-    if (p == null) return;
-    switch (value) {
-      case String v:
-        p.setString(key, v);
-      case double v:
-        p.setDouble(key, v);
-      case int v:
-        p.setInt(key, v);
-      case bool v:
-        p.setBool(key, v);
+    _kv?.let(key, value);
+    if (_mirroredToPrefs.contains(key)) unawaited(_mirror(key, value));
+    _scheduleVault();
+  }
+
+  /// นัดสำเนาออกไปข้างนอก · ตัวมันหน่วงให้เองอยู่แล้ว เรียกถี่ได้ไม่เปลือง
+  void _scheduleVault() {
+    final st = _store;
+    if (st?.db != null) st!.vault.scheduleSave(st.db!);
+  }
+
+  // ═══ สำเนาที่รอดจากการถอนแอป ═══════════════════════════
+
+  /// ผู้ใช้เลือกให้ลบทุกอย่างตอนถอนแอปไหม
+  bool get wipeOnUninstall => _store?.vault.wipeOnUninstall ?? false;
+
+  /// 🔴 เขียนสองที่โดยตั้งใจ — ฐาน **และ** SharedPreferences
+  ///
+  /// ตอนเปิดแอปรอบหน้า ค่านี้ต้องถูกอ่าน**ก่อน**ฐานจะเปิด (มันตัดสินว่าจะกู้
+  /// ข้อมูลกลับมาไหม) · เก็บไว้แต่ในฐานคือการถามคำถามกับของที่ยังไม่มีอยู่
+  Future<void> setWipeOnUninstall(bool v) async {
+    _save(MindVaultKeys.wipeOnUninstall, v);
+    await MindVault.writeSwitch(v);
+    await _store?.vault.setWipeOnUninstall(v);
+    _notify();
+  }
+
+  /// สำเนาเดี๋ยวนี้ · คืน false ถ้าทำไม่ได้ (เหตุผลอยู่ใน vault.stage)
+  Future<bool> saveVaultNow() async {
+    final st = _store;
+    if (st?.db == null) return false;
+    return st!.vault.saveNow(st.db!);
+  }
+
+  /// จำนวนข้อความที่เก็บไว้จริง — ตัวเลขที่พิสูจน์ว่าเพดาน 16 ตาหายไปแล้ว
+  Future<int> storedMessageCount() async =>
+      await _store?.db?.countMessages() ?? _context.length;
+
+  Future<void> _mirror(String key, Object value) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      switch (value) {
+        case String v:
+          await p.setString(key, v);
+        case double v:
+          await p.setDouble(key, v);
+        case int v:
+          await p.setInt(key, v);
+        case bool v:
+          await p.setBool(key, v);
+      }
+    } on Object catch (e) {
+      debugPrint('state: เขียนกระจกเงาให้ฝั่งเนทีฟไม่ได้ ($key) — $e');
     }
   }
 
@@ -665,10 +741,30 @@ class MindState extends ChangeNotifier {
   /// นับตาที่คุยไปตั้งแต่สกัดความจำรอบล่าสุด
   int _sinceDistill = 0;
 
-  void _saveContext() {
-    final p = _prefs;
-    if (p == null) return;
-    p.setString(
+  /// เก็บข้อความหนึ่งบรรทัดลงที่เก็บถาวร
+  ///
+  /// 🔴 **ฐานไม่มีเพดาน** ต่างจากหน้าต่างที่ส่งเข้าโมเดล
+  ///
+  /// ของเดิมเก็บทั้งบทเป็น JSON ก้อนเดียวแล้วตัดเหลือ 16 ตา ซึ่งแปลว่า
+  /// ตาที่ 17 **ลบตาที่ 1 ทิ้งถาวร** ไม่มีทางเอากลับมา · 16 ตาคือประมาณ
+  /// 8 คำถาม เจ้าของถามเรื่องเดิมซ้ำในวันเดียวกันก็เจอแล้วว่าเธอจำไม่ได้
+  ///
+  /// ตอนนี้เก็บทุกบรรทัดตลอดไป ส่วนเพดาน [_contextLimit] เหลือหน้าที่เดียว
+  /// คือ "ส่งเข้าโมเดลกี่ตา" ซึ่งเป็นเรื่องค่า token ไม่ใช่เรื่องความจำ
+  void _remember(ChatMessage m) {
+    final db = _store?.db;
+    if (db != null) {
+      unawaited(db.addMessage(fromHer: m.fromHer, text: m.text));
+      _scheduleVault();
+      return;
+    }
+    // ไม่มีฐาน = ตกกลับไปทางเดิมพร้อมเพดานเดิม ดีกว่าไม่เก็บอะไรเลย
+    _saveContextToKv();
+    _scheduleVault();
+  }
+
+  void _saveContextToKv() {
+    _kv?.setString(
       _prefContext,
       jsonEncode([
         for (final m in _context) {'her': m.fromHer, 't': m.text},
@@ -676,8 +772,59 @@ class MindState extends ChangeNotifier {
     );
   }
 
+  /// อ่านบทสนทนาล่าสุดกลับมาจากฐาน
+  Future<void> _loadContextFromDb() async {
+    final db = _store?.db;
+    if (db == null) return;
+    try {
+      final rows = await db.lastMessages(_contextLimit);
+      for (final r in rows) {
+        _context.add(r.fromHer ? ChatMessage.her(r.text) : ChatMessage.me(r.text));
+      }
+      _spillOntoScreen();
+    } on Object catch (e) {
+      debugPrint('state: อ่านบทสนทนาจากฐานไม่ได้ — $e');
+    }
+  }
+
+  /// เอาท้าย ๆ ขึ้นจอ ไม่งั้นเปิดแอปมาจะเห็นบทตัวอย่างเหมือนไม่เคยคุยกัน
+  /// ทั้งที่เธอจำได้อยู่ — จอกับความจำไม่ตรงกันคือสิ่งที่อ่านว่าแอปพัง
+  void _spillOntoScreen() {
+    if (_context.isEmpty) return;
+    _messages.addAll(_context.length > _historyLimit
+        ? _context.sublist(_context.length - _historyLimit)
+        : _context);
+  }
+
+  /// ย้ายบทสนทนาเก่าจาก prefs เข้าฐาน ครั้งเดียว
+  ///
+  /// อ่านจาก SharedPreferences ตรง ๆ ไม่ผ่าน [_kv] เพราะตอนนี้ `_kv` ชี้ไป
+  /// ที่ฐานแล้ว ซึ่งยังไม่มีค่านี้ · ของเก่าอยู่ในไฟล์ prefs เสมอ
+  Future<void> _absorbLegacyContext() async {
+    final db = _store!.db!;
+    try {
+      final raw = (await SharedPreferences.getInstance())
+          .getString(_prefContext);
+      if (raw == null || raw.isEmpty) return;
+      final list = jsonDecode(raw);
+      if (list is! List) return;
+      for (final e in list) {
+        if (e is! Map) continue;
+        final t = '${e['t'] ?? ''}';
+        if (t.isEmpty) continue;
+        final m = e['her'] == true ? ChatMessage.her(t) : ChatMessage.me(t);
+        _context.add(m);
+        await db.addMessage(fromHer: m.fromHer, text: m.text);
+      }
+      _spillOntoScreen();
+      debugPrint('state: ย้ายบทสนทนาเก่าเข้าฐาน ${_context.length} ตา');
+    } on Object catch (e) {
+      debugPrint('state: ย้ายบทสนทนาเก่าไม่สำเร็จ — $e');
+    }
+  }
+
   void _loadContext() {
-    final raw = _prefs?.getString(_prefContext);
+    final raw = _kv?.getString(_prefContext);
     if (raw == null || raw.isEmpty) return;
     try {
       final list = jsonDecode(raw);
@@ -689,13 +836,7 @@ class MindState extends ChangeNotifier {
         _context.add(
             e['her'] == true ? ChatMessage.her(t) : ChatMessage.me(t));
       }
-      // เอาท้าย ๆ ขึ้นจอด้วย ไม่งั้นเปิดแอปมาจะเห็นบทตัวอย่างเหมือนไม่เคยคุยกัน
-      // ทั้งที่เธอจำได้อยู่ — จอกับความจำไม่ตรงกันคือสิ่งที่อ่านว่าแอปพัง
-      if (_context.isNotEmpty) {
-        _messages.addAll(_context.length > _historyLimit
-            ? _context.sublist(_context.length - _historyLimit)
-            : _context);
-      }
+      _spillOntoScreen();
     } catch (e) {
       debugPrint('state: อ่านบทสนทนาเก่าไม่ได้ — $e');
     }
@@ -1222,7 +1363,7 @@ class MindState extends ChangeNotifier {
     if (_context.length > _contextLimit) {
       _context.removeRange(0, _context.length - _contextLimit);
     }
-    _saveContext();
+    _remember(m);
 
     // ลงสมุดบันทึก — ที่เดียวที่รอดจากการปิดแอป
     //

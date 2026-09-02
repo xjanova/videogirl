@@ -68,7 +68,17 @@ enum MindPermission {
       check: 'isDefaultDialer', ask: 'requestDefaultDialer', inApp: false),
 
   /// ติดตั้งแอปที่ไม่รู้จัก — auto-update ถึงจะติดตั้งได้จริง
-  install(check: 'canInstall', ask: 'requestInstall', inApp: false);
+  install(check: 'canInstall', ask: 'requestInstall', inApp: false),
+
+  /// ไฟล์ทั้งเครื่อง — ที่เดียวที่เก็บของแล้ว **รอดจากการถอนแอป**
+  ///
+  /// 🔴 ทุกอย่างใน `/data/data/<pkg>/` ถูกล้างตอน uninstall: ฐาน SQLite,
+  /// SharedPreferences, ไฟล์ JSON — และ `Android/data/<pkg>/` ด้วย
+  /// ซึ่งเป็นกับดักที่ดูเหมือนใช้ได้ตอนทดสอบแล้วพังตอนที่สำคัญที่สุด
+  ///
+  /// ไม่ได้ให้ก็ใช้แอปได้ปกติทุกอย่าง แค่ลงใหม่แล้วข้อมูลไม่กลับมา
+  /// จึงไม่อยู่ในชุดที่ขอตอนเปิดแอป ผู้ใช้กดขอเองจากหน้าตั้งค่า
+  allFiles(check: 'allFilesGranted', ask: 'requestAllFiles', inApp: false);
 
   const MindPermission({
     required this.check,

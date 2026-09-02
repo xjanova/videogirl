@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.PowerManager
 import android.provider.CalendarContract
 import android.provider.Settings
@@ -154,6 +155,13 @@ class MainActivity : FlutterActivity() {
                     }
                     "callDisconnect" -> result.success(MindInCallService.disconnect())
 
+                    // ── ไฟล์ทั้งเครื่อง (สำเนาที่รอดการถอนแอป) ────
+                    "allFilesGranted" -> result.success(allFilesGranted())
+                    "requestAllFiles" -> {
+                        requestAllFiles()
+                        result.success(true)
+                    }
+
                     // ── ติดตั้งแอปที่ไม่รู้จัก ────────────────────
                     "canInstall" -> result.success(canInstall())
                     "requestInstall" -> {
@@ -225,6 +233,55 @@ class MainActivity : FlutterActivity() {
      */
     private fun canInstall(): Boolean =
         if (Build.VERSION.SDK_INT >= 26) packageManager.canRequestPackageInstalls() else true
+
+    /**
+     * เข้าถึงไฟล์ทั้งเครื่องได้ไหม
+     *
+     * 🔴 ใช้เก็บ**สำเนาที่รอดจากการถอนแอป**เท่านั้น — ทุกอย่างที่อยู่ใน
+     * `/data/data/<pkg>/` ถูกล้างตอน uninstall รวมทั้งฐาน SQLite และ
+     * `Android/data/<pkg>/` ด้วย · ที่ที่รอดจริงคือพื้นที่เก็บร่วม
+     * ซึ่งเขียนได้ก็ต่อเมื่อมีสิทธิ์นี้
+     *
+     * Android 10 ลงมาไม่มีสิทธิ์ตัวนี้ ใช้ WRITE_EXTERNAL_STORAGE แทน
+     * ซึ่งประกาศไว้ใน manifest พร้อม maxSdkVersion แล้ว
+     */
+    private fun allFilesGranted(): Boolean =
+        if (Build.VERSION.SDK_INT >= 30) {
+            Environment.isExternalStorageManager()
+        } else {
+            granted(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+
+    /**
+     * ขอสิทธิ์ไฟล์ทั้งเครื่อง
+     *
+     * เหมือนสิทธิ์ติดตั้งแอป: **ขอผ่านกล่องปกติไม่ได้** ต้องพาไปหน้าตั้งค่า
+     * ของระบบ แล้วรู้ผลตอนผู้ใช้กลับมา (ฝั่ง Dart refresh ตอน resumed)
+     */
+    private fun requestAllFiles() {
+        if (allFilesGranted()) return
+        if (Build.VERSION.SDK_INT < 30) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                REQ_ALL_FILES
+            )
+            return
+        }
+        // หน้าเฉพาะแอปเรามาก่อน · ถ้าเครื่องไหนไม่มี ค่อยตกไปหน้ารวม
+        // แล้วผู้ใช้ต้องเลื่อนหาชื่อแอปเอง ซึ่งแย่กว่าแต่ยังทำได้
+        val direct = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+            .setData(Uri.parse("package:" + packageName))
+        try {
+            startActivity(direct)
+        } catch (e: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            } catch (e2: Exception) {
+                openAppSettings()
+            }
+        }
+    }
 
     private fun requestInstall() {
         if (canInstall()) return
@@ -560,6 +617,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "giggok/system"
         private const val REQ_CAMERA = 8747
+        private const val REQ_ALL_FILES = 8756
         private const val REQ_NOTIFY = 8748
         private const val REQ_MIC = 8749
         private const val REQ_CALENDAR = 8750

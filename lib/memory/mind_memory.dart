@@ -24,6 +24,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../store/mind_db.dart';
+
 /// ชนิดของสิ่งที่จำ — มีผลกับการเรียงและการตัดทิ้ง
 enum MemoryKind {
   /// ข้อเท็จจริงที่ไม่เปลี่ยน — ชื่อ อาชีพ ที่อยู่ แพ้อะไร
@@ -137,6 +139,14 @@ class MindMemory extends ChangeNotifier {
   MindMemory({Directory? dir}) : _injectedDir = dir;
 
   final Directory? _injectedDir;
+
+  /// ฐานข้อมูล — ต่อเข้ามาทีหลัง เพราะมันเกิดตอน boot คนละจังหวะกับตัวนี้
+  ///
+  /// null = ยังไม่ได้ต่อ หรือเปิดฐานไม่ขึ้น → ตกกลับไปใช้ `memory.json`
+  /// เหมือนก่อนย้ายมา SQLite ซึ่งยังทำงานได้ครบทุกอย่าง แค่ไม่ได้สำเนา
+  MindDb? _db;
+
+  void attachDb(MindDb? db) => _db = db;
   final List<MemoryFact> _facts = [];
   bool _loaded = false;
 
@@ -147,6 +157,25 @@ class MindMemory extends ChangeNotifier {
   Future<void> load() async {
     if (_loaded) return;
     _loaded = true;
+
+    final db = _db;
+    if (db != null) {
+      try {
+        _facts
+          ..clear()
+          ..addAll(
+              (await db.allMemories()).map(_fromRow).whereType<MemoryFact>());
+
+        // ครั้งแรกหลังอัปเดตแอป ฐานยังว่างแต่ไฟล์เก่ายังอยู่ · ย้ายเข้ามา
+        // ไม่งั้นเจ้าของกดอัปเดตแล้วเธอลืมทุกอย่างที่เคยจำได้
+        if (_facts.isEmpty) await _absorbLegacyFile();
+        notifyListeners();
+        return;
+      } on Object catch (e) {
+        debugPrint('memory: อ่านจากฐานไม่ได้ ตกไปใช้ไฟล์ — $e');
+      }
+    }
+
     try {
       final f = await _file();
       if (!await f.exists()) return;
@@ -160,6 +189,48 @@ class MindMemory extends ChangeNotifier {
       // ไฟล์เสียไม่ควรทำให้แอปเปิดไม่ได้ — เริ่มจากความจำว่างดีกว่าค้าง
       debugPrint('memory: อ่านไฟล์ไม่ได้ — $e');
     }
+  }
+
+  /// ย้าย `memory.json` เข้าฐาน ครั้งเดียว · **ไม่ลบไฟล์เก่าทิ้ง**
+  /// (ผู้ใช้ที่ถอยกลับไปแอปรุ่นก่อนต้องยังมีความจำอยู่)
+  Future<void> _absorbLegacyFile() async {
+    try {
+      final f = await _file();
+      if (!await f.exists()) return;
+      final raw = jsonDecode(await f.readAsString());
+      if (raw is! List) return;
+      final old = raw.map(MemoryFact.fromJson).whereType<MemoryFact>().toList();
+      if (old.isEmpty) return;
+
+      _facts.addAll(old);
+      for (final m in old) {
+        await _db!.putMemory(_toRow(m));
+      }
+      debugPrint('memory: ย้ายความจำเก่าเข้าฐาน ${old.length} เรื่อง');
+    } on Object catch (e) {
+      debugPrint('memory: ย้ายความจำเก่าไม่สำเร็จ — $e');
+    }
+  }
+
+  static Map<String, Object?> _toRow(MemoryFact f) => {
+        'id': f.id,
+        'text': f.text,
+        'kind': f.kind.name,
+        'created_at': f.createdAt.millisecondsSinceEpoch,
+        'pinned': f.pinned ? 1 : 0,
+      };
+
+  static MemoryFact? _fromRow(Map<String, Object?> r) {
+    final text = r['text'] as String?;
+    if (text == null || text.isEmpty) return null;
+    return MemoryFact(
+      id: '${r['id']}',
+      text: text,
+      kind: MemoryKind.parse(r['kind']),
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+          (r['created_at'] as int?) ?? 0),
+      pinned: r['pinned'] == 1,
+    );
   }
 
   /// จำเรื่องใหม่ · คืน false ถ้าไม่ได้จำ (ซ้ำ ว่าง ยาวเกิน หรือดูเป็นความลับ)
@@ -253,6 +324,20 @@ class MindMemory extends ChangeNotifier {
       b.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
   Future<void> _save() async {
+    final db = _db;
+    if (db != null) {
+      try {
+        // เขียนทับทั้งชุด · ความจำมีไม่เกิน 200 เรื่องตามเพดาน การไล่หา
+        // ว่าอะไรเปลี่ยนบ้างแล้วเขียนเฉพาะตัวนั้น ซับซ้อนกว่าที่ได้คืน
+        await db.clearMemories();
+        for (final f in _facts) {
+          await db.putMemory(_toRow(f));
+        }
+        return;
+      } on Object catch (e) {
+        debugPrint('memory: เขียนลงฐานไม่ได้ ตกไปใช้ไฟล์ — $e');
+      }
+    }
     try {
       final f = await _file();
       await f.parent.create(recursive: true);

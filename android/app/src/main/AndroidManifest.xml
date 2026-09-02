@@ -21,6 +21,25 @@
          manifest ของแอปเห็นครบว่าแอปนี้ขออะไรบ้าง ไม่ต้องไปไล่ดูของปลั๊กอิน -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
+    <!-- ═══ สำเนาที่รอดจากการถอนแอป ══════════════════════════════
+         🔴 ทุกอย่างใน /data/data/<pkg>/ ถูกล้างตอนถอนแอป — ฐาน SQLite,
+         SharedPreferences, ไฟล์ JSON และ Android/data/<pkg>/ ด้วย
+         ที่ที่รอดจริงคือพื้นที่เก็บร่วม ซึ่งเขียนได้ก็ต่อเมื่อมีสิทธิ์นี้
+
+         ใช้เก็บ**สำเนาฐานข้อมูลอย่างเดียว** ไม่ได้ไปยุ่งกับไฟล์ของใคร
+         และผู้ใช้ปิดได้ด้วยสวิตช์ "ลบข้อมูลทั้งหมดเมื่อถอนแอป" ในหน้าตั้งค่า
+         ซึ่งจะลบสำเนาทิ้งทันที ไม่ใช่รอถึงวันถอนแอป (ดู mind_vault.dart)
+
+         แอปนี้แจก APK เอง (ดู updater.dart) จึงไม่ติดเงื่อนไขรีวิวของ
+         Play Store ที่จำกัดสิทธิ์ตัวนี้ไว้เฉพาะแอปจัดการไฟล์ -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage"/>
+
+    <!-- Android 10 ลงมาไม่มี MANAGE_EXTERNAL_STORAGE ใช้ตัวนี้แทน
+         maxSdkVersion กันไม่ให้เครื่องใหม่ขอสิทธิ์ที่ไม่มีผลอะไรแล้ว -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29"/>
+
     <!-- ═══ ให้เธอเฝ้างานตอนแอปปิด ═══════════════════════════════
          FOREGROUND_SERVICE / RECEIVE_BOOT_COMPLETED / WAKE_LOCK ปลั๊กอิน
          flutter_background_service ประกาศมาให้แล้ว ที่เหลือต้องประกาศเอง -->

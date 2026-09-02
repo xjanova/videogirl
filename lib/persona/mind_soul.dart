@@ -32,6 +32,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../store/mind_kv.dart';
+
 import 'mind_name.dart';
 import 'zodiac.dart';
 
@@ -84,7 +86,9 @@ class MindSoul extends ChangeNotifier {
   /// ฉีดนาฬิกาได้ เพื่อเทสต์การจางของความผูกพันโดยไม่ต้องรอข้ามวันจริง
   final DateTime Function() _now;
 
-  SharedPreferences? _prefs;
+  /// ที่เก็บค่า — ย้ายจาก SharedPreferences มา SQLite แล้ว (ดู store/mind_db.dart)
+  /// หน้าตาเหมือนเดิมทุกอย่าง จึงไม่ต้องรื้อ call site สิบกว่าจุดในไฟล์นี้
+  MindKv? _prefs;
 
   // ── ตัวตน ────────────────────────────────────────────────
 
@@ -610,8 +614,9 @@ class MindSoul extends ChangeNotifier {
   static const _kNameAsked = 'soulNameAsked';
 
   /// เรียกครั้งเดียวตอนแอปเริ่ม · **ตัดสินวันเกิดของเธอที่นี่**
-  Future<void> load() async {
-    _prefs = await SharedPreferences.getInstance();
+  /// [kv] ไม่ส่งมาก็ได้ — ตกไปใช้ SharedPreferences เหมือนก่อนย้ายมา SQLite
+  Future<void> load({MindKv? kv}) async {
+    _prefs = kv ?? PrefsKv(await SharedPreferences.getInstance());
     final p = _prefs!;
 
     final born = p.getInt(_kBorn);
@@ -645,7 +650,7 @@ class MindSoul extends ChangeNotifier {
     notifyListeners();
   }
 
-  static DateTime? _readTime(SharedPreferences p, String key) {
+  static DateTime? _readTime(MindKv p, String key) {
     final v = p.getInt(key);
     return v == null ? null : DateTime.fromMillisecondsSinceEpoch(v);
   }
@@ -696,7 +701,7 @@ class MindSoul extends ChangeNotifier {
   }
 
   static Future<void> _writeTime(
-      SharedPreferences p, String key, DateTime? v) async {
+      MindKv p, String key, DateTime? v) async {
     if (v == null) {
       await p.remove(key);
     } else {

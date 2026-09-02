@@ -58,6 +58,7 @@ dependencies:
   # ตัวนี้ใช้ EncryptedSharedPreferences ที่มี Android Keystore หนุนอยู่
   # (Java/Kotlin ล้วน ไม่มี .so จึงไม่กระทบรายการตัด .so ใน build.gradle.kts)
   flutter_secure_storage: ^11.0.0
+  sqflite: ^2.4.2+1
 
 dev_dependencies:
   flutter_test:
@@ -70,6 +71,7 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   fake_async: ^1.3.3
+  sqflite_common_ffi: ^2.4.0+3
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

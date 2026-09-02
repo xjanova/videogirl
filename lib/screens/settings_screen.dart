@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -18,6 +20,7 @@ import '../memory/mind_memory.dart';
 import '../system/permissions.dart';
 import '../persona/mind_soul.dart';
 import '../state/mind_state.dart';
+import '../store/mind_vault.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/buttons.dart';
@@ -65,6 +68,14 @@ class _SettingsScreenState extends State<SettingsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // การ์ดข้อมูลต้องบอกสถานะจริงตั้งแต่วินาทีที่เห็น ไม่ใช่ค้างที่
+    // "ยังไม่ได้ให้สิทธิ์" ทั้งที่ให้ไปแล้ว จนกว่าจะมีอะไรมากระตุก
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      unawaited(context.read<MindVault>().check());
+      final n = await context.read<MindState>().storedMessageCount();
+      if (mounted) setState(() => _storedMessages = n);
+    });
   }
 
   @override
@@ -76,12 +87,20 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed || !mounted) return;
-    context.read<MindPermissions>().refresh();
+    final perms = context.read<MindPermissions>();
+    final vault = context.read<MindVault>();
+    // 🔴 ต้องอ่านสิทธิ์ให้เสร็จก่อนถามสำเนา — vault ตัดสินจากสิทธิ์
+    // ถามพร้อมกันจะได้คำตอบจากค่าสิทธิ์เก่า แล้วการ์ดจะบอกว่ายังไม่ได้ให้
+    // ทั้งที่ผู้ใช้เพิ่งไปกดให้มาหมาด ๆ ในหน้าตั้งค่าของระบบ
+    unawaited(perms.refresh().then((_) => vault.check()));
     context.read<MindWatch>().refresh();
   }
 
   /// ช่องทางเสียงที่กำลังตั้งค่าอยู่ในการ์ด "เสียงพูด"
   VoiceChannel _voiceTab = VoiceChannel.chat;
+
+  /// จำนวนข้อความที่เก็บไว้จริง — นับครั้งเดียวตอนเปิดหน้า
+  int _storedMessages = 0;
 
   // สวิตช์ที่ยังไม่มีระบบหลังบ้านรองรับ เก็บไว้ในหน่วยความจำก่อน
   // TODO(permissions): ตัวที่ต้องขอสิทธิ์ Android ต้องผูกกับสถานะสิทธิ์จริง
@@ -131,6 +150,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             _permissionCard(context, mode, t),
             const SizedBox(height: MindSpace.md),
             _memoryCard(context, state, mode, t),
+            const SizedBox(height: MindSpace.md),
+            _dataCard(context, state, mode, t),
             const SizedBox(height: MindSpace.md),
             // เตือนเฉพาะตอนที่ "เลือกใช้คีย์ตัวเองแล้วแต่ยังไม่ได้ใส่คีย์"
             // เดิมเตือนทุกครั้งที่ไม่มีคีย์ตอน build ซึ่งตอนนี้คือ **ทุกเครื่อง
@@ -364,6 +385,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       MindPermission.answerCalls => (t.permAnswer, t.permAnswerWhy),
       MindPermission.defaultDialer => (t.permDialer, t.permDialerWhy),
       MindPermission.install => (t.permInstall, t.permInstallWhy),
+      MindPermission.allFiles => (t.permAllFiles, t.permAllFilesWhy),
     };
 
     return Container(
@@ -2021,6 +2043,153 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
     );
     if (ok == true) await run();
+  }
+
+  /// ข้อมูลกับสำเนาที่รอดจากการถอนแอป
+  ///
+  /// 🔴 ต้องบอก**สถานะจริงตอนนี้** ไม่ใช่แค่มีสวิตช์ให้กด
+  ///
+  /// คนที่ยังไม่ได้ให้สิทธิ์ไฟล์ ต้องเห็นว่า "ตอนนี้ถอนแอปแล้วหายหมด"
+  /// ไม่ใช่เห็นสวิตช์ที่ปิดอยู่แล้วเข้าใจว่าข้อมูลปลอดภัย · สวิตช์ที่บอก
+  /// เจตนาแต่ไม่บอกผลจริง คือสิ่งที่ทำให้คนรู้ตัวตอนที่สายไปแล้ว
+  Widget _dataCard(
+      BuildContext context, MindState state, MindMode mode, S t) {
+    final vault = context.watch<MindVault>();
+
+    final (text, tone) = switch (vault.stage) {
+      VaultStage.ready => (
+          vault.savedAt == null
+              ? t.vaultReady
+              : t.vaultSavedAt(_clockOf(vault.savedAt!)),
+          const Color(0xFF00A894)
+        ),
+      VaultStage.off => (t.vaultOff, MindColors.ink55),
+      VaultStage.failed => (t.vaultFailed, const Color(0xFFB46A00)),
+      _ => (t.vaultNeedsPermission, const Color(0xFFB46A00)),
+    };
+
+    return _card(
+      mode: mode,
+      label: t.dataTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(t.dataSubtitle,
+              style: const TextStyle(
+                  fontSize: 11, height: 1.5, color: MindColors.ink55)),
+          const SizedBox(height: MindSpace.md),
+
+          // สถานะจริง — สิ่งแรกที่ตาไปหยุด ไม่ใช่สวิตช์
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 8,
+            children: [
+              Icon(
+                vault.stage == VaultStage.ready
+                    ? Icons.shield_rounded
+                    : Icons.shield_outlined,
+                size: 15,
+                color: tone,
+              ),
+              Expanded(
+                child: Text(text,
+                    style: TextStyle(fontSize: 11, height: 1.5, color: tone)),
+              ),
+            ],
+          ),
+
+          // ยังไม่ได้ให้สิทธิ์ = ปุ่มที่พาไปให้เลย ไม่ใช่บอกให้ไปหาเอง
+          if (vault.stage == VaultStage.needsPermission) ...[
+            const SizedBox(height: MindSpace.sm),
+            GestureDetector(
+              onTap: () => context
+                  .read<MindPermissions>()
+                  .request(MindPermission.allFiles),
+              child: Container(
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: mode.gradient,
+                  borderRadius: BorderRadius.circular(MindRadius.control),
+                ),
+                child: Text(t.permAllFiles,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white)),
+              ),
+            ),
+          ],
+
+          if (vault.stage == VaultStage.ready) ...[
+            const SizedBox(height: MindSpace.sm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: GestureDetector(
+                onTap: () => state.saveVaultNow(),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(t.vaultSaveNow,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: mode.accent)),
+                ),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: MindSpace.md),
+
+          // ตัวเลขที่พิสูจน์ว่าเพดาน 16 ตาหายไปแล้ว
+          //
+          // 🔴 นับครั้งเดียวตอนเปิดหน้า ไม่ใช่ FutureBuilder ที่สร้าง future
+          // ใหม่ทุกครั้งที่ build — การ์ดนี้ rebuild ทุกครั้งที่ vault ขยับ
+          // ซึ่งจะกลายเป็นการยิง COUNT(*) ใส่ฐานทุกเฟรม
+          Text(
+            t.messagesKept(_storedMessages),
+            style: const TextStyle(fontSize: 11, color: MindColors.ink55),
+          ),
+
+          const SizedBox(height: MindSpace.md),
+          Row(
+            spacing: MindSpace.md,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t.wipeOnUninstall,
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: MindColors.ink)),
+                    const SizedBox(height: 3),
+                    Text(t.wipeOnUninstallWhy,
+                        style: const TextStyle(
+                            fontSize: 10.5,
+                            height: 1.5,
+                            color: MindColors.ink55)),
+                  ],
+                ),
+              ),
+              _toggle(
+                on: vault.wipeOnUninstall,
+                mode: mode,
+                onTap: () => state.setWipeOnUninstall(!vault.wipeOnUninstall),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// เวลาแบบสั้น — สำเนาล่าสุดเมื่อไหร่ ไม่ต้องละเอียดถึงวินาที
+  static String _clockOf(DateTime t) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(t.hour)}:${two(t.minute)}';
   }
 
   Widget _card({
