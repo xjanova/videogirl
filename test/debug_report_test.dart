@@ -8,9 +8,12 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:videogirl/diagnostics/debug_report.dart';
+import 'package:videogirl/diagnostics/debug_reporter.dart';
 import 'package:videogirl/diagnostics/mind_log.dart';
 
 void main() {
+  _bugReportShapeGroup();
+
   group('🔴 ล้างความลับ', () {
     test('คีย์ที่เรารู้ค่า ต้องหายจากบรรทัด', () {
       const key = 'sk-proj-AbCd1234EfGh5678IjKl';
@@ -153,6 +156,86 @@ void main() {
 
       expect(printed, contains('ข้อความทดสอบ'),
           reason: 'ถ้ากลืนไป logcat จะว่างเปล่าทั้งแอป');
+    });
+  });
+}
+
+/// 🔴 รูปที่ส่งเข้าระบบรายงานของบ้าน — ผิดฟิลด์เดียว = ถูกปฏิเสธเงียบ ๆ
+///
+/// ยิงจริงไปแล้วครั้งหนึ่งได้ 422 เพราะ `report_type: diagnostic` ซึ่งมีอยู่
+/// 3,520 แถวในฐาน แต่ validator ที่ deploy อยู่ไม่รับ · เทสต์นี้ล็อกค่าที่
+/// **ยิงผ่านจริงแล้ว** ไว้ ไม่ใช่ค่าที่อนุมานจากข้อมูลเก่าในฐาน
+void _bugReportShapeGroup() {
+  group('รูปที่ส่งเข้าระบบรายงานของ xman studio', () {
+    ReportFacts facts({List<String> errors = const []}) => DebugReport.build(
+          app: const {'version': '0.1.10', 'build': '11'},
+          device: const {'os': 'android', 'osVersion': 'Android 16 (API 36)'},
+          settings: const {'brain': 'onDevice'},
+          status: const {'localStage': 'missing'},
+          counts: const {'messages': 12},
+          errors: errors,
+        );
+
+    test('ปลายทางคือระบบเดิมของบ้าน ไม่ใช่ของที่ทำขึ้นใหม่', () {
+      expect(DebugReporter.endpointOf('https://xman4289.com'),
+          'https://xman4289.com/api/v1/bug-reports');
+      // ขีดท้ายเกินมาต้องไม่กลายเป็น //api
+      expect(DebugReporter.endpointOf('https://xman4289.com/'),
+          'https://xman4289.com/api/v1/bug-reports');
+    });
+
+    test('🔴 report_type ต้องเป็นค่าที่ validator รับจริง', () {
+      const allowed = {
+        'bug',
+        'misclassification',
+        'feature_request',
+        'crash',
+        'performance',
+      };
+      for (final errs in [<String>[], <String>['state: พัง']]) {
+        final body = DebugReporter.asBugReport(facts(errors: errs),
+            installId: 'abc123');
+        expect(allowed, contains(body['report_type']),
+            reason: 'ค่านอกรายการได้ 422 แล้วรายงานหายเงียบ ๆ');
+      }
+    });
+
+    test('ฟิลด์ที่ระบบบังคับต้องมีครบ', () {
+      final body =
+          DebugReporter.asBugReport(facts(), installId: 'abc123');
+      for (final k in ['product_name', 'report_type', 'title', 'description']) {
+        expect(body[k], isNotNull, reason: '$k เป็นฟิลด์บังคับของหลังบ้าน');
+        expect('${body[k]}', isNotEmpty);
+      }
+      expect(body['product_name'], DebugReporter.product);
+    });
+
+    test('หัวข้อบอกได้ว่าเกิดอะไร ตอนมีข้อผิดพลาด', () {
+      final body = DebugReporter.asBugReport(
+          facts(errors: const ['state: ยังไม่ได้โหลดโมเดลลงเครื่อง']),
+          installId: 'abc123');
+      expect('${body['title']}', contains('ยังไม่ได้โหลดโมเดล'));
+    });
+
+    test('หัวข้อยาวเกินถูกตัด — หลังบ้านจำกัด 255 ตัวอักษร', () {
+      final body = DebugReporter.asBugReport(
+          facts(errors: ['state: ${'ก' * 500}']), installId: 'abc123');
+      expect('${body['title']}'.length, lessThanOrEqualTo(255));
+    });
+
+    test('🔴 device_id ต้องไม่ใช่รหัสฮาร์ดแวร์', () {
+      final body =
+          DebugReporter.asBugReport(facts(), installId: 'สุ่มมาเอง');
+      expect(body['device_id'], 'สุ่มมาเอง',
+          reason: 'แอปอื่นในบ้านส่ง hardware hash · แอปนี้สัญญาไว้แคบกว่านั้น');
+    });
+
+    test('ไม่ส่งฟิลด์ที่ระบบมีแต่เราไม่ควรกรอก', () {
+      final body =
+          DebugReporter.asBugReport(facts(), installId: 'abc123');
+      // อีเมลผู้ใช้กับ stack trace ดิบ — ไม่กรอกโดยตั้งใจ ไม่ใช่เพราะลืม
+      expect(body.containsKey('user_email'), isFalse);
+      expect(body.containsKey('stack_trace'), isFalse);
     });
   });
 }

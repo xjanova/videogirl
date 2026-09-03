@@ -10,11 +10,13 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ai/voice_profile.dart';
 import '../avatar/avatar_view.dart';
@@ -189,15 +191,78 @@ class DebugReporter extends ChangeNotifier {
     }
   }
 
-  /// ทางที่หลังบ้านรับรายงาน
-  static String endpointOf(String base) =>
-      '${base.trim().replaceAll(RegExp(r'/+$'), '')}/api/giggok/debug-report';
-
-  /// ส่งขึ้น xman studio
+  /// ชื่อสินค้าในระบบรายงานของ xman studio
   ///
-  /// ยืนยันตัวด้วยรหัสสิทธิ์เหมือนทางอื่นของแอป (ร้านชุด/พร็อกซี) เพราะแอปนี้
-  /// **ไม่มีหน้าล็อกอิน** · ไม่มีรหัสก็ส่งได้ หลังบ้านจะเก็บเป็นรายงานนิรนาม
-  /// — คนที่เจอบั๊กก่อนซื้ออะไรคือคนที่เราต้องการรายงานจากเขามากที่สุด
+  /// ต้องตรงกับที่ฝั่งหลังบ้านใช้กรอง (`?product_name=`) · แอปอื่นในบ้าน
+  /// ใช้ชื่อสั้นตัวพิมพ์เล็กเหมือนกันหมด (`tping` ฯลฯ)
+  static const product = 'giggok';
+
+  /// 🔴 **ระบบเดิมของบ้าน ไม่ใช่ปลายทางที่ทำขึ้นใหม่**
+  ///
+  /// `POST /api/v1/bug-reports` มีอยู่แล้วและแอปอื่นใช้อยู่จริง (นับได้ 3,526
+  /// รายงานตอนต่อสายนี้) · มาพร้อมหน้าแอดมิน สถิติ และตัวส่งเข้า GitHub issue
+  ///
+  /// เคยหลงทำ `/api/giggok/debug-report` ขึ้นมาใหม่ทั้งชุด — ผิดกฎเดิมของบ้าน
+  /// ที่เขียนไว้แล้วว่า *"อย่าเขียน endpoint ชุดใหม่ทั้งชุด"* · ของใหม่แปลว่า
+  /// หน้าแอดมินไม่เห็น สถิติไม่รวม และคนไล่บั๊กต้องรู้ว่ามีสองที่
+  static String endpointOf(String base) =>
+      '${base.trim().replaceAll(RegExp(r'/+$'), '')}/api/v1/bug-reports';
+
+  /// แปลงรายงานเป็นรูปที่ระบบรายงานของบ้านรับ
+  ///
+  /// แยกออกมาเป็นฟังก์ชันบริสุทธิ์เพื่อให้เทสต์ยืนยันได้ว่า **ไม่มีอะไรที่ไม่ควร
+  /// อยู่หลุดเข้าไปในนี้** — ฟิลด์ที่ระบบเดิมมี (`stack_trace`, `user_email`)
+  /// เราไม่ส่งโดยตั้งใจ ไม่ใช่เพราะลืม
+  @visibleForTesting
+  static Map<String, Object?> asBugReport(
+    ReportFacts r, {
+    required String installId,
+  }) {
+    final app = (r['app'] as Map?) ?? const {};
+    final device = (r['device'] as Map?) ?? const {};
+    final errors = (r['errors'] as List?) ?? const [];
+
+    return {
+      'product_name': product,
+      'product_version': '${app['version'] ?? '?'}',
+      // 🔴 `bug` เสมอ · **ห้ามใช้ `diagnostic`** ทั้งที่ในฐานมี 3,520 แถว
+      //
+      // ยิงจริงไปแล้วได้ 422 `The selected report type is invalid` —
+      // validator ที่ deploy อยู่รับแค่
+      // bug / misclassification / feature_request / crash / performance
+      // (แถว `diagnostic` ที่มีอยู่เข้ามาก่อนหน้าด้วยทางอื่น)
+      //
+      // และ `bug` ตรงกับความจริงอยู่แล้ว — คนกดปุ่มนี้เพราะมีอะไรไม่ทำงาน
+      // ไม่ใช่เพราะอยากส่งสถานะเฉย ๆ
+      'report_type': 'bug',
+      'title': _title(errors),
+      // เนื้อรายงานเต็มไปเป็นข้อความ ให้คนอ่านได้โดยไม่ต้องกาง JSON
+      'description': DebugReport.pretty(r),
+      'metadata': {'category': 'app-state', ...r},
+      'app_version': '${app['version'] ?? '?'}',
+      'os_version': '${device['osVersion'] ?? '?'}',
+      // 🔴 ไม่ใช่รหัสฮาร์ดแวร์ · เป็นเลขสุ่มของการติดตั้งครั้งนี้
+      //
+      // แอปอื่นในบ้านส่ง hardware hash มา ซึ่งใช้ได้กับของเขา แต่แอปนี้ขาย
+      // ด้วยคำสัญญาเรื่องความเป็นส่วนตัวที่แคบกว่านั้น · เลขสุ่มพอสำหรับ
+      // การจับคู่รายงานจากเครื่องเดียวกัน โดยไม่ผูกกับตัวเครื่องจริง
+      'device_id': installId,
+      'priority': errors.isEmpty ? 'low' : 'medium',
+      'severity': errors.isEmpty ? 'minor' : 'moderate',
+    };
+  }
+
+  /// หัวข้อที่อ่านแล้วรู้เรื่องในรายการยาว ๆ ของหน้าแอดมิน
+  static String _title(List<Object?> errors) {
+    if (errors.isEmpty) return 'app state (no errors)';
+    final first = '${errors.first}';
+    return first.length <= 120 ? first : '${first.substring(0, 119)}…';
+  }
+
+  /// ส่งขึ้นระบบรายงานของ xman studio
+  ///
+  /// ปลายทางเปิดสาธารณะโดยตั้งใจ (แอปในบ้านไม่มีหน้าล็อกอิน) จึงไม่ต้องมี
+  /// รหัสสิทธิ์ก็ส่งได้ — คนที่เจอบั๊กก่อนซื้ออะไรคือรายงานที่ต้องการที่สุด
   Future<bool> send({required String baseUrl, String license = ''}) async {
     final r = _report;
     if (r == null) return false;
@@ -217,7 +282,8 @@ class DebugReporter extends ChangeNotifier {
               if (license.trim().isNotEmpty)
                 'Authorization': 'Bearer ${license.trim()}',
             },
-            body: utf8.encode(jsonEncode(r)),
+            body: utf8.encode(
+                jsonEncode(asBugReport(r, installId: await installId()))),
           )
           .timeout(const Duration(seconds: 30));
 
@@ -238,6 +304,27 @@ class DebugReporter extends ChangeNotifier {
       return false;
     }
   }
+
+  /// เลขสุ่มของการติดตั้งครั้งนี้ · สร้างครั้งเดียวแล้วจำไว้
+  ///
+  /// มีไว้จับคู่รายงานหลายฉบับจากเครื่องเดียวกันตอนไล่บั๊ก · **ไม่ได้มาจาก
+  /// ฮาร์ดแวร์** จึงชี้ตัวคนไม่ได้ และหายไปพร้อมการถอนแอปเหมือนข้อมูลอื่น
+  Future<String> installId() async {
+    final saved = _installId;
+    if (saved != null) return saved;
+    final p = await SharedPreferences.getInstance();
+    var id = p.getString(_kInstallId);
+    if (id == null || id.isEmpty) {
+      final r = Random.secure();
+      id = List.generate(16, (_) => r.nextInt(256).toRadixString(16)
+          .padLeft(2, '0')).join();
+      await p.setString(_kInstallId, id);
+    }
+    return _installId = id;
+  }
+
+  static const _kInstallId = 'reportInstallId';
+  String? _installId;
 
   @override
   void dispose() {
