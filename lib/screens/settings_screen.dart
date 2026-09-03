@@ -1228,7 +1228,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             else
               // 🔴 `lb.selectable` ไม่ใช่ `GemmaVariant.values` — รุ่นที่เครื่องนี้
               // รันไม่ไหวต้องไม่โผล่มาให้กด · เดิมโชว์ครบทุกรุ่น เครื่องแรม 6 GB
-              // จึงกดโหลด E4B 2.8 GB ได้ แล้วระบบฆ่าแอปทิ้งตอนรัน = เสียเน็ตฟรี
+              // จึงกดโหลด E4B 3.7 GB ได้ แล้วระบบฆ่าแอปทิ้งตอนรัน = เสียเน็ตฟรี
               for (final v in lb.selectable)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 7),

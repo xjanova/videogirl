@@ -165,12 +165,10 @@ extension AiStrings on S {
         '(at least $need GB needed)\n'
         'You can use "Through our service" or "Your own key" instead',
       );
-  String get gemmaE2bGpuHint => pick(
-      'เร็วที่สุดบนมือถือที่มี GPU ดี · แนะนำ', 'Fastest on phones with a decent GPU · recommended');
-  String get gemmaE2bCpuHint =>
-      pick('ใช้ได้ทุกเครื่อง แต่ช้ากว่า', 'Works on any phone, but slower');
-  String get gemmaE4bHint => pick('ฉลาดกว่า แต่กินพื้นที่และแรมมากกว่า',
-      'Smarter, but needs more storage and memory');
+  String get gemmaE2bCpuHint => pick('เร็วกว่า ใช้ได้ทุกเครื่อง · แนะนำ',
+      'Faster, works on any phone · recommended');
+  String get gemmaE4bHint => pick('ฉลาดกว่า แต่ช้ากว่าและกินพื้นที่มากกว่า',
+      'Smarter, but slower and needs more storage');
 
   String gemmaDownload(String size) =>
       pick('โหลดโมเดลลงเครื่อง · $size', 'Download to this phone · $size');
@@ -278,9 +276,9 @@ extension AiStrings on S {
 
   /// ไฟล์โมเดลไม่ครบ — คนละเรื่องกับยังไม่ได้โหลด และแก้คนละแบบ
   ///
-  /// ข้อความจาก engine คือ `NOT_FOUND: TF_LITE_PREFILL_DECODE not found in
-  /// the model` ซึ่งไม่มีทางเดาได้เลยว่าแปลว่า "โหลดไม่ครบ" · ผู้ใช้ต้องได้ยิน
-  /// สิ่งที่เขาทำได้จริง ไม่ใช่ชื่อ signature ข้างในไฟล์
+  /// ไฟล์ครึ่งเดียวยังนับว่า "ติดตั้งแล้ว" ในสายตาปลั๊กอิน (มันดูแค่ว่ามีไฟล์อยู่)
+  /// ปุ่มโหลดจึงหายไปทั้งที่ของยังใช้ไม่ได้ · ผู้ใช้ต้องได้ยินสิ่งที่เขาทำได้จริง
+  /// ไม่ใช่ข้อความจาก engine ที่แปลไม่ออก
   String get errModelIncomplete => pick(
         'ไฟล์โมเดลโหลดมาไม่ครบ (เน็ตหลุดกลางทาง) · ลบให้แล้ว กดโหลดใหม่ได้เลย',
         'The model file did not download completely — it has been removed, '

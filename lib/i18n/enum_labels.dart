@@ -68,9 +68,8 @@ extension VoiceChannelLabels on VoiceChannel {
 
 extension GemmaVariantLabels on GemmaVariant {
   String hintOf(S s) => switch (this) {
-        GemmaVariant.e2bGpu => s.gemmaE2bGpuHint,
         GemmaVariant.e2bCpu => s.gemmaE2bCpuHint,
-        GemmaVariant.e4bGpu => s.gemmaE4bHint,
+        GemmaVariant.e4bCpu => s.gemmaE4bHint,
       };
 }
 

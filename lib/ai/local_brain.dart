@@ -4,7 +4,7 @@
 /// ไฟล์ `.litertlm` ใช้ quantization ผสม 2/4/8 บิต ทำให้น้ำหนักตอนรัน
 /// ต่ำถึง ~0.8 GB ส่วน embedding 1.12 GB ใช้ memory-map ไม่กินแรม
 ///
-/// ขนาดไฟล์ยืนยันจาก Hugging Face เมื่อ 2026-08-29 ไม่ได้เดา
+/// ขนาดไฟล์ยืนยันจาก Hugging Face เมื่อ 2026-09-03 ไม่ได้เดา
 library;
 
 import 'dart:async';
@@ -19,33 +19,38 @@ import 'device_capability.dart';
 import 'openai_client.dart';
 
 /// รุ่นที่เลือกได้ — ทุกตัวเป็น Apache-2.0 โหลดได้โดยไม่ต้องมี token
+///
+/// 🔴 **ไม่มีทางเดิน GPU ให้เลือก และไม่ใช่เพราะเราไม่อยากได้**
+///
+/// ไฟล์ `-gpu.litertlm` ของ litert-community สร้างเมื่อ 2026-08-06 ด้วยรูปแบบ
+/// ใหม่ที่ประกาศ `backend_constraint: gpu_artisan` และข้างในมีแต่ส่วน
+/// `gpu_artisan` กับ `tf_lite_artisan_text_decoder`
+///
+/// LiteRT-LM 0.10.0 (ตัวที่ flutter_gemma 0.13.6 พ่วงมา) หาส่วนชื่อ
+/// `tf_lite_prefill_decode` ซึ่ง**ไม่มีอยู่ในไฟล์พวกนั้น** จึงตายตอนสร้าง engine
+/// ด้วยข้อความ `NOT_FOUND: TF_LITE_PREFILL_DECODE not found in the model`
+/// — อ่านหัวไฟล์จริงทั้งสี่ตัวจาก Hugging Face แล้วยืนยันด้วยตาเมื่อ 2026-09-03
+///
+/// ไฟล์ที่ไม่มี `-gpu` ประกาศ `backend_constraint: cpu` และมีส่วนที่รันไทม์
+/// ตัวนี้ต้องการครบ · เราจึงเสนอเฉพาะตัวพวกนี้ ดู [retiredModels]
 enum GemmaVariant {
-  e2bGpu(
-    id: 'gemma-4-e2b-gpu',
-    label: 'Gemma 4 E2B (GPU)',
-    hint: '',
-    file: 'gemma-4-E2B-it-gpu.litertlm',
-    repo: 'litert-community/gemma-4-E2B-it-litert-lm',
-    bytes: 2008432640,
-    backend: PreferredBackend.gpu,
-  ),
   e2bCpu(
     id: 'gemma-4-e2b-cpu',
-    label: 'Gemma 4 E2B (CPU)',
+    label: 'Gemma 4 E2B',
     hint: '',
     file: 'gemma-4-E2B-it.litertlm',
     repo: 'litert-community/gemma-4-E2B-it-litert-lm',
     bytes: 2588147712,
     backend: PreferredBackend.cpu,
   ),
-  e4bGpu(
-    id: 'gemma-4-e4b-gpu',
-    label: 'Gemma 4 E4B (GPU)',
+  e4bCpu(
+    id: 'gemma-4-e4b-cpu',
+    label: 'Gemma 4 E4B',
     hint: '',
-    file: 'gemma-4-E4B-it-gpu.litertlm',
+    file: 'gemma-4-E4B-it.litertlm',
     repo: 'litert-community/gemma-4-E4B-it-litert-lm',
-    bytes: 2969059328,
-    backend: PreferredBackend.gpu,
+    bytes: 3659530240,
+    backend: PreferredBackend.cpu,
   );
 
   const GemmaVariant({
@@ -76,6 +81,28 @@ enum GemmaVariant {
   }
 }
 
+/// รุ่นที่เคยเสนอแล้วถอดออก — เก็บชื่อกับที่อยู่ไว้เพื่อ**ตามไปลบไฟล์**เท่านั้น
+///
+/// 🔴 ถอดออกจาก [GemmaVariant] เฉย ๆ ไม่พอ · คนที่โหลด `-gpu` ไปแล้วจะเหลือ
+/// ไฟล์ 2–3 GB ที่**ไม่มีปุ่มไหนในแอปลบได้อีกเลย** เพราะทั้งปุ่มลบและการ
+/// สแกนตอนเปิดแอปวิ่งบน `GemmaVariant.values` ซึ่งไม่มีชื่อพวกนี้อยู่แล้ว
+///
+/// ปลั๊กอินเก็บไฟล์แยกตาม**ชื่อไฟล์** ไม่ใช่ชื่อรุ่น (`mobile_model_manager`
+/// `spec.files[].filename`) ชื่อไฟล์ตรงนี้จึงต่างจากของที่ยังใช้อยู่คนละตัว
+/// ลบแล้วไม่โดนของที่ยังต้องใช้
+const retiredModels = <({String name, String url})>[
+  (
+    name: 'gemma-4-e2b-gpu',
+    url: 'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm'
+        '/resolve/main/gemma-4-E2B-it-gpu.litertlm',
+  ),
+  (
+    name: 'gemma-4-e4b-gpu',
+    url: 'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm'
+        '/resolve/main/gemma-4-E4B-it-gpu.litertlm',
+  ),
+];
+
 /// สถานะของโมเดลในเครื่อง
 enum LocalModelStage { unknown, missing, downloading, ready, failed }
 
@@ -85,7 +112,7 @@ class LocalBrain extends ChangeNotifier {
     GemmaVariant? initialVariant,
     this.onVariantPicked,
   })  : _s = strings ?? _thai,
-        _variant = initialVariant ?? GemmaVariant.e2bGpu,
+        _variant = initialVariant ?? GemmaVariant.e2bCpu,
         // รุ่นที่จำมาจากรอบก่อน = เขาเลือกเองไว้แล้ว · การตรวจอัตโนมัติ
         // ต้องไม่มาทับ ไม่งั้นการเลือกในหน้าตั้งค่าจะอยู่ได้แค่รอบเดียว
         _userPicked = initialVariant != null;
@@ -131,7 +158,7 @@ class LocalBrain extends ChangeNotifier {
   /// 🔴 **ห้ามสลับออกจากรุ่นที่โหลดไว้แล้วเด็ดขาด**
   ///
   /// ของเดิมสลับไปรุ่นที่ `DeviceVerdict.best` บอก โดยไม่ดูว่ารุ่นนั้นโหลดไว้
-  /// หรือยัง · เครื่องแรม 12 GB ได้ `best = e4bGpu` แต่คนส่วนใหญ่โหลด E2B
+  /// หรือยัง · เครื่องแรม 12 GB เคยได้ `best = E4B` แต่คนส่วนใหญ่โหลด E2B
   /// (ค่าตั้งต้นของปุ่มโหลด) ผลคือ **เปิดแอปแล้วมันสลับไปรุ่นที่ไม่มีในเครื่อง
   /// ทุกครั้ง** แล้วทักคำแรกได้ "ยังไม่ได้โหลดโมเดล" ทั้งที่เพิ่งโหลดไปเมื่อวาน
   ///
@@ -352,10 +379,41 @@ class LocalBrain extends ChangeNotifier {
   /// เครื่องนี้รันโมเดลในเครื่องไม่ไหวเลย
   bool get deviceTooSmall => _device != null && _device!.allowed.isEmpty;
 
+  bool _swept = false;
+
+  /// ลบไฟล์ของรุ่นที่ถอดออกไปแล้ว — ดู [retiredModels] ว่าทำไมต้องมี
+  ///
+  /// ครั้งเดียวต่อการเปิดแอปก็พอ · [refresh] ถูกเรียกทุกครั้งที่เข้าหน้าตั้งค่า
+  /// และการถามระบบไฟล์ซ้ำ ๆ ไม่ได้ให้อะไรเพิ่มเลยหลังกวาดรอบแรกไปแล้ว
+  Future<void> _sweepRetired() async {
+    if (_swept) return;
+    _swept = true;
+    for (final r in retiredModels) {
+      try {
+        final spec = InferenceModelSpec.fromLegacyUrl(
+          name: r.name,
+          modelUrl: r.url,
+          modelType: ModelType.gemmaIt,
+          fileType: ModelFileType.litertlm,
+        );
+        final mm = FlutterGemmaPlugin.instance.modelManager;
+        if (!await mm.isModelInstalled(spec)) continue;
+        await mm.deleteModel(spec);
+        debugPrint('gemma: ลบไฟล์รุ่นที่เลิกใช้แล้ว — ${r.name}');
+      } on Object catch (e) {
+        // ลบไม่สำเร็จคือเสียพื้นที่ ไม่ใช่ใช้งานไม่ได้ · ห้ามลาก refresh
+        // ทั้งก้อนล้มตาม ไม่งั้นหน้าตั้งค่าจะขึ้น "เช็คโมเดลไม่ได้" ทั้งที่
+        // โมเดลที่ใช้อยู่ปกติดี
+        debugPrint('gemma: ลบ ${r.name} ไม่ได้ — $e');
+      }
+    }
+  }
+
   /// เช็คว่าโมเดลอยู่ในเครื่องแล้วหรือยัง — ไล่ **ทุกรุ่น** ไม่ใช่เฉพาะรุ่นที่เลือก
   Future<void> refresh() async {
     try {
       await _ensurePlugin();
+      await _sweepRetired();
 
       _installed.clear();
       for (final v in GemmaVariant.values) {

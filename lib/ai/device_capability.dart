@@ -1,9 +1,9 @@
 /// อ่านแรมของเครื่องแล้วบอกว่าไหวรุ่นไหน
 ///
-/// ทำไมต้องเช็ค: Gemma 4 E2B กินพื้นที่ 2 GB และแรมตอนรันอีกก้อน
+/// ทำไมต้องเช็ค: Gemma 4 E2B กินพื้นที่ 2.6 GB และแรมตอนรันอีกก้อน
 /// ส่วน GigGok เองก็แบก WebView + three.js + โมเดล VRM 33 MB อยู่แล้ว
 /// ถ้าปล่อยให้เครื่องแรม 4 GB โหลด E4B มา ระบบจะฆ่าแอปทิ้งกลางคัน
-/// และผู้ใช้จะเสียเน็ตโหลดฟรี 3 GB โดยไม่ได้อะไรเลย
+/// และผู้ใช้จะเสียเน็ตโหลดฟรี 3.7 GB โดยไม่ได้อะไรเลย
 ///
 /// **ผลตรวจเก็บเป็น "ระดับ" ไม่ใช่ข้อความ** — ข้อความผูกกับภาษา
 /// ถ้าเก็บเป็นไทยตั้งแต่ตอนตรวจ พอสลับเป็นอังกฤษก็แปลไม่ได้แล้ว
@@ -105,8 +105,8 @@ abstract final class DeviceCapability {
       return DeviceVerdict(
         ramMb: ramMb,
         tier: RamTier.tight,
-        best: GemmaVariant.e2bGpu,
-        allowed: const [GemmaVariant.e2bGpu],
+        best: GemmaVariant.e2bCpu,
+        allowed: const [GemmaVariant.e2bCpu],
       );
     }
 
@@ -114,15 +114,22 @@ abstract final class DeviceCapability {
       return DeviceVerdict(
         ramMb: ramMb,
         tier: RamTier.comfortable,
-        best: GemmaVariant.e2bGpu,
-        allowed: const [GemmaVariant.e2bGpu, GemmaVariant.e2bCpu],
+        best: GemmaVariant.e2bCpu,
+        allowed: const [GemmaVariant.e2bCpu],
       );
     }
 
     return DeviceVerdict(
       ramMb: ramMb,
       tier: RamTier.roomy,
-      best: GemmaVariant.e4bGpu,
+      // 🔴 เครื่องแรงก็ยังแนะนำ E2B
+      //
+      // ตั้งแต่ทางเดิน GPU ใช้ไม่ได้ (ดู [GemmaVariant]) E4B เหลือแต่ไฟล์ CPU
+      // ซึ่งใหญ่กว่า E2B อีก 1 GB และรันช้ากว่าเห็น ๆ · ตั้งเป็นค่าแนะนำเท่ากับ
+      // ยัดของที่ช้าที่สุดใส่มือคนที่เครื่องแรงที่สุดโดยที่เขาไม่ได้ขอ
+      //
+      // ยังอยู่ใน [allowed] — ใครอยากแลกความเร็วกับความฉลาดเลือกเองได้
+      best: GemmaVariant.e2bCpu,
       allowed: GemmaVariant.values,
     );
   }

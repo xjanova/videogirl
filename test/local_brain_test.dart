@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:videogirl/ai/device_capability.dart';
 import 'package:videogirl/ai/local_brain.dart';
@@ -74,6 +75,40 @@ void main() {
       expect(urls.length, GemmaVariant.values.length,
           reason: 'สองรุ่นชี้ไฟล์เดียวกัน = เลือกรุ่นแล้วได้ของเดิม');
     });
+
+    /// 🔴 ไฟล์ `-gpu.litertlm` ของ litert-community **รันไทม์ที่เราพ่วงมา
+    /// อ่านไม่ออก**
+    ///
+    /// มันประกาศ `backend_constraint: gpu_artisan` และข้างในมีแต่ส่วน
+    /// `gpu_artisan` / `tf_lite_artisan_text_decoder` ส่วน LiteRT-LM 0.10.0
+    /// หาส่วนชื่อ `tf_lite_prefill_decode` ที่ไม่มีอยู่ในนั้น
+    ///
+    /// ที่เจ็บคือมันพังตอน **สร้าง engine** ไม่ใช่ตอนโหลด — โหลดจบ 100%
+    /// หน้าตั้งค่าขึ้นเขียวว่าพร้อมใช้ แล้วค่อยตายตอนทักคำแรก หลังผู้ใช้
+    /// เสียเน็ตไป 3 GB · ไม่มีเทสต์ไหนในเครื่องจับได้เพราะไฟล์ไม่ได้อยู่ในเครื่อง
+    ///
+    /// เทสต์นี้จับที่ *ชื่อไฟล์* ซึ่งเป็นจุดเดียวที่ยังตรวจได้ตอนคอมไพล์
+    test('🔴 ห้ามชี้ไปที่ไฟล์ -gpu ที่ LiteRT-LM 0.10.0 อ่านไม่ออก', () {
+      for (final v in GemmaVariant.values) {
+        expect(v.file, isNot(contains('-gpu')),
+            reason: 'ไฟล์ -gpu ตายตอนสร้าง engine หลังโหลดจบแล้ว: ${v.id}');
+        expect(v.backend, PreferredBackend.cpu,
+            reason: 'ไฟล์พวกนี้ประกาศ backend_constraint: cpu มาเอง: ${v.id}');
+      }
+    });
+
+    /// รุ่นที่ถอดออกต้องมีคนตามไปลบไฟล์ให้ ไม่งั้นเหลือ 2–3 GB ที่ลบไม่ได้
+    test('รุ่นที่ถอดออกไปแล้ว ต้องอยู่ในรายการที่ตามไปลบ และไม่ทับของที่ใช้อยู่', () {
+      final live = {for (final v in GemmaVariant.values) v.url};
+
+      expect(retiredModels, isNotEmpty);
+      for (final r in retiredModels) {
+        expect(r.url, startsWith('https://huggingface.co/'));
+        expect(r.url, endsWith('.litertlm'));
+        expect(live, isNot(contains(r.url)),
+            reason: 'ลบตัวที่ยังใช้อยู่ = ผู้ใช้ต้องโหลดใหม่ทุกครั้งที่เปิดแอป');
+      }
+    });
   });
 
   group('รุ่นที่เอาไปให้ผู้ใช้เลือก', () {
@@ -83,9 +118,9 @@ void main() {
 
       final list = LocalBrain.selectableFor(verdict, const {});
 
-      expect(list, contains(GemmaVariant.e2bGpu));
-      expect(list, isNot(contains(GemmaVariant.e4bGpu)),
-          reason: 'โชว์ E4B ให้เครื่องที่รันไม่ไหว = เขาเสียเน็ตโหลด 2.8 GB ฟรี');
+      expect(list, contains(GemmaVariant.e2bCpu));
+      expect(list, isNot(contains(GemmaVariant.e4bCpu)),
+          reason: 'โชว์ E4B ให้เครื่องที่รันไม่ไหว = เขาเสียเน็ตโหลด 3.7 GB ฟรี');
     });
 
     test('เครื่องใหญ่ เห็นครบทุกรุ่น', () {
@@ -101,9 +136,9 @@ void main() {
       final verdict = DeviceCapability.verdictFor(5500);
 
       final list =
-          LocalBrain.selectableFor(verdict, const {GemmaVariant.e4bGpu});
+          LocalBrain.selectableFor(verdict, const {GemmaVariant.e4bCpu});
 
-      expect(list, contains(GemmaVariant.e4bGpu));
+      expect(list, contains(GemmaVariant.e4bCpu));
     });
 
     test('ยังไม่ได้ตรวจแรม ให้เห็นทุกรุ่นไปก่อน ไม่ใช่รายการเปล่า', () {
@@ -164,11 +199,13 @@ void main() {
 ///    ก็ถูกทับทิ้งในรอบถัดไปอยู่ดี
 void _variantGroup() {
   group('🔴 รุ่นโมเดลที่เลือกไว้ต้องไม่ถูกสลับทิ้ง', () {
-    test('เครื่องแรมเยอะแนะนำ E4B — ต้นเหตุของอาการ', () {
-      // 12 GB รายงานราว 10800+ MB
-      expect(DeviceCapability.verdictFor(11000).best, GemmaVariant.e4bGpu);
-      // แต่ปุ่มโหลดตั้งต้นที่ E2B — สองอย่างนี้ไม่ตรงกันคือที่มาของปัญหา
-      expect(LocalBrain().variant, GemmaVariant.e2bGpu);
+    test('รุ่นที่แนะนำกับค่าตั้งต้นของปุ่มโหลด ต้องเป็นตัวเดียวกัน', () {
+      // ต้นเหตุเดิม: 12 GB ได้ `best = E4B` แต่ปุ่มโหลดตั้งต้นที่ E2B
+      // คนจึงโหลด E2B แล้วโดนสลับไป E4B ที่ไม่มีในเครื่องทุกครั้งที่เปิดแอป
+      final lb = LocalBrain();
+      expect(DeviceCapability.verdictFor(11000).best, lb.variant,
+          reason: 'สองค่านี้ไม่ตรงกัน = เปิดแอปแล้วสลับไปรุ่นที่ไม่มีในเครื่อง');
+      lb.dispose();
     });
 
     test('รุ่นที่จำมาจากรอบก่อน ถือว่าผู้ใช้เลือกเอง', () {
@@ -181,16 +218,21 @@ void _variantGroup() {
     test('เลือกรุ่นแล้วต้องบอกฝั่งที่เก็บค่าให้จำไว้', () async {
       GemmaVariant? saved;
       final lb = LocalBrain(onVariantPicked: (v) => saved = v);
-      await lb.selectVariant(GemmaVariant.e4bGpu);
+      await lb.selectVariant(GemmaVariant.e4bCpu);
 
-      expect(saved, GemmaVariant.e4bGpu,
+      expect(saved, GemmaVariant.e4bCpu,
           reason: 'ไม่บอก = การเลือกอยู่ได้แค่รอบเดียว');
       lb.dispose();
     });
 
     test('ชื่อรุ่นที่จำไว้แปลกลับได้ · ชื่อที่ไม่รู้จักคืน null', () {
-      expect(GemmaVariant.parse('gemma-4-e4b-gpu'), GemmaVariant.e4bGpu);
+      expect(GemmaVariant.parse('gemma-4-e4b-cpu'), GemmaVariant.e4bCpu);
       expect(GemmaVariant.parse('gemma-4-e2b-cpu'), GemmaVariant.e2bCpu);
+      // ชื่อของรุ่นที่ถอดออกไปแล้วต้องคืน null ไม่ใช่ไปโผล่เป็นรุ่นอื่น
+      // คนที่ค้างอยู่ที่ `-gpu` ต้องตกกลับไปที่การเลือกอัตโนมัติ
+      for (final r in retiredModels) {
+        expect(GemmaVariant.parse(r.name), isNull, reason: r.name);
+      }
       // รุ่นถูกถอดออกจากแอปได้ ค่าที่จำไว้จึงชี้ไปที่ที่ไม่มีแล้วได้
       expect(GemmaVariant.parse('รุ่นที่เลิกใช้ไปแล้ว'), isNull);
       expect(GemmaVariant.parse(null), isNull);
