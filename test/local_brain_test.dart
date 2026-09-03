@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:videogirl/ai/device_capability.dart';
 import 'package:videogirl/ai/local_brain.dart';
@@ -10,6 +12,7 @@ import 'package:videogirl/state/mind_state.dart';
 /// มี `void main() async {...}` กับลิงก์ pub.dev ติดมาด้วย ผู้ใช้ทำอะไรกับมัน
 /// ไม่ได้เลยนอกจากตกใจ
 void main() {
+  _activeModelGroup();
   _variantGroup();
 
   group('ย่อข้อความข้อผิดพลาดก่อนเอาไปโชว์', () {
@@ -191,6 +194,47 @@ void _variantGroup() {
       // รุ่นถูกถอดออกจากแอปได้ ค่าที่จำไว้จึงชี้ไปที่ที่ไม่มีแล้วได้
       expect(GemmaVariant.parse('รุ่นที่เลิกใช้ไปแล้ว'), isNull);
       expect(GemmaVariant.parse(null), isNull);
+    });
+  });
+}
+
+/// 🔴 ตัวชี้ "รุ่นที่ใช้อยู่" ของปลั๊กอินอยู่ในหน่วยความจำล้วน
+///
+/// อาการจริงที่เจอบนเครื่อง: โหลดโมเดลเสร็จ คุยได้ปกติ **ปิดแอปเปิดใหม่แล้ว
+/// พังถาวร** ด้วย `No active inference model set`
+///
+/// `_activeInferenceModel` ถูกตั้งให้เองเฉพาะตอน `downloadModel*` เท่านั้น
+/// และไม่มีอะไรกู้คืนตอนเปิดแอปรอบหน้า · ขณะที่ `isModelInstalled()` ยังตอบ
+/// true (ไฟล์อยู่จริง) สถานะในแอปจึงเป็น `ready` ทุกอย่างดูปกติหมด
+///
+/// **ทดสอบตอนเพิ่งโหลดเสร็จจะไม่มีวันเจอ** เพราะรอบนั้นตัวชี้ยังอยู่ —
+/// นั่นคือเหตุผลที่มันรอดมาถึงมือผู้ใช้ · และเป็นเหตุผลที่เทสต์นี้อ่านซอร์ส
+/// แทนที่จะรันจริง (รันจริงต้องมีปลั๊กอิน + ไฟล์โมเดล 2 GB)
+void _activeModelGroup() {
+  group('🔴 ต้องบอกปลั๊กอินว่าใช้รุ่นไหน ก่อนสร้างโมเดล', () {
+    final src = File('lib/ai/local_brain.dart').readAsStringSync();
+
+    test('มีการเรียก setActiveModel อยู่จริง', () {
+      expect(src, contains('setActiveModel('),
+          reason: 'ไม่เรียก = โหลดเสร็จคุยได้ แต่เปิดแอปใหม่แล้วพังถาวร');
+    });
+
+    test('🔴 ต้องเรียก **ก่อน** createModel', () {
+      final mark = src.indexOf('_markActive();\n      _model =');
+      final create = src.indexOf('FlutterGemmaPlugin.instance.createModel');
+
+      expect(mark, greaterThan(0),
+          reason: 'ต้องตั้งรุ่นที่ใช้ติดกันก่อนบรรทัดที่สร้างโมเดล');
+      expect(mark, lessThan(create));
+    });
+
+    test('ตั้งด้วย spec ของรุ่นที่เลือกอยู่ ไม่ใช่ค่าตายตัว', () {
+      expect(src, contains('setActiveModel(_spec(_variant))'),
+          reason: 'ตั้งรุ่นตายตัว = สลับรุ่นแล้วยังชี้ไปตัวเก่า');
+    });
+
+    test('ตั้งตั้งแต่ตอนสแกนเจอไฟล์ด้วย ไม่ใช่รอจนถึงตอนคุย', () {
+      expect(src, contains('if (installed) _markActive();'));
     });
   });
 }

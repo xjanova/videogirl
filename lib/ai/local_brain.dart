@@ -366,6 +366,9 @@ class LocalBrain extends ChangeNotifier {
       }
 
       final installed = _installed.contains(_variant);
+      // ไฟล์อยู่ในเครื่องแล้ว = บอกปลั๊กอินตั้งแต่ตอนนี้เลย · ดู [_markActive]
+      // ว่าทำไมของที่ "ติดตั้งแล้ว" ยังใช้ไม่ได้ถ้าไม่บอก
+      if (installed) _markActive();
       _set(installed ? LocalModelStage.ready : LocalModelStage.missing);
     } on Exception catch (e) {
       debugPrint('gemma: เช็คโมเดลไม่ได้ — $e');
@@ -563,10 +566,46 @@ class LocalBrain extends ChangeNotifier {
     return true;
   }
 
+  /// 🔴 บอกปลั๊กอินว่า "ใช้รุ่นไหน" ก่อนสร้างโมเดล **ทุกครั้ง**
+  ///
+  /// ## อาการที่เจอบนเครื่องจริง
+  ///
+  /// โหลดโมเดลเสร็จ คุยได้ปกติ · **ปิดแอปเปิดใหม่แล้วพังถาวร** ด้วย
+  /// `No active inference model set. Use FlutterGemma.installModel() or
+  /// modelManager.setActiveModel() to set a model first`
+  ///
+  /// ## ทำไม
+  ///
+  /// `_activeInferenceModel` ของปลั๊กอินเป็น **ตัวชี้ในหน่วยความจำล้วน**
+  /// มันถูกตั้งให้เองตอน `downloadModel*` เท่านั้น (mobile_model_manager.dart
+  /// บรรทัด 182/196/211/324/678) และ **ไม่มีอะไรกู้มันคืนตอนเปิดแอปรอบหน้า**
+  ///
+  /// `isModelInstalled()` ยังตอบ true อยู่ (ไฟล์อยู่ในเครื่องจริง) สถานะใน
+  /// แอปจึงเป็น `ready` ทุกอย่างดูปกติหมด — จนกว่าจะถึงบรรทัดที่สร้างโมเดลจริง
+  ///
+  /// ## กับดักของเรื่องนี้
+  ///
+  /// ทดสอบตอนเพิ่งโหลดเสร็จจะ**ไม่มีวันเจอ** เพราะรอบนั้นตัวชี้ยังอยู่
+  /// ต้องปิดแอปแล้วเปิดใหม่ถึงจะโผล่ · เป็นเหตุผลที่มันรอดมาถึงมือผู้ใช้
+  ///
+  /// เรียกทุกครั้งก่อนสร้าง ไม่ใช่ครั้งเดียวตอนเริ่ม — มันแค่ตั้งค่าฟิลด์
+  /// (ดู `setActiveModel` บรรทัด 710) ไม่มีค่าใช้จ่ายให้ต้องประหยัด
+  /// และการเรียกทุกครั้งแปลว่าการสลับรุ่นก็ถูกต้องเองโดยไม่ต้องจำอะไรเพิ่ม
+  void _markActive() {
+    try {
+      FlutterGemmaPlugin.instance.modelManager.setActiveModel(_spec(_variant));
+    } on Object catch (e) {
+      // ตั้งไม่ได้ก็ปล่อยให้ createModel เป็นคนบอกเหตุผลจริง — ข้อความของมัน
+      // ตรงกว่าที่เราจะเดาเองตรงนี้
+      debugPrint('gemma: ตั้งรุ่นที่ใช้ไม่สำเร็จ — $e');
+    }
+  }
+
   /// คืนค่าว่า session ที่ได้ **ต่อจากบทสนทนาเดิมได้เลย** หรือเพิ่งเกิดใหม่
   Future<bool> _ensureChat(String system, List<Turn> history) async {
     await _ensurePlugin();
     if (_model == null) {
+      _markActive();
       _model = await FlutterGemmaPlugin.instance.createModel(
         modelType: ModelType.gemmaIt,
         fileType: ModelFileType.litertlm,
