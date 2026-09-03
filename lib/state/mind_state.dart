@@ -163,6 +163,7 @@ class MindState extends ChangeNotifier {
     );
     _homeServerUrl = p.getString('homeServerUrl') ?? HomeServerDefaults.baseUrl;
     _homeServerModel = p.getString('homeServerModel') ?? HomeServerDefaults.model;
+    _autoReport = p.getBool('autoReport') ?? true;
     _mocapShot = MindMocapShot.parse(p.getString('mocapShot'));
     _avatarPackUrl = p.getString('avatarPackUrl') ?? _packUrlDefault;
     _avatarPackId = p.getString('avatarPackId') ?? '';
@@ -480,6 +481,24 @@ class MindState extends ChangeNotifier {
   void setHomeServerModel(String v) {
     _homeServerModel = v.trim();
     _save('homeServerModel', _homeServerModel);
+    _notify();
+  }
+
+  // ═══ ส่งรายงานเองเมื่อมีข้อผิดพลาด ══════════════════════
+  //
+  // ค่าตั้งต้น**เปิด** ตามที่เจ้าของสั่ง — ผู้ใช้ส่วนใหญ่ไม่กดปุ่มรายงาน
+  // เขาแค่เลิกใช้ · บั๊กที่เจ็บที่สุดคือบั๊กที่ไม่มีใครเล่าให้ฟัง
+  //
+  // 🔴 แต่ **สวิตช์ปิดต้องมีอยู่เสมอ** ไม่ว่าค่าตั้งต้นจะเป็นอะไร
+  // ของที่ส่งออกเน็ตเองโดยปิดไม่ได้ คือของที่ผู้ใช้ไม่มีทางเลือก
+
+  bool _autoReport = true;
+  bool get autoReport => _autoReport;
+
+  void setAutoReport(bool v) {
+    if (_autoReport == v) return;
+    _autoReport = v;
+    _save('autoReport', v);
     _notify();
   }
 

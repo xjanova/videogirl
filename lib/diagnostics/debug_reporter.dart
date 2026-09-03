@@ -1,13 +1,29 @@
-/// เก็บรายงานดีบัคแล้วส่งให้ xman studio — เมื่อเจ้าของกดเท่านั้น
+/// เก็บรายงานดีบัคแล้วส่งให้ xman studio
 ///
-/// 🔴 **ไม่มีการส่งอัตโนมัติในไฟล์นี้ และห้ามมีในอนาคต**
+/// ## ส่งเองเมื่อมีข้อผิดพลาด (เจ้าของสั่งไว้)
 ///
-/// ไม่มีตัวตั้งเวลา ไม่มีการส่งตอนแอปพัง ไม่มีการส่งตอนเปิดแอป · ทุกทางที่
-/// ส่งได้เองคือทางที่เจ้าของไม่ได้เลือก และแอปนี้ขายด้วยคำสัญญาว่าข้อมูล
-/// ไม่ออกนอกเครื่อง (ดู docs/security.md) — ตัวเก็บดีบัคคือสิ่งที่ทำลาย
-/// คำสัญญานั้นได้ง่ายที่สุด เพราะมันมีเหตุผลที่ฟังดูดีรออยู่แล้ว
+/// ผู้ใช้ส่วนใหญ่ไม่กดปุ่มรายงาน เขาแค่เลิกใช้ · บั๊กที่เจ็บที่สุดจึงเป็นบั๊ก
+/// ที่ไม่มีใครเล่าให้ฟัง · การส่งเองคือทางเดียวที่จะได้ยินมัน
+///
+/// ## 🔴 แต่ต้องไม่กลายเป็นเครื่องยิงขยะ
+///
+/// ระบบรายงานของบ้านมี 3,520 แถวจากแอปตัวเดียวที่ยิงทุกเหตุการณ์ — กองนั้น
+/// ไม่มีใครอ่าน เพราะอ่านไม่ไหว · สี่ด่านที่กันไว้:
+///
+/// 1. **ยิงเฉพาะตอนมีข้อผิดพลาดจริง** ไม่ใช่ heartbeat ไม่ใช่ตอนเปิดแอป
+/// 2. **ข้อความเดิมไม่ยิงซ้ำ** ภายในหน้าต่างเวลาหนึ่ง — เน็ตหลุดหนึ่งครั้ง
+///    ทำให้เกิด error เดียวกันสิบรอบได้ง่าย ๆ
+/// 3. **เพดานต่อการเปิดแอปหนึ่งครั้ง** — ลูปที่ล้มซ้ำต้องไม่ยิงจนหน้าแอดมินจม
+/// 4. **หน่วงก่อนยิง** — ข้อผิดพลาดที่ตามกันมาเป็นพวงถูกยุบเหลือฉบับเดียว
+///
+/// ## 🔴 สิ่งที่ไม่เปลี่ยน
+///
+/// เนื้อรายงานยังเป็น **รูปทรง ไม่ใช่เนื้อหา** — จำนวนข้อความ ไม่ใช่ข้อความ
+/// ไม่มีบทสนทนา ไม่มีความจำ ไม่มีคีย์ (ดู [DebugReport]) · และปิดได้ด้วย
+/// สวิตช์ในหน้าตั้งค่า ซึ่งต้องมีอยู่เสมอ ไม่ว่าค่าตั้งต้นจะเป็นอะไร
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -29,9 +45,20 @@ import 'mind_log.dart';
 enum ReportStage { idle, building, sending, sent, failed }
 
 class DebugReporter extends ChangeNotifier {
-  DebugReporter({http.Client? httpClient, S Function()? strings})
-      : _http = httpClient ?? http.Client(),
-        _s = strings ?? _thai;
+  DebugReporter({
+    http.Client? httpClient,
+    S Function()? strings,
+    // จังหวะเวลาฉีดเข้ามาได้ ด้วยเหตุผลเดียวกับที่ [MindState] รับนาฬิกา:
+    // ตรรกะที่คุมอยู่ตรงนี้เป็นเรื่อง**เวลา**ล้วน ๆ (หน่วง ยุบ กันซ้ำ)
+    // เทสต์ที่ต้องรอของจริงหกวินาทีต่อข้อ คือเทสต์ที่ไม่มีใครรัน
+    Duration? settle,
+    Duration? repeatAfter,
+    int? maxPerRun,
+  })  : _http = httpClient ?? http.Client(),
+        _s = strings ?? _thai,
+        settle = settle ?? defaultSettle,
+        repeatAfter = repeatAfter ?? defaultRepeatAfter,
+        maxPerRun = maxPerRun ?? defaultMaxPerRun;
 
   final http.Client _http;
 
@@ -305,6 +332,133 @@ class DebugReporter extends ChangeNotifier {
     }
   }
 
+  // ═══ ส่งเองเมื่อมีข้อผิดพลาด ═══════════════════════════
+
+  /// ยิงซ้ำข้อความเดิมได้เร็วสุดเท่าไหร่
+  ///
+  /// เน็ตหลุดหนึ่งครั้งทำให้เกิด error ข้อความเดียวกันสิบรอบได้ง่าย ๆ
+  /// (ผู้ใช้กดส่งซ้ำ · การสกัดความจำที่วิ่งเบื้องหลัง · สายที่วนอยู่)
+  /// สิบนาทีพอให้จับได้ว่า "ยังเป็นอยู่" โดยไม่ท่วมหน้าแอดมิน
+  static const defaultRepeatAfter = Duration(minutes: 10);
+  final Duration repeatAfter;
+
+  /// เพดานต่อการเปิดแอปหนึ่งครั้ง
+  ///
+  /// ลูปที่ล้มซ้ำ ๆ ต้องไม่ยิงจนกองรายงานจมทั้งกอง · ห้าฉบับพอเห็นรูปแบบแล้ว
+  /// และถ้ามันล้มมากกว่านั้นจริง ฉบับที่หกก็ไม่ได้บอกอะไรเพิ่ม
+  static const defaultMaxPerRun = 5;
+  final int maxPerRun;
+
+  /// หน่วงก่อนยิง — ข้อผิดพลาดที่ตามกันมาเป็นพวงถูกยุบเหลือฉบับเดียว
+  ///
+  /// ตัวอย่างจริง: สมองล้ม → เสียงล้มตาม → อวาตาร์บ่น · สามอย่างในสองวินาที
+  /// เป็นเหตุการณ์เดียว ไม่ใช่สามเหตุการณ์
+  static const defaultSettle = Duration(seconds: 6);
+  final Duration settle;
+
+  /// เปิดการส่งเองไหม
+  ///
+  /// 🔴 อ่านจาก [MindState] ตรง ๆ **ไม่เก็บสำเนาไว้เอง**
+  ///
+  /// สำเนาแปลว่ามีสองแหล่งความจริง แล้ววันหนึ่งจะไม่ตรงกัน — ที่เจ็บสุดคือ
+  /// ตอน boot: provider ถูกสร้างก่อน `load()` เสร็จ สำเนาจะได้ค่าตั้งต้น
+  /// (เปิด) ทั้งที่ผู้ใช้ปิดไว้ แล้วมันจะส่งไปแล้วหนึ่งฉบับก่อนใครรู้ตัว
+  ///
+  /// ยังไม่ได้ต่อ state = ไม่ส่ง · ไม่มีใครบอกว่าเปิดคือไม่เปิด
+  bool get auto => _watched?.autoReport ?? false;
+
+  MindState? _watched;
+  MindAvatarController? _avatar;
+  MindVault? _vault;
+
+  /// ข้อความที่ยิงไปแล้ว → ยิงเมื่อไหร่
+  final Map<String, DateTime> _sentAt = {};
+  int _sentThisRun = 0;
+  Timer? _debounce;
+  String? _lastSeenError;
+
+  /// เวลาที่ส่งเองสำเร็จล่าสุด — หน้าตั้งค่าเอาไปโชว์ว่ามันทำงานอยู่จริง
+  DateTime? _autoSentAt;
+  DateTime? get autoSentAt => _autoSentAt;
+
+  int get sentThisRun => _sentThisRun;
+
+  /// เริ่มเฝ้าดูข้อผิดพลาด
+  ///
+  /// เฝ้าที่ [MindState] ที่เดียว เพราะทุกทางที่ล้มแล้วผู้ใช้เห็น จบลงที่
+  /// `lastError` ของมันหมด (สมอง เสียง ไมค์ สำเนาข้อมูล) — เฝ้าหลายที่แปลว่า
+  /// วันหนึ่งจะมีทางใหม่ที่ลืมต่อ แล้วบั๊กนั้นจะไม่มีวันถูกรายงาน
+  void watch({
+    required MindState state,
+    MindAvatarController? avatar,
+    MindVault? vault,
+  }) {
+    _watched?.removeListener(_onStateChanged);
+    _watched = state..addListener(_onStateChanged);
+    _avatar = avatar;
+    _vault = vault;
+    _lastSeenError = state.lastError;
+  }
+
+  void _onStateChanged() {
+    final state = _watched;
+    if (state == null) return;
+
+    final err = state.lastError;
+    // สนใจเฉพาะ**ข้อความใหม่** ไม่ใช่ทุกครั้งที่ state ขยับ
+    // (state ขยับหลายสิบครั้งต่อการคุยหนึ่งตา)
+    if (err == null || err == _lastSeenError) {
+      _lastSeenError = err;
+      return;
+    }
+    _lastSeenError = err;
+
+    if (!auto) return;
+    if (_sentThisRun >= maxPerRun) return;
+
+    final last = _sentAt[err];
+    if (last != null && DateTime.now().difference(last) < repeatAfter) return;
+
+    _debounce?.cancel();
+    _debounce = Timer(settle, () => unawaited(_autoSend(err)));
+  }
+
+  /// ยิงเงียบ ๆ · **ห้ามรบกวนผู้ใช้ไม่ว่าจะสำเร็จหรือล้ม**
+  ///
+  /// เขากำลังเจอปัญหาอยู่แล้ว การเด้งข้อความว่า "ส่งรายงานไม่สำเร็จ" ทับลงไป
+  /// คือการเพิ่มปัญหาที่เขาแก้ไม่ได้ให้อีกข้อ · ผลอยู่ใน [autoSentAt] กับ log
+  Future<void> _autoSend(String forError) async {
+    final state = _watched;
+    if (state == null || _disposed || !auto) return;
+
+    // 🔴 สถานะของ **ตัวส่งเอง** ต้องไม่ไปทับสถานะของปุ่มที่ผู้ใช้กด
+    // ไม่งั้นเขากดเตรียมรายงานอยู่ แล้วจอเปลี่ยนเองกลางคันโดยไม่มีสาเหตุ
+    final keepStage = _stage;
+    final keepError = _error;
+    final keepReport = _report;
+
+    try {
+      await collect(state: state, avatar: _avatar, vault: _vault);
+      final ok = await send(
+        baseUrl: state.storeBaseUrl,
+        license: state.licenseKey,
+      );
+      if (ok) {
+        _sentAt[forError] = DateTime.now();
+        _sentThisRun++;
+        _autoSentAt = DateTime.now();
+        debugPrint('รายงาน: ส่งเองแล้ว ($_sentThisRun/$maxPerRun)');
+      }
+    } on Object catch (e) {
+      debugPrint('รายงาน: ส่งเองไม่สำเร็จ — $e');
+    } finally {
+      _stage = keepStage;
+      _error = keepError;
+      _report = keepReport;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
   /// เลขสุ่มของการติดตั้งครั้งนี้ · สร้างครั้งเดียวแล้วจำไว้
   ///
   /// มีไว้จับคู่รายงานหลายฉบับจากเครื่องเดียวกันตอนไล่บั๊ก · **ไม่ได้มาจาก
@@ -329,6 +483,8 @@ class DebugReporter extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _debounce?.cancel();
+    _watched?.removeListener(_onStateChanged);
     _http.close();
     super.dispose();
   }

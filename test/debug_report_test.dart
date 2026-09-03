@@ -5,13 +5,24 @@
 /// เทสต์คือที่เดียวที่จับได้
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:videogirl/state/mind_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:videogirl/diagnostics/debug_report.dart';
 import 'package:videogirl/diagnostics/debug_reporter.dart';
 import 'package:videogirl/diagnostics/mind_log.dart';
 
 void main() {
+  setUp(() {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  _autoSendGroup();
   _bugReportShapeGroup();
 
   group('🔴 ล้างความลับ', () {
@@ -236,6 +247,141 @@ void _bugReportShapeGroup() {
       // อีเมลผู้ใช้กับ stack trace ดิบ — ไม่กรอกโดยตั้งใจ ไม่ใช่เพราะลืม
       expect(body.containsKey('user_email'), isFalse);
       expect(body.containsKey('stack_trace'), isFalse);
+    });
+  });
+}
+
+/// 🔴 ส่งเองต้องไม่กลายเป็นเครื่องยิงขยะ
+///
+/// ระบบรายงานของบ้านมี 3,520 แถวจากแอปตัวเดียวที่ยิงทุกเหตุการณ์ — กองนั้น
+/// ไม่มีใครอ่านเพราะอ่านไม่ไหว · สี่ด่านนี้คือสิ่งที่กันไม่ให้ซ้ำรอย
+/// และทุกด่านล้มแบบ**เงียบ**ได้ (ยิงเกินไม่มีอะไรเตือน) เทสต์จึงเป็นที่เดียวที่จับได้
+class _FakeHttp extends http.BaseClient {
+  final posts = <String>[];
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    posts.add(request.url.toString());
+    return http.StreamedResponse(
+      Stream.value(utf8.encode('{"success":true,"data":{"id":1}}')),
+      201,
+    );
+  }
+}
+
+void _autoSendGroup() {
+  group('🔴 ส่งเองเมื่อมีข้อผิดพลาด', () {
+    late _FakeHttp http_;
+    late DebugReporter reporter;
+    late MindState state;
+
+    Future<void> setUpAll_() async {
+      http_ = _FakeHttp();
+      reporter = DebugReporter(
+        httpClient: http_,
+        settle: const Duration(milliseconds: 20),
+        repeatAfter: const Duration(seconds: 30),
+      );
+      state = MindState();
+      await state.load();
+      reporter.watch(state: state);
+    }
+
+    /// รอให้เลยหน้าต่างหน่วง แล้วปล่อยให้งานเบื้องหลังเดินจนจบ
+    Future<void> letItSend() async {
+      await Future<void>.delayed(
+          reporter.settle + const Duration(milliseconds: 120));
+    }
+
+    tearDown(() {
+      reporter.dispose();
+      state.dispose();
+    });
+
+    test('มีข้อผิดพลาดใหม่ = ส่งเอง ไม่ต้องรอใครกด', () async {
+      await setUpAll_();
+      state.reportError('สมองล้ม');
+      await letItSend();
+
+      expect(http_.posts, hasLength(1));
+      expect(http_.posts.single, endsWith('/api/v1/bug-reports'));
+      expect(reporter.autoSentAt, isNotNull);
+    });
+
+    test('🔴 ข้อความเดิมไม่ยิงซ้ำ', () async {
+      await setUpAll_();
+      state.reportError('เน็ตหลุด');
+      await letItSend();
+      state.clearError();
+      state.reportError('เน็ตหลุด');
+      await letItSend();
+
+      expect(http_.posts, hasLength(1),
+          reason: 'เน็ตหลุดครั้งเดียวทำให้เกิด error เดิมสิบรอบได้ง่าย ๆ');
+    });
+
+    test('ข้อความคนละอันยิงแยกกัน', () async {
+      await setUpAll_();
+      state.reportError('อันแรก');
+      await letItSend();
+      state.reportError('อันที่สอง');
+      await letItSend();
+
+      expect(http_.posts, hasLength(2));
+    });
+
+    test('🔴 ปิดสวิตช์แล้วต้องไม่ส่งเลย', () async {
+      await setUpAll_();
+      state.setAutoReport(false);
+      state.reportError('พังแต่ห้ามบอกใคร');
+      await letItSend();
+
+      expect(http_.posts, isEmpty,
+          reason: 'ของที่ส่งออกเน็ตเองโดยปิดไม่ได้ = ผู้ใช้ไม่มีทางเลือก');
+    });
+
+    test('🔴 เพดานต่อการเปิดแอปหนึ่งครั้ง', () async {
+      await setUpAll_();
+      for (var i = 0; i <= reporter.maxPerRun + 3; i++) {
+        state.reportError('ล้มรอบที่ $i');
+        await letItSend();
+      }
+      expect(http_.posts, hasLength(reporter.maxPerRun),
+          reason: 'ลูปที่ล้มซ้ำต้องไม่ยิงจนหน้าแอดมินจม');
+      expect(reporter.sentThisRun, reporter.maxPerRun);
+    });
+
+    test('🔴 ข้อผิดพลาดที่มาเป็นพวงถูกยุบเหลือฉบับเดียว', () async {
+      await setUpAll_();
+      // สมองล้ม → เสียงล้มตาม → สำเนาล้มตาม · สามอย่างในไม่กี่มิลลิวินาที
+      // เป็นเหตุการณ์เดียว ไม่ใช่สามเหตุการณ์
+      state.reportError('สมองล้ม');
+      state.reportError('เสียงล้ม');
+      state.reportError('สำเนาล้ม');
+      await letItSend();
+
+      expect(http_.posts, hasLength(1));
+    });
+
+    test('เคลียร์ข้อผิดพลาดไม่ใช่เหตุการณ์ใหม่ ต้องไม่ยิง', () async {
+      await setUpAll_();
+      state.reportError('อะไรสักอย่าง');
+      await letItSend();
+      final before = http_.posts.length;
+
+      state.clearError();
+      await letItSend();
+      expect(http_.posts, hasLength(before));
+    });
+
+    test('🔴 ส่งเองต้องไม่ไปทับสถานะของปุ่มที่ผู้ใช้กด', () async {
+      await setUpAll_();
+      state.reportError('พัง');
+      await letItSend();
+
+      expect(reporter.stage, ReportStage.idle,
+          reason: 'จอเปลี่ยนเองกลางคันโดยไม่มีสาเหตุ = ผู้ใช้งง');
+      expect(reporter.error, isNull);
     });
   });
 }

@@ -389,6 +389,28 @@ class S {
         'You can read the whole thing first — what you see is exactly what is sent',
       );
 
+  // ── ส่งเอง ──
+  String get debugAuto =>
+      _('ส่งรายงานเองเมื่อมีข้อผิดพลาด', 'Send a report automatically on errors');
+
+  /// 🔴 บอกให้ครบว่ามันทำอะไร **และไม่ทำอะไร**
+  ///
+  /// ของที่ส่งออกเน็ตเองต้องอธิบายตัวเองให้ชัดกว่าของที่ผู้ใช้กดเอง เพราะ
+  /// เขาไม่ได้อยู่ตรงนั้นตอนมันทำงาน
+  String get debugAutoWhy => _(
+        'ส่งเฉพาะตอนมีอะไรพังจริง ไม่ใช่ตลอดเวลา · ข้อความเดิมไม่ส่งซ้ำ '
+        'และส่งได้มากสุด 5 ฉบับต่อการเปิดแอปหนึ่งครั้ง\n'
+        'เนื้อรายงานเหมือนกับที่กดดูได้ด้านล่างทุกอย่าง',
+        'Only when something actually breaks — not continuously. The same '
+        'error is never sent twice, and at most 5 reports per app run.\n'
+        'The contents are exactly what you can read below.',
+      );
+
+  String debugAutoSentAt(String when) =>
+      _('ส่งเองล่าสุด $when', 'Last auto-sent $when');
+  String get debugAutoNever =>
+      _('ยังไม่ได้ส่งเอง (ยังไม่มีอะไรพัง)', 'Nothing auto-sent yet — nothing has broken');
+
   String get debugBuild => _('เตรียมรายงาน', 'Prepare a report');
   String get debugPreview => _('ดูก่อนส่ง', 'Read it first');
   String get debugSend => _('ส่งให้ผู้พัฒนา', 'Send to the developer');

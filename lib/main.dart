@@ -327,8 +327,15 @@ class _MindBootstrapState extends State<MindBootstrap>
         ChangeNotifierProvider.value(value: _session),
         ChangeNotifierProvider.value(value: _soul),
         ChangeNotifierProvider.value(value: _vault),
+        // 🔴 ต่อตัวเฝ้าข้อผิดพลาดตั้งแต่สร้าง — ไม่ใช่รอให้ใครเปิดหน้าตั้งค่า
+        //
+        // บั๊กที่ต้องการรายงานที่สุดคือบั๊กที่ทำให้แอปใช้ไม่ได้เลย ซึ่งเป็น
+        // กรณีที่ผู้ใช้**ไม่เคยเดินไปถึงหน้าตั้งค่า** · ต่อทีหลังแปลว่า
+        // บั๊กประเภทนั้นจะไม่มีวันถูกส่ง
         ChangeNotifierProvider(
-            create: (_) => DebugReporter(strings: () => _state.s)),
+          create: (_) => DebugReporter(strings: () => _state.s)
+            ..watch(state: _state, avatar: _avatar, vault: _vault),
+        ),
       ],
       child: Consumer<MindState>(
         builder: (context, state, _) => MaterialApp(

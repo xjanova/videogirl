@@ -2241,6 +2241,51 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
           const SizedBox(height: MindSpace.md),
 
+          // 🔴 สวิตช์อยู่**บนสุด** ของการ์ด ไม่ใช่ซ่อนท้าย
+          //
+          // ค่าตั้งต้นคือเปิด แปลว่าแอปส่งข้อมูลออกเน็ตเองโดยที่เขาไม่ได้กด
+          // สิ่งเดียวที่ทำให้เรื่องนี้ตรงไปตรงมาคือเขาต้องเห็นสวิตช์**ก่อน**
+          // ที่จะต้องอ่านอย่างอื่น
+          Row(
+            spacing: MindSpace.md,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t.debugAuto,
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: MindColors.ink)),
+                    const SizedBox(height: 3),
+                    Text(t.debugAutoWhy,
+                        style: const TextStyle(
+                            fontSize: 10.5,
+                            height: 1.5,
+                            color: MindColors.ink55)),
+                  ],
+                ),
+              ),
+              _toggle(
+                on: state.autoReport,
+                mode: mode,
+                onTap: () => state.setAutoReport(!state.autoReport),
+              ),
+            ],
+          ),
+          const SizedBox(height: MindSpace.sm),
+
+          // หลักฐานว่ามันทำงานอยู่จริง — สวิตช์ที่เปิดไว้แต่ไม่เคยส่งอะไร
+          // แยกไม่ออกจากสวิตช์ที่พัง
+          Text(
+            r.autoSentAt == null
+                ? t.debugAutoNever
+                : t.debugAutoSentAt(_clockOf(r.autoSentAt!)),
+            style: const TextStyle(fontSize: 10.5, color: MindColors.ink45),
+          ),
+          const SizedBox(height: MindSpace.md),
+
           if (r.error != null)
             Padding(
               padding: const EdgeInsets.only(bottom: MindSpace.sm),
