@@ -422,8 +422,20 @@ class MindState extends ChangeNotifier {
   /// สมองที่รันบนมือถือ สร้างเมื่อเลือกใช้จริงเท่านั้น
   /// (โหลดปลั๊กอินและจอง native handle ตั้งแต่ตอนสร้าง)
   LocalBrain? _lazyLocal;
-  LocalBrain get localBrain =>
-      _lazyLocal ??= LocalBrain(strings: () => s);
+  /// รุ่นโมเดลในเครื่องที่ผู้ใช้เลือกไว้ — **ต้องรอดข้ามการเปิดปิดแอป**
+  ///
+  /// 🔴 ของเดิม [LocalBrain] จำไว้ในหน่วยความจำล้วน ทุกครั้งที่เปิดแอปจึงกลับ
+  /// เป็นค่าตั้งต้น แล้วการตรวจแรมอัตโนมัติก็สลับไปรุ่นที่ "ดีที่สุด" ทับ
+  /// ซึ่งบนเครื่องแรมเยอะคือรุ่นที่ **ไม่ได้โหลดไว้** → ทักคำแรกได้
+  /// "ยังไม่ได้โหลดโมเดล" ทั้งที่เพิ่งโหลดไปเมื่อวาน และเลือกเองก็ไม่ช่วย
+  /// เพราะรอบถัดไปถูกทับอีก
+  static const _kGemmaVariant = 'gemmaVariant';
+
+  LocalBrain get localBrain => _lazyLocal ??= LocalBrain(
+        strings: () => s,
+        initialVariant: GemmaVariant.parse(_kv?.getString(_kGemmaVariant)),
+        onVariantPicked: (v) => _save(_kGemmaVariant, v.id),
+      );
 
   /// มี LocalBrain อยู่แล้วไหม — ใช้ตอน dispose จะได้ไม่ไปสร้างขึ้นมาใหม่
   bool get hasLocalBrain => _lazyLocal != null;

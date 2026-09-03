@@ -10,6 +10,8 @@ import 'package:videogirl/state/mind_state.dart';
 /// มี `void main() async {...}` กับลิงก์ pub.dev ติดมาด้วย ผู้ใช้ทำอะไรกับมัน
 /// ไม่ได้เลยนอกจากตกใจ
 void main() {
+  _variantGroup();
+
   group('ย่อข้อความข้อผิดพลาดก่อนเอาไปโชว์', () {
     test('ข้อผิดพลาดหลายบรรทัด เหลือแค่บรรทัดแรก', () {
       // นี่คือของจริงที่เคยขึ้นบนหน้าจอ ย่อมาเล็กน้อย
@@ -142,6 +144,53 @@ void main() {
       // คนวางคีย์ Groq/Claude มาผิดช่องเป็นเรื่องที่เกิดจริง
       expect(MindState.looksLikeOpenAiKey('gsk_abc'), isFalse);
       expect(MindState.looksLikeOpenAiKey(''), isFalse);
+    });
+  });
+}
+
+/// 🔴 รุ่นที่ผู้ใช้เลือก/โหลดไว้ ต้องไม่ถูกสลับทิ้งเอง
+///
+/// อาการที่เจอบนเครื่องจริง: โหลด E2B ไว้แล้ว เปิดแอปใหม่ → ทักคำแรกได้
+/// "ยังไม่ได้โหลดโมเดลลงเครื่อง" ทั้งที่ไฟล์อยู่ครบ
+///
+/// สาเหตุสองชั้นซ้อนกัน:
+/// 1. การตรวจแรมอัตโนมัติสลับไปรุ่นที่ `DeviceVerdict.best` บอก **โดยไม่ดูว่า
+///    รุ่นนั้นโหลดไว้หรือยัง** — เครื่องแรม 12 GB ได้ `best = e4bGpu`
+///    แต่ปุ่มโหลดตั้งต้นที่ E2B คนจึงโหลด E2B กันเกือบทั้งหมด
+/// 2. `_userPicked` ไม่เคยถูกจำข้ามการเปิดปิดแอป → เลือกเองในหน้าตั้งค่า
+///    ก็ถูกทับทิ้งในรอบถัดไปอยู่ดี
+void _variantGroup() {
+  group('🔴 รุ่นโมเดลที่เลือกไว้ต้องไม่ถูกสลับทิ้ง', () {
+    test('เครื่องแรมเยอะแนะนำ E4B — ต้นเหตุของอาการ', () {
+      // 12 GB รายงานราว 10800+ MB
+      expect(DeviceCapability.verdictFor(11000).best, GemmaVariant.e4bGpu);
+      // แต่ปุ่มโหลดตั้งต้นที่ E2B — สองอย่างนี้ไม่ตรงกันคือที่มาของปัญหา
+      expect(LocalBrain().variant, GemmaVariant.e2bGpu);
+    });
+
+    test('รุ่นที่จำมาจากรอบก่อน ถือว่าผู้ใช้เลือกเอง', () {
+      final lb = LocalBrain(initialVariant: GemmaVariant.e2bCpu);
+      expect(lb.variant, GemmaVariant.e2bCpu,
+          reason: 'ไม่จำ = เปิดแอปใหม่แล้วกลับไปค่าตั้งต้นทุกครั้ง');
+      lb.dispose();
+    });
+
+    test('เลือกรุ่นแล้วต้องบอกฝั่งที่เก็บค่าให้จำไว้', () async {
+      GemmaVariant? saved;
+      final lb = LocalBrain(onVariantPicked: (v) => saved = v);
+      await lb.selectVariant(GemmaVariant.e4bGpu);
+
+      expect(saved, GemmaVariant.e4bGpu,
+          reason: 'ไม่บอก = การเลือกอยู่ได้แค่รอบเดียว');
+      lb.dispose();
+    });
+
+    test('ชื่อรุ่นที่จำไว้แปลกลับได้ · ชื่อที่ไม่รู้จักคืน null', () {
+      expect(GemmaVariant.parse('gemma-4-e4b-gpu'), GemmaVariant.e4bGpu);
+      expect(GemmaVariant.parse('gemma-4-e2b-cpu'), GemmaVariant.e2bCpu);
+      // รุ่นถูกถอดออกจากแอปได้ ค่าที่จำไว้จึงชี้ไปที่ที่ไม่มีแล้วได้
+      expect(GemmaVariant.parse('รุ่นที่เลิกใช้ไปแล้ว'), isNull);
+      expect(GemmaVariant.parse(null), isNull);
     });
   });
 }

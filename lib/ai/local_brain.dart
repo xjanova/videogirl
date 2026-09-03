@@ -64,18 +64,38 @@ enum GemmaVariant {
   String get url => 'https://huggingface.co/$repo/resolve/main/$file';
 
   String get sizeLabel => '${(bytes / 1073741824).toStringAsFixed(1)} GB';
+
+  /// แปลง id ที่จำไว้กลับเป็นรุ่น · null = ยังไม่เคยเลือก หรือชื่อที่ไม่รู้จัก
+  /// (รุ่นถูกถอดออกจากแอปได้ ค่าที่จำไว้จึงชี้ไปที่ที่ไม่มีอยู่แล้วได้)
+  static GemmaVariant? parse(Object? id) {
+    for (final v in GemmaVariant.values) {
+      if (v.id == '$id') return v;
+    }
+    return null;
+  }
 }
 
 /// สถานะของโมเดลในเครื่อง
 enum LocalModelStage { unknown, missing, downloading, ready, failed }
 
 class LocalBrain extends ChangeNotifier {
-  LocalBrain({S Function()? strings}) : _s = strings ?? _thai;
+  LocalBrain({
+    S Function()? strings,
+    GemmaVariant? initialVariant,
+    this.onVariantPicked,
+  })  : _s = strings ?? _thai,
+        _variant = initialVariant ?? GemmaVariant.e2bGpu,
+        // รุ่นที่จำมาจากรอบก่อน = เขาเลือกเองไว้แล้ว · การตรวจอัตโนมัติ
+        // ต้องไม่มาทับ ไม่งั้นการเลือกในหน้าตั้งค่าจะอยู่ได้แค่รอบเดียว
+        _userPicked = initialVariant != null;
 
   final S Function() _s;
   static S _thai() => const S(AppLang.th);
 
-  GemmaVariant _variant = GemmaVariant.e2bGpu;
+  /// บอกฝั่งที่เก็บค่าว่าผู้ใช้เลือกรุ่นไหน — ต้องรอดข้ามการเปิดปิดแอป
+  final void Function(GemmaVariant)? onVariantPicked;
+
+  GemmaVariant _variant;
   GemmaVariant get variant => _variant;
 
   // ── ความสามารถของเครื่อง ─────────────────────────────────
@@ -86,7 +106,7 @@ class LocalBrain extends ChangeNotifier {
 
   /// ผู้ใช้เลือกรุ่นเองแล้วหรือยัง
   /// ถ้าเลือกเองแล้ว การตรวจอัตโนมัติต้องไม่ไปเปลี่ยนทับ
-  bool _userPicked = false;
+  bool _userPicked;
 
   /// ตรวจแรมแล้วเลือกรุ่นที่เหมาะให้เอง แล้วอ่านสถานะโมเดลในเครื่อง
   ///
@@ -95,17 +115,53 @@ class LocalBrain extends ChangeNotifier {
   /// การเรียกซ้ำเงียบไปทั้งดุ้นรวมถึงการอ่านสถานะไฟล์ ซึ่งเป็นคนละเรื่องกัน
   /// และเปลี่ยนได้จริงระหว่างใช้งาน (โหลดเสร็จ ลบทิ้ง สลับรุ่น)
   Future<void> detectDevice() async {
-    if (_device == null) {
-      _device = await DeviceCapability.detect();
+    _device ??= await DeviceCapability.detect();
 
-      final best = _device!.best;
-      if (!_userPicked && best != null && best != _variant) {
-        await _release();
-        _variant = best;
-      }
-      if (!_disposed) notifyListeners();
-    }
+    // 🔴 **ต้องรู้ก่อนว่ามีอะไรโหลดไว้แล้ว ก่อนจะไปเลือกรุ่นให้เขา**
+    //
+    // ของเดิมเลือกรุ่นก่อนแล้วค่อยสแกน จึงเลือกโดยไม่รู้ว่าเครื่องมีอะไรอยู่
     await refresh();
+    await _autoPick();
+    if (!_disposed) notifyListeners();
+  }
+
+  /// เลือกรุ่นให้เอง — เฉพาะตอนที่ยัง**ไม่มีอะไรให้เลือก**เท่านั้น
+  ///
+  /// 🔴 **ห้ามสลับออกจากรุ่นที่โหลดไว้แล้วเด็ดขาด**
+  ///
+  /// ของเดิมสลับไปรุ่นที่ `DeviceVerdict.best` บอก โดยไม่ดูว่ารุ่นนั้นโหลดไว้
+  /// หรือยัง · เครื่องแรม 12 GB ได้ `best = e4bGpu` แต่คนส่วนใหญ่โหลด E2B
+  /// (ค่าตั้งต้นของปุ่มโหลด) ผลคือ **เปิดแอปแล้วมันสลับไปรุ่นที่ไม่มีในเครื่อง
+  /// ทุกครั้ง** แล้วทักคำแรกได้ "ยังไม่ได้โหลดโมเดล" ทั้งที่เพิ่งโหลดไปเมื่อวาน
+  ///
+  /// และเพราะ `_userPicked` ไม่เคยถูกจำข้ามการเปิดปิดแอป การเลือกเองในหน้า
+  /// ตั้งค่าก็ถูกทับทิ้งในการเปิดครั้งถัดไปอยู่ดี
+  ///
+  /// ไฟล์ที่โหลดไว้แล้วคือ**คำแถลงเจตนาที่หนักแน่นที่สุดที่มี** — 2 GB ที่เขา
+  /// ยอมเสียเน็ตโหลดมา · การสลับทิ้งคือการโยนของนั้นทิ้งแทนเขา
+  Future<void> _autoPick() async {
+    if (_userPicked) return;
+
+    // มีของอยู่ในเครื่องแล้ว = ใช้ของนั้น ไม่ต้องไปหาอะไรที่ดีกว่า
+    if (_installed.isNotEmpty) {
+      if (_installed.contains(_variant)) return;
+      final best = _device?.best;
+      final pick = (best != null && _installed.contains(best))
+          ? best
+          : _installed.first;
+      await _release();
+      _variant = pick;
+      _set(LocalModelStage.ready);
+      return;
+    }
+
+    // ยังไม่มีอะไรเลย — ตรงนี้ค่อยแนะนำรุ่นที่เครื่องรับไหว
+    final best = _device?.best;
+    if (best != null && best != _variant) {
+      await _release();
+      _variant = best;
+      _set(LocalModelStage.missing);
+    }
   }
 
   LocalModelStage _stage = LocalModelStage.unknown;
@@ -243,6 +299,7 @@ class LocalBrain extends ChangeNotifier {
   Future<void> selectVariant(GemmaVariant v) async {
     // ผู้ใช้เลือกเอง = การตรวจอัตโนมัติต้องไม่มาเปลี่ยนทับทีหลัง
     _userPicked = true;
+    onVariantPicked?.call(v);
     if (_variant == v) return;
     await _release(); // โมเดลเดิมยังกินแรมอยู่ ต้องปล่อยก่อนสลับ
     _variant = v;
