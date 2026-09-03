@@ -691,6 +691,11 @@ class S {
   String get voiceEnabled => _('ให้เธอพูดออกเสียง', 'Let her speak aloud');
   String get voiceDisabledNote =>
       _('ปิดอยู่ — เธอจะตอบเป็นข้อความอย่างเดียว', 'Off — she replies in text only');
+
+  /// ป้ายของปุ่มลำโพงในแถวช่องพิมพ์ · บอก**สิ่งที่จะเกิดขึ้นเมื่อกด**
+  /// ไม่ใช่สถานะปัจจุบัน — ป้ายที่บอกสถานะทำให้คนอ่านสลับกันได้เสมอ
+  String get voiceMute => _('ปิดเสียงเธอ', 'Mute her voice');
+  String get voiceUnmute => _('เปิดเสียงเธอ', 'Unmute her voice');
   String get voiceEngine => _('เครื่องเสียง', 'Voice engine');
   String get voiceModel => _('โมเดลเสียง', 'Voice model');
   String get voicePick => _('เสียง', 'Voice');

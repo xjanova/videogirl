@@ -285,6 +285,14 @@ extension AiStrings on S {
         'just download it again',
       );
 
+  /// เสียงสังเคราะห์เสร็จแล้วแต่ไม่มีทางไหนเล่นได้เลย
+  ///
+  /// เงียบเฉย ๆ อ่านออกมาเป็น "เธอไม่ยอมพูดกับเรา" ซึ่งคนละเรื่องกับของจริง
+  String get errVoiceNoOutput => pick(
+        'เสียงของเธอออกลำโพงไม่ได้ · ปิดเสียงในหน้าตั้งค่าไว้ก่อนก็ได้ ข้อความยังอ่านได้ครบ',
+        'Her voice could not reach the speaker — the text is still all here',
+      );
+
   String get errModelNotDownloaded =>
       pick('ยังไม่ได้โหลดโมเดลลงเครื่อง', 'The model is not downloaded yet');
 

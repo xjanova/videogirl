@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'ai/mind_audio.dart';
 import 'avatar/avatar_view.dart';
 import 'phone/call_session.dart';
 import 'screens/calendar_screen.dart';
@@ -10,6 +11,7 @@ import 'screens/settings_screen.dart';
 import 'screens/timeline_screen.dart';
 import 'state/mind_state.dart';
 import 'i18n/strings.dart';
+import 'i18n/strings_ai.dart';
 import 'theme/tokens.dart';
 import 'widgets/mind_nav_bar.dart';
 
@@ -84,8 +86,17 @@ class _MindShellState extends State<MindShell> {
 
     // ต่อทางออกของเสียงเข้ากับปากของเธอ
     // state สังเคราะห์ไบต์มาให้ แล้ว WebView เป็นคนเล่นและอ่านคลื่นไปขยับปาก
-    context.read<MindState>().speaker =
-        (u) => _avatar.speakBytes(u.bytes, mime: u.mime);
+    //
+    // 🔴 **สองทาง ไม่ใช่ทางเดียว** · เวที 3D รับเสียงไม่ได้เมื่อยังไม่ได้โหลด
+    // avatar pack, เวทีโหลดพัง, หรือทักก่อนคลิปท่าทางโหลดเสร็จ — ทั้งสาม
+    // กรณีของเดิมจบด้วยความเงียบสนิทโดยไม่มีใครรู้ · ปากไม่ขยับดีกว่าไม่มีเสียง
+    final state = context.read<MindState>();
+    state.speaker = (u) async {
+      if (await _avatar.speakBytes(u.bytes, mime: u.mime)) return;
+      if (await MindAudio.play(u.bytes, mime: u.mime)) return;
+      // ทั้งสองทางไม่ได้ = บอกตรง ๆ ไม่ใช่ปล่อยให้เดาว่าทำไมเธอเงียบ
+      state.reportError(state.s.errVoiceNoOutput);
+    };
   }
 
   @override

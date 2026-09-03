@@ -9,9 +9,9 @@
 ///    ผ่านไมค์มือถือ · ส่งเลยแปลว่าเธอตอบคำที่เจ้าของไม่ได้พูด
 library;
 
-import 'dart:typed_data';
-
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:videogirl/ai/device_speech.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:videogirl/ai/brain_provider.dart';
 import 'package:videogirl/ai/openai_client.dart';
@@ -37,6 +37,8 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues({});
   });
+
+  _endpointGroup();
 
   group('🔴 เสียงไปที่เดียวกับที่ข้อความไป', () {
     Future<MindState> stateOn(BrainProvider b) async {
@@ -160,4 +162,88 @@ void main() {
       expect(VoiceInput.maxTake.inMinutes, lessThanOrEqualTo(2));
     });
   });
+}
+
+/// 🔴 ระบบตัดจบการฟังเอง แล้วข้อความหายไปทั้งประโยค
+///
+/// ตัวถอดเสียงของแอนดรอยด์จบเทิร์นเองทันทีที่ได้ยินว่าเงียบลง (endpointing)
+/// ซึ่งเป็น**ทางที่เกิดบ่อยที่สุด** — คนพูดจบก็หยุดพูด ไม่ได้รีบไปกดปุ่ม
+///
+/// ของเดิมเก็บผลไว้ใน `_pending` แล้วล้างทิ้งในบรรทัดถัดไปเมื่อไม่มีใครรอ
+/// อยู่ · สถานะกลับไปเป็น `idle` การกดปุ่มทีหลังจึงไม่ใช่ "หยุดแล้วเอาผล"
+/// แต่กลายเป็น **"เริ่มฟังรอบใหม่"** · อาการที่ผู้ใช้เห็นคือพูดใส่ไมค์แล้ว
+/// ไม่มีอะไรเกิดขึ้นเลย ไม่ว่าจะลองกี่รอบ
+void _endpointGroup() {
+  group('🔴 ระบบตัดจบการฟังเอง ข้อความต้องไม่หาย', () {
+    late _FakeStt native;
+    late VoiceInput voice;
+    final heard = <String>[];
+
+    setUp(() {
+      heard.clear();
+      native = _FakeStt()..install();
+      voice = VoiceInput(
+        ensureMic: () async => true,
+        transcribe: (_) async => '',
+        strings: () => _th,
+        device: native.speech,
+        preferDevice: () => true,
+      )..onHeard = heard.add;
+    });
+
+    tearDown(() => voice.dispose());
+
+    test('พูดจบแล้วปล่อยให้ระบบตัดเอง ข้อความต้องมาถึงช่องพิมพ์', () async {
+      await voice.start();
+      expect(voice.stage, VoiceInputStage.listening);
+
+      // ผู้ใช้ไม่ได้กดอะไรเลย · ระบบได้ยินว่าเงียบแล้วสรุปผลเอง
+      await native.emit('result', {'text': 'สวัสดีมายด์ วันนี้เป็นไงบ้าง'});
+      await Future<void>.delayed(Duration.zero);
+
+      expect(heard, ['สวัสดีมายด์ วันนี้เป็นไงบ้าง'],
+          reason: 'ไม่มีใครรออยู่ = ต้องออกทาง onHeard ไม่ใช่ถูกทิ้ง');
+      expect(voice.stage, VoiceInputStage.idle);
+    });
+
+    test('กดหยุดเอง ผลต้องกลับทาง stop() ทางเดียว ไม่ซ้ำสองทาง', () async {
+      await voice.start();
+      final waiting = voice.stop();
+      await native.emit('result', {'text': 'ทดสอบ'});
+
+      expect(await waiting, 'ทดสอบ');
+      expect(heard, isEmpty,
+          reason: 'ส่งสองทาง = ข้อความถูกยัดลงช่องพิมพ์สองครั้ง');
+    });
+
+    test('ระบบตัดจบแต่ไม่ได้ยินอะไร ต้องไม่ยิงข้อความเปล่าออกไป', () async {
+      await voice.start();
+      await native.emit('result', {'text': '   '});
+      await Future<void>.delayed(Duration.zero);
+
+      expect(heard, isEmpty);
+      expect(voice.stage, VoiceInputStage.failed);
+    });
+  });
+}
+
+/// ฝั่งเนทีฟปลอมของช่องถอดเสียงในเครื่อง
+class _FakeStt {
+  static const _ch = MethodChannel('giggok/stt_voiceinput_test');
+
+  late DeviceSpeech speech;
+
+  void install() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_ch, (call) async => true);
+    speech = DeviceSpeech.forTest(_ch);
+  }
+
+  Future<void> emit(String event, [Map<String, Object?> data = const {}]) =>
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(
+        _ch.name,
+        _ch.codec.encodeMethodCall(MethodCall('onStt', {...data, 'event': event})),
+        (_) {},
+      );
 }

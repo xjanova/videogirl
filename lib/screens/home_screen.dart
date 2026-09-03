@@ -34,6 +34,17 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   final _draft = TextEditingController();
   final _focus = FocusNode();
+
+  /// ตัวเลื่อนของบทสนทนาในแผงแชท
+  ///
+  /// 🔴 ต้องปักไว้ล่างสุดทุกครั้งที่มีอะไรใหม่เข้ามา · แผงมีเพดานความสูงแล้ว
+  /// (ดู [_dockMaxShare]) ข้อความที่เพิ่งตอบจึงโผล่ใต้ขอบที่มองไม่เห็นได้
+  /// ซึ่งอ่านออกมาเป็น "ถามไปแล้วเธอไม่ตอบ"
+  final _log = ScrollController();
+
+  /// ลายเซ็นของสิ่งที่อยู่ในแผงรอบที่แล้ว — เปลี่ยนเมื่อไหร่ค่อยเลื่อน
+  /// เลื่อนทุก build = กระชากมือคนที่กำลังเลื่อนอ่านย้อนอยู่
+  String _logMark = '';
   late final AnimationController _ring;
 
   /// ไมค์ของช่องแชท — เกิดที่นี่เพราะมันมีอายุเท่าหน้าจอนี้
@@ -62,7 +73,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       // 🔴 เสียงต้องถอดในเครื่องเมื่อผู้ใช้เลือกสมองในเครื่อง
       // ไม่ใช่ตกไปใช้ทางข้างนอกเพราะมันแม่นกว่า
       preferDevice: () => state.transcribesOnDevice,
-    );
+    )
+      // ระบบตัดจบการฟังเองเมื่อได้ยินว่าเงียบลง ซึ่งเกิดบ่อยกว่าการกดหยุด
+      // มาก · ต้องลงช่องพิมพ์ทางเดียวกับตอนกดหยุดเอง ไม่ใช่หายไปเฉย ๆ
+      ..onHeard = _fillDraft;
 
     // แผงแชทพับเองเมื่อเงียบ — แต่ต้องไม่พับตอนคนกำลังพิมพ์ค้างอยู่
     // ซึ่งเป็นสิ่งที่แย่ที่สุดที่จะเกิดขึ้นได้ · ช่องพิมพ์เป็นคนบอก state
@@ -86,19 +100,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     if (_voice.stage == VoiceInputStage.listening) {
       final heard = await _voice.stop();
-      if (!mounted || heard == null) return;
-
-      // ต่อท้ายของที่พิมพ์ค้างไว้ ไม่ใช่เขียนทับ — คนพิมพ์ครึ่งประโยค
-      // แล้วพูดที่เหลือมีจริง และการลบสิ่งที่เขาพิมพ์เองทิ้งคือสิ่งที่ให้อภัยยาก
-      final base = _draft.text.trimRight();
-      _draft.text = base.isEmpty ? heard : '$base $heard';
-      _draft.selection =
-          TextSelection.collapsed(offset: _draft.text.length);
-      _focus.requestFocus();
+      if (heard != null) _fillDraft(heard);
       return;
     }
 
     await _voice.start();
+  }
+
+  /// เอาสิ่งที่ได้ยินลงช่องพิมพ์
+  ///
+  /// ต่อท้ายของที่พิมพ์ค้างไว้ ไม่ใช่เขียนทับ — คนพิมพ์ครึ่งประโยคแล้วพูด
+  /// ที่เหลือมีจริง และการลบสิ่งที่เขาพิมพ์เองทิ้งคือสิ่งที่ให้อภัยยาก
+  void _fillDraft(String heard) {
+    if (!mounted || heard.trim().isEmpty) return;
+    final base = _draft.text.trimRight();
+    _draft.text = base.isEmpty ? heard : '$base $heard';
+    _draft.selection = TextSelection.collapsed(offset: _draft.text.length);
+    _focus.requestFocus();
   }
 
   void _reportTyping() {
@@ -112,6 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _draft.removeListener(_reportTyping);
     _draft.dispose();
     _focus.dispose();
+    _log.dispose();
     _ring.dispose();
     // ไมค์ที่ยังเปิดค้างหลังออกจากหน้าจอ = เครื่องอัดเสียงในห้องต่อไปเงียบ ๆ
     _voice.dispose();
@@ -171,6 +190,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     // ตอนที่คำที่พิมพ์จะถูกพูดออกไปให้คนแปลกหน้าฟัง
     final onCall = call.onStage;
 
+    _pinLogIfNew('${state.messages.length}/${state.sending}');
+
     return LiquidBackground(
       gradient: onCall ? MindGradients.incomingCall : MindGradients.home,
       orbs: Orb.home,
@@ -196,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   : state.chatOpen
                       ? KeyedSubtree(
                           key: const ValueKey('dock'),
-                          child: _chatDock(state, mode))
+                          child: _cappedDock(state, mode))
                       : KeyedSubtree(
                           key: const ValueKey('pill'),
                           child: _chatPill(state, mode)),
@@ -458,6 +479,47 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  /// เลื่อนบทสนทนาลงล่างสุด — เฉพาะตอนที่มีของใหม่จริง ๆ
+  ///
+  /// ต้องรอให้วาดเสร็จก่อน ตอนที่ [build] ทำงานอยู่ตัวเลื่อนยังไม่รู้ความสูง
+  /// ใหม่ของเนื้อหา `maxScrollExtent` จึงเป็นค่าของรอบที่แล้ว
+  void _pinLogIfNew(String mark) {
+    if (mark == _logMark) return;
+    _logMark = mark;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_log.hasClients) return;
+      _log.jumpTo(_log.position.maxScrollExtent);
+    });
+  }
+
+  /// ส่วนของจอที่แผงแชทกินได้มากที่สุด
+  ///
+  /// 🔴 **ที่เหลือคือพื้นที่ของเธอ และมันต้องเหลือจริง**
+  ///
+  /// ของเดิมแผงแชทไม่มีเพดานเลย มันโตตามข้อความไปเรื่อย ๆ และใน `Column`
+  /// ลูกที่ไม่ยืดหยุ่นได้ที่ก่อน `Expanded` จึงได้เศษที่เหลือ · วัดจริงบนจอ
+  /// 1080×2340: คุยแค่ **3 ข้อความ** เวทีเหลือ 0 พิกเซล เธอหายไปทั้งตัว
+  /// พร้อม RenderFlex overflow 151 พิกเซล
+  ///
+  /// (`_stage` มี `minHeight` กันไว้แล้วแต่ช่วยไม่ได้ — `ConstrainedBox`
+  /// ใช้ `enforce` ซึ่งยอมให้ข้อจำกัดจากข้างนอกชนะเสมอ ความสูงตึง 0 ที่
+  /// `Expanded` ยัดลงมาจึงบีบ `minHeight` เหลือ 0 ตามไปด้วย)
+  static const _dockMaxShare = .58;
+
+  Widget _cappedDock(MindState state, MindMode mode) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        final room = box.maxHeight.isFinite
+            ? box.maxHeight
+            : MediaQuery.sizeOf(context).height;
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: room * _dockMaxShare),
+          child: _chatDock(state, mode),
+        );
+      },
+    );
+  }
+
   // ── แผงแชทกระจกล่างสุด ──────────────────────────────────
   Widget _chatDock(MindState state, MindMode mode) {
     return GlassPanel(
@@ -467,6 +529,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       shadows: MindShadows.dock(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         spacing: MindSpace.gap,
         children: [
           // ที่จับสำหรับพับเอง — ไม่ต้องรอให้หมดเวลา
@@ -490,28 +553,47 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
           ),
-          for (final m in state.messages) _message(m, mode),
+          // 🔴 บทสนทนาเลื่อนได้ · ช่องพิมพ์กับปุ่มไมค์อยู่กับที่เสมอ
+          //
+          // สองอย่างนี้ต้องแยกกัน ไม่งั้นข้อความยาว ๆ จะดันช่องพิมพ์
+          // ตกขอบจอไป แล้วคนจะพิมพ์ตอบไม่ได้ทั้งที่แผงยังเปิดอยู่
+          Flexible(
+            child: SingleChildScrollView(
+              controller: _log,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                spacing: MindSpace.gap,
+                children: [
+                  for (final m in state.messages) _message(m, mode),
 
-          // ฟอง "กำลังคิด" อยู่ต่อจากข้อความสุดท้ายพอดี ตรงที่คำตอบจะมาโผล่
-          // ไม่ใช่ลอยอยู่หัวแผงหรือท้ายแผง · ที่ที่ตาจับจ้องอยู่แล้วคือที่ที่
-          // สัญญาณควรอยู่ ไม่งั้นมันจะกลายเป็นของประดับที่ไม่มีใครเห็น
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            transitionBuilder: (child, anim) => SizeTransition(
-              sizeFactor: anim,
-              axisAlignment: -1,
-              child: FadeTransition(opacity: anim, child: child),
+                  // ฟอง "กำลังคิด" อยู่ต่อจากข้อความสุดท้ายพอดี ตรงที่คำตอบ
+                  // จะมาโผล่ ไม่ใช่ลอยอยู่หัวแผงหรือท้ายแผง · ที่ที่ตาจับจ้อง
+                  // อยู่แล้วคือที่ที่สัญญาณควรอยู่ ไม่งั้นมันจะกลายเป็นของ
+                  // ประดับที่ไม่มีใครเห็น
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    transitionBuilder: (child, anim) => SizeTransition(
+                      sizeFactor: anim,
+                      axisAlignment: -1,
+                      child: FadeTransition(opacity: anim, child: child),
+                    ),
+                    child: state.sending
+                        ? Padding(
+                            key: const ValueKey('thinking'),
+                            padding: const EdgeInsets.only(top: MindSpace.gap),
+                            child: ThinkingBubble(mode: mode),
+                          )
+                        : const SizedBox(
+                            key: ValueKey('idle'), width: double.infinity),
+                  ),
+
+                  _proposal(mode),
+                ],
+              ),
             ),
-            child: state.sending
-                ? Padding(
-                    key: const ValueKey('thinking'),
-                    padding: const EdgeInsets.only(top: MindSpace.gap),
-                    child: ThinkingBubble(mode: mode),
-                  )
-                : const SizedBox(key: ValueKey('idle'), width: double.infinity),
           ),
 
-          _proposal(mode),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -754,6 +836,41 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _speakerToggle(MindState state, MindMode mode) {
+    final on = state.voiceEnabled;
+    final label = on ? S.of(context).voiceMute : S.of(context).voiceUnmute;
+    return Semantics(
+      button: true,
+      toggled: on,
+      label: label,
+      child: Tooltip(
+        message: label,
+        child: GestureDetector(
+          onTap: () => state.setVoiceEnabled(!on),
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: on ? mode.accentSoft : MindColors.glass80,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: on ? Colors.transparent : const Color(0xF2FFFFFF),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              on ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+              size: 18,
+              color: on ? Colors.white : MindColors.ink45,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _composerRow(MindState state, MindMode mode) {
     return Row(
       spacing: 7,
@@ -765,6 +882,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           enabled: state.canTranscribe,
           onTap: () => _toggleMic(state),
         ),
+
+        // 🔴 ปิดเสียงเธอต้องอยู่ **ตรงที่คุยกัน** ไม่ใช่ในหน้าตั้งค่า
+        //
+        // เป็นเรื่องของนาทีนี้ ไม่ใช่ค่าที่ตั้งครั้งเดียวแล้วจบ — มีคนอยู่ข้าง ๆ
+        // อยู่บนรถ อยู่ในที่ประชุม · ต้องเดินไปอีกแท็บเพื่อปิดปากเธอแปลว่า
+        // เสียงดังไปแล้วก่อนจะปิดทัน
+        //
+        // และมันตอบคำถาม "ทำไมเธอเงียบ" ให้ด้วยในตัว โดยไม่ต้องไปหาที่ไหน
+        _speakerToggle(state, mode),
 
         Expanded(
           child: SizedBox(

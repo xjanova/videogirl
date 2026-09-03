@@ -142,6 +142,19 @@ class DebugReporter extends ChangeNotifier {
         'durableStore': state.durableStore,
         'vault': vault?.stage.name,
         'wipeOnUninstall': state.wipeOnUninstall,
+
+        // 🔴 เวทีพร้อมรับเสียงไหม
+        //
+        // เสียงเธอเล่นใน WebView เพื่อให้ปากขยับตามคลื่น · เวทีไม่พร้อม
+        // (ยังไม่ได้โหลด avatar pack, โหลดพัง, หรือทักก่อนคลิปโหลดเสร็จ)
+        // แปลว่าเสียงต้องไปทางสำรอง — สี่ค่านี้แยก "ปิดเสียงไว้เอง" ออกจาก
+        // "เสียงออกไม่ได้" ซึ่งเป็นคนละเรื่องกันโดยสิ้นเชิงและแก้คนละทาง
+        if (avatar != null) ...{
+          'avatarReady': avatar.ready,
+          'avatarVisible': avatar.visible,
+          'avatarError': avatar.error,
+          'avatarSpeakError': avatar.speakError,
+        },
         if (lb != null) ...{
           'localStage': lb.stage.name,
           'localVariant': lb.variant.id,

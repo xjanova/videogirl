@@ -189,16 +189,29 @@ class MindAvatarController extends ChangeNotifier {
   /// ส่งผ่าน callAsyncJavaScript พร้อม arguments ไม่ใช่ต่อสตริงเข้า JS
   /// เพราะ base64 ของ mp3 ยาวเป็นแสนตัวอักษร การต่อสตริงขนาดนั้นทั้งช้า
   /// และเสี่ยงพังถ้ามีอักขระหลุด · รอจนเล่นจบเพื่อให้ผู้เรียกรู้จังหวะ
-  Future<void> speakBytes(Uint8List bytes, {String mime = 'audio/mpeg'}) async {
+  ///
+  /// 🔴 **คืน false เมื่อเวทีรับไม่ได้ ไม่ใช่คืนเงียบ ๆ**
+  ///
+  /// ของเดิม `return` ทิ้งไบต์ทั้งก้อนตอน `_ready == false` ซึ่งเป็นจริง
+  /// ตลอดไปเมื่อยังไม่ได้โหลด avatar pack หรือเวทีโหลดพัง · ผลคือ TTS
+  /// สังเคราะห์เสร็จแล้วเสียงหายเข้ากลีบเมฆทุกประโยค โดยไม่มี log สักบรรทัด
+  /// ผู้ใช้ได้ยินความเงียบและอ่านว่า "เธอไม่ยอมพูด" · ดู [MindAudio]
+  Future<bool> speakBytes(Uint8List bytes, {String mime = 'audio/mpeg'}) async {
     final web = _web;
-    if (web == null || !_ready) return;
+    if (web == null || !_ready) {
+      debugPrint('avatar: เวทียังรับเสียงไม่ได้ '
+          '(web=${web != null} ready=$_ready) — ต้องไปทางสำรอง');
+      return false;
+    }
     try {
       await web.callAsyncJavaScript(
         functionBody: 'return await window.minde.speakBytes(b64, mime);',
         arguments: {'b64': base64Encode(bytes), 'mime': mime},
       );
+      return true;
     } catch (e) {
       debugPrint('avatar: เล่นเสียงไม่สำเร็จ — $e');
+      return false;
     }
   }
 

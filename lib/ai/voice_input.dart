@@ -75,6 +75,16 @@ class VoiceInput extends ChangeNotifier {
   /// ส่งไฟล์ WAV ไปถอดเป็นข้อความ · คืนสตริงว่างได้เมื่อไม่มีเสียงพูด
   final Future<String> Function(Uint8List wav) transcribe;
 
+  /// 🔴 **ระบบตัดจบการฟังเอง แล้วได้ข้อความมา โดยที่ยังไม่มีใครกดหยุด**
+  ///
+  /// ตัวถอดเสียงของแอนดรอยด์จบเทิร์นเองทันทีที่ได้ยินว่าเงียบลง (endpointing)
+  /// ซึ่งเป็นทางที่**เกิดบ่อยที่สุด** — คนพูดจบแล้วก็หยุดพูด ไม่ได้รีบไปกดปุ่ม
+  ///
+  /// ของเดิมไม่มีทางนี้ ข้อความที่ถอดได้จึงถูกทิ้งทุกครั้งที่เกิดกรณีนี้
+  /// แล้วปุ่มที่กดทีหลังก็กลายเป็นการ**เริ่มฟังรอบใหม่** เพราะสถานะกลับไป
+  /// เป็น idle ไปแล้ว · อาการที่ผู้ใช้เห็นคือ "พูดใส่ไมค์แล้วไม่มีอะไรเกิดขึ้นเลย"
+  void Function(String text)? onHeard;
+
   final S Function() _s;
 
   /// สร้างตอนใช้จริงเท่านั้น — AudioRecorder ผูก MethodChannel ตั้งแต่
@@ -226,15 +236,23 @@ class VoiceInput extends ChangeNotifier {
     unawaited(dev.listen(locale: _s().isThai ? 'th-TH' : 'en-US').then((text) {
       if (_disposed) return;
       _level = 0;
-      if (text != null && text.trim().isNotEmpty) {
-        _pending = text.trim();
+      final heard = text?.trim();
+      final got = (heard != null && heard.isNotEmpty) ? heard : null;
+      if (got != null) {
         _set(VoiceInputStage.idle);
       } else {
         _set(VoiceInputStage.failed, error: _faultText(dev.fault));
       }
-      _done?.call(_pending);
+
+      // มีคนรออยู่ (ผู้ใช้กดหยุดเอง) = ส่งกลับทางนั้น
+      // ไม่มีใครรอ = ระบบตัดจบเอง ต้องส่งออกทาง [onHeard] ไม่ใช่ทิ้ง
+      final waiting = _done;
       _done = null;
-      _pending = null;
+      if (waiting != null) {
+        waiting(got);
+      } else if (got != null) {
+        onHeard?.call(got);
+      }
     }));
 
     _cap = Timer(maxTake, () => unawaited(dev.stop()));
@@ -243,8 +261,8 @@ class VoiceInput extends ChangeNotifier {
     return true;
   }
 
-  /// ข้อความที่รอส่งกลับให้ผู้เรียก [stop]
-  String? _pending;
+  /// คนที่รอผลของเทิร์นนี้อยู่ — มีก็ต่อเมื่อผู้ใช้กด [stop] เอง
+  /// ไม่มี = ระบบตัดจบเอง ผลจะออกทาง [onHeard] แทน
   void Function(String?)? _done;
 
   String _faultText(SttFault? f) => switch (f) {
@@ -321,7 +339,6 @@ class VoiceInput extends ChangeNotifier {
 
   Future<void> _teardown() async {
     _done = null;
-    _pending = null;
     _cap?.cancel();
     _cap = null;
     await _mic?.cancel();

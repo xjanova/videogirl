@@ -62,6 +62,13 @@ pattern นี้เคยทำแล้วใน `aixman` (`resolveUserId()` �
   ([avatar_view.dart](../lib/avatar/avatar_view.dart))
 - **ขอบเขตการตอบเขียนแบบ default-deny** — ไม่ได้อนุญาตชัดเจน = ถามเจ้าของก่อน
   ([minde_persona.dart](../lib/ai/mind_persona.dart))
+- **เสียงเธอออกทางสำรองได้ ถ้าเวที 3D รับไม่ได้**
+  ([mind_audio.dart](../lib/ai/mind_audio.dart))
+
+  ทางสำรองเล่นผ่าน MediaPlayer ฝั่งเนทีฟ ออก**ช่อง media ไม่ใช่ช่องสาย**
+  และไม่แตะระดับเสียงของเครื่อง · เสียงยังอยู่ในเครื่องเหมือนเดิมทุกประการ
+  ไม่ได้ออกไปที่ไหนเพิ่ม
+
 - **เสียงจากไมค์ไปที่เดียวกับที่ข้อความไป** ไม่ใช่ที่ที่บังเอิญมีคีย์
   ([mind_state.dart](../lib/state/mind_state.dart) · `_networkBrain`)
 

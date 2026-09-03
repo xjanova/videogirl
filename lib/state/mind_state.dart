@@ -895,6 +895,16 @@ class MindState extends ChangeNotifier {
     }
   }
 
+  /// ยัดข้อความเข้าแชทตรง ๆ — สำหรับเทสต์เรื่อง**การจัดหน้า**เท่านั้น
+  ///
+  /// ทางปกติ (`send`) ต้องผ่านสมอง เสียง และตัวนับเวลา ซึ่งไม่เกี่ยวอะไรกับ
+  /// คำถามว่า "แชทยาวแล้วเวทีของเธอยังอยู่ไหม" เลยสักอย่าง
+  @visibleForTesting
+  void debugPush(bool fromHer, String text) {
+    _push(fromHer ? ChatMessage.her(text) : ChatMessage.me(text));
+    _notify();
+  }
+
   List<ChatMessage> get messages => List.unmodifiable(_messages);
 
   String get bubbleText => _messages
