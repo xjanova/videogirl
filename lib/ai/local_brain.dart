@@ -8,6 +8,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
@@ -359,10 +360,14 @@ class LocalBrain extends ChangeNotifier {
       _installed.clear();
       for (final v in GemmaVariant.values) {
         // ถามทีละรุ่น · ปลั๊กอินไม่มี API บอกรายการที่ติดตั้งไว้ทั้งหมด
-        if (await FlutterGemmaPlugin.instance.modelManager
+        if (!await FlutterGemmaPlugin.instance.modelManager
             .isModelInstalled(_spec(v))) {
-          _installed.add(v);
+          continue;
         }
+        // 🔴 มีไฟล์ยังไม่พอ ต้องครบด้วย — ดู [isComplete]
+        // ไฟล์ครึ่งเดียวที่นับว่าติดตั้งแล้ว = ปุ่มโหลดหายไป ผู้ใช้ติดอยู่
+        // กับข้อความ engine ที่แปลไม่ออกโดยไม่มีทางแก้เอง
+        if (await isComplete(v)) _installed.add(v);
       }
 
       final installed = _installed.contains(_variant);
@@ -397,6 +402,20 @@ class LocalBrain extends ChangeNotifier {
 
         notifyListeners();
       }
+      // 🔴 ตรวจว่าครบจริงก่อนบอกว่าเสร็จ
+      //
+      // สตรีมจบไม่ได้แปลว่าไฟล์ครบ · เน็ตหลุดกลางทางแล้วสตรีมปิดตัวเองเงียบ ๆ
+      // ก็มาถึงบรรทัดนี้เหมือนกัน · ถ้าไม่ตรวจ ผู้ใช้จะได้ไฟล์ครึ่งเดียวที่
+      // ระบบบอกว่า "พร้อมใช้" แล้วไปเจอข้อความ engine ที่แปลไม่ออกตอนกดคุย
+      if (!await isComplete(_variant)) {
+        // ลบทิ้งเลย · เก็บไว้แปลว่ารอบหน้า `isModelInstalled` ยังตอบ true
+        // แล้วผู้ใช้จะติดอยู่ในวงเดิมโดยไม่มีปุ่มให้กดโหลดใหม่
+        await _removeFile(_variant);
+        _installed.remove(_variant);
+        _set(LocalModelStage.failed, error: _s().errModelIncomplete);
+        return;
+      }
+
       // โหลดจบแล้วต้องเข้าทะเบียนทันที ไม่ต้องรอสแกนรอบหน้า ไม่งั้นสลับไป
       // รุ่นอื่นแล้วกลับมาจะขึ้นปุ่มโหลดซ้ำทั้งที่เพิ่งโหลดเสร็จ
       _installed.add(_variant);
@@ -404,6 +423,14 @@ class LocalBrain extends ChangeNotifier {
     } on Exception catch (e) {
       debugPrint('gemma: โหลดโมเดลไม่สำเร็จ — $e');
       _set(LocalModelStage.failed, error: _s().errDownloadModel(shortenError(e)));
+    }
+  }
+
+  Future<void> _removeFile(GemmaVariant v) async {
+    try {
+      await FlutterGemmaPlugin.instance.modelManager.deleteModel(_spec(v));
+    } on Object catch (e) {
+      debugPrint('gemma: ลบไฟล์ที่ไม่ครบไม่สำเร็จ — $e');
     }
   }
 
@@ -564,6 +591,48 @@ class LocalBrain extends ChangeNotifier {
       if (fed[offset + i] != past[i].text) return false;
     }
     return true;
+  }
+
+  /// ขนาดไฟล์โมเดลที่อยู่ในเครื่องจริง · null = หาไม่เจอ
+  ///
+  /// ถามปลั๊กอินว่าไฟล์อยู่ไหน แทนที่จะเดาโครงโฟลเดอร์เอง — มันย้ายที่เก็บ
+  /// ได้ทุกเวอร์ชัน และเราจะไม่รู้จนกว่าจะพัง
+  Future<int?> installedBytes(GemmaVariant v) async {
+    try {
+      final paths = await FlutterGemmaPlugin.instance.modelManager
+          .getModelFilePaths(_spec(v));
+      final path = paths?.values.firstOrNull;
+      if (path == null) return null;
+      final f = File(path);
+      return await f.exists() ? await f.length() : null;
+    } on Object catch (e) {
+      debugPrint('gemma: วัดขนาดไฟล์ไม่ได้ — $e');
+      return null;
+    }
+  }
+
+  /// ไฟล์ครบไหม
+  ///
+  /// 🔴 **ไฟล์ที่มีอยู่ ≠ ไฟล์ที่ใช้ได้**
+  ///
+  /// `isModelInstalled()` ของปลั๊กอินดูแค่ว่า*มีไฟล์อยู่* · โหลด 2.9 GB
+  /// ค้างกลางทางแล้วเน็ตหลุด จะได้ไฟล์ครึ่งเดียวที่ตอบว่า "ติดตั้งแล้ว"
+  /// ตลอดไป · สถานะในแอปเป็น `ready` ทุกอย่างดูปกติ จนกว่าจะกดคุย แล้วได้
+  /// `NOT_FOUND: TF_LITE_PREFILL_DECODE not found in the model` ซึ่งไม่มีทาง
+  /// เดาจากข้อความนั้นได้เลยว่าแปลว่า "โหลดไม่ครบ"
+  ///
+  /// เทียบกับขนาดที่รู้อยู่แล้ว (ยืนยันกับ Hugging Face ตรงกันเป๊ะทั้งสองรุ่น)
+  /// · ยอมคลาดเคลื่อนเล็กน้อยไว้เผื่อวันที่ผู้ให้บริการ rebuild ไฟล์แล้วขนาด
+  /// ขยับไปไม่กี่ไบต์ — ของที่ขาดไปครึ่งกิกจะยังถูกจับได้อยู่ดี
+  static const _sizeTolerance = 0.02;
+
+  Future<bool> isComplete(GemmaVariant v) async {
+    final actual = await installedBytes(v);
+    if (actual == null) return false;
+    final diff = (actual - v.bytes).abs() / v.bytes;
+    if (diff <= _sizeTolerance) return true;
+    debugPrint('gemma: ${v.id} ไฟล์ไม่ครบ — มี $actual ควรมี ${v.bytes}');
+    return false;
   }
 
   /// 🔴 บอกปลั๊กอินว่า "ใช้รุ่นไหน" ก่อนสร้างโมเดล **ทุกครั้ง**

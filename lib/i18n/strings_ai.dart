@@ -276,6 +276,17 @@ extension AiStrings on S {
         'Her train of thought broke off — please send that again',
       );
 
+  /// ไฟล์โมเดลไม่ครบ — คนละเรื่องกับยังไม่ได้โหลด และแก้คนละแบบ
+  ///
+  /// ข้อความจาก engine คือ `NOT_FOUND: TF_LITE_PREFILL_DECODE not found in
+  /// the model` ซึ่งไม่มีทางเดาได้เลยว่าแปลว่า "โหลดไม่ครบ" · ผู้ใช้ต้องได้ยิน
+  /// สิ่งที่เขาทำได้จริง ไม่ใช่ชื่อ signature ข้างในไฟล์
+  String get errModelIncomplete => pick(
+        'ไฟล์โมเดลโหลดมาไม่ครบ (เน็ตหลุดกลางทาง) · ลบให้แล้ว กดโหลดใหม่ได้เลย',
+        'The model file did not download completely — it has been removed, '
+        'just download it again',
+      );
+
   String get errModelNotDownloaded =>
       pick('ยังไม่ได้โหลดโมเดลลงเครื่อง', 'The model is not downloaded yet');
 

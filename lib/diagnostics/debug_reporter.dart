@@ -146,6 +146,13 @@ class DebugReporter extends ChangeNotifier {
           'localStage': lb.stage.name,
           'localVariant': lb.variant.id,
           'localInstalled': [for (final v in lb.installed) v.id],
+          // 🔴 ขนาดไฟล์จริงเทียบกับที่ควรเป็น
+          //
+          // รายงานฉบับก่อนตอบไม่ได้ว่า "โหลดไม่ครบ" หรือ "รันไทม์ไม่รองรับ"
+          // ซึ่งเป็นสองสาเหตุที่แก้คนละทางกันโดยสิ้นเชิง · ตัวเลขคู่นี้ตอบได้
+          // ในบรรทัดเดียว
+          'localBytes': await lb.installedBytes(lb.variant),
+          'localBytesWanted': lb.variant.bytes,
         },
         if (avatar != null) ...{
           'avatarReady': avatar.ready,
