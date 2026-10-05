@@ -99,6 +99,15 @@ class Updater extends ChangeNotifier {
 
   /// เช็คว่ามีรุ่นใหม่ไหม — เงียบเสมอถ้าไม่มี ไม่รบกวนผู้ใช้
   Future<UpdateInfo?> check() async {
+    // 🔴 กำลังโหลด/ตรวจ/พร้อมติดตั้งอยู่ = ห้ามเช็คทับ · การ์ดอัปเดตอยู่ใน
+    // ListView ซึ่งสร้าง state ใหม่ทุกครั้งที่เลื่อนผ่าน แล้วเรียก check() ซ้ำ
+    // ของเดิมจึงเปลี่ยนสถานะกลางการโหลดเป็น available ปุ่มติดตั้งโผล่กลับมา
+    // กดซ้ำ = โหลดสองตัวเขียนไฟล์เดียวกัน แล้วจบที่ hash ไม่ตรง
+    if (_stage == UpdateStage.downloading ||
+        _stage == UpdateStage.verifying ||
+        _stage == UpdateStage.ready) {
+      return _pending;
+    }
     _set(UpdateStage.checking);
     try {
       final info = await PackageInfo.fromPlatform();
@@ -190,6 +199,28 @@ class Updater extends ChangeNotifier {
   Future<bool> downloadAndInstall() async {
     final info = _pending;
     if (info == null) return false;
+    // แตะปุ่มซ้ำระหว่างรอเช็คสิทธิ์ติดตั้ง = สองตัวโหลดเขียนไฟล์เดียวกัน
+    if (_installing) return false;
+    _installing = true;
+    try {
+      return await _downloadAndInstall(info);
+    } finally {
+      _installing = false;
+    }
+  }
+
+  bool _installing = false;
+
+  /// ไม่มีข้อมูลไหลเข้ามานานเท่านี้ = เน็ตค้าง ไม่ใช่เน็ตช้า
+  ///
+  /// timeout ของ `send()` คุมแค่ตอนรอหัวตอบกลับ ไม่คุมเนื้อไฟล์ · เน็ตที่ค้าง
+  /// กลางทางทำให้ "กำลังดาวน์โหลด" ค้างตลอดกาล และปุ่มโหลดใหม่ก็ถูกซ่อนไว้
+  static const _stallAfter = Duration(seconds: 45);
+
+  Future<bool> _downloadAndInstall(UpdateInfo info) async {
+    // เก็บกวาด APK ของรุ่นก่อน ๆ ที่โหลดค้างไว้ในแคช · ไฟล์ละราว 80 MB
+    // และชื่อไม่ซ้ำกันทุกรุ่น จึงไม่เคยถูกเขียนทับเอง
+    await _sweepOldApks(keep: info.apkName);
 
     // 🔴 เช็คสิทธิ์ติดตั้ง **ก่อน** เริ่มโหลด ไม่ใช่ตอนจะเปิดตัวติดตั้ง
     //
@@ -221,16 +252,19 @@ class Updater extends ChangeNotifier {
       _received = 0;
 
       // สตรีมลงไฟล์ ไม่ buffer ทั้งก้อนในหน่วยความจำ APK หลายสิบเมกจะทำให้แอปตาย
-      await for (final chunk in res.stream) {
-        sink.add(chunk);
-        received += chunk.length;
-        if (total > 0 && !_disposed) {
-          _received = received;
-          _progress = received / total;
-          notifyListeners();
+      try {
+        await for (final chunk in res.stream.timeout(_stallAfter)) {
+          sink.add(chunk);
+          received += chunk.length;
+          if (total > 0 && !_disposed) {
+            _received = received;
+            _progress = received / total;
+            notifyListeners();
+          }
         }
+      } finally {
+        await sink.close();
       }
-      await sink.close();
 
       if (info.sha256 == null) {
         await file.delete();
@@ -254,9 +288,28 @@ class Updater extends ChangeNotifier {
         return false;
       }
       return true;
-    } on Exception {
+    } on Object catch (e) {
+      // TimeoutException จากเน็ตค้าง / ไฟล์เขียนไม่ได้ / Error จากปลั๊กอิน
+      debugPrint('update: โหลดไม่สำเร็จ — $e');
       _set(UpdateStage.failed, error: _s().updateRetry);
       return false;
+    }
+  }
+
+  Future<void> _sweepOldApks({required String keep}) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      await for (final f in dir.list()) {
+        final name = f.uri.pathSegments.isEmpty ? '' : f.uri.pathSegments.last;
+        if (f is File &&
+            name.startsWith('giggok-') &&
+            name.endsWith('.apk') &&
+            name != keep) {
+          await f.delete();
+        }
+      }
+    } on Object catch (e) {
+      debugPrint('update: เก็บกวาด APK เก่าไม่สำเร็จ — $e');
     }
   }
 

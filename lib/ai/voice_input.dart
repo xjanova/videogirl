@@ -234,6 +234,10 @@ class VoiceInput extends ChangeNotifier {
     // ไม่ await ตรงนี้ · future นี้จบเมื่อ**ผู้ใช้พูดจบ** ซึ่งอาจอีกหลายวินาที
     // ผู้เรียกต้องได้ปุ่มที่กดหยุดได้ทันที ไม่ใช่ค้างรออยู่ใน start()
     unawaited(dev.listen(locale: _s().isThai ? 'th-TH' : 'en-US').then((text) {
+      // 🔴 เทิร์นนี้จบแล้ว นาฬิกาเพดานของมันต้องตายตามไปด้วย · ไม่งั้นมัน
+      // จะไปสั่งหยุดเทิร์น**ถัดไป**กลางประโยค 60 วิหลังเทิร์นนี้เริ่ม
+      _cap?.cancel();
+      _cap = null;
       if (_disposed) return;
       _level = 0;
       final heard = text?.trim();
@@ -255,6 +259,7 @@ class VoiceInput extends ChangeNotifier {
       }
     }));
 
+    _cap?.cancel();
     _cap = Timer(maxTake, () => unawaited(dev.stop()));
     if (_stage != VoiceInputStage.opening) return false;
     _set(VoiceInputStage.listening);

@@ -173,6 +173,8 @@ void main() {
       'INTERNET',
       'FOREGROUND_SERVICE',
       'FOREGROUND_SERVICE_DATA_SYNC',
+      // บริการเฝ้างาน (flutter_background_service) ใช้ประเภทนี้ — ดู manifest
+      'FOREGROUND_SERVICE_SPECIAL_USE',
       'RECEIVE_BOOT_COMPLETED',
       'WAKE_LOCK',
       'VIBRATE',

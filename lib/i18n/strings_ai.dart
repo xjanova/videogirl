@@ -175,6 +175,38 @@ extension AiStrings on S {
   String get gemmaReady => pick(
       'โหลดลงเครื่องแล้ว พร้อมใช้แบบออฟไลน์', 'Downloaded — ready to use offline');
   String get gemmaRemove => pick('ลบออก', 'Remove');
+  /// หัวก้อน "สิ่งที่รู้แล้ว" ที่ส่งไปพร้อมรอบสกัดความจำ
+  String get distillKnown => pick(
+        'สิ่งที่รู้อยู่แล้ว (ห้ามตอบซ้ำ แม้จะเขียนต่างกัน):',
+        'Already known (do not repeat these, even reworded):',
+      );
+
+  String get errKeyNotSaved => pick(
+        'บันทึกคีย์ลงที่เก็บที่ปลอดภัยของเครื่องไม่ได้ — ใช้ได้รอบนี้ แต่ปิดแอปแล้วต้องใส่ใหม่',
+        "Couldn't store the key in the phone's secure storage — it works for now, "
+            'but you will need to enter it again after closing the app.',
+      );
+  String gemmaRemoveConfirm(String size) => pick(
+        'ลบโมเดลออกจากเครื่อง? ถ้าจะใช้อีกต้องโหลดใหม่ $size',
+        'Remove the model from this phone? Using it again means '
+            'downloading $size again.',
+      );
+  String get gemmaRetry => pick('ลองโหลดอีกครั้ง', 'Try the download again');
+
+  String get gemmaUseGpu => pick('คิดด้วย GPU ของเครื่อง', "Think on the phone's GPU");
+  String get gemmaUseGpuWhy => pick(
+        'อ่านข้อความเร็วกว่า CPU หลายเท่า และกินแรมน้อยกว่า · '
+            'ครั้งแรกที่เปิดอาจรอนานหน่อย เครื่องกำลังเตรียม GPU',
+        'Reads your messages several times faster than the CPU and uses '
+            'less memory. The very first start can take a little longer.',
+      );
+  String get gemmaOnGpu => pick('ตอนนี้คิดด้วย GPU', 'Thinking on the GPU now');
+  String get gemmaOnCpu => pick('ตอนนี้คิดด้วย CPU', 'Thinking on the CPU now');
+  String get gemmaGpuBroken => pick(
+        'GPU ของเครื่องนี้ใช้ไม่ได้ เลยคิดด้วย CPU แทน · แตะสวิตช์เพื่อลองอีกครั้ง',
+        "This phone's GPU didn't work, so she thinks on the CPU. "
+            'Tap the switch to try again.',
+      );
   String get gemmaKeepOpen => pick(
         'ใช้ไวไฟและอย่าปิดแอประหว่างโหลด',
         'Use wifi and keep the app open while it downloads',
@@ -263,6 +295,36 @@ extension AiStrings on S {
       pick('ฝั่ง OpenAI ขัดข้อง ลองใหม่อีกครั้งนะคะ', 'OpenAI is having trouble — try again');
   String errRequestFailed(int code) =>
       pick('เรียก OpenAI ไม่สำเร็จ ($code)', 'OpenAI request failed ($code)');
+
+  // ── ข้อความของทางพร็อกซี / เซิร์ฟเวอร์ในบ้าน ──
+  //
+  // 🔴 คนที่เลือกสองทางนี้ถูกบอกว่า "ไม่ต้องมีคีย์ OpenAI" · ข้อความที่พูดถึง
+  // คีย์ OpenAI พาเขาไปไล่หาของที่ไม่มีอยู่
+  String get errLicenseRejected => pick(
+        'รหัสสิทธิ์ใช้ไม่ได้หรือหมดอายุ — เช็คในหน้าตั้งค่า',
+        'The licence key was not accepted or has expired — check it in Settings',
+      );
+  String get errProxyDown => pick(
+        'ระบบหลังบ้านขัดข้อง ลองใหม่อีกครั้งนะคะ',
+        'The service is having trouble — try again',
+      );
+  String errProxyFailed(int code) => pick(
+        'ระบบหลังบ้านตอบไม่สำเร็จ ($code)',
+        'The service request failed ($code)',
+      );
+  String get errHomeDown => pick(
+        'เซิร์ฟเวอร์ในบ้านขัดข้อง — เช็คว่าโปรแกรมบนเครื่องนั้นยังเปิดอยู่',
+        'The home server is having trouble — check the program on it is still running',
+      );
+  String errHomeFailed(int code) => pick(
+        'เซิร์ฟเวอร์ในบ้านตอบไม่สำเร็จ ($code)',
+        'The home server request failed ($code)',
+      );
+  String get errHomeNoStt => pick(
+        'เซิร์ฟเวอร์ในบ้านถอดเสียงไม่ได้ (Ollama ไม่มีบริการนี้) — ใช้การพิมพ์แทนนะคะ',
+        "The home server can't transcribe speech (Ollama has no such service) — "
+            'type instead',
+      );
 
   /// สมองล้มด้วยเหตุที่เราไม่ได้เตรียมข้อความไว้ให้
   ///

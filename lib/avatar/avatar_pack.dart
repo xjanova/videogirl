@@ -141,7 +141,10 @@ class AvatarPackInfo {
       try {
         final j = jsonDecode(await manifest.readAsString());
         if (j is Map) {
-          model = j['model'] as String?;
+          // เช็คชนิดก่อน ไม่ cast · `"model": 3` จะโยน TypeError ซึ่งตัวดัก
+          // ข้างล่างไม่รับ แล้วทั้งการติดตั้งค้างอยู่ที่ "กำลังแตกไฟล์" ตลอดไป
+          final m = j['model'];
+          model = m is String && m.trim().isNotEmpty ? m.trim() : null;
           kind = AvatarPackKind.parse(j['kind']);
           final name = j['name'];
           if (name is Map) {
@@ -157,7 +160,7 @@ class AvatarPackInfo {
             declaredClips = j['providesClips'] == true;
           }
         }
-      } on FormatException catch (e) {
+      } on Object catch (e) {
         debugPrint('avatar pack: $kPackManifest ของ $id อ่านไม่ออก — $e');
       }
     }
@@ -241,11 +244,17 @@ class AvatarPacks extends ChangeNotifier {
   /// URL ฐานที่หน้าเว็บต้องใช้แทน `./model/` — null ถ้ายังไม่มีชุดพร้อมใช้
   ///
   /// ต้องลงท้ายด้วย `/` เพราะฝั่ง JS ต่อชื่อไฟล์ตรง ๆ (`base + model`)
-  String? get baseUrl =>
-      _stage == AvatarPackStage.ready ? 'http://localhost:$_port/' : null;
+  String? get baseUrl => _serving ? 'http://localhost:$_port/' : null;
 
   /// ชื่อไฟล์ .vrm ของชุดที่เลือก — หน้าเว็บต้องรู้ เพราะไม่ได้ชื่อ minde.vrm เสมอไป
-  String? get modelFile => _stage == AvatarPackStage.ready ? selected?.model : null;
+  String? get modelFile => _serving ? selected?.model : null;
+
+  /// เสิร์ฟชุดที่มีอยู่ได้ไหม — **ไม่ผูกกับว่ากำลังโหลดชุดใหม่อยู่หรือเปล่า**
+  ///
+  /// 🔴 ของเดิมคืน null ทุกครั้งที่สถานะไม่ใช่ ready · กดโหลดชุดเสริมชุดเดียว
+  /// = เวทีรีโหลดไปที่ `./model/` ที่ว่างเปล่า ตัวเธอหายไปทั้งช่วงที่โหลด
+  /// แล้วต้องโหลด VRM 33MB ใหม่อีกรอบตอนจบ ทั้งที่ชุดเดิมยังอยู่ครบในเครื่อง
+  bool get _serving => _server != null && selected != null;
 
   /// สแกนชุดที่มีอยู่แล้วยกเซิร์ฟเวอร์
   ///
@@ -275,6 +284,9 @@ class AvatarPacks extends ChangeNotifier {
       if (entry is! Directory) continue;
       final id = entry.uri.pathSegments.where((s) => s.isNotEmpty).last;
       if (id == _sharedDir) continue;
+      // โฟลเดอร์ที่ขึ้นต้นด้วยจุดเป็นของระบบ (ที่พัก `.staging` ที่ติดตั้งค้าง
+      // ไว้ตอนแอปถูกฆ่า) · นับเป็นชุด = มีชุดผีโผล่ในหน้าตั้งค่า
+      if (id.startsWith('.')) continue;
       final info = await AvatarPackInfo.read(entry, id);
       if (info != null) _installed.add(info);
     }
@@ -333,16 +345,23 @@ class AvatarPacks extends ChangeNotifier {
 
       // สตรีมลงไฟล์ ไม่ buffer ทั้งก้อน — ชุดตัวเธอ ~35MB บนเครื่องแรม 2.5GB
       // การถือทั้งก้อนไว้ในหน่วยความจำพร้อมกับ WebGL ที่รันอยู่คือทางไปสู่ OOM
-      await for (final chunk in res.stream) {
-        sink.add(chunk);
-        received += chunk.length;
-        _bytes = received;
-        if (total > 0 && !_disposed) {
-          _progress = received / total;
-          notifyListeners();
+      //
+      // timeout ต่อก้อน · timeout ของ send() คุมแค่ตอนรอหัว เน็ตที่ค้างกลางทาง
+      // จะทำให้ค้างที่ "กำลังโหลด" ตลอดไป และ install() ปฏิเสธการลองใหม่
+      try {
+        await for (final chunk
+            in res.stream.timeout(const Duration(seconds: 45))) {
+          sink.add(chunk);
+          received += chunk.length;
+          _bytes = received;
+          if (total > 0 && !_disposed) {
+            _progress = received / total;
+            notifyListeners();
+          }
         }
+      } finally {
+        await sink.close();
       }
-      await sink.close();
 
       if (expectedSha256 != null && expectedSha256.isNotEmpty) {
         _set(AvatarPackStage.verifying);
@@ -397,7 +416,9 @@ class AvatarPacks extends ChangeNotifier {
         onInstalled?.call(placed);
       }
       return _stage == AvatarPackStage.ready;
-    } on Exception catch (e) {
+    } on Object catch (e) {
+      // Object ไม่ใช่ Exception — TypeError/ArgumentError จากไฟล์หน้าตาแปลก
+      // ต้องไม่ทิ้งสถานะค้างอยู่ที่ unpacking ซึ่งปฏิเสธการลองใหม่ทุกครั้ง
       debugPrint('avatar pack: โหลดไม่สำเร็จ — $e');
       try {
         await zip?.delete();

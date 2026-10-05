@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -44,6 +45,23 @@ Future<void> main() async {
   // บรรทัดแรก ๆ ของการเปิดแอป (เซิร์ฟเวอร์ ฐานข้อมูล ปลั๊กอิน) ติดตั้งทีหลัง
   // แปลว่ารายงานจะไม่มีช่วงที่คนอยากดูที่สุดเลย
   MindLog.install();
+
+  // ข้อผิดพลาดที่ไม่มีใครดัก → รายงาน crash ไป xman studio (ถ้าเปิดสวิตช์ไว้)
+  //
+  // 🔴 ส่งต่อให้ตัวเดิมเสมอ ไม่กลืน · ตัวเดิมพิมพ์ลง console/logcat และโชว์จอแดง
+  // ตอน debug · กลืนทิ้ง = ไล่บั๊กในเครื่องไม่ได้
+  final flutterDefault = FlutterError.onError;
+  FlutterError.onError = (details) {
+    flutterDefault?.call(details);
+    CrashSink.report(details.exception, details.stack);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('ข้อผิดพลาดที่ไม่มีใครดัก — ${error.runtimeType}');
+    CrashSink.report(error, stack);
+    // true = รับไว้แล้ว · แอป Flutter ไม่ปิดตัวเพราะ async error อยู่แล้ว
+    // แต่ไม่คืน true = ข้อผิดพลาดถูกพิมพ์ซ้ำเป็น "unhandled" อีกรอบ
+    return true;
+  };
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -149,6 +167,7 @@ class _MindBootstrapState extends State<MindBootstrap>
 
   /// ผู้ใช้กด "เข้าใช้ต่อทั้งที่รู้" บนหน้ากั้นแล้ว
   bool _ignoredDeviceWarning = false;
+  static const _kIgnoredDeviceWarning = 'ignoredDeviceWarning';
 
   /// เครื่องนี้ต่ำกว่าเกณฑ์จนควรกั้นไว้ก่อนไหม
   ///
@@ -182,6 +201,9 @@ class _MindBootstrapState extends State<MindBootstrap>
     // ถ้าจำคำตอบเก่าไว้ ปุ่มไมค์จะยังใช้ไม่ได้จนกว่าจะปิดเปิดแอป
     if (state == AppLifecycleState.resumed) {
       unawaited(_state.refreshDeviceStt(forget: true));
+      // อาจเพิ่งไปให้สิทธิ์ปฏิทิน เพิ่มนัด หรือข้ามวันมาแล้ว · เธอตอบเรื่อง
+      // ตารางจากก้อนนี้ ถ้าไม่อ่านใหม่จะตอบจากของเมื่อวาน
+      unawaited(_calendar.refreshIfStale());
     }
   }
 
@@ -190,9 +212,21 @@ class _MindBootstrapState extends State<MindBootstrap>
     //
     // ทะเบียนชุดต้องเสร็จก่อนด้วย ไม่งั้น WebView โหลดด้วยทางเก่าแล้วต้อง
     // รีโหลดทีหลัง = โหลด VRM 33MB สองรอบ ซึ่งช้ากว่ารอให้เสร็จก่อนมาก
+    // 🔴 เซิร์ฟเวอร์ของเวทีแยกออกมา ไม่ให้ลากที่เก็บข้อมูลล้มตาม
+    //
+    // ถ้าพอร์ตถูกแอปอื่นจองไว้ (loopback ใช้ร่วมกันทั้งเครื่อง) `start()`
+    // ไม่จบสักที เพราะข้อผิดพลาดตอน bind ไปโผล่ในโซนอื่น · ของเดิมอยู่ใน try
+    // เดียวกับการเปิดฐาน = ค่าตั้ง ประวัติ และความจำไม่ถูกโหลดเลย และจอเปิดแอป
+    // ค้างตลอดไป · ไม่มีตัวเธอยังคุยได้ ไม่มีข้อมูลคือแอปใช้ไม่ได้
     try {
-      await InAppLocalhostServer(port: kAvatarPort).start();
+      await InAppLocalhostServer(port: kAvatarPort)
+          .start()
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('boot: เปิดเซิร์ฟเวอร์ของเวทีไม่สำเร็จ — $e');
+    }
 
+    try {
       // 🔴 เปิดที่เก็บข้อมูล **ก่อนใครทั้งหมด**
       //
       // ทุกคนข้างล่างอ่านค่าจากมัน · และถ้าเพิ่งลงแอปใหม่ ขั้นนี้คือขั้นที่
@@ -232,6 +266,8 @@ class _MindBootstrapState extends State<MindBootstrap>
       // ระบบครั้งเดียว หลักมิลลิวินาที ไม่ได้ถ่วง boot จริง และล้มเองไม่ได้
       // (totalRamMb จับ exception คืน null ซึ่งตกเป็น tier unknown = ไม่กั้น)
       _device = await DeviceCapability.detect();
+      _ignoredDeviceWarning =
+          _store?.kv.getBool(_kIgnoredDeviceWarning) ?? false;
     } catch (e) {
       debugPrint('boot: เตรียมของไม่ครบ — $e');
     }
@@ -318,7 +354,8 @@ class _MindBootstrapState extends State<MindBootstrap>
         ChangeNotifierProvider.value(value: _pack),
         ChangeNotifierProvider.value(value: _avatar),
         ChangeNotifierProvider.value(value: _state.memory),
-        ChangeNotifierProvider(create: (_) => Updater()),
+        // ไม่ส่ง strings = ข้อความผิดพลาดของการอัปเดตเป็นไทยเสมอ
+        ChangeNotifierProvider(create: (_) => Updater(strings: () => _state.s)),
         ChangeNotifierProvider(create: (_) => MindWatch()..refresh()),
         ChangeNotifierProvider.value(value: _perms..refresh()),
         ChangeNotifierProvider.value(value: _calendar),
@@ -352,8 +389,12 @@ class _MindBootstrapState extends State<MindBootstrap>
           home: _deviceBlocked
               ? UnsupportedDeviceScreen(
                   verdict: _device!,
-                  onContinueAnyway: () =>
-                      setState(() => _ignoredDeviceWarning = true),
+                  onContinueAnyway: () {
+                    setState(() => _ignoredDeviceWarning = true);
+                    // จำไว้ · ของเดิมจำแค่ในหน่วยความจำ คนที่เลือกแล้วว่าจะใช้ต่อ
+                    // เจอหน้ากั้นเดิมทุกครั้งที่เปิดแอป
+                    _store?.kv.setBool(_kIgnoredDeviceWarning, true);
+                  },
                 )
               : Stack(
                   fit: StackFit.expand,

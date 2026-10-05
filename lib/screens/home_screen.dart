@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -23,15 +25,22 @@ import '../widgets/thinking.dart';
 /// หน้าหลัก — artboard 2a
 /// อวาตาร์อยู่ในแสงสี แชทเป็นแผ่นกระจกเหลวลอยทับ
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.avatar});
+  const HomeScreen({super.key, required this.avatar, this.active = true});
 
   final MindAvatarController avatar;
+
+  /// แท็บนี้เป็นแท็บที่เห็นอยู่ไหม
+  ///
+  /// หน้าจอนี้ไม่เคยถูกถอดออก (อยู่ใน IndexedStack) · ถ้าไม่บอก มันจะไม่รู้เลย
+  /// ว่าผู้ใช้ไปแท็บอื่นแล้ว กล้องเชิดหุ่นกับไมค์จึงทำงานต่อเงียบ ๆ
+  final bool active;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _draft = TextEditingController();
   final _focus = FocusNode();
 
@@ -82,6 +91,39 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     // ซึ่งเป็นสิ่งที่แย่ที่สุดที่จะเกิดขึ้นได้ · ช่องพิมพ์เป็นคนบอก state
     _focus.addListener(_reportTyping);
     _draft.addListener(_reportTyping);
+
+    // 🔴 หน้าจอนี้ไม่เคยถูกถอดออก (อยู่ใน IndexedStack) · dispose จึงไม่ใช่
+    // ที่ที่ไมค์จะถูกปิด · ต้องปิดเองตอนสายเข้ามายึดจอ และตอนแอปลงเบื้องหลัง
+    // ไม่งั้นไมค์ของแชทอัดต่อเงียบ ๆ แย่งไมค์กับสาย แล้วเอาเสียงในสาย
+    // มาหย่อนลงช่องพิมพ์
+    _call = context.read<CallSession>()..addListener(_onCall);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  late final CallSession _call;
+
+  void _onCall() {
+    if (_call.onStage && _voice.busy) unawaited(_voice.cancel());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.paused && _voice.busy) {
+      unawaited(_voice.cancel());
+    }
+  }
+
+  /// ออกจากแท็บนี้ = ปิดกล้องและไมค์ · จุดเขียวที่มุมจอค้างอยู่ตอนผู้ใช้
+  /// อยู่หน้าตั้งค่า คือแอปที่แอบดูแอบฟังในสายตาเขา ไม่ว่าเจตนาจะเป็นยังไง
+  @override
+  void didUpdateWidget(HomeScreen old) {
+    super.didUpdateWidget(old);
+    if (old.active && !widget.active) {
+      if (_voice.busy) unawaited(_voice.cancel());
+      if (widget.avatar.mocapPhase != MindMocapPhase.off) {
+        unawaited(widget.avatar.stopMocap());
+      }
+    }
   }
 
   /// กดไมค์ — เปิดฟัง หรือปิดแล้วเอาข้อความที่ได้มาใส่ช่องพิมพ์
@@ -91,16 +133,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _toggleMic(MindState state) async {
     _voice.clearError();
 
+    // 🔴 ฟังอยู่ = ปุ่มนี้คือปุ่มหยุด **เสมอ** · ต้องมาก่อนเช็กสมอง
+    // ไม่งั้นคนที่สลับสมองระหว่างพูด กดหยุดแล้วได้คำเตือนแทน ไมค์อัดต่อจนครบ 60 วิ
+    if (_voice.stage == VoiceInputStage.listening) {
+      final heard = await _voice.stop();
+      if (heard != null) _fillDraft(heard);
+      return;
+    }
+
     // ถอดเสียงไม่ได้ด้วยสมองที่เลือกไว้ — บอกเหตุผลตรงแถบเดียวกับที่บอก
     // เรื่องสมองล้ม ไม่ใช่กดแล้วเงียบให้เดาเอาเอง
     if (!state.canTranscribe) {
       state.reportError(state.whyNoMic);
-      return;
-    }
-
-    if (_voice.stage == VoiceInputStage.listening) {
-      final heard = await _voice.stop();
-      if (heard != null) _fillDraft(heard);
       return;
     }
 
@@ -126,6 +170,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _call.removeListener(_onCall);
     _focus.removeListener(_reportTyping);
     _draft.removeListener(_reportTyping);
     _draft.dispose();
@@ -140,6 +186,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _send(MindState state) {
     final text = _draft.text;
     if (text.trim().isEmpty) return Future<void>.value();
+    // 🔴 เธอยังคิดอยู่ = ไม่รับ · ห้ามล้างช่องพิมพ์ทั้งที่ไม่มีอะไรถูกส่ง
+    // (ปุ่มส่งปิดตัวเองอยู่แล้ว แต่ปุ่ม Enter บนคีย์บอร์ดมาทางนี้ตรง ๆ)
+    if (!state.canSend) return Future<void>.value();
     _draft.clear();
     return _sendText(state, text);
   }
@@ -151,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   /// แบบเดียวกันเป๊ะ · ทางส่งสองทางที่ทำงานไม่เหมือนกันคือของที่จะเพี้ยน
   /// จากกันเรื่อย ๆ ทุกครั้งที่มีใครแก้ทางใดทางหนึ่ง
   Future<void> _sendText(MindState state, String text) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty || !state.canSend) return;
 
     // แถบเดียวโชว์ได้ทีละเรื่อง · ถ้าไม่ล้างของเก่าตรงนี้ ข้อผิดพลาดจากไมค์
     // ที่ค้างอยู่จะบังเหตุผลใหม่ที่เพิ่งเกิดจากการส่งข้อความ

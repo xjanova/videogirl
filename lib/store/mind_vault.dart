@@ -41,6 +41,9 @@ import 'mind_db.dart';
 /// การอ่านจาก SharedPreferences ตรง ๆ ซึ่งเป็นที่เดียวที่พร้อมใช้ตั้งแต่วินาทีแรก
 abstract final class MindVaultKeys {
   static const wipeOnUninstall = 'wipeOnUninstall';
+
+  /// ผู้ใช้สั่งให้กู้สำเนาเก่าในการเปิดแอปรอบหน้า — ดู [MindVault.requestRestore]
+  static const restorePending = 'vaultRestorePending';
 }
 
 /// โฟลเดอร์ที่สำเนาไปอยู่ · ชื่อเป็นชื่อแอปเพื่อให้คนที่เปิดดูด้วยตัวจัดการ
@@ -69,6 +72,13 @@ enum VaultStage {
 
   /// มีสิทธิ์แล้วแต่เขียนไม่ได้จริง (พื้นที่เต็ม, เครื่องแปลก)
   failed,
+
+  /// 🔴 ข้างนอกมีสำเนาของ**การติดตั้งครั้งก่อน** ที่ไม่ใช่ของฐานนี้
+  ///
+  /// เกิดเมื่อลงแอปใหม่แล้วยังไม่ได้ให้สิทธิ์ไฟล์ตอนเปิดครั้งแรก — การกู้
+  /// จึงไม่ได้วิ่ง และได้ฐานเปล่ามาแทน · **ห้ามเขียนทับจนกว่าเจ้าของจะเลือก**
+  /// ว่ากู้ของเก่า หรือใช้ของตอนนี้แทน
+  foreign,
 }
 
 /// จัดการสำเนาข้างนอก · ไม่รู้จัก UI และไม่รู้จักระบบสิทธิ์
@@ -86,6 +96,45 @@ class MindVault extends ChangeNotifier {
 
   String get dirPath => '$_root${Platform.pathSeparator}$kVaultDirName';
   String get filePath => '$dirPath${Platform.pathSeparator}$kDbFileName';
+
+  /// ป้ายของฐานที่เขียนสำเนานี้ — ไฟล์ข้อความข้าง ๆ สำเนา
+  ///
+  /// แยกเป็นไฟล์ ไม่เปิดสำเนาเพื่ออ่าน meta เพราะ SQLite บนพื้นที่เก็บร่วม
+  /// เชื่อไม่ได้ (ดูหัวไฟล์) แม้แต่แค่เปิดอ่าน
+  String get idPath => '$filePath.id';
+
+  /// สำเนาเก่าที่ถูกเก็บไว้ตอนเจ้าของเลือก "ใช้ข้อมูลตอนนี้" — ไม่ลบทิ้งเลย
+  String get previousPath => '$filePath.previous';
+
+  /// ป้ายของฐานที่เปิดอยู่ · null = ยังไม่ได้ต่อ (เทสต์บางตัว) → ไม่ตรวจ
+  String? _lineage;
+  bool _bornNew = false;
+  bool _restored = false;
+
+  /// ต่อกับฐานที่เพิ่งเปิด · เรียกจาก [MindStore.open]
+  void attach({
+    required String lineage,
+    required bool bornNew,
+    required bool restored,
+  }) {
+    _lineage = lineage;
+    _bornNew = bornNew;
+    _restored = restored;
+  }
+
+  /// สำเนาข้างนอกเป็นของการติดตั้งอื่นไหม
+  Future<bool> _isForeign() async {
+    final mine = _lineage;
+    if (mine == null || _restored) return false;
+    if (!await File(filePath).exists()) return false;
+    final id = File(idPath);
+    if (await id.exists()) {
+      return (await id.readAsString()).trim() != mine;
+    }
+    // สำเนาจากรุ่นก่อนที่ยังไม่มีป้าย · ฐานเก่าที่เพิ่งได้ป้ายคือเจ้าของเดิม
+    // ของมัน (พฤติกรรมเดิม) ส่วนฐานที่เกิดเปล่า ๆ ไม่ใช่
+    return _bornNew;
+  }
 
   VaultStage _stage = VaultStage.unknown;
   VaultStage get stage => _stage;
@@ -125,7 +174,7 @@ class MindVault extends ChangeNotifier {
     try {
       final dir = Directory(dirPath);
       if (!await dir.exists()) await dir.create(recursive: true);
-      _set(VaultStage.ready);
+      _set(await _isForeign() ? VaultStage.foreign : VaultStage.ready);
     } on Object catch (e) {
       debugPrint('vault: เขียนโฟลเดอร์ไม่ได้ — $e');
       _set(VaultStage.failed, error: '$e');
@@ -195,8 +244,27 @@ class MindVault extends ChangeNotifier {
     _debounce = Timer(saveDelay, () => unawaited(saveNow(db)));
   }
 
+  /// สำเนาที่กำลังเขียนอยู่ · ตัวที่สองต้องรอตัวแรก ไม่ใช่เขียนไฟล์ .tmp ตัวเดียวกัน
+  /// พร้อมกัน (นาฬิกาหน่วง 20 วิ กับตอนแอปลงพื้นหลังชนกันได้จริง) ซึ่งจบที่
+  /// ตัวหนึ่ง rename ไฟล์ที่อีกตัวกำลังเขียน แล้วขึ้นว่าสำเนาไม่สำเร็จ
+  Future<bool>? _saving;
+
   /// สำเนาเดี๋ยวนี้ · ใช้ตอนแอปกำลังจะถูกพับลงพื้นหลัง และตอนผู้ใช้กดเอง
   Future<bool> saveNow(MindDb db) async {
+    final running = _saving;
+    if (running != null) {
+      await running;
+    }
+    final mine = _saveNow(db);
+    _saving = mine;
+    try {
+      return await mine;
+    } finally {
+      if (identical(_saving, mine)) _saving = null;
+    }
+  }
+
+  Future<bool> _saveNow(MindDb db) async {
     _debounce?.cancel();
     if (_wipeOnUninstall) return false;
     if (await check() != VaultStage.ready) return false;
@@ -208,6 +276,10 @@ class MindVault extends ChangeNotifier {
       final tmp = '$filePath.tmp';
       await db.snapshotTo(tmp);
       await File(tmp).rename(filePath);
+      // ป้ายต้องตามสำเนาไปเสมอ · ไม่งั้นการเปิดครั้งหน้าจะคิดว่าเป็นของคนอื่น
+      if (db.lineage.isNotEmpty) {
+        await File(idPath).writeAsString(db.lineage, flush: true);
+      }
       _savedAt = DateTime.now();
       notifyListeners();
       return true;
@@ -249,17 +321,76 @@ class MindVault extends ChangeNotifier {
   /// เรียก **ก่อน** เปิดฐาน — ไฟล์ที่กำลังถูกเปิดอยู่เขียนทับไม่ได้
   Future<bool> restoreIfFresh(String dbPath) async {
     if (_wipeOnUninstall) return false;
+    final pending = await _takePending();
+    final tmp = File('$dbPath.restore');
     try {
-      if (await File(dbPath).exists()) return false;
       if (!await hasCopy()) return false;
+      if (await File(dbPath).exists()) {
+        // ฐานมีอยู่แล้ว = ห้ามแตะ · ยกเว้นเจ้าของเพิ่งสั่งกู้เองจาก [foreign]
+        if (!pending) return false;
+        for (final suffix in const ['', '-wal', '-shm', '-journal']) {
+          final f = File('$dbPath$suffix');
+          if (await f.exists()) await f.delete();
+        }
+      }
 
-      await File(filePath).copy(dbPath);
+      // ก๊อปลงชื่อชั่วคราวก่อนแล้วค่อยเปลี่ยนชื่อ · ก๊อปไม่จบ (แบตหมด/ที่เต็ม)
+      // จะไม่ทิ้งไฟล์ครึ่งเดียวไว้ในชื่อจริง ซึ่งจะทำให้การกู้ไม่วิ่งอีกเลย
+      await File(filePath).copy(tmp.path);
+      await tmp.rename(dbPath);
       debugPrint('vault: กู้ข้อมูลกลับจากสำเนาข้างนอกแล้ว');
       return true;
     } on Object catch (e) {
       debugPrint('vault: กู้คืนไม่สำเร็จ — $e');
+      try {
+        if (await tmp.exists()) await tmp.delete();
+      } on Object {
+        // เก็บกวาดไม่ได้ก็ปล่อย
+      }
       return false;
     }
+  }
+
+  /// อ่านแล้วล้างธง "กู้รอบหน้า" · ล้างก่อนกู้เสมอ — กู้พังแล้วธงค้าง
+  /// = ลบฐานทิ้งทุกครั้งที่เปิดแอป
+  static Future<bool> _takePending() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final v = p.getBool(MindVaultKeys.restorePending) ?? false;
+      if (v) await p.remove(MindVaultKeys.restorePending);
+      return v;
+    } on Object {
+      return false;
+    }
+  }
+
+  /// เจ้าของเลือก "กู้ข้อมูลเก่า" ตอน [VaultStage.foreign]
+  ///
+  /// กู้ตอนนี้เลยไม่ได้ เพราะทุกส่วนของแอปถือฐานที่เปิดอยู่ไว้ · ตั้งธงไว้แล้ว
+  /// ให้การเปิดแอปรอบหน้าเป็นคนกู้ ก่อนที่ใครจะได้เปิดฐาน
+  Future<void> requestRestore() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(MindVaultKeys.restorePending, true);
+  }
+
+  /// เจ้าของเลือก "ใช้ข้อมูลตอนนี้" ตอน [VaultStage.foreign]
+  ///
+  /// สำเนาเก่าไม่ถูกลบ แค่ย้ายไปชื่อ `.previous` · เผื่อเปลี่ยนใจ ก็ยังเอา
+  /// กลับมาได้ด้วยตัวจัดการไฟล์
+  Future<bool> adopt(MindDb db) async {
+    try {
+      final prev = File(previousPath);
+      if (await prev.exists()) await prev.delete();
+      final copy = File(filePath);
+      if (await copy.exists()) await copy.rename(previousPath);
+      final id = File(idPath);
+      if (await id.exists()) await id.delete();
+    } on Object catch (e) {
+      debugPrint('vault: ย้ายสำเนาเก่าไม่สำเร็จ — $e');
+      _set(VaultStage.failed, error: '$e');
+      return false;
+    }
+    return saveNow(db);
   }
 
   @override

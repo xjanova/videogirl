@@ -44,6 +44,45 @@ import 'mind_log.dart';
 
 enum ReportStage { idle, building, sending, sent, failed }
 
+/// ข้อผิดพลาดที่**ไม่มีใครดัก** — ทางเข้าเดียวจาก `FlutterError.onError` และ
+/// `PlatformDispatcher.onError` ใน main()
+///
+/// 🔴 ของเดิมรายงานได้แค่ข้อผิดพลาดที่ไหลมาถึง `MindState.lastError` (ที่ขึ้น
+/// แถบใต้ช่องพิมพ์) · บั๊กที่ร้ายที่สุดคือตัวที่ไม่มีใครดักเลย — จอแดง ปุ่มตาย
+/// future ล้มเงียบ — ซึ่งไม่เคยถูกส่งสักฉบับ
+///
+/// มีบัฟเฟอร์เพราะข้อผิดพลาดเกิดได้ตั้งแต่ก่อน [DebugReporter] จะถูกสร้าง
+/// (ตอนเปิดฐาน เปิดเซิร์ฟเวอร์) ซึ่งเป็นช่วงที่อยากเห็นที่สุด
+abstract final class CrashSink {
+  static final List<(Object, StackTrace?)> _pending = [];
+  static void Function(Object error, StackTrace? stack)? _target;
+
+  static void report(Object error, StackTrace? stack) {
+    final t = _target;
+    if (t != null) {
+      t(error, stack);
+      return;
+    }
+    // ก่อนมีคนรับ เก็บแค่ไม่กี่ตัวแรก · ตัวแรกคือต้นเหตุ ที่ตามมาคือผลพวง
+    if (_pending.length < 3) _pending.add((error, stack));
+  }
+
+  static void attach(void Function(Object error, StackTrace? stack) target) {
+    _target = target;
+    final queued = List.of(_pending);
+    _pending.clear();
+    for (final (e, s) in queued) {
+      target(e, s);
+    }
+  }
+
+  @visibleForTesting
+  static void reset() {
+    _target = null;
+    _pending.clear();
+  }
+}
+
 class DebugReporter extends ChangeNotifier {
   DebugReporter({
     http.Client? httpClient,
@@ -233,7 +272,8 @@ class DebugReporter extends ChangeNotifier {
       return path;
     } on Object catch (e) {
       debugPrint('รายงาน: บันทึกไฟล์ไม่สำเร็จ — $e');
-      _set(ReportStage.failed, error: '$e');
+      // ข้อความดิบของ FileSystemException มี path เต็มของเครื่อง · ไม่ขึ้นจอ
+      _set(ReportStage.failed, error: _s().somethingWrong);
       return null;
     }
   }
@@ -258,16 +298,38 @@ class DebugReporter extends ChangeNotifier {
   /// แปลงรายงานเป็นรูปที่ระบบรายงานของบ้านรับ
   ///
   /// แยกออกมาเป็นฟังก์ชันบริสุทธิ์เพื่อให้เทสต์ยืนยันได้ว่า **ไม่มีอะไรที่ไม่ควร
-  /// อยู่หลุดเข้าไปในนี้** — ฟิลด์ที่ระบบเดิมมี (`stack_trace`, `user_email`)
-  /// เราไม่ส่งโดยตั้งใจ ไม่ใช่เพราะลืม
+  /// อยู่หลุดเข้าไปในนี้** — `user_email` เราไม่ส่งโดยตั้งใจ ไม่ใช่เพราะลืม
+  ///
+  /// [crash] มีเฉพาะรายงานจากข้อผิดพลาดที่ไม่มีใครดัก · `stack_trace` ส่งเฉพาะ
+  /// ตอนนั้น และผ่าน [DebugReport.redact] ทีละบรรทัดแล้ว (build จริงใช้
+  /// `--obfuscate` ชื่อฟังก์ชันจึงอ่านไม่ออกจนกว่าจะแกะด้วย debug-symbols ที่แนบ
+  /// ไว้กับ release เดียวกัน · ไม่มีข้อมูลของผู้ใช้อยู่ในนั้น)
   @visibleForTesting
   static Map<String, Object?> asBugReport(
     ReportFacts r, {
     required String installId,
+    ({String title, String stack})? crash,
   }) {
     final app = (r['app'] as Map?) ?? const {};
     final device = (r['device'] as Map?) ?? const {};
     final errors = (r['errors'] as List?) ?? const [];
+
+    if (crash != null) {
+      return {
+        'product_name': product,
+        'product_version': '${app['version'] ?? '?'}',
+        'report_type': 'crash',
+        'title': crash.title,
+        'description': DebugReport.pretty(r),
+        'stack_trace': crash.stack,
+        'metadata': {'category': 'uncaught', ...r},
+        'app_version': '${app['version'] ?? '?'}',
+        'os_version': '${device['osVersion'] ?? '?'}',
+        'device_id': installId,
+        'priority': 'high',
+        'severity': 'major',
+      };
+    }
 
     return {
       'product_name': product,
@@ -310,7 +372,11 @@ class DebugReporter extends ChangeNotifier {
   ///
   /// ปลายทางเปิดสาธารณะโดยตั้งใจ (แอปในบ้านไม่มีหน้าล็อกอิน) จึงไม่ต้องมี
   /// รหัสสิทธิ์ก็ส่งได้ — คนที่เจอบั๊กก่อนซื้ออะไรคือรายงานที่ต้องการที่สุด
-  Future<bool> send({required String baseUrl, String license = ''}) async {
+  Future<bool> send({
+    required String baseUrl,
+    String license = '',
+    ({String title, String stack})? crash,
+  }) async {
     final r = _report;
     if (r == null) return false;
     if (baseUrl.trim().isEmpty) {
@@ -329,8 +395,8 @@ class DebugReporter extends ChangeNotifier {
               if (license.trim().isNotEmpty)
                 'Authorization': 'Bearer ${license.trim()}',
             },
-            body: utf8.encode(
-                jsonEncode(asBugReport(r, installId: await installId()))),
+            body: utf8.encode(jsonEncode(
+                asBugReport(r, installId: await installId(), crash: crash))),
           )
           .timeout(const Duration(seconds: 30));
 
@@ -418,6 +484,77 @@ class DebugReporter extends ChangeNotifier {
     _avatar = avatar;
     _vault = vault;
     _lastSeenError = state.lastError;
+    // รับข้อผิดพลาดที่ไม่มีใครดัก รวมถึงตัวที่เกิดก่อนหน้านี้ระหว่างเปิดแอป
+    CrashSink.attach(_onCrash);
+  }
+
+  /// ข้อผิดพลาดที่ไม่มีใครดัก → รายงานชนิด crash
+  ///
+  /// ใช้กฎเดียวกับการส่งเองทุกข้อ: เคารพสวิตช์ในหน้าตั้งค่า · เพดานต่อรอบ ·
+  /// ข้อความเดิมไม่ยิงซ้ำในสิบนาที · หน่วงให้ข้อผิดพลาดพวงเดียวกันยุบเป็นฉบับเดียว
+  void _onCrash(Object error, StackTrace? stack) {
+    if (!auto || _disposed) return;
+    if (_sentThisRun >= maxPerRun) return;
+
+    final title = crashTitle(error);
+    final last = _sentAt[title];
+    if (last != null && DateTime.now().difference(last) < repeatAfter) return;
+    // จองไว้ก่อน · ข้อผิดพลาดเดียวกันมักวิ่งเข้ามาเป็นสิบรอบในวินาทีเดียว
+    _sentAt[title] = DateTime.now();
+
+    Timer(settle, () => unawaited(_sendCrash(title, crashStack(stack))));
+  }
+
+  /// หัวข้อรายงาน crash — ชนิด + บรรทัดแรกของข้อความ ผ่านตัวล้างความลับแล้ว
+  @visibleForTesting
+  static String crashTitle(Object error) {
+    final first = '$error'
+        .split('\n')
+        .firstWhere((l) => l.trim().isNotEmpty, orElse: () => '');
+    final t = DebugReport.redact('${error.runtimeType}: ${first.trim()}');
+    return t.length <= 200 ? t : '${t.substring(0, 199)}…';
+  }
+
+  /// stack trace ที่ล้างแล้ว · ตัดที่ 80 บรรทัด ส่วนที่เหลือคือโค้ดของ framework
+  @visibleForTesting
+  static String crashStack(StackTrace? stack) {
+    if (stack == null) return '';
+    return '$stack'
+        .split('\n')
+        .where((l) => l.trim().isNotEmpty)
+        .take(80)
+        .map(DebugReport.redact)
+        .join('\n');
+  }
+
+  Future<void> _sendCrash(String title, String stack) async {
+    final state = _watched;
+    if (state == null || _disposed || !auto) return;
+
+    final keepStage = _stage;
+    final keepError = _error;
+    final keepReport = _report;
+    try {
+      await collect(state: state, avatar: _avatar, vault: _vault);
+      final ok = await send(
+        baseUrl: state.storeBaseUrl,
+        license: state.licenseKey,
+        crash: (title: title, stack: stack),
+      );
+      if (ok) {
+        _sentThisRun++;
+        _autoSentAt = DateTime.now();
+        debugPrint('รายงาน: ส่ง crash แล้ว ($_sentThisRun/$maxPerRun)');
+      }
+    } on Object catch (e) {
+      // ห้ามโยนต่อ · ตัวรายงาน crash ที่ crash เองจะวนกลับเข้า CrashSink ไม่จบ
+      debugPrint('รายงาน: ส่ง crash ไม่สำเร็จ — ${e.runtimeType}');
+    } finally {
+      _stage = keepStage;
+      _error = keepError;
+      _report = keepReport;
+      if (!_disposed) notifyListeners();
+    }
   }
 
   void _onStateChanged() {

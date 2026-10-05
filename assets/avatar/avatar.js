@@ -223,6 +223,10 @@ export class Avatar {
      * shot, holds the gesture scheduler off, and puts everything back after.
      */
     async speak(url) {
+        // Which sentence owns the stage. A newer one cuts this one off (play()
+        // pauses the old audio), and the old one's cleanup must not then pull
+        // the camera back and stop the talking pose under the new sentence.
+        const turn = this._turn = (this._turn || 0) + 1;
         this.speaking = true;
         this._quiet = 0;
         if (this._autoWait) { this._autoWait = false; this.setMood('neutral'); }
@@ -232,10 +236,12 @@ export class Avatar {
         try {
             return await this.lip.play(url);
         } finally {
-            this.speaking = false;
-            this.motion?.setBusy(false);
-            this.motion?.setTalking(false);
-            this.framing?.set('full');
+            if (turn === this._turn) {
+                this.speaking = false;
+                this.motion?.setBusy(false);
+                this.motion?.setTalking(false);
+                this.framing?.set('full');
+            }
         }
     }
 

@@ -27,6 +27,7 @@ library;
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -69,6 +70,7 @@ class MindDb {
   /// [path] แยกออกมาเป็นพารามิเตอร์เพื่อให้เทสต์ชี้ไปไฟล์ชั่วคราวได้
   /// (`:memory:` ก็ได้ แต่เทสต์การกู้คืนต้องมีไฟล์จริง)
   static Future<MindDb> openIn(String path) async {
+    var created = false;
     final db = await openDatabase(
       path,
       version: _schemaVersion,
@@ -77,7 +79,10 @@ class MindDb {
         // แถวที่ชี้ไปหาของที่ถูกลบไปแล้วเงียบ ๆ
         await d.execute('PRAGMA foreign_keys = ON');
       },
-      onCreate: (d, _) async => _createAll(d),
+      onCreate: (d, _) async {
+        created = true;
+        await _createAll(d);
+      },
       onUpgrade: (d, from, to) async {
         // ยังไม่มีรุ่นเก่าให้อัปเกรด · เมื่อถึงวันนั้นเขียนทีละขั้นที่นี่
         // อย่า drop แล้วสร้างใหม่ นั่นคือการลบข้อมูลของผู้ใช้ทิ้ง
@@ -86,7 +91,42 @@ class MindDb {
     );
     final mind = MindDb._(db);
     _open = mind;
+    await mind._ensureLineage(created: created);
     return mind;
+  }
+
+  // ═══ สายเลือดของฐาน ═══════════════════════════════════
+  //
+  // 🔴 สำเนาข้างนอก ([MindVault]) ต้องรู้ว่า "ฐานนี้กับสำเนานั้นเป็นของชุดเดียวกัน
+  // ไหม" ก่อนเขียนทับ · ลงแอปใหม่แล้วยังไม่ได้ให้สิทธิ์ไฟล์ = ได้ฐานเปล่า ถ้า
+  // ไม่มีป้ายนี้ วันที่ให้สิทธิ์ สำเนาเก่าทั้งก้อนจะถูกฐานเปล่าเขียนทับเงียบ ๆ
+  // — ข้อมูลที่สำเนามีไว้กู้หายไปในจังหวะที่ผู้ใช้คิดว่ามันกำลังปลอดภัย
+
+  static const _kLineage = 'lineage';
+  static const _kLineageOrigin = 'lineage_origin';
+
+  /// ป้ายประจำฐาน · ติดไปกับไฟล์ ฐานที่กู้จากสำเนาจึงได้ป้ายเดียวกับสำเนา
+  String _lineage = '';
+  String get lineage => _lineage;
+
+  /// ฐานนี้เกิดเปล่า ๆ ในรุ่นที่มีป้ายแล้ว (ไม่ใช่ฐานเก่าที่เพิ่งได้ป้าย)
+  bool _bornNew = false;
+  bool get bornNew => _bornNew;
+
+  Future<void> _ensureLineage({required bool created}) async {
+    final have = await meta(_kLineage);
+    if (have != null && have.isNotEmpty) {
+      _lineage = have;
+      _bornNew = await meta(_kLineageOrigin) == 'new';
+      return;
+    }
+    final r = Random.secure();
+    _lineage = [
+      for (var i = 0; i < 16; i++) r.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ].join();
+    _bornNew = created;
+    await setMeta(_kLineage, _lineage);
+    await setMeta(_kLineageOrigin, created ? 'new' : 'migrated');
   }
 
   static Future<void> _createAll(Database d) async {
@@ -292,6 +332,26 @@ class MindDb {
 
   /// ตัดของเก่าทิ้งเมื่อเกินเพดาน — ไทม์ไลน์เป็นบันทึกเหตุการณ์ ไม่ใช่ความจำ
   /// เก็บไว้ทั้งหมดก็ไม่มีใครเลื่อนไปดูปีที่แล้ว
+  /// แทนที่ไทม์ไลน์ทั้งชุดในธุรกรรมเดียว — ล้มกลางทาง = ของเดิมยังอยู่ครบ
+  Future<void> replaceJournal(List<Map<String, Object?>> rows, int keep) =>
+      _db.transaction((txn) async {
+        await txn.delete('journal');
+        for (final r in rows.take(keep)) {
+          await txn.insert('journal', r,
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      });
+
+  /// แทนที่ความจำทั้งชุดในธุรกรรมเดียว — เหตุผลเดียวกับ [replaceJournal]
+  Future<void> replaceMemories(List<Map<String, Object?>> rows) =>
+      _db.transaction((txn) async {
+        await txn.delete('memories');
+        for (final r in rows) {
+          await txn.insert('memories', r,
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      });
+
   Future<void> trimJournal(int keep) => _db.rawDelete(
         'DELETE FROM journal WHERE id NOT IN '
         '(SELECT id FROM journal ORDER BY at DESC LIMIT ?)',
@@ -394,7 +454,21 @@ class MindDb {
     final f = File(path);
     // VACUUM INTO ปฏิเสธถ้าไฟล์ปลายทางมีอยู่แล้ว
     if (await f.exists()) await f.delete();
-    await _db.execute('VACUUM INTO ?', [path]);
+    try {
+      await _db.execute('VACUUM INTO ?', [path]);
+    } on DatabaseException catch (e) {
+      // 🔴 VACUUM INTO มีตั้งแต่ SQLite 3.27 · Android 8–10 ใช้ SQLite ของระบบ
+      // รุ่น 3.18–3.22 → syntax error ทุกครั้ง สำเนาไม่เคยเกิดบนเครื่องพวกนั้น
+      // (เทสต์ผ่านเพราะรันบน sqflite_common_ffi ที่พก SQLite ใหม่มาเอง)
+      if (!'$e'.toLowerCase().contains('syntax')) rethrow;
+      if (await f.exists()) await f.delete();
+      // ทางสำรอง: ไล่ WAL ลงไฟล์หลัก แล้วก๊อปไฟล์ดิบ **ขณะถือธุรกรรมไว้**
+      // ธุรกรรมกันไม่ให้ใครเขียนแทรกระหว่างก๊อป ไฟล์ที่ได้จึงสอดคล้องกันทั้งก้อน
+      await _db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+      await _db.transaction((txn) async {
+        await File(_db.path).copy(path);
+      });
+    }
   }
 
   Future<void> close() async {

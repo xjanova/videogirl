@@ -265,6 +265,18 @@ class InCallActivity : Activity() {
         val number = MindInCallService.current?.details?.handle?.schemeSpecificPart
         if (CallBridge(this).nameFor(number) == null) return
 
+        // 🔴 รับแล้วต้องมีคนคุยจริง · จอนี้รับสาย เปิดลำโพง เร่งเสียงได้เอง
+        // แต่บทสนทนาอยู่ฝั่ง Dart ทั้งหมด · จอล็อกอยู่ = [handToFlutter] ไม่เปิด
+        // Flutter ให้ ถ้าแอปถูกปิดไปแล้วด้วย จะไม่มีใครคุยในสายเลย —
+        // สายถูกรับบนลำโพง ไมค์เปิด ปลายสายได้ยินเสียงในห้องเจ้าของ
+        // โดยที่เจ้าของไม่รู้ว่ามีสายถูกรับ · ปล่อยให้ดังตามปกติดีกว่า
+        val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+        if (keyguard?.isKeyguardLocked == true && !MainActivity.dartAlive) return
+
+        // สายซ้อน = เจ้าของกำลังคุยอีกสายอยู่ · รับแทนตอนนี้คือพักสายที่เขาคุยอยู่
+        // ทิ้งโดยที่เขาไม่ได้กดอะไรเลย · ปล่อยให้เขาตัดสินใจเอง
+        if (MindInCallService.hasOtherCall()) return
+
         autoArmed = true
 
         val delay = MindPrefs.ringSeconds(this) * 1000L

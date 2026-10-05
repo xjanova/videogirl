@@ -22,6 +22,9 @@ class OpenAiFailure implements Exception {
 /// ข้อความหนึ่งเทิร์นสำหรับส่งเข้าโมเดล
 typedef Turn = ({bool fromHer, String text});
 
+/// ปลายทางที่ client นี้คุยด้วย · ใช้เลือกข้อความผิดพลาดให้ตรงกับที่ผู้ใช้เลือก
+enum Upstream { openai, proxy, homeServer }
+
 class OpenAiClient {
   OpenAiClient({
     http.Client? httpClient,
@@ -31,11 +34,14 @@ class OpenAiClient {
     String Function()? apiKeyOf,
     String Function()? baseUrlOf,
     S Function()? strings,
+    this.upstream = Upstream.openai,
   })  : _s = strings ?? _thai,
         _http = httpClient ?? http.Client(),
         _timeout = timeout ?? const Duration(seconds: 30),
         _baseUrlOf = baseUrlOf ?? (() => baseUrl ?? OpenAiConfig.baseUrl),
         _apiKeyOf = apiKeyOf ?? (() => apiKey ?? OpenAiConfig.apiKey);
+
+  final Upstream upstream;
 
   /// อ่านภาษา ณ ตอนที่ error เกิดจริง ไม่ใช่ตอนสร้าง client
   /// เพราะผู้ใช้สลับภาษาได้ระหว่างแอปเปิดอยู่
@@ -95,15 +101,23 @@ class OpenAiClient {
     });
 
     final res = await _post('/chat/completions', body);
-    final json = jsonDecode(utf8.decode(res)) as Map<String, dynamic>;
-    final choices = json['choices'] as List?;
+    final Object? json;
+    try {
+      json = jsonDecode(utf8.decode(res));
+    } on FormatException {
+      // พร็อกซี/เซิร์ฟเวอร์ในบ้านตอบหน้า HTML มาแทน JSON
+      throw OpenAiFailure(_s().errNoReply);
+    }
+    final choices = json is Map ? json['choices'] : null;
 
-    if (choices == null || choices.isEmpty) {
+    if (choices is! List || choices.isEmpty) {
       throw OpenAiFailure(_s().errNoReply);
     }
 
-    final content = (choices.first as Map)['message']?['content'] as String?;
-    if (content == null || content.trim().isEmpty) {
+    final first = choices.first;
+    final message = first is Map ? first['message'] : null;
+    final content = message is Map ? message['content'] as Object? : null;
+    if (content is! String || content.trim().isEmpty) {
       throw OpenAiFailure(_s().errEmptyReply);
     }
     return content.trim();
@@ -185,6 +199,11 @@ class OpenAiClient {
     }
 
     if (res.statusCode >= 400) {
+      // เซิร์ฟเวอร์ในบ้านส่วนใหญ่ (Ollama) ไม่มีปลายทางถอดเสียงเลย = 404
+      if (upstream == Upstream.homeServer &&
+          (res.statusCode == 404 || res.statusCode == 405)) {
+        throw OpenAiFailure(_s().errHomeNoStt, status: res.statusCode);
+      }
       throw OpenAiFailure(_readableError(res), status: res.statusCode);
     }
     return utf8.decode(res.bodyBytes).trim();
@@ -210,22 +229,42 @@ class OpenAiClient {
 
   /// แปลง error ของ OpenAI เป็นภาษาคน — และไม่เผยรายละเอียดระบบให้ผู้ใช้เห็น
   String _readableError(http.Response res) {
-    switch (res.statusCode) {
-      case 401:
-        return _s().errBadKey;
-      case 429:
-        return _s().errRateLimited;
-      case >= 500:
-        return _s().errUpstream;
+    final s = _s();
+    switch ((upstream, res.statusCode)) {
+      case (Upstream.openai, 401):
+        return s.errBadKey;
+      case (Upstream.proxy, 401 || 403):
+        return s.errLicenseRejected;
+      case (_, 429):
+        return s.errRateLimited;
+      case (Upstream.openai, >= 500):
+        return s.errUpstream;
+      case (Upstream.proxy, >= 500):
+        return s.errProxyDown;
+      case (Upstream.homeServer, >= 500):
+        return s.errHomeDown;
     }
     try {
-      final m = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-      final msg = m['error']?['message'] as String?;
-      if (msg != null && msg.isNotEmpty) return msg;
-    } on Exception {
+      final m = jsonDecode(utf8.decode(res.bodyBytes));
+      // 🔴 อ่านแบบเช็กชนิดทุกชั้น · เซิร์ฟเวอร์ในบ้าน (LM Studio, Ollama บางรุ่น)
+      // ตอบ `{"error": "ข้อความ"}` เป็นสตริงตรง ๆ ไม่ใช่ `{"error": {"message"}}`
+      // ของเดิม `m['error']?['message']` จึงโยน TypeError ซึ่งไม่ใช่ Exception
+      // ลอดตัวดักข้างล่างออกไป แล้วผู้ใช้ได้ "ส่งใหม่อีกที" แทนเหตุผลจริง
+      final err = m is Map ? m['error'] : null;
+      final msg = switch (err) {
+        String s => s,
+        Map e when e['message'] is String => e['message'] as String,
+        _ => null,
+      };
+      if (msg != null && msg.trim().isNotEmpty) return msg.trim();
+    } on Object {
       // ตอบกลับไม่ใช่ JSON — ตกไปใช้ข้อความกลางด้านล่าง
     }
-    return _s().errRequestFailed(res.statusCode);
+    return switch (upstream) {
+      Upstream.openai => s.errRequestFailed(res.statusCode),
+      Upstream.proxy => s.errProxyFailed(res.statusCode),
+      Upstream.homeServer => s.errHomeFailed(res.statusCode),
+    };
   }
 
   void close() => _http.close();

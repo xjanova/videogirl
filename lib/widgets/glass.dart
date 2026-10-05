@@ -115,8 +115,12 @@ class SpeechBubble extends StatelessWidget {
                   bottomLeft: Radius.circular(MindRadius.bubbleTail),
                 ),
               ),
+              // เพดานบรรทัด · คำตอบยาวบนจอ 360dp ทำให้ฟองสูงกว่าเวทีแล้วบังตัวเธอ
+              // ทั้งตัวจนกว่าจะจางไป · ข้อความเต็มอยู่ในแผงแชทข้างล่างอยู่แล้ว
               child: Text(
                 text,
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12.5, height: 1.55, color: MindColors.ink),
               ),
             ),

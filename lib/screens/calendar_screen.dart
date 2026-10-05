@@ -94,7 +94,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
           mode,
           icon: Icons.error_outline_rounded,
           title: t.calFailed,
-          body: t.calNeedPermissionWhy,
+          // อ่านไม่ได้ ≠ ไม่มีสิทธิ์ · ของเดิมโชว์คำอธิบายเรื่องขอสิทธิ์ ซึ่งพา
+          // คนที่ให้สิทธิ์ไปแล้วไปหาปัญหาผิดที่
+          body: t.calFailedWhy,
           action: (t.refresh, Icons.refresh_rounded, _load),
         );
 
@@ -127,7 +129,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             const SizedBox(height: MindSpace.sm),
           ],
         ],
-        if (cal.today.isNotEmpty && cal.next == null) ...[
+        // 🔴 ถามว่า "วันนี้" เหลือนัดไหม ไม่ใช่ทั้งสัปดาห์ · ของเดิมใช้ cal.next
+        // ซึ่งมองไปอีกเจ็ดวัน การ์ด "ที่เหลือของวันว่างแล้ว" จึงแทบไม่เคยโผล่
+        if (cal.today.isNotEmpty && !cal.todayHasMore) ...[
           const SizedBox(height: MindSpace.md),
           _restOfDay(cal, mode, t),
         ],

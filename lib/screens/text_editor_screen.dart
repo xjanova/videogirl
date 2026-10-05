@@ -17,7 +17,15 @@ class TextEditorScreen extends StatefulWidget {
     required this.initial,
     required this.mode,
     required this.onReset,
+    this.readOnly = false,
   });
+
+  /// ดูอย่างเดียว · ไม่มีปุ่มบันทึก ไม่มีคืนค่า และแก้ไม่ได้
+  ///
+  /// 🔴 ใช้กับพรีวิวรายงานดีบัค · ของเดิมเปิดหน้าแก้ไขเต็มรูปแบบให้ ผู้ใช้ลบ
+  /// บรรทัดที่ไม่อยากส่งแล้วกดบันทึก แต่สิ่งที่ถูกส่งจริงคือฉบับเดิมที่ไม่ได้แก้
+  /// — หน้าจอที่ให้แก้แล้วไม่สนใจสิ่งที่แก้ คือการโกหกเรื่องที่ร้ายที่สุดเรื่องหนึ่ง
+  final bool readOnly;
 
   final String title;
 
@@ -133,12 +141,13 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                             style: const TextStyle(
                                 fontSize: 17, fontWeight: FontWeight.w700)),
                       ),
-                      TextButton(
-                        onPressed: _reset,
-                        child: Text(S.of(context).resetToDefault,
-                            style: const TextStyle(
-                                fontSize: 12, color: MindColors.ink60)),
-                      ),
+                      if (!widget.readOnly)
+                        TextButton(
+                          onPressed: _reset,
+                          child: Text(S.of(context).resetToDefault,
+                              style: const TextStyle(
+                                  fontSize: 12, color: MindColors.ink60)),
+                        ),
                     ],
                   ),
                 ),
@@ -159,6 +168,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                       padding: const EdgeInsets.all(14),
                       child: TextField(
                         controller: _text,
+                        readOnly: widget.readOnly,
                         maxLines: null,
                         expands: true,
                         textAlignVertical: TextAlignVertical.top,
@@ -174,6 +184,9 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                     ),
                   ),
                 ),
+                if (widget.readOnly)
+                  const SizedBox(height: 14)
+                else
                 Padding(
                   padding: const EdgeInsets.all(14),
                   child: GestureDetector(

@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:videogirl/ai/device_capability.dart';
 import 'package:videogirl/ai/local_brain.dart';
 import 'package:videogirl/ai/secret_store.dart';
@@ -13,6 +13,7 @@ import 'package:videogirl/state/mind_state.dart';
 /// มี `void main() async {...}` กับลิงก์ pub.dev ติดมาด้วย ผู้ใช้ทำอะไรกับมัน
 /// ไม่ได้เลยนอกจากตกใจ
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   _activeModelGroup();
   _variantGroup();
 
@@ -76,25 +77,53 @@ void main() {
           reason: 'สองรุ่นชี้ไฟล์เดียวกัน = เลือกรุ่นแล้วได้ของเดิม');
     });
 
-    /// 🔴 ไฟล์ `-gpu.litertlm` ของ litert-community **รันไทม์ที่เราพ่วงมา
-    /// อ่านไม่ออก**
+    /// 🔴 ไฟล์ `-gpu.litertlm` ของ litert-community **ไม่ใช่ไฟล์ GPU ของ Android**
     ///
-    /// มันประกาศ `backend_constraint: gpu_artisan` และข้างในมีแต่ส่วน
-    /// `gpu_artisan` / `tf_lite_artisan_text_decoder` ส่วน LiteRT-LM 0.10.0
-    /// หาส่วนชื่อ `tf_lite_prefill_decode` ที่ไม่มีอยู่ในนั้น
+    /// มันขนาดเท่าไฟล์ `-web` ทุกไบต์ = รุ่น WebGPU ที่ประกาศ `gpu_artisan`
+    /// LiteRT-LM บน Android หาส่วน `tf_lite_prefill_decode` ในนั้นไม่เจอ
     ///
     /// ที่เจ็บคือมันพังตอน **สร้าง engine** ไม่ใช่ตอนโหลด — โหลดจบ 100%
     /// หน้าตั้งค่าขึ้นเขียวว่าพร้อมใช้ แล้วค่อยตายตอนทักคำแรก หลังผู้ใช้
     /// เสียเน็ตไป 3 GB · ไม่มีเทสต์ไหนในเครื่องจับได้เพราะไฟล์ไม่ได้อยู่ในเครื่อง
     ///
+    /// GPU ของ Android ใช้**ไฟล์ปกติตัวเดียวกับ CPU** (ดู [GemmaVariant])
     /// เทสต์นี้จับที่ *ชื่อไฟล์* ซึ่งเป็นจุดเดียวที่ยังตรวจได้ตอนคอมไพล์
-    test('🔴 ห้ามชี้ไปที่ไฟล์ -gpu ที่ LiteRT-LM 0.10.0 อ่านไม่ออก', () {
+    test('🔴 ห้ามชี้ไปที่ไฟล์ -gpu / -web ซึ่งเป็นรุ่น WebGPU', () {
       for (final v in GemmaVariant.values) {
         expect(v.file, isNot(contains('-gpu')),
             reason: 'ไฟล์ -gpu ตายตอนสร้าง engine หลังโหลดจบแล้ว: ${v.id}');
-        expect(v.backend, PreferredBackend.cpu,
-            reason: 'ไฟล์พวกนี้ประกาศ backend_constraint: cpu มาเอง: ${v.id}');
+        expect(v.file, isNot(contains('-web')), reason: v.id);
       }
+    });
+
+    /// ไดรเวอร์ GPU บางรุ่นพา process ล่มตอนเปิด engine — try/catch จับไม่ได้
+    /// ถ้าไม่จำไว้ แอปจะเปิด GPU → ตาย → เปิดใหม่ → ตาย วนไปไม่จบ
+    test('🔴 รอบก่อนเปิด GPU แล้วแอปตาย → รอบนี้ใช้ CPU ไม่วนตายซ้ำ', () async {
+      SharedPreferences.setMockInitialValues({'gemmaGpuTrying': true});
+      final lb = LocalBrain();
+      await lb.detectDevice();
+
+      expect(lb.gpuBroken, isTrue);
+      final p = await SharedPreferences.getInstance();
+      expect(p.getBool('gemmaGpuTrying'), isNull, reason: 'ธงค้าง = ตัดสินซ้ำทุกรอบ');
+      expect(p.getBool('gemmaGpuBroken'), isTrue, reason: 'ต้องจำข้ามการเปิดแอป');
+      lb.dispose();
+    });
+
+    test('เปิดสวิตช์ GPU อีกครั้ง = ให้โอกาส GPU ใหม่ แม้เคยล้ม', () async {
+      SharedPreferences.setMockInitialValues({'gemmaGpuBroken': true});
+      bool? saved;
+      final lb = LocalBrain(onUseGpuChanged: (v) => saved = v);
+      await lb.detectDevice();
+      expect(lb.gpuBroken, isTrue);
+
+      await lb.setUseGpu(true);
+
+      expect(lb.gpuBroken, isFalse);
+      expect(saved, isTrue);
+      final p = await SharedPreferences.getInstance();
+      expect(p.getBool('gemmaGpuBroken'), isNull);
+      lb.dispose();
     });
 
     /// รุ่นที่ถอดออกต้องมีคนตามไปลบไฟล์ให้ ไม่งั้นเหลือ 2–3 GB ที่ลบไม่ได้
@@ -262,12 +291,16 @@ void _activeModelGroup() {
     });
 
     test('🔴 ต้องเรียก **ก่อน** createModel', () {
-      final mark = src.indexOf('_markActive();\n      _model =');
-      final create = src.indexOf('FlutterGemmaPlugin.instance.createModel');
-
-      expect(mark, greaterThan(0),
+      // การสร้างจริงอยู่ใน _createModel (ลอง GPU แล้วค่อย CPU) · ที่ต้องคุมคือ
+      // จุดเรียกมัน ต้องมี _markActive นำหน้าติดกันเสมอ
+      expect(src, contains('_markActive();\n      _model = await _createModel();'),
           reason: 'ต้องตั้งรุ่นที่ใช้ติดกันก่อนบรรทัดที่สร้างโมเดล');
-      expect(mark, lessThan(create));
+      expect(
+          RegExp(r'FlutterGemmaPlugin\.instance\.createModel\(')
+              .allMatches(src)
+              .length,
+          1,
+          reason: 'มีทางสร้างโมเดลทางเดียว (_createWith) ไม่ใช่สร้างหลายที่');
     });
 
     test('ตั้งด้วย spec ของรุ่นที่เลือกอยู่ ไม่ใช่ค่าตายตัว', () {

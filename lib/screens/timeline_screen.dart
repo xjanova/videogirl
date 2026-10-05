@@ -234,7 +234,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                       style: const TextStyle(
                           fontSize: 13, fontWeight: FontWeight.w600, height: 1.4)),
                   if (e.detail.isNotEmpty)
-                    Text(e.detail,
+                    Text(_detailOf(e, t),
                         style: const TextStyle(
                             fontSize: 11.5, height: 1.6, color: MindColors.ink60)),
                 ],
@@ -251,8 +251,26 @@ class _TimelineScreenState extends State<TimelineScreen> {
     return '${two(at.hour)}:${two(at.minute)}';
   }
 
+  /// รายละเอียดของเหตุการณ์ในภาษาของจอ
+  ///
+  /// 🔴 สายเก็บชนิดไว้เป็นชื่อ enum (`missed`, `incoming`) ซึ่งของเดิมเอาขึ้นจอ
+  /// ตรง ๆ — คนใช้ภาษาไทยเห็นคำอังกฤษของโปรแกรมเมอร์ · แปลตอนแสดง ไม่แปลตอน
+  /// เก็บ เพราะสลับภาษาแล้วของที่บันทึกไว้แล้วต้องเปลี่ยนตามด้วย
+  String _detailOf(JournalEntry e, S t) {
+    if (e.kind != JournalKind.call) return e.detail;
+    return switch (e.detail) {
+      'incoming' => t.tlCallIncoming,
+      'outgoing' => t.tlCallOutgoing,
+      'missed' => t.tlCallMissed,
+      'rejected' => t.tlCallRejected,
+      'unknown' => '',
+      _ => e.detail,
+    };
+  }
+
   String _kindLabel(JournalKind k, S t) => switch (k) {
         JournalKind.asked => t.tlKindAsked,
+        // (ป้ายของชนิดเหตุการณ์ — ส่วนรายละเอียดของสายแปลใน _detailOf)
         JournalKind.replied => t.tlKindReplied,
         JournalKind.learned => t.tlKindLearned,
         JournalKind.call => t.tlKindCall,

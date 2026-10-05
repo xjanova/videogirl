@@ -54,6 +54,10 @@ class S {
   String get cancel => _('ยกเลิก', 'Cancel');
   String get save => _('บันทึก', 'Save');
   String get reset => _('คืนค่า', 'Reset');
+  String voiceResetConfirm(String channel) => _(
+        'คืนเสียงของช่อง "$channel" เป็นค่าตั้งต้น? ทั้งเสียง รุ่น และคำสั่งน้ำเสียงที่เขียนไว้จะหายไป',
+        'Reset the "$channel" voice? The voice, model and tone instructions you set will be lost.',
+      );
   String get resetToDefault => _('คืนค่าตั้งต้น', 'Reset to default');
   String get tapToEdit => _('แตะเพื่อแก้', 'Tap to edit');
   String get typeHere => _('พิมพ์ที่นี่…', 'Type here…');
@@ -89,20 +93,17 @@ class S {
   String nowInMode(String m) => _('ตอนนี้กำลังอยู่โหมด$m', 'Currently in $m mode');
 
   // ═══ ชิปคำถามลัด ═══════════════════════════════════════
+  /// 🔴 ต้องเป็นสิ่งที่เธอ**ทำได้จริง**ตอนนี้ · ของเดิมคือ "สรุปเมล" (ยังไม่ได้
+  /// ต่อเมล) "นัดรีวิว" (จองปฏิทินไม่ได้) "โทรหาคุณต้น" (คนสมมติ) — กดแล้ว
+  /// โมเดลจะแต่งเรื่องว่าทำให้แล้ว
   List<String> get workChips => isThai
-      ? const ['สรุปเมลเช้านี้', 'นัดรีวิวบ่ายนี้', 'โทรหาคุณต้น']
-      : const ['Summarise my inbox', 'Book the review', 'Call Ton for me'];
+      ? const ['วันนี้มีนัดอะไรบ้าง', 'บ่ายนี้ว่างไหม', 'วันนี้ใครโทรมาบ้าง']
+      : const ["What's on today", 'Am I free this afternoon', 'Who called today'];
 
   List<String> get loveChips => isThai
       ? const ['วันนี้เป็นไงบ้าง', 'เล่าอะไรให้ฟังหน่อย', 'คิดถึงไหม']
       : const ['How was your day', 'Tell me something', 'Did you miss me'];
 
-  /// ปุ่มบนจอที่ยังเป็นข้อมูลตัวอย่าง — ต้องตอบอะไรที่จริง
-  /// ดีกว่าเงียบ และดีกว่าแกล้งทำเป็นทำงานได้
-  String get demoAction => _(
-        'หน้านี้ยังเป็นข้อมูลตัวอย่างค่ะ ยังไม่ได้ต่อของจริง',
-        'This screen is still sample data — not wired up yet',
-      );
 
   // ═══ หน้าเปิดแอป ═══════════════════════════════════════
   String get splashSkip => _('แตะเพื่อข้าม', 'Tap to skip');
@@ -173,6 +174,10 @@ class S {
   String get shopBuyOnWeb => _(
         'จ่ายเงินบนเว็บ แล้วกลับมากดรีเฟรช',
         'Pay on the web, then come back and refresh',
+      );
+  String get shopBuyFailed => _(
+        'เปิดหน้าซื้อไม่ได้ — ลองเช็คว่ามีเบราว์เซอร์ในเครื่องและต่อเน็ตอยู่',
+        "Couldn't open the shop page — check there is a browser and you're online",
       );
 
   String shopKind(String kind) => switch (kind) {
@@ -353,6 +358,32 @@ class S {
         'Could not write the copy — check the free space on this phone',
       );
   String get vaultSaveNow => _('สำเนาเดี๋ยวนี้', 'Copy now');
+  String get vaultForeign => _(
+        'เจอข้อมูลของการติดตั้งครั้งก่อนในเครื่อง — ยังไม่ได้เขียนทับ '
+            'เลือกก่อนว่าจะเอาอันไหน',
+        'Found the data from a previous install on this phone — nothing has '
+            'been overwritten. Choose which one to keep.',
+      );
+  String get vaultRestoreOld =>
+      _('กู้ข้อมูลเก่ากลับมา', 'Bring back the old data');
+  String get vaultKeepCurrent =>
+      _('ใช้ข้อมูลตอนนี้แทน', 'Keep what is here now');
+  String get vaultRestoreTitle =>
+      _('กู้ข้อมูลเก่ากลับมา?', 'Bring back the old data?');
+  String get vaultRestoreBody => _(
+        'บทสนทนา ความจำ และค่าที่ตั้งไว้ตอนนี้จะถูกแทนด้วยของเก่าทั้งหมด '
+            'แอปจะปิดตัว — เปิดใหม่อีกครั้งเพื่อให้กู้เสร็จ',
+        'The chats, memories and settings here now will be replaced by the old '
+            'ones. The app will close — open it again to finish restoring.',
+      );
+  String get vaultKeepTitle =>
+      _('ใช้ข้อมูลตอนนี้แทน?', 'Keep what is here now?');
+  String get vaultKeepBody => _(
+        'สำเนาจะเป็นของตอนนี้แทน · ของเก่าไม่ถูกลบ ย้ายไปเก็บเป็นไฟล์ '
+            'mind.db.previous ในโฟลเดอร์ GigGok',
+        'The copy will hold what is here now. The old one is not deleted — '
+            'it is kept as mind.db.previous in the GigGok folder.',
+      );
   String get vaultRestored => _(
         'กู้ข้อมูลกลับมาจากสำเนาแล้ว',
         'Restored everything from the outside copy',
@@ -569,14 +600,18 @@ class S {
       );
 
   // ═══ บทสนทนาตัวอย่าง ═══════════════════════════════════
+  // 🔴 ต้องเป็นเรื่องจริง · ของเดิมคือ "เมล 24 ฉบับ" กับ "คุณต้นขอเลื่อนรีวิว"
+  // ซึ่งผู้ใช้ใหม่อ่านว่าเธอรู้เมลและนัดของเขาแล้ว ทั้งที่ไม่มีสักอย่างจริง
   String get seedGreeting => _(
-        'อรุณสวัสดิ์ค่ะ เช้านี้มีเมล 24 ฉบับ มายด์คัดให้เหลือ 3 ที่ต้องตอบนะคะ',
-        'Good morning. 24 emails came in — I narrowed it to 3 that need you.',
+        'สวัสดีค่ะ มายด์เองนะคะ ยินดีที่ได้รู้จักค่ะ',
+        "Hi, I'm Mind. Nice to meet you.",
       );
-  String get seedAsk => _('บ่ายนี้ว่างไหม', 'Am I free this afternoon?');
+  String get seedAsk => _('ช่วยอะไรได้บ้าง', 'What can you help with?');
   String get seedAnswer => _(
-        'บ่ายว่างตั้งแต่ 14:00 ค่ะ แต่คุณต้นขอเลื่อนรีวิวมาบ่ายสาม จะให้มายด์โทรไปคุยให้ไหมคะ',
-        'Free from 2pm, but Ton asked to move the review to 3. Shall I call and sort it out?',
+        'ถามเรื่องนัดในปฏิทิน สายที่โทรเข้ามา หรือคุยเล่นกันก็ได้ค่ะ '
+            'เล่าเรื่องตัวเองไว้ในหน้าตั้งค่า มายด์จะช่วยได้ตรงขึ้นนะคะ',
+        'Ask me about your calendar or the calls you get, or just chat. '
+            'Tell me about yourself in Settings and I can help better.',
       );
 
   /// คำตอบตอนสมองล้มจริง — **ห้ามหน้าตาเหมือนตอบสำเร็จ**
@@ -975,26 +1010,6 @@ class S {
         'Everything you wrote will be replaced.',
       );
 
-  // ═══ สวิตช์ความสามารถ ══════════════════════════════════
-  String get featMorningMail => _('สรุปเมลตอนเช้า 08:00', 'Morning inbox summary at 08:00');
-  String get featMorningMailHint =>
-      _('อ่านให้ฟังตอนคุณขึ้นรถได้', 'She can read it aloud on your commute');
-  String get featSendMail => _('ให้เธอส่งเมลเองได้', 'Let her send emails herself');
-  String get featSendMailHint => _(
-        'เฉพาะที่ตอบตามแม่แบบ · เรื่องเงินต้องขออนุมัติเสมอ',
-        'Template replies only · anything about money always needs approval',
-      );
-  String get featAlwaysOn => _('Always-on (ทำงานเบื้องหลัง)', 'Always-on (background)');
-  String get featAlwaysOnHint => _(
-        'ต้องปิด battery optimization ให้แอปนี้',
-        'Battery optimisation must be turned off for this app',
-      );
-  String get featBubbleOverlay => _('ฟองลอยบนหน้าจออื่น', 'Floating bubble over other apps');
-  String get featBubbleOverlayHint => _(
-        'ต้องให้สิทธิ์ Display over other apps',
-        'Needs the "display over other apps" permission',
-      );
-
   String get somethingWrong => _('มีบางอย่างผิดพลาด', 'Something went wrong');
   String downloadingPct(int pct, String size) =>
       _('กำลังโหลด $pct% · $size', 'Downloading $pct% · $size');
@@ -1004,46 +1019,35 @@ class S {
       );
   String toneFor(String channel) => _('น้ำเสียง — $channel', 'Tone — $channel');
 
-  // ═══ หน้าเมล (ข้อมูลตัวอย่าง) ═══════════════════════════
-  String get mailTitle => _('กล่องเมลเช้านี้', 'Your inbox this morning');
-  String get mailSubtitle =>
-      _('24 ฉบับ · เธอคัดให้เหลือ 3 ที่ต้องตอบ', '24 messages · she narrowed it to 3');
-  String get mail1Title =>
-      _('สยามเทค — ขอต่อรองราคา QT-2609', 'Siamtech — asking to negotiate QT-2609');
-  String get mail1Body => _(
-        'ขอส่วนลด 7% แลกกับสั่งเพิ่มเป็น 500 ชุด · ต้องการคำตอบก่อนศุกร์',
-        'Wants 7% off for a 500-unit order · needs an answer before Friday',
+  // ═══ หน้าเมล — ยังไม่ได้ต่อกล่องเมลจริง ═══════════════════
+  //
+  // 🔴 ของเดิมเป็นกล่องเมลสมมติทั้งหน้า (สยามเทค / คุณนภา / "24 ฉบับ")
+  // ที่หน้าตาเหมือนของจริงทุกอย่าง · คนเพิ่งลงแอปอ่านว่าเธอเข้าไปอ่านเมล
+  // ของเขาแล้ว ซึ่งทั้งไม่จริงและน่ากลัว · บอกตรง ๆ ดีกว่า (หลักเดียวกับ
+  // หน้าปฏิทิน ที่เลิกใช้นัดสมมติไปก่อนแล้ว)
+  String get mailTitle => _('ยังไม่ได้เชื่อมกล่องเมล', 'Your inbox is not connected yet');
+  String get mailSubtitle => _(
+        'เธอยังไม่ได้อ่านเมลของคุณเลยสักฉบับ',
+        "She hasn't read a single one of your emails",
       );
-  String get mail2Title =>
-      _('คุณนภา — เลื่อนส่งไฟล์อาร์ตเวิร์ก', 'Napa — pushing back the artwork');
-  String get mail2Body => _(
-        'ขอเลื่อนจากศุกร์เป็นจันทร์ เพราะรอไฟล์จากลูกค้า',
-        'Friday to Monday, waiting on files from the client',
+  String get mailNotYetTitle =>
+      _('วันที่เชื่อมแล้ว เธอจะช่วยได้แบบนี้', 'Once it is connected, she will');
+  List<String> get mailNotYetPoints => isThai
+      ? const [
+          'คัดเมลที่ต้องตอบจริงออกจากข่าวสารและใบเสร็จ',
+          'สรุปให้ฟังตอนเช้า',
+          'ร่างคำตอบให้คุณกดส่งเอง — เธอไม่ส่งอะไรแทนคุณถ้าไม่ได้สั่ง',
+        ]
+      : const [
+          'pick out the emails that need an answer from newsletters and receipts',
+          'read you a summary in the morning',
+          'draft replies for you to send — she never sends anything on her own',
+        ];
+  String get mailNotYetMeanwhile => _(
+        'ระหว่างนี้คุยกับเธอที่แท็บมายด์ได้เลย เธอรู้ตารางนัดในปฏิทินและสายที่โทรเข้ามาแล้ว',
+        'Meanwhile, talk to her in the Mind tab — she already knows your '
+            'calendar and the calls you get.',
       );
-  String get mailDraftLabel => _('ร่างคำตอบของเธอ', 'Her draft reply');
-  String get mailDraftBody => _(
-        'สวัสดีค่ะคุณนภา\n'
-            'เลื่อนเป็นวันจันทร์ได้ค่ะ แต่รบกวนส่งภายในเช้าวันจันทร์นะคะ '
-            'เพราะทีมต้องรีวิวก่อนส่งโรงพิมพ์บ่ายวันเดียวกัน\n'
-            'ขอบคุณค่ะ',
-        'Hi Napa,\n'
-            'Monday works. Please send it by Monday morning though - '
-            'the team reviews before it goes to print that same afternoon.\n'
-            'Thank you.',
-      );
-  String get mailSendNow => _('ส่งเลย', 'Send it');
-  String get mailEditFirst => _('แก้ก่อน', 'Edit first');
-  String get mail3Title => _('HR — ยืนยันวันลาพักร้อน', 'HR — confirm your leave dates');
-  String get mail3Body => _(
-        'รอกดยืนยัน 12–14 ก.ย. เธอกดให้ได้ถ้าคุณสั่ง',
-        'Waiting on 12–14 Sep. She can confirm if you say so',
-      );
-  String get mailLaterNote1 => _('อีก 21 ฉบับเธอจัดเป็น ', 'She filed the other 21 as ');
-  String get mailLaterNote2 => _('อ่านทีหลัง', 'read later');
-  String get mailLaterNote3 =>
-      _(' — ข่าวสาร 12 · ใบเสร็จ 6 · สแปม 3', ' — 12 newsletters · 6 receipts · 3 spam');
-  String get mailReadAloud => _('ให้เธออ่านสรุปให้ฟัง', 'Have her read the summary aloud');
-  String get mailCompose => _('เขียนเมลใหม่', 'Write a new email');
 
   // ═══ หน้าปฏิทิน (อ่านจากปฏิทินของเครื่องจริง) ═══════════
   //
@@ -1107,6 +1111,11 @@ class S {
       );
   String get calGrant => _('ให้สิทธิ์อ่านปฏิทิน', 'Allow calendar access');
   String get calFailed => _('อ่านปฏิทินไม่สำเร็จ', 'Could not read the calendar');
+  String get calFailedWhy => _(
+        'ลองดึงลงเพื่อโหลดใหม่ ถ้ายังไม่ได้ ลองเปิดแอปปฏิทินของเครื่องดูว่าซิงก์เสร็จหรือยัง',
+        "Pull down to try again. If it still fails, open the phone's calendar "
+            'app and check it has finished syncing.',
+      );
 
   // ═══ หน้าไทม์ไลน์ (สมุดบันทึกจริง) ═══════════════════════
   //
@@ -1140,6 +1149,10 @@ class S {
   String get tlKindReplied => _('มายด์ตอบ', 'Mind replied');
   String get tlKindLearned => _('จำเรื่องใหม่', 'Learned something');
   String get tlKindCall => _('สายโทร', 'Phone call');
+  String get tlCallIncoming => _('สายเข้า', 'Incoming');
+  String get tlCallOutgoing => _('โทรออก', 'Outgoing');
+  String get tlCallMissed => _('ไม่ได้รับ', 'Missed');
+  String get tlCallRejected => _('ปฏิเสธสาย', 'Declined');
   String get tlKindPack => _('ติดตั้งชุด', 'Installed a pack');
   String get tlKindUpdate => _('อัปเดตแอป', 'App update');
   String get tlKindSystem => _('ระบบ', 'System');

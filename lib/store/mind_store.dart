@@ -57,6 +57,11 @@ class MindStore {
       final path = pathOverride ?? await MindDb.defaultPath();
       restored = await vault.restoreIfFresh(path);
       db = await MindDb.openIn(path);
+      vault.attach(
+        lineage: db.lineage,
+        bornNew: db.bornNew,
+        restored: restored,
+      );
       await db.importSettings();
       await db.warm();
     } on Object catch (e, st) {

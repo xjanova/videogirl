@@ -34,6 +34,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../ai/openai_client.dart';
+import '../i18n/strings_ai.dart';
 import '../state/mind_state.dart';
 import '../system/permissions.dart';
 import 'call_watch.dart';
@@ -161,10 +162,18 @@ class CallSession extends ChangeNotifier {
   /// **หน้าจอสายจะไม่มีวันขึ้นในกรณีนั้นเลย** ซึ่งเป็นกรณีปกติที่สุดของทั้งฟีเจอร์
   Future<void> start() => _refresh();
 
+  /// ขยับทุกครั้งที่เจ้าของแทรกสาย · คำตอบของ [_callInfo] ที่ถามไป**ก่อน**
+  /// แทรกสาย เป็นภาพเก่าที่ยังบอกว่าเธอถือสายอยู่ ต้องทิ้ง
+  int _handOverSeq = 0;
+
   Future<void> _refresh() async {
     if (_disposed) return;
 
+    final seq = _handOverSeq;
     final info = await _callInfo();
+    // 🔴 ภาพเก่า — ถ้าเชื่อมัน `mind && !was` จะเป็นจริงทันทีหลังแทรกสาย
+    // แล้ว [_begin] ทักคู่สายซ้ำ ล้างบทสนทนาทิ้ง ทั้งที่เจ้าของเพิ่งยกเครื่องขึ้นแนบหู
+    if (seq != _handOverSeq || _disposed) return;
     final live = info?['live'] == true;
     final mind = info?['mind'] == true;
     final name = (info?['name'] as String?)?.trim();
@@ -252,6 +261,7 @@ class CallSession extends ChangeNotifier {
   /// อาจสั่งพูดประโยคถัดไปทับเข้ามาหลังเสียงถูกโอนกลับหูฟังแล้ว
   /// ซึ่งแปลว่าเสียงเธอไปดังใส่หูเจ้าของที่เพิ่งยกเครื่องขึ้นแนบพอดี
   Future<void> bargeIn() async {
+    _handOverSeq++;
     _turn = CallTurn.handedOver;
     _mind = false;
     _notify();
@@ -290,6 +300,11 @@ class CallSession extends ChangeNotifier {
         // เขาจะกดซ้ำ แล้วเธอจะพูดสองรอบถ้ามันกลับมาทำงานพอดี
         _error = e.message;
         _notify();
+      } on Object catch (e) {
+        debugPrint('สาย: พูดประโยคที่พิมพ์ไม่สำเร็จ — $e');
+        _error = _state.s.errTtsFailed;
+        if (_turn == CallTurn.talking) _turn = CallTurn.none;
+        _notify();
       }
     }();
     _saying = started;
@@ -320,11 +335,16 @@ class CallSession extends ChangeNotifier {
       await _talk();
     } on OpenAiFailure catch (e) {
       _error = e.message;
-    } on Exception catch (e) {
+    } on Object catch (e) {
+      // 🔴 Object ไม่ใช่ Exception · TypeError จากคำตอบหน้าตาแปลกของ
+      // พร็อกซี/เซิร์ฟเวอร์ในบ้านเป็น Error · หลุดไปแล้วจอสายค้าง
+      // "กำลังคิด…" ทั้งสาย ทั้งที่เธอเงียบไปแล้ว
       debugPrint('สาย: บทสนทนาสะดุด — $e');
+      _error = _state.s.errBrainUnexpected;
     }
-    // จบวงแล้วแต่สายยังอยู่ = เธอเงียบรอเจ้าของพิมพ์ ไม่ใช่ "กำลังฟัง" ค้าง
-    if (_turn == CallTurn.listening) _turn = CallTurn.none;
+    // จบวงแล้วแต่สายยังอยู่ = เธอเงียบรอเจ้าของพิมพ์ ไม่ใช่ค้างที่ขั้นไหนสักขั้น
+    // (handedOver เป็นของเจ้าของ ห้ามเขียนทับ)
+    if (_turn != CallTurn.handedOver) _turn = CallTurn.none;
     _notify();
   }
 
@@ -332,7 +352,20 @@ class CallSession extends ChangeNotifier {
     await _speak(_state.callGreeting(), remember: true);
 
     while (_live && _mind && !_disposed) {
+      // 🔴 เจ้าของพิมพ์ให้เธอพูดอยู่ ([say]) = รอให้พูดจบก่อนค่อยเปิดไมค์
+      // · [say] ปิดเทิร์นการฟังทันที ถ้าวนกลับมาฟังเลย ไมค์จะได้ยินเสียง
+      // เธอเองจากลำโพง แล้วเธอตอบตัวเอง
+      final saying = _saying;
+      if (saying != null) await saying;
+      if (!_live || !_mind || _disposed) break;
+
       final heard = await _listen();
+      if (!_live || !_mind || _disposed) break;
+
+      // เทิร์นนี้ถูก [say] ตัดกลางคัน — ให้ประโยคของเจ้าของจบก่อนค่อยตอบ
+      // ไม่งั้นเสียงสองประโยคชนกัน ฝั่งเนทีฟตัดตัวแรกทิ้งแล้วขึ้นเตือนว่าเปิดลำโพงไม่ได้
+      final cutIn = _saying;
+      if (cutIn != null) await cutIn;
       if (!_live || !_mind || _disposed) break;
 
       if (heard == null || heard.isEmpty) {
@@ -372,6 +405,16 @@ class CallSession extends ChangeNotifier {
     await _stopListening();
 
     final utterance = await _state.speakForCall(text);
+
+    // 🔴 เช็กซ้ำหลังสังเคราะห์ · ระหว่างนั้น (ครึ่งวิถึงหลายวิ) เจ้าของอาจแทรก
+    // สายไปแล้ว และเสียงถูกโอนกลับเข้าหูฟังแล้ว · เล่นต่อ = เสียงเธอดังใส่หู
+    // เจ้าของที่เพิ่งยกเครื่องขึ้นแนบ ซึ่งเป็นสิ่งที่ [bargeIn] มีไว้กันพอดี
+    if (!_live || !_mind || _disposed) {
+      if (_turn == CallTurn.talking) _turn = CallTurn.none;
+      _notify();
+      return;
+    }
+
     final file = await _writeTemp(utterance.bytes, _extFor(utterance.mime));
 
     final ok = await _invoke<bool>('callSpeak', {
@@ -454,6 +497,11 @@ class CallSession extends ChangeNotifier {
       if (!done.isCompleted) done.complete();
     }
 
+    // ให้ [_stopListening] ปิดเทิร์นนี้ได้ · ยกเลิก subscription แล้ว onDone
+    // ไม่ยิง ถ้าไม่มีทางนี้ เทิร์นจะค้างรอจนหมดเวลา 22 วิ ระหว่างนั้นไมค์ปิด
+    // แต่จอบอก "กำลังฟัง" และทุกอย่างที่คู่สายพูดหายไปหมด
+    _endTurn = finish;
+
     try {
       final stream = await _recorder.startStream(
         const RecordConfig(
@@ -527,6 +575,7 @@ class CallSession extends ChangeNotifier {
       _markDeaf();
       return null;
     } finally {
+      if (identical(_endTurn, finish)) _endTurn = null;
       await _stopListening();
     }
 
@@ -580,7 +629,13 @@ class CallSession extends ChangeNotifier {
     _notify();
   }
 
+  /// ปิดเทิร์นการฟังที่ค้างอยู่ — ดู [_listen]
+  void Function()? _endTurn;
+
   Future<void> _stopListening() async {
+    final end = _endTurn;
+    _endTurn = null;
+    end?.call();
     final sub = _mic;
     _mic = null;
     await sub?.cancel();

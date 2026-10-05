@@ -272,14 +272,14 @@ void main() {
       check('errBadKey', en.errBadKey);
       check('updateInstallerBlocked', en.updateInstallerBlocked);
 
-      // ข้อมูลตัวอย่างในหน้าจอ
+      // หน้าเมล (ยังไม่ได้เชื่อม) และปฏิทิน
       check('mailTitle', en.mailTitle);
       check('mailSubtitle', en.mailSubtitle);
-      check('mail1Title', en.mail1Title);
-      check('mailDraftBody', en.mailDraftBody);
-      check('mailReadAloud', en.mailReadAloud);
-      check('mailCompose', en.mailCompose);
-      check('demoAction', en.demoAction);
+      check('mailNotYetTitle', en.mailNotYetTitle);
+      for (final p in en.mailNotYetPoints) {
+        check('mailNotYetPoints', p);
+      }
+      check('mailNotYetMeanwhile', en.mailNotYetMeanwhile);
       check('calRestClear', en.calRestClear);
       check('calRestHours', en.calRestHours(4));
       check('calNoneToday', en.calNoneToday);
@@ -342,7 +342,7 @@ void main() {
         'ramTooSmallDetail': th.ramTooSmallDetail('3.6'),
         'brainOnDeviceTradeoff': th.brainOnDeviceTradeoff,
         'updateSource': th.updateSource,
-        'mailDraftBody': th.mailDraftBody,
+        'mailNotYetMeanwhile': th.mailNotYetMeanwhile,
         'puppetCalibrating': th.puppetCalibrating,
         'puppetPrivacy': th.puppetPrivacy,
         'packWhy': th.packWhy,

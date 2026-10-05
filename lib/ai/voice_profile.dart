@@ -45,6 +45,20 @@ class VoiceProfile {
         instructions: instructions ?? this.instructions,
       );
 
+  /// 🔴 ต้องเทียบด้วยค่า · `setLang` ถามว่า "ยังเป็นค่าตั้งต้นของภาษาเดิมไหม"
+  /// ถ้าเทียบด้วยตัวตน คำตอบคือ "ไม่" เสมอ แล้วคำสั่งน้ำเสียงไม่เคยเปลี่ยน
+  /// ภาษาตามแอปเลย
+  @override
+  bool operator ==(Object other) =>
+      other is VoiceProfile &&
+      other.engine == engine &&
+      other.voice == voice &&
+      other.model == model &&
+      other.instructions == instructions;
+
+  @override
+  int get hashCode => Object.hash(engine, voice, model, instructions);
+
   Map<String, Object> toJson() => {
         'engine': engine.name,
         'voice': voice,

@@ -177,13 +177,23 @@ class MindSpeech(private val activity: MainActivity) {
         override fun onError(error: Int) {
             listening = false
             release()
+            // 🔴 "ไม่เข้าใจ" ทั้งที่ผู้ใช้เห็นคำที่ได้ยินขึ้นจอไปแล้ว = ใช้คำนั้น
+            // ไม่ใช่ทิ้งแล้วบอกว่าไม่ได้ยินอะไรเลย
+            val missed = error == SpeechRecognizer.ERROR_NO_MATCH ||
+                error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+            if (missed && heard.isNotBlank()) {
+                send("result", mapOf("text" to heard))
+                return
+            }
             send("error", mapOf("code" to codeOf(error)))
         }
 
         override fun onResults(results: Bundle?) {
+            // สตริงว่างไม่ใช่ null · ใช้ ?: ตรง ๆ จะไม่ตกไปหา heard
             val best = results
                 ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()
+                ?.takeIf { it.isNotBlank() }
                 ?: heard
             listening = false
             release()

@@ -124,7 +124,32 @@ class MindState extends ChangeNotifier {
 
   /// ทางออกของเสียง — shell เป็นคนต่อเข้ากับ WebView ของอวาตาร์
   /// state ไม่ควรรู้จัก widget ตรง ๆ ไม่งั้นเทสต์ไม่ได้เลย
-  Future<void> Function(Utterance)? speaker;
+  ///
+  /// คืน false = ไม่มีทางไหนเล่นได้เลย · state เป็นคนตัดสินว่าจะบอกผู้ใช้
+  /// ไหม เพราะมีแต่ state ที่รู้ว่าเสียงนั้นถูก [hush] สั่งตัดไปเองหรือเปล่า
+  Future<bool> Function(Utterance)? speaker;
+
+  /// หยุดเสียงที่กำลังเล่นอยู่ทันที — shell ต่อเข้ากับเวทีและทางสำรอง
+  Future<void> Function()? silencer;
+
+  /// นับรอบของเสียง · [hush] ขยับมัน แล้วเสียงที่ยังสังเคราะห์ค้างอยู่
+  /// จะรู้ตัวว่าถูกยกเลิกแล้ว ไม่ไปพูดแทรกขึ้นมาทีหลัง
+  int _speechSeq = 0;
+
+  /// รอบของเสียงที่ถือธง [speaking] อยู่ตอนนี้
+  int _speakingSeq = -1;
+
+  /// ให้เธอเงียบเดี๋ยวนี้ — ทั้งประโยคที่กำลังพูดและประโยคที่ยังสังเคราะห์อยู่
+  Future<void> hush() async {
+    _speechSeq++;
+    final h = silencer;
+    if (h == null) return;
+    try {
+      await h();
+    } on Object catch (e) {
+      debugPrint('เสียง: สั่งเงียบไม่สำเร็จ — $e');
+    }
+  }
 
   // ═══ บันทึกค่า ═════════════════════════════════════════
   //
@@ -154,8 +179,12 @@ class MindState extends ChangeNotifier {
       orElse: () => PersonaSetting.work,
     );
     _flirt = p.getDouble('flirt') ?? .72;
-    _ownerProfile =
-        p.getString('ownerProfile') ?? MindPersona.defaultOwnerProfile(_lang);
+    final savedProfile = p.getString('ownerProfile');
+    // โปรไฟล์คนสมมติรุ่นเก่าที่ค้างอยู่ในเครื่อง = ไม่ใช่ของผู้ใช้ → ใช้แบบฟอร์มใหม่
+    _ownerProfile = (savedProfile == null ||
+            MindPersona.isLegacyDefaultProfile(savedProfile))
+        ? MindPersona.defaultOwnerProfile(_lang)
+        : savedProfile;
     _boundaries = p.getString('boundaries') ?? MindPersona.defaultBoundaries(_lang);
     _brain = BrainProvider.values.firstWhere(
       (e) => e.name == p.getString('brain'),
@@ -182,7 +211,12 @@ class MindState extends ChangeNotifier {
 
     for (final c in VoiceChannel.values) {
       final raw = p.getString('voice_${c.name}');
-      if (raw == null) continue;
+      if (raw == null) {
+        // ค่าตั้งต้นต้องเป็นของภาษาที่เพิ่งอ่านมา · ตัวที่สร้างไว้ตอนเกิด object
+        // เป็นของภาษาไทยเสมอ คนตั้งอังกฤษจึงได้คำสั่งน้ำเสียง "พูดไทยแบบ…"
+        _voices[c] = VoiceProfile.defaultFor(c, _lang);
+        continue;
+      }
       try {
         _voices[c] = VoiceProfile.fromJson(
           jsonDecode(raw) as Map<String, dynamic>,
@@ -192,12 +226,26 @@ class MindState extends ChangeNotifier {
         // ค่าที่บันทึกไว้เสีย ปล่อยให้ใช้ค่าตั้งต้นแทน ดีกว่าแอปเปิดไม่ขึ้น
       }
     }
+    _sinceDistill = p.getInt(_kSinceDistill) ?? 0;
     _bubbleEnabled = p.getBool('bubbleEnabled') ?? true;
     _bubbleSeconds = p.getInt('bubbleSeconds') ?? 5;
     _voiceEnabled = p.getBool('voiceEnabled') ?? true;
     _autoAnswer = p.getBool('autoAnswer') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
     _callStream = p.getString('callStream') ?? callStreamCall;
+
+    // 🔴 เขียนกระจกเงาทุกครั้งที่เปิดแอป ไม่ใช่แค่ตอนผู้ใช้เปลี่ยนค่า
+    // · กู้จากสำเนาข้างนอก / ล้างข้อมูลแอป = prefs ว่าง แต่ฐานมีค่าครบ
+    // ถ้ารอให้ผู้ใช้แตะสวิตช์ก่อน จอสายเนทีฟจะใช้ค่าตั้งต้น (รับสายเอง)
+    // ทั้งที่ในแอปโชว์ว่าปิดไว้
+    for (final (key, value) in <(String, Object)>[
+      ('autoAnswer', _autoAnswer),
+      ('ringSeconds', _ringSeconds),
+      ('callStream', _callStream),
+      ('lang', _lang.code),
+    ]) {
+      unawaited(_mirror(key, value));
+    }
 
     // บทสนทนาเก่าต้องกลับมาก่อนบทตัวอย่าง — ถ้าเคยคุยจริงแล้ว
     // การเอาบทตัวอย่างมาทับคือการลบสิ่งที่ผู้ใช้พิมพ์เองทิ้ง
@@ -237,7 +285,14 @@ class MindState extends ChangeNotifier {
   /// ย้ายมา SQLite แล้วไม่ทิ้งกระจกเงาไว้ = จอสายใช้ค่าตั้งต้นตลอดไป
   /// โดยไม่มี error ไม่มี log — ตั้งค่าในแอปแล้วไม่มีผลจริง ซึ่งเป็นอาการ
   /// ที่หาสาเหตุยากที่สุดแบบหนึ่ง
-  static const _mirroredToPrefs = {'autoAnswer', 'ringSeconds', 'callStream'};
+  ///
+  /// `lang` ด้วย · งานเบื้องหลังอ่านจาก prefs เพื่อเลือกภาษาของแจ้งเตือน
+  static const _mirroredToPrefs = {
+    'autoAnswer',
+    'ringSeconds',
+    'callStream',
+    'lang',
+  };
 
   void _save(String key, Object value) {
     _kv?.let(key, value);
@@ -272,6 +327,24 @@ class MindState extends ChangeNotifier {
     final st = _store;
     if (st?.db == null) return false;
     return st!.vault.saveNow(st.db!);
+  }
+
+  /// เจ้าของเลือกกู้ข้อมูลของการติดตั้งครั้งก่อน ([VaultStage.foreign])
+  ///
+  /// ตั้งธงแล้ว**ปิดฐาน**ก่อนแอปถูกปิด · ฐานที่ยังเปิดค้างในปลั๊กอินฝั่งเนทีฟ
+  /// จะถูกหยิบกลับมาใช้ตอนเปิดรอบหน้าแทนไฟล์ที่เพิ่งกู้ — กู้แล้วไม่เห็นอะไรเลย
+  Future<void> restoreVaultOnRestart() async {
+    final st = _store;
+    if (st == null) return;
+    await st.vault.requestRestore();
+    await st.db?.close();
+  }
+
+  /// เจ้าของเลือกใช้ข้อมูลตอนนี้แทน — สำเนาเก่าถูกย้ายไปเก็บ ไม่ถูกลบ
+  Future<bool> adoptVault() async {
+    final st = _store;
+    if (st?.db == null) return false;
+    return st!.vault.adopt(st.db!);
   }
 
   /// จำนวนข้อความที่เก็บไว้จริง — ตัวเลขที่พิสูจน์ว่าเพดาน 16 ตาหายไปแล้ว
@@ -431,12 +504,16 @@ class MindState extends ChangeNotifier {
   /// "ยังไม่ได้โหลดโมเดล" ทั้งที่เพิ่งโหลดไปเมื่อวาน และเลือกเองก็ไม่ช่วย
   /// เพราะรอบถัดไปถูกทับอีก
   static const _kGemmaVariant = 'gemmaVariant';
+  static const _kGemmaGpu = 'gemmaUseGpu';
 
   LocalBrain get localBrain => _lazyLocal ??= LocalBrain(
         strings: () => s,
         initialVariant: GemmaVariant.parse(_kv?.getString(_kGemmaVariant)),
         onVariantPicked: (v) => _save(_kGemmaVariant, v.id),
-      );
+        // ค่าตั้งต้นใช้ GPU · เครื่องที่ใช้ไม่ได้ LocalBrain ตกไป CPU เอง
+        useGpu: _kv?.getBool(_kGemmaGpu) ?? true,
+        onUseGpuChanged: (v) => _save(_kGemmaGpu, v),
+      )..herName = () => _soul?.name;
 
   /// มี LocalBrain อยู่แล้วไหม — ใช้ตอน dispose จะได้ไม่ไปสร้างขึ้นมาใหม่
   bool get hasLocalBrain => _lazyLocal != null;
@@ -611,7 +688,10 @@ class MindState extends ChangeNotifier {
 
   Future<void> setOpenAiKey(String v) async {
     _openAiKey = v.trim();
-    await SecretStore.write(SecretStore.kOpenAiKey, _openAiKey);
+    if (!await SecretStore.write(SecretStore.kOpenAiKey, _openAiKey)) {
+      // ใช้ได้รอบนี้ แต่ปิดแอปแล้วหาย · ต้องบอก ไม่ใช่ให้ไปเจอเองพรุ่งนี้
+      reportError(s.errKeyNotSaved);
+    }
     _notify();
   }
 
@@ -663,6 +743,9 @@ class MindState extends ChangeNotifier {
   void setVoiceEnabled(bool v) {
     _voiceEnabled = v;
     _save('voiceEnabled', v);
+    // 🔴 ปิดเสียง = เงียบ**ประโยคนี้**ด้วย ไม่ใช่แค่ประโยคหน้า · ปุ่มนี้มีไว้
+    // กดตอนเธอพูดขึ้นมากลางห้องประชุม ถ้ารอให้พูดจบก่อนก็ไม่มีความหมาย
+    if (!v) unawaited(hush());
     _notify();
   }
 
@@ -740,6 +823,7 @@ class MindState extends ChangeNotifier {
       memories: memory.promptBlock(),
       schedule: _calendar?.promptBlock() ?? '',
       calls: _calls?.promptBlock() ?? '',
+      now: _clock(),
     );
     return _askBrain(system, history);
   }
@@ -937,20 +1021,36 @@ class MindState extends ChangeNotifier {
 
   Future<void>? _inFlight;
 
+  /// รับข้อความใหม่ตอนนี้ได้ไหม — false ระหว่างที่เธอยัง**คิด**คำตอบก่อนหน้าอยู่
+  ///
+  /// 🔴 หน้าจอต้องถามตรงนี้**ก่อน**ล้างช่องพิมพ์ · ล้างก่อนแล้วค่อยส่งเข้า
+  /// [send] ที่ไม่รับ = ข้อความหายไปเฉย ๆ ไม่มีฟอง ไม่มีคำเตือน
+  bool get canSend => !_sending;
+
   /// กันกดส่งซ้อน
   ///
-  /// ใช้ Future ที่ค้างอยู่ ไม่ใช่แค่ธง bool — เพราะถ้าไม่มีคีย์ OpenAI
-  /// เส้นทางตอบจะไม่มี await คั่นเลย ธงจะถูกปลดก่อนที่นิ้วจะยกจากจอด้วยซ้ำ
-  /// ส่วน async function คืน Future ที่ยังไม่ resolve เสมอ จึงกันได้ทุกกรณี
-  /// คนกดซ้ำจะได้ Future เดิมกลับไป ไม่ใช่ข้อความซ้ำ
+  /// คนกดซ้ำ**ระหว่างที่เธอยังคิดอยู่** จะได้ Future เดิมกลับไป ไม่ใช่ข้อความซ้ำ
+  /// (`_sending` ถูกตั้งก่อน await แรกของ [_send] จึงกันได้แม้ทางที่ตอบ
+  /// กลับมาทันทีโดยไม่ได้ยิงออกไปไหน)
+  ///
+  /// 🔴 **แต่ไม่กันตอนเธอกำลังพูด** · ของเดิมกันทั้งช่วงคิดและช่วงพูด
+  /// ส่วนปุ่มส่งกลับมากดได้ตั้งแต่จบช่วงคิด ผลคือคนที่พิมพ์ประโยคถัดไป
+  /// ระหว่างที่เธอยังพูดคำตอบเก่าอยู่ (ค่าตั้งต้นเปิดเสียงไว้ = เกือบทุกตา)
+  /// กดส่งแล้วช่องพิมพ์ว่าง แต่ข้อความไม่เคยถูกส่ง · ตอนนี้เจ้าของพิมพ์แทรก
+  /// = เธอหยุดพูดแล้วฟัง แบบที่คนคุยกันจริง
   Future<void> send(String raw) {
-    if (raw.trim().isEmpty) return Future<void>.value();
+    final text = raw.trim();
+    if (text.isEmpty) return Future<void>.value();
     final running = _inFlight;
-    if (running != null) return running;
+    if (_sending && running != null) return running;
 
-    final started = _send(raw.trim());
+    if (_speaking || running != null) unawaited(hush());
+
+    final started = _send(text);
     _inFlight = started;
-    return started.whenComplete(() => _inFlight = null);
+    return started.whenComplete(() {
+      if (identical(_inFlight, started)) _inFlight = null;
+    });
   }
 
   Future<void> _send(String text) async {
@@ -958,6 +1058,10 @@ class MindState extends ChangeNotifier {
     _lastError = null;
     _push(ChatMessage.me(text));
     _notify();
+
+    // ตอนนี้ prompt มีบรรทัด "ถามว่าใครโทรมา" ไหม · ถ้ามี เธอได้โอกาสถาม
+    // ไปแล้วในตานี้ ต้องปิดธงหลังตอบ ไม่งั้นถามซ้ำทุกตาไปอีกหลายวัน
+    final askingAboutCall = _soul?.askAbout != null;
 
     // 🔴 ธง `sending` ต้องถูกปลด **ทุกทางออก** ไม่ใช่เฉพาะทางที่คิดไว้
     //
@@ -969,8 +1073,11 @@ class MindState extends ChangeNotifier {
     // และ Error จากปลั๊กอินในเครื่องที่ไม่ใช่ Exception
     try {
       String reply;
+      // ตอบจากสมองจริง หรือเป็นประโยคบอกว่าคิดไม่ได้
+      var failed = true;
       try {
         reply = await _think();
+        failed = false;
       } on OpenAiFailure catch (e) {
         _lastError = e.message;
 
@@ -993,15 +1100,28 @@ class MindState extends ChangeNotifier {
 
       if (_disposed) return;
 
-      _push(ChatMessage.her(reply));
+      // 🔴 ประโยค "คิดไม่ได้" ไม่ใช่คำพูดของเธอ · ขึ้นจอแต่ไม่ลงความจำ
+      //
+      // ของเดิมเก็บมันเหมือนคำตอบจริง: ลงฐานถาวร ลงไทม์ไลน์ว่า "ตอบแล้ว"
+      // และส่งกลับเข้าโมเดลในตาถัดไป · คีย์ผิดห้าครั้ง = ห้าบรรทัด
+      // "ขอโทษค่ะ คิดไม่ได้" ที่โมเดลอ่านว่าเป็นสิ่งที่ตัวเองเคยพูด
+      _push(ChatMessage.her(reply), ephemeral: failed);
       _sending = false;
       _notify();
 
       // คุยกันจบหนึ่งตาแล้ว — ความผูกพันขยับตรงนี้ ไม่ใช่ตอนกดส่ง
       //
       // นับตอนกดส่งจะได้คะแนนจากข้อความที่ยังไม่มีใครตอบ ซึ่งรวมถึงตอนที่
-      // เน็ตหลุดแล้วไม่มีบทสนทนาเกิดขึ้นจริงเลย
-      await _soul?.talked();
+      // เน็ตหลุดแล้วไม่มีบทสนทนาเกิดขึ้นจริงเลย · ตาที่สมองล้มจึงไม่นับ
+      if (!failed) {
+        try {
+          await _soul?.talked();
+          if (askingAboutCall) await _soul?.askedAboutCall();
+        } on Object catch (e) {
+          // บันทึกความผูกพันไม่ได้ไม่ควรทำให้เธอเงียบ
+          debugPrint('soul: บันทึกไม่สำเร็จ — $e');
+        }
+      }
 
       await _speakIfEnabled(reply);
     } finally {
@@ -1187,6 +1307,7 @@ class MindState extends ChangeNotifier {
       return;
     }
     final profile = voiceFor(channel);
+    final seq = ++_speechSeq;
 
     try {
       debugPrint('เสียง[${channel.name}]: ${profile.engine.name} '
@@ -1194,22 +1315,45 @@ class MindState extends ChangeNotifier {
       final utterance = await synthesizeWithFallback(text, profile);
       if (_disposed) return;
 
+      // 🔴 ระหว่างสังเคราะห์ (ครึ่งวิถึงหลายวิ) เจ้าของอาจกดปิดเสียง หรือพิมพ์
+      // แทรกไปแล้ว · ไม่เช็กซ้ำตรงนี้ = เธอพูดขึ้นมาหลังถูกสั่งให้เงียบ
+      if (seq != _speechSeq || !_voiceEnabled) return;
+
       debugPrint('เสียง: ได้ ${utterance.bytes.length} ไบต์ '
           '(${utterance.mime}) ส่งเข้าเวที');
       _speaking = true;
+      _speakingSeq = seq;
+      // นาฬิกาที่เริ่มนับตอนข้อความมาถึงต้องหยุด · ไม่งั้นคำตอบที่สังเคราะห์
+      // นานกว่าเวลาฟองจะไม่มีฟองให้เห็นเลย และแผงหุบกลางประโยคยาว ๆ
+      _bubbleTimer?.cancel();
+      _chatTimer?.cancel();
       _notify();
-      await out(utterance);
+      final played = await out(utterance);
+      // ทุกทางเล่นไม่ได้ = บอกตรง ๆ · เว้นแต่ถูก [hush] ตัดไปเอง
+      if (!played && seq == _speechSeq && !_disposed) {
+        _lastError = s.errVoiceNoOutput;
+      }
     } on OpenAiFailure catch (e) {
       // เสียงพูดไม่ออกไม่ควรทำให้บทสนทนาพัง — ข้อความยังอยู่ครบ
       debugPrint('เสียง: สังเคราะห์ไม่สำเร็จ — ${e.message}');
       _lastError = e.message;
+    } on Object catch (e) {
+      // 🔴 ไม่ใช่แค่ OpenAiFailure · เสียงของเครื่องโยน PlatformException /
+      // FileSystemException ได้ ถ้าหลุดออกไป ทางส่งข้อความจะล้มกลางคัน
+      // แล้วเธอค้างหน้าคิดอยู่ในระยะใกล้
+      debugPrint('เสียง: ล้มแบบที่ไม่ได้เตรียมรับไว้ — $e');
+      _lastError = s.errTtsFailed;
     } finally {
       // ต้องปลดเสมอ ไม่งั้นฟองจะหายถาวรถ้าเล่นเสียงพัง
-      _speaking = false;
-      // ฟองเพิ่งโผล่ตอนนี้ ค่อยเริ่มนับถอยหลัง · แผงแชทก็เหมือนกัน
-      _startBubbleCountdown();
-      _startChatCountdown();
-      _notify();
+      // (ยกเว้นเสียงที่ใหม่กว่าเข้ามาพูดแทนแล้ว — มันเป็นเจ้าของธงนี้ต่อ
+      //  แต่ถูกสั่งเงียบเฉย ๆ โดยไม่มีใครมาแทน ธงยังเป็นของเรา ต้องปลด)
+      if (_speakingSeq == seq || !_speaking) {
+        _speaking = false;
+        // ฟองเพิ่งโผล่ตอนนี้ ค่อยเริ่มนับถอยหลัง · แผงแชทก็เหมือนกัน
+        _startBubbleCountdown();
+        _startChatCountdown();
+      }
+      if (!_disposed) _notify();
     }
   }
 
@@ -1257,6 +1401,7 @@ class MindState extends ChangeNotifier {
       memories: memory.promptBlock(),
       schedule: _calendar?.promptBlock() ?? '',
       calls: _calls?.promptBlock() ?? '',
+      now: _clock(),
     );
     final history = [
       for (final m in _context) (fromHer: m.fromHer, text: m.text),
@@ -1325,6 +1470,7 @@ class MindState extends ChangeNotifier {
             // ผ่านหลังบ้านอีกชั้นก่อนถึง OpenAI จึงช้ากว่ายิงตรง
             timeout: const Duration(seconds: 60),
             strings: () => s,
+            upstream: Upstream.proxy,
           ),
           model: _brainModel,
           ours: false,
@@ -1355,6 +1501,7 @@ class MindState extends ChangeNotifier {
             // โมเดลบนคอมบ้านช้ากว่า OpenAI มาก ให้เวลามากกว่า
             timeout: const Duration(seconds: 120),
             strings: () => s,
+            upstream: Upstream.homeServer,
           ),
           model: _homeServerModel,
           ours: false,
@@ -1448,15 +1595,19 @@ class MindState extends ChangeNotifier {
   /// ภาษาที่บอกตัวถอดเสียง — เดาเองมักได้คำไทยที่ถูกถอดเป็นอังกฤษที่อ่านไม่ออก
   String get _sttLang => _lang == AppLang.th ? 'th' : 'en';
 
-  void _push(ChatMessage m) {
+  /// [ephemeral] = ขึ้นจอให้เห็นอย่างเดียว ไม่ลงความจำ ไม่ลงไทม์ไลน์
+  /// ไม่ส่งกลับเข้าโมเดล · ใช้กับประโยค "คิดไม่ได้" ตอนสมองล้ม
+  void _push(ChatMessage m, {bool ephemeral = false}) {
     // ฟองแสดงเฉพาะสิ่งที่ **เธอ** พูด ข้อความของเราไม่ต้องมีฟองเหนือหัวเธอ
     if (m.fromHer) _armBubble();
     _armChat();
     _messages.add(m);
-    _context.add(m);
     if (_messages.length > _historyLimit) {
       _messages.removeRange(0, _messages.length - _historyLimit);
     }
+    if (ephemeral) return;
+
+    _context.add(m);
     if (_context.length > _contextLimit) {
       _context.removeRange(0, _context.length - _contextLimit);
     }
@@ -1475,11 +1626,18 @@ class MindState extends ChangeNotifier {
     // สกัดความจำเป็นรอบ ไม่ใช่ทุกข้อความ — การสกัดคือการเรียกโมเดลอีกครั้ง
     // ทำทุกข้อความ = จ่ายสองเท่าช้าสองเท่าตลอดเวลา ทั้งที่คุยกันสิบประโยค
     // อาจมีเรื่องที่ควรจำแค่เรื่องเดียว
-    if (m.fromHer && ++_sinceDistill >= kDistillEvery) {
-      _sinceDistill = 0;
-      unawaited(_distil());
+    if (m.fromHer) {
+      if (++_sinceDistill >= kDistillEvery) {
+        _sinceDistill = 0;
+        unawaited(_distil());
+      }
+      // 🔴 จำตัวนับข้ามการเปิดปิดแอป · ของเดิมเริ่มที่ 0 ทุกครั้ง คนที่คุยรอบละ
+      // 3–5 ประโยคจึงไม่เคยถึงรอบสกัด — ไม่มีความจำใหม่ และความผูกพันไม่ขยับเลย
+      _kv?.setInt(_kSinceDistill, _sinceDistill);
     }
   }
+
+  static const _kSinceDistill = 'sinceDistill';
 
   /// สกัดสิ่งที่ควรจำออกจากบทสนทนาล่าสุด แล้วเก็บลงความจำถาวร
   ///
@@ -1488,14 +1646,31 @@ class MindState extends ChangeNotifier {
   Future<void> _distil() async {
     if (_context.length < 4) return;
     try {
+      // 🔴 เฉพาะช่วงที่ยังไม่เคยสกัด (สองบรรทัดต่อตา) ไม่ใช่ทั้งหน้าต่าง 16 บรรทัด
+      // · ของเดิมส่งทั้งหน้าต่างทุก 12 บรรทัด สี่บรรทัดจึงถูกให้คะแนนซ้ำสองรอบ
+      // ทั้งการปฏิบัติและการจีบ = ความผูกพันขยับเร็วกว่าที่ออกแบบไว้
+      const fresh = kDistillEvery * 2;
+      final recent = _context.length > fresh
+          ? _context.sublist(_context.length - fresh)
+          : _context;
       final block = conversationBlock(
-        [for (final m in _context) (fromHer: m.fromHer, text: m.text)],
+        [for (final m in recent) (fromHer: m.fromHer, text: m.text)],
         me: s.speakerMe,
-        her: s.speakerHer,
+        her: _soul?.name ?? s.speakerHer,
       );
+      // บอกสิ่งที่รู้อยู่แล้วไปด้วย · prompt สั่งว่า "เอาแค่เรื่องใหม่" แต่ของเดิม
+      // ไม่เคยบอกว่ารู้อะไรอยู่แล้ว เรื่องเดิมที่เขียนต่างไปนิดเดียวจึงพอกจนเต็มเพดาน
+      final known = memory.promptBlock(limit: 40);
       final raw = await _askBrain(
         distillPrompt(_lang == AppLang.th),
-        [(fromHer: false, text: block)],
+        [
+          (
+            fromHer: false,
+            text: known.trim().isEmpty
+                ? block
+                : '${s.distillKnown}\n$known\n\n$block',
+          ),
+        ],
       );
       if (_disposed) return;
 

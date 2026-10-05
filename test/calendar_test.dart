@@ -250,7 +250,8 @@ void main() {
 
     test('นัดทั้งวันเขียนแค่วันที่ ไม่มีช่วงเวลาปลอม', () async {
       final n = DateTime.now();
-      final start = DateTime(n.year, n.month, n.day);
+      // Android เก็บนัดทั้งวันเป็นเที่ยงคืน UTC
+      final start = DateTime.utc(n.year, n.month, n.day);
       mock(granted: true, events: [
         event('ลาพักร้อน', start, start.add(const Duration(days: 1)),
             allDay: true),
@@ -262,6 +263,38 @@ void main() {
       final block = cal.promptBlock();
       expect(block, contains('ลาพักร้อน'));
       expect(block, isNot(contains(':')));
+    });
+  });
+
+  group('🔴 นัดทั้งวันเป็นเที่ยงคืน UTC ไม่ใช่เวลาท้องถิ่น', () {
+    test('นัดทั้งวันของเมื่อวาน ต้องไม่ค้างอยู่ใน "วันนี้"', () async {
+      final n = DateTime.now();
+      final y = DateTime.utc(n.year, n.month, n.day - 1);
+      mock(granted: true, events: [
+        event('เมื่อวาน', y, y.add(const Duration(days: 1)), allDay: true),
+      ]);
+      final cal = DeviceCalendar();
+
+      await cal.load();
+
+      final e = cal.events.single;
+      expect(e.begin, DateTime(y.year, y.month, y.day),
+          reason: 'วันที่ต้องตรงกับวันในปฏิทิน ไม่เลื่อนตามโซนเวลา');
+      expect(cal.today, isEmpty,
+          reason: 'อ่านเป็นเวลาท้องถิ่น = ในไทยจบตอน 07:00 วันนี้ แล้วค้างใน today');
+    });
+
+    test('รีเฟรชตอนมีรายการอยู่แล้ว ต้องไม่สลับเป็นกำลังโหลด', () async {
+      mock(granted: true, events: [event('x', todayAt(8), todayAt(9))]);
+      final cal = DeviceCalendar();
+      await cal.load();
+
+      final seen = <CalendarStage>[];
+      cal.addListener(() => seen.add(cal.stage));
+      await cal.load();
+
+      expect(seen, isNot(contains(CalendarStage.loading)),
+          reason: 'รายการหายเป็นวงหมุนทั้งจอทุกครั้งที่ดึงรีเฟรช');
     });
   });
 

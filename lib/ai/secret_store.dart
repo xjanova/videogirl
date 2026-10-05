@@ -38,7 +38,10 @@ abstract final class SecretStore {
   }
 
   /// เขียนค่า — ค่าว่างคือลบทิ้ง ไม่ใช่เก็บสตริงว่างไว้
-  static Future<void> write(String key, String value) async {
+  ///
+  /// คืน false เมื่อเขียนไม่สำเร็จ · 🔴 ผู้เรียกต้องบอกผู้ใช้ ของเดิมกลืนเงียบ
+  /// คีย์จึงใช้ได้แค่รอบนี้แล้วหายไปตอนเปิดแอปใหม่ โดยไม่มีอะไรบอกเลย
+  static Future<bool> write(String key, String value) async {
     try {
       final v = value.trim();
       if (v.isEmpty) {
@@ -46,8 +49,10 @@ abstract final class SecretStore {
       } else {
         await _box.write(key: key, value: v);
       }
+      return true;
     } on Object catch (e) {
       debugPrint('secret store: เขียน $key ไม่ได้ — ${e.runtimeType}');
+      return false;
     }
   }
 

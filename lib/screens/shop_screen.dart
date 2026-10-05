@@ -303,13 +303,22 @@ class _ShopScreenState extends State<ShopScreen> {
   /// พาไปหน้าซื้อบนเว็บ — จ่ายเสร็จแล้วกลับมากดรีเฟรช
   Future<void> _buy(BuildContext context, ShopItem item) async {
     final base = context.read<MindState>().storeBaseUrl.trim();
-    if (base.isEmpty) return;
-    final url = Uri.parse('${base.replaceAll(RegExp(r'/+$'), '')}'
-        '/shop/${Uri.encodeComponent(item.id)}');
-    try {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      debugPrint('shop: เปิดหน้าซื้อไม่ได้ — $e');
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final t = S.of(context);
+    var opened = false;
+    if (base.isNotEmpty) {
+      final url = Uri.parse('${base.replaceAll(RegExp(r'/+$'), '')}'
+          '/shop/${Uri.encodeComponent(item.id)}');
+      try {
+        opened = await launchUrl(url, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        debugPrint('shop: เปิดหน้าซื้อไม่ได้ — $e');
+      }
+    }
+    // 🔴 เปิดไม่ได้ต้องบอก · `launchUrl` คืน false เงียบ ๆ ได้ (ไม่มีเบราว์เซอร์
+    // ที่รับลิงก์) แล้วผู้ใช้เห็นแค่ว่ากดซื้อแล้วไม่มีอะไรเกิดขึ้น
+    if (!opened) {
+      messenger?.showSnackBar(SnackBar(content: Text(t.shopBuyFailed)));
     }
   }
 

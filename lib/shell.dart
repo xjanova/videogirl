@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'ai/mind_audio.dart';
 import 'avatar/avatar_view.dart';
+import 'calendar/device_calendar.dart';
 import 'phone/call_session.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/home_screen.dart';
@@ -11,7 +14,6 @@ import 'screens/settings_screen.dart';
 import 'screens/timeline_screen.dart';
 import 'state/mind_state.dart';
 import 'i18n/strings.dart';
-import 'i18n/strings_ai.dart';
 import 'theme/tokens.dart';
 import 'widgets/mind_nav_bar.dart';
 
@@ -91,18 +93,42 @@ class _MindShellState extends State<MindShell> {
     // avatar pack, เวทีโหลดพัง, หรือทักก่อนคลิปท่าทางโหลดเสร็จ — ทั้งสาม
     // กรณีของเดิมจบด้วยความเงียบสนิทโดยไม่มีใครรู้ · ปากไม่ขยับดีกว่าไม่มีเสียง
     final state = context.read<MindState>();
-    state.speaker = (u) async {
-      if (await _avatar.speakBytes(u.bytes, mime: u.mime)) return;
-      if (await MindAudio.play(u.bytes, mime: u.mime)) return;
-      // ทั้งสองทางไม่ได้ = บอกตรง ๆ ไม่ใช่ปล่อยให้เดาว่าทำไมเธอเงียบ
-      state.reportError(state.s.errVoiceNoOutput);
+    // ทั้งสองทางไม่ได้ = คืน false แล้ว state บอกผู้ใช้เอง · state รู้ว่าเสียงนั้น
+    // ถูกสั่งเงียบไปเองหรือเปล่า ที่นี่ไม่รู้ (ทางสำรองคืน false ตอนถูกตัดกลางคันด้วย)
+    state.speaker = (u) async =>
+        await _avatar.speakBytes(u.bytes, mime: u.mime) ||
+        await MindAudio.play(u.bytes, mime: u.mime);
+    state.silencer = () async {
+      await _avatar.stop();
+      await MindAudio.stop();
     };
+  }
+
+  void _select(int i) {
+    setState(() => _tab = i);
+    // แท็บปฏิทินอ่านของใหม่ทุกครั้งที่เปิด ถ้าของเดิมเก่าแล้ว · ไม่งั้นนัดที่เพิ่ง
+    // เพิ่ง หรือสิทธิ์ที่เพิ่งให้ จะไม่โผล่จนกว่าจะปิดเปิดแอป
+    if (i == 2) unawaited(context.read<DeviceCalendar>().refreshIfStale());
+  }
+
+  /// ปุ่ม Back ของ Android
+  ///
+  /// 🔴 ของเดิมไม่มีตัวจับเลย Back จากทุกแท็บ = ปิดแอปทันที · คนที่อยู่หน้า
+  /// ตั้งค่าแล้วกด Back เพื่อ "ย้อนกลับ" ถูกพาออกจากแอปไปเฉย ๆ
+  /// ลำดับ: แท็บอื่น → กลับหน้าเธอ · แผงแชทเปิด → พับ · นอกนั้นค่อยออก
+  void _onBack(MindState state) {
+    if (_tab != 0) {
+      _select(0);
+    } else if (state.chatOpen) {
+      state.collapseChat();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final mode = context.select<MindState, MindMode>((s) => s.mode);
     final speaking = context.select<MindState, bool>((s) => s.speaking);
+    final chatOpen = context.select<MindState, bool>((s) => s.chatOpen);
 
     // มีสายที่เธอถืออยู่ = ตัดมาแท็บของเธอ แล้วเก็บแถบนำทางไปก่อน
     //
@@ -111,6 +137,18 @@ class _MindShellState extends State<MindShell> {
     // ที่หน้าที่ค้างอยู่ก่อนสายเข้า
     final onCall = context.select<CallSession, bool>((c) => c.onStage);
 
+    return PopScope(
+      // ระหว่างสาย Back ไม่ปิดแอป · สายยังอยู่ที่จอสายของเครื่อง
+      canPop: !onCall && _tab == 0 && !chatOpen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _onBack(context.read<MindState>());
+      },
+      child: _scaffold(context, mode, speaking, onCall),
+    );
+  }
+
+  Widget _scaffold(
+      BuildContext context, MindMode mode, bool speaking, bool onCall) {
     return Scaffold(
       // ให้แผงแชทเลื่อนขึ้นเองตอนคีย์บอร์ดเด้ง ไม่งั้นช่องพิมพ์จะโดนบัง
       resizeToAvoidBottomInset: true,
@@ -123,7 +161,7 @@ class _MindShellState extends State<MindShell> {
       body: IndexedStack(
         index: onCall ? 0 : _tab,
         children: [
-          HomeScreen(avatar: _avatar),
+          HomeScreen(avatar: _avatar, active: onCall || _tab == 0),
           const MailScreen(),
           const CalendarScreen(),
           const TimelineScreen(),
@@ -144,7 +182,7 @@ class _MindShellState extends State<MindShell> {
                 face: _avatar.faceImage,
                 avatarReady: _avatar.ready,
                 speaking: speaking,
-                onSelect: (i) => setState(() => _tab = i),
+                onSelect: _select,
               ),
             ),
     );

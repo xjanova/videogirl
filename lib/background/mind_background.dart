@@ -55,21 +55,29 @@ const kPrefWatchEnabled = 'bgWatch';
 ///
 /// `autoStart: false` โดยตั้งใจ: การแจ้งเตือนค้างจอเป็นสิ่งที่ต้อง**ขออนุญาต
 /// ด้วยการให้ผู้ใช้กดเอง** ไม่ใช่สิ่งที่แอปหยิบไปเองตั้งแต่เปิดครั้งแรก
+///
+/// ต้องเรียกซ้ำทุกครั้งที่สวิตช์เฝ้างานเปลี่ยน · ค่า `autoStartOnBoot` ถูกเขียน
+/// ลงที่เก็บของปลั๊กอินตอนนี้เท่านั้น
 Future<void> configureMindBackground() async {
   final service = FlutterBackgroundService();
+  final prefs = await SharedPreferences.getInstance();
   await service.configure(
     androidConfiguration: AndroidConfiguration(
       onStart: mindBackgroundMain,
       isForegroundMode: true,
       autoStart: false,
-      autoStartOnBoot: true,
+      // 🔴 ตามสวิตช์ของผู้ใช้ ไม่ใช่ true ตายตัว · ตัวรับ BOOT_COMPLETED ของ
+      // ปลั๊กอินอ่านค่านี้ค่าเดียว ของเดิมจึงเปิดบริการเองทุกครั้งที่เปิดเครื่อง
+      // และทุกครั้งที่อัปเดตแอป แม้คนที่ไม่เคยเปิดหรือกดปิดไปแล้ว
+      autoStartOnBoot: prefs.getBool(kPrefWatchEnabled) ?? false,
       notificationChannelId: kMindChannelId,
       initialNotificationTitle: 'GigGok',
       // ข้อความแรกก่อนจังหวะแรกจะมาถึง — หลังจากนั้น _beat เขียนทับด้วย
       // ภาษาที่ผู้ใช้ตั้งไว้จริง · ตรงนี้ยังไม่มีทางรู้ภาษาเพราะยังไม่ได้อ่าน prefs
       initialNotificationContent: 'GigGok',
       foregroundServiceNotificationId: 8747,
-      foregroundServiceTypes: [AndroidForegroundType.dataSync],
+      // specialUse ไม่ใช่ dataSync — เหตุผลอยู่ที่ <service> ใน AndroidManifest
+      foregroundServiceTypes: [AndroidForegroundType.specialUse],
     ),
     iosConfiguration: IosConfiguration(autoStart: false),
   );

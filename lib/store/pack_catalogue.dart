@@ -103,13 +103,20 @@ class ShopItem {
       nameTh: th,
       nameEn: en,
       kind: AvatarPackKind.parse(raw['kind']),
-      price: (raw['price'] as num?)?.toDouble() ?? 0,
+      price: _num(raw['price'])?.toDouble() ?? 0,
       currency: '${raw['currency'] ?? 'THB'}',
-      sizeBytes: (raw['sizeBytes'] as num?)?.toInt() ?? 0,
-      preview: raw['preview'] as String?,
-      requires: raw['requires'] as String?,
+      sizeBytes: _num(raw['sizeBytes'])?.toInt() ?? 0,
+      preview: _str(raw['preview']),
+      requires: _str(raw['requires']),
     );
   }
+
+  /// 🔴 ตัวเลขที่มาเป็นสตริงได้ · Laravel ส่งคอลัมน์ decimal เป็น `"149.00"`
+  /// ของเดิม `as num?` โยน TypeError ซึ่งไม่ใช่ Exception หลุดตัวดัก แล้วหน้าร้าน
+  /// หมุนค้างตลอดไป
+  static num? _num(Object? v) => v is num ? v : num.tryParse('${v ?? ''}');
+
+  static String? _str(Object? v) => v is String && v.isNotEmpty ? v : null;
 }
 
 class PackCatalogue extends ChangeNotifier {
@@ -164,7 +171,7 @@ class PackCatalogue extends ChangeNotifier {
         await _markOwned(base, licenseKey);
       }
       _set(ShopStage.ready, null);
-    } on Exception catch (e) {
+    } on Object catch (e) {
       // ร้านยังไม่เปิดเป็นเรื่องปกติตอนนี้ ไม่ใช่ความผิดพลาดที่ต้องดังโครม
       debugPrint('shop: ต่อร้านไม่ติด — $e');
       _set(ShopStage.failed, ShopError.unreachable);
@@ -194,11 +201,13 @@ class PackCatalogue extends ChangeNotifier {
       for (var i = 0; i < _items.length; i++) {
         _items[i] = _items[i].withOwned(ids.contains(_items[i].id));
       }
-    } on Exception catch (e) {
+    } on Object catch (e) {
       // รู้รายการสินค้าแล้วแต่ไม่รู้ว่าซื้ออะไรไป — ยังดีกว่าไม่เห็นร้านเลย
       debugPrint('shop: อ่านสิทธิ์ครอบครองไม่ได้ — $e');
     }
   }
+
+  static String? _sha(Object? v) => v is String && v.isNotEmpty ? v : null;
 
   /// ขอลิงก์โหลดของชิ้นที่ซื้อแล้ว
   ///
@@ -231,8 +240,8 @@ class PackCatalogue extends ChangeNotifier {
       if (body is! Map) return null;
       final url = '${body['url'] ?? ''}';
       if (url.isEmpty) return null;
-      return (url: url, sha256: body['sha256'] as String?);
-    } on Exception catch (e) {
+      return (url: url, sha256: _sha(body['sha256']));
+    } on Object catch (e) {
       debugPrint('shop: ขอลิงก์ไม่ได้ — $e');
       return null;
     }

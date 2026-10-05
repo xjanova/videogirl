@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../i18n/strings.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 
@@ -84,21 +83,4 @@ class MindSectionLabel extends StatelessWidget {
         style: MindType.overline
             .copyWith(color: color ?? MindColors.ink55),
       );
-}
-
-/// บอกว่าหน้านี้ยังเป็นข้อมูลตัวอย่าง
-///
-/// ปุ่มที่แตะแล้วเงียบสนิทคือสิ่งที่ทำให้แอปรู้สึกพัง แม้ตัวมันจะไม่ได้พัง
-/// ตอบอะไรสักอย่างที่ **จริง** ดีกว่าไม่ตอบ และดีกว่าแกล้งทำเป็นทำงานได้
-void showDemoNote(BuildContext context) {
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  if (messenger == null) return;
-  messenger
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(S.of(context).demoAction),
-      duration: const Duration(seconds: 2),
-      margin: const EdgeInsets.fromLTRB(
-          MindSpace.lg, 0, MindSpace.lg, MindSpace.xxl * 3),
-    ));
 }

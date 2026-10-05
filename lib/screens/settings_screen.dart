@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../ai/brain_provider.dart';
@@ -11,6 +12,7 @@ import '../ai/device_capability.dart';
 import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
 import '../ai/openai_config.dart';
+import '../ai/secret_store.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
 import '../avatar/avatar_pack.dart';
@@ -40,25 +42,6 @@ class SettingsScreen extends StatefulWidget {
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-/// ความสามารถที่เปิด/ปิดได้ — enum เก็บตัวตน ป้ายมาจากตารางแปล
-enum _Feature { morningMail, sendMail, alwaysOn, bubbleOverlay }
-
-extension _FeatureLabels on _Feature {
-  String labelOf(S s) => switch (this) {
-        _Feature.morningMail => s.featMorningMail,
-        _Feature.sendMail => s.featSendMail,
-        _Feature.alwaysOn => s.featAlwaysOn,
-        _Feature.bubbleOverlay => s.featBubbleOverlay,
-      };
-
-  String hintOf(S s) => switch (this) {
-        _Feature.morningMail => s.featMorningMailHint,
-        _Feature.sendMail => s.featSendMailHint,
-        _Feature.alwaysOn => s.featAlwaysOnHint,
-        _Feature.bubbleOverlay => s.featBubbleOverlayHint,
-      };
 }
 
 class _SettingsScreenState extends State<SettingsScreen>
@@ -105,17 +88,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// จำนวนข้อความที่เก็บไว้จริง — นับครั้งเดียวตอนเปิดหน้า
   int _storedMessages = 0;
 
-  // สวิตช์ที่ยังไม่มีระบบหลังบ้านรองรับ เก็บไว้ในหน่วยความจำก่อน
-  // TODO(permissions): ตัวที่ต้องขอสิทธิ์ Android ต้องผูกกับสถานะสิทธิ์จริง
-  // ไม่ใช่ค่าที่ผู้ใช้กดเอง ไม่งั้นเปิดไว้แต่ระบบไม่ให้ = โกหกผู้ใช้
-  final _switches = <_Feature, bool>{
-    _Feature.morningMail: true,
-    _Feature.sendMail: false,
-    _Feature.alwaysOn: true,
-    _Feature.bubbleOverlay: true,
-  };
-
-
+  // 🔴 การ์ด "สวิตช์อื่น ๆ" (สรุปเมลตอนเช้า / ให้เธอส่งเมลเอง / Always-on /
+  // ฟองลอยทับแอปอื่น) ถูกถอดออก 2026-10-05 · ทั้งสี่ตัวไม่ถูกบันทึกและไม่มีใคร
+  // อ่านค่า — สวิตช์ที่กดได้แต่ไม่มีผลคือการโกหกผู้ใช้ · Always-on ตัวจริงคือ
+  // การ์ดเฝ้างาน (_watchCard) · วันที่ฟีเจอร์ไหนมีของจริง ค่อยเพิ่มกลับทีละตัว
 
   @override
   Widget build(BuildContext context) {
@@ -196,8 +172,6 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: MindSpace.md),
             _callCard(state, mode),
             const SizedBox(height: MindSpace.md),
-            _switchCard(mode),
-            const SizedBox(height: MindSpace.md),
             UpdateCard(mode: mode),
           ],
         ),
@@ -276,24 +250,41 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
           const SizedBox(width: MindSpace.sm),
           // ปักหมุด — กันไม่ให้เรื่องสำคัญโดนตัดตอนความจำเต็ม
+          // พื้นที่แตะ 40dp ทั้งสองปุ่ม · ไอคอน 17px ที่อยู่ห่างกัน 12dp คือปุ่มที่
+          // แตะพลาดไปโดนอีกปุ่มได้ง่ายมาก และปุ่มหนึ่งในนั้นลบความจำทิ้ง
           GestureDetector(
             onTap: () => mem.setPinned(f.id, !f.pinned),
-            child: Tooltip(
-              message: f.pinned ? t.memPinned : t.memPinWhy,
-              child: Icon(
-                f.pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                size: 17,
-                color: f.pinned ? mode.accent : MindColors.ink22,
+            behavior: HitTestBehavior.opaque,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Tooltip(
+                message: f.pinned ? t.memPinned : t.memPinWhy,
+                child: Icon(
+                  f.pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                  size: 17,
+                  color: f.pinned ? mode.accent : MindColors.ink22,
+                ),
               ),
             ),
           ),
-          const SizedBox(width: MindSpace.md),
           GestureDetector(
-            onTap: () => mem.forget(f.id),
-            child: Tooltip(
-              message: t.memForget,
-              child: const Icon(Icons.close_rounded,
-                  size: 17, color: MindColors.ink45),
+            onTap: () async {
+              // ลืมแล้วเอาคืนไม่ได้ · ถามก่อนพร้อมโชว์ว่ากำลังจะลืมเรื่องอะไร
+              if (await _confirm(context,
+                  title: t.memForget, body: f.text, ok: t.memForget, t: t)) {
+                await mem.forget(f.id);
+              }
+            },
+            behavior: HitTestBehavior.opaque,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Tooltip(
+                message: t.memForget,
+                child: const Icon(Icons.close_rounded,
+                    size: 17, color: MindColors.ink45),
+              ),
             ),
           ),
         ],
@@ -317,6 +308,32 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
     );
     if (ok == true) await mem.forgetAll();
+  }
+
+  /// ถามก่อนทำสิ่งที่ย้อนกลับไม่ได้ — ลบ เขียนทับ ล้าง
+  ///
+  /// ปุ่มเล็ก ๆ ที่กดแล้วลบของหลาย GB หรือสำเนาที่รอดการถอนแอป
+  /// คือปุ่มที่โดนนิ้วปัดผ่านตอนเลื่อนจอได้เสมอ
+  static Future<bool> _confirm(
+    BuildContext context, {
+    String? title,
+    required String body,
+    required String ok,
+    required S t,
+  }) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: title == null ? null : Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false), child: Text(t.cancel)),
+          TextButton(onPressed: () => Navigator.pop(c, true), child: Text(ok)),
+        ],
+      ),
+    );
+    return yes == true;
   }
 
   /// สิทธิ์ทั้งหมดในที่เดียว
@@ -1059,9 +1076,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: 12),
             _linkRow(
               title: S.of(context).licenseTitle,
+              // ซ่อนกลางรหัสไว้เหมือนคีย์ OpenAI · หน้าจอถูกแคปไปถามคนอื่นได้เสมอ
               value: state.licenseKey.isEmpty
                   ? S.of(context).licenseNotSet
-                  : state.licenseKey,
+                  : SecretStore.mask(state.licenseKey),
               mode: mode,
               onTap: () => _editText(
                 state: state,
@@ -1258,7 +1276,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                               fontSize: 11, color: MindColors.ink75)),
                     ),
                     GestureDetector(
-                      onTap: lb.remove,
+                      // ลบไฟล์หลาย GB ด้วยแตะเดียว = ต้องถามก่อน
+                      onTap: () async {
+                        final t = S.of(context);
+                        if (await _confirm(context,
+                            body: t.gemmaRemoveConfirm(lb.variant.sizeLabel),
+                            ok: t.gemmaRemove,
+                            t: t)) {
+                          await lb.remove();
+                        }
+                      },
                       child: Text(S.of(context).gemmaRemove,
                           style: TextStyle(
                               fontSize: 11,
@@ -1298,10 +1325,32 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                   ],
                 ),
-              LocalModelStage.failed => Text(
-                  lb.error ?? S.of(context).somethingWrong,
-                  style: const TextStyle(
-                      fontSize: 11, height: 1.5, color: Color(0xFFB46A00)),
+              // 🔴 ล้มแล้วต้องมีทางไปต่อ · ของเดิมโชว์แต่ข้อความสีส้ม ไม่มีปุ่ม
+              // คนที่เน็ตหลุดกลางทางต้องไปเดาเองว่าต้องสลับรุ่นไป-กลับ
+              LocalModelStage.failed => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      lb.error ?? S.of(context).somethingWrong,
+                      style: const TextStyle(
+                          fontSize: 11, height: 1.5, color: Color(0xFFB46A00)),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: GestureDetector(
+                        onTap: lb.download,
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(S.of(context).gemmaRetry,
+                              style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: mode.accent)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               _ => GestureDetector(
                   onTap: lb.download,
@@ -1328,9 +1377,52 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                 ),
             },
+
+            // GPU — เลือกได้ทุกเมื่อ ไม่ต้องรอโหลดเสร็จ · ค่ามีผลตอนเปิดโมเดลรอบหน้า
+            if (!lb.deviceTooSmall) ...[
+              const SizedBox(height: MindSpace.md),
+              _gpuRow(lb, mode),
+            ],
           ],
         );
       },
+    );
+  }
+
+  /// สวิตช์ GPU + บอกว่าตอนนี้คิดด้วยอะไรจริง
+  ///
+  /// 🔴 บอก**ของจริง** ไม่ใช่แค่สิ่งที่ตั้งไว้ · ตั้ง GPU ไว้แต่เครื่องใช้ไม่ได้
+  /// แล้วตกไป CPU เงียบ ๆ = ผู้ใช้เห็นสวิตช์เปิดอยู่แต่เธอยังช้าเท่าเดิม
+  Widget _gpuRow(LocalBrain lb, MindMode mode) {
+    final t = S.of(context);
+    final on = lb.useGpu && !lb.gpuBroken;
+    final (note, tone) = lb.gpuBroken
+        ? (t.gemmaGpuBroken, const Color(0xFFB46A00))
+        : switch (lb.runningOnGpu) {
+            true => (t.gemmaOnGpu, const Color(0xFF00A894)),
+            false => (t.gemmaOnCpu, MindColors.ink55),
+            null => (t.gemmaUseGpuWhy, MindColors.ink55),
+          };
+    return Row(
+      spacing: MindSpace.md,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(t.gemmaUseGpu,
+                  style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: MindColors.ink)),
+              const SizedBox(height: 3),
+              Text(note,
+                  style: TextStyle(fontSize: 10.5, height: 1.5, color: tone)),
+            ],
+          ),
+        ),
+        _toggle(on: on, mode: mode, onTap: () => lb.setUseGpu(!on)),
+      ],
     );
   }
 
@@ -1578,7 +1670,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                 ),
                 GestureDetector(
-                  onTap: () => state.resetVoice(channel),
+                  // คืนค่าทั้งโมเดล เสียง และคำสั่งน้ำเสียงที่เขียนเองของช่องนี้
+                  onTap: () async {
+                    final t = S.of(context);
+                    if (await _confirm(context,
+                        body: t.voiceResetConfirm(channel.labelOf(t)),
+                        ok: t.reset,
+                        t: t)) {
+                      state.resetVoice(channel);
+                    }
+                  },
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
@@ -1755,56 +1856,6 @@ class _SettingsScreenState extends State<SettingsScreen>
             style: const TextStyle(
                 fontSize: 10.5, height: 1.5, color: MindColors.ink55),
           ),
-        ],
-      ),
-    );
-  }
-
-  // ── สวิตช์อื่น ๆ ────────────────────────────────────────
-  Widget _switchCard(MindMode mode) {
-    final keys = _switches.keys.toList();
-
-    return GlassPanel(
-      radius: MindRadius.card,
-      fill: MindColors.glass62,
-      filter: MindGlass.light,
-      shadows: MindShadows.card(),
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
-      child: Column(
-        children: [
-          for (var i = 0; i < keys.length; i++) ...[
-            if (i > 0) const Divider(height: 1, color: MindColors.ink10),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(
-                spacing: 12,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: 3,
-                      children: [
-                        Text(keys[i].labelOf(S.of(context)),
-                            style: const TextStyle(
-                                fontSize: 12.5, fontWeight: FontWeight.w600)),
-                        Text(keys[i].hintOf(S.of(context)),
-                            style: const TextStyle(
-                                fontSize: 10.5,
-                                height: 1.5,
-                                color: MindColors.ink55)),
-                      ],
-                    ),
-                  ),
-                  _toggle(
-                    on: _switches[keys[i]]!,
-                    mode: mode,
-                    onTap: () =>
-                        setState(() => _switches[keys[i]] = !_switches[keys[i]]!),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -2070,6 +2121,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       VaultStage.off => (t.vaultOff, MindColors.ink55),
       VaultStage.failed => (t.vaultFailed, const Color(0xFFB46A00)),
+      VaultStage.foreign => (t.vaultForeign, const Color(0xFFB46A00)),
       _ => (t.vaultNeedsPermission, const Color(0xFFB46A00)),
     };
 
@@ -2122,6 +2174,60 @@ class _SettingsScreenState extends State<SettingsScreen>
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.white)),
+              ),
+            ),
+          ],
+
+          // 🔴 สำเนาของการติดตั้งครั้งก่อน — ห้ามทำอะไรเองจนกว่าเจ้าของจะเลือก
+          if (vault.stage == VaultStage.foreign) ...[
+            const SizedBox(height: MindSpace.sm),
+            GestureDetector(
+              onTap: () async {
+                final yes = await _confirm(context,
+                    title: t.vaultRestoreTitle,
+                    body: t.vaultRestoreBody,
+                    ok: t.vaultRestoreOld,
+                    t: t);
+                if (!yes) return;
+                await state.restoreVaultOnRestart();
+                // ปิดแอป · การเปิดรอบหน้าเป็นคนกู้ ก่อนที่ใครจะได้เปิดฐาน
+                await SystemNavigator.pop();
+              },
+              child: Container(
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: mode.gradient,
+                  borderRadius: BorderRadius.circular(MindRadius.control),
+                ),
+                child: Text(t.vaultRestoreOld,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white)),
+              ),
+            ),
+            const SizedBox(height: MindSpace.xs),
+            Align(
+              alignment: Alignment.center,
+              child: GestureDetector(
+                onTap: () async {
+                  final yes = await _confirm(context,
+                      title: t.vaultKeepTitle,
+                      body: t.vaultKeepBody,
+                      ok: t.vaultKeepCurrent,
+                      t: t);
+                  if (yes) await state.adoptVault();
+                },
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(t.vaultKeepCurrent,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: mode.accent)),
+                ),
               ),
             ),
           ],
@@ -2182,7 +2288,18 @@ class _SettingsScreenState extends State<SettingsScreen>
               _toggle(
                 on: vault.wipeOnUninstall,
                 mode: mode,
-                onTap: () => state.setWipeOnUninstall(!vault.wipeOnUninstall),
+                onTap: () async {
+                  // เปิด = ลบสำเนาข้างนอกทิ้งเดี๋ยวนั้น · ต้องถามก่อน
+                  // ปิด = ไม่มีอะไรหาย ไม่ต้องถาม
+                  if (!vault.wipeOnUninstall &&
+                      !await _confirm(context,
+                          body: t.wipeOnUninstallWhy,
+                          ok: t.wipeOnUninstall,
+                          t: t)) {
+                    return;
+                  }
+                  await state.setWipeOnUninstall(!vault.wipeOnUninstall);
+                },
               ),
             ],
           ),
@@ -2396,6 +2513,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           initial: DebugReport.pretty(report),
           mode: state.mode,
           onReset: () => DebugReport.pretty(report),
+          // ส่งฉบับนี้ทั้งฉบับ แก้ไม่ได้ · ให้แก้แล้วส่งฉบับเดิม = โกหก
+          readOnly: true,
         ),
       ),
     );

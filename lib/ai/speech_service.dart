@@ -145,9 +145,21 @@ class SpeechService {
     return (bytes: bytes, mime: 'audio/wav');
   }
 
+  /// ภาษาที่ตั้งให้เสียงเครื่องไว้ล่าสุด
+  String? _deviceLang;
+
   Future<void> _prepareDevice() async {
+    // 🔴 ตั้งภาษาตามภาษาของแอป **ทุกครั้งที่มันเปลี่ยน** ไม่ใช่ครั้งเดียว
+    //
+    // ของเดิมตั้ง th-TH ตายตัวครั้งเดียวตอนเริ่ม · คนที่ใช้แอปภาษาอังกฤษ
+    // (และคู่สายที่เธอคุยด้วยเป็นภาษาอังกฤษ) ได้ข้อความอังกฤษที่อ่านด้วย
+    // เสียงไทยทุกประโยค และสลับภาษาในแอปแล้วก็ไม่เปลี่ยนตาม
+    final lang = _s().isThai ? 'th-TH' : 'en-US';
+    if (_deviceLang != lang) {
+      await _tts.setLanguage(lang);
+      _deviceLang = lang;
+    }
     if (_deviceReady) return;
-    await _tts.setLanguage('th-TH');
     await _tts.setSpeechRate(.48); // ค่าเริ่มต้นของ Android เร็วเกินจนฟังไม่ทัน
     await _tts.setPitch(1.08); // ยกขึ้นนิดเดียว ให้เสียงอ่อนลงโดยไม่เพี้ยน
     // ต้องรอให้เขียนไฟล์เสร็จก่อน synthesizeToFile ถึงจะคืนค่าจริง

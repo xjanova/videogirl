@@ -100,8 +100,13 @@ export class LipSync {
 
         this.speaking = true;
         try { await audio.play(); } catch (e) { this.speaking = false; throw e; }
-        await new Promise(res => { audio.onended = res; audio.onerror = res; });
-        this.speaking = false;
+        // 🔴 จบด้วย pause ด้วย ไม่ใช่แค่ ended/error · stop() แค่ pause เสียง
+        // ซึ่งไม่ยิง ended — ถ้าไม่ฟัง pause ฝั่ง Flutter ที่รอประโยคนี้อยู่
+        // จะรอไปตลอดกาลทุกครั้งที่เธอถูกสั่งให้เงียบหรือมีประโยคใหม่มาแทรก
+        await new Promise(res => {
+            audio.onended = res; audio.onerror = res; audio.onpause = res;
+        });
+        if (this.audio === audio) this.speaking = false;
         return true;
     }
 

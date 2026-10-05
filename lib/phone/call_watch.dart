@@ -155,7 +155,10 @@ class CallWatch extends ChangeNotifier {
   }
 
   Future<dynamic> _onNative(MethodCall call) async {
-    debugPrint('call: ได้สัญญาณ ${call.method} ${call.arguments}');
+    // 🔴 ห้ามพิมพ์ arguments ทั้งก้อน · ข้างในมีเบอร์และชื่อคนโทรมา และ log นี้
+    // ไหลเข้ารายงานดีบัคที่ส่งออกนอกเครื่องได้ (ดู DebugReport)
+    final st = call.arguments is Map ? (call.arguments as Map)['state'] : null;
+    debugPrint('call: ได้สัญญาณ ${call.method} state=$st');
     if (call.method != 'onCallState') return null;
 
     final args = call.arguments;

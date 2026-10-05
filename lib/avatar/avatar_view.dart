@@ -204,10 +204,19 @@ class MindAvatarController extends ChangeNotifier {
       return false;
     }
     try {
-      await web.callAsyncJavaScript(
+      final res = await web.callAsyncJavaScript(
         functionBody: 'return await window.minde.speakBytes(b64, mime);',
         arguments: {'b64': base64Encode(bytes), 'mime': mime},
       );
+      // 🔴 ฝั่ง JS บอก "เล่นไม่ได้" ด้วยการคืน false ไม่ใช่ throw
+      // (ไม่มีตัวเธอ หรือ audio.play() ถูกปฏิเสธ) · callAsyncJavaScript ส่ง
+      // ค่านั้นกลับมาเป็นผลลัพธ์ธรรมดา ถ้าไม่อ่านมัน ทางสำรอง [MindAudio]
+      // จะไม่มีวันได้ทำงาน แล้วผู้ใช้ได้ยินความเงียบโดยไม่มีอะไรบอก
+      if (res?.error != null || res?.value != true) {
+        debugPrint('avatar: เวทีเล่นเสียงไม่ได้ — '
+            '${res?.error ?? 'คืน ${res?.value}'}');
+        return false;
+      }
       return true;
     } catch (e) {
       debugPrint('avatar: เล่นเสียงไม่สำเร็จ — $e');
@@ -396,6 +405,9 @@ class MindAvatarController extends ChangeNotifier {
     _visible = false;
     _loadPercent = 0;
     _faceTried = false;
+    // ล้างข้อผิดพลาดของรอบก่อน · ไม่ล้าง = ระหว่างที่โหลดชุดใหม่อยู่ ป้ายจะขึ้น
+    // ว่า "ไม่พบตัวมายด์" ทั้งที่กำลังโหลดตัวเธออยู่
+    _error = null;
     notifyListeners();
     try {
       await web.loadUrl(urlRequest: URLRequest(url: WebUri('$url')));

@@ -11,9 +11,48 @@ import '../theme/tokens.dart';
 /// ไม่ใช่แค่ปุ่มเปลี่ยนภาษาแต่เธอยังตอบไทยอยู่
 abstract final class MindPersona {
   /// ข้อมูลดิบเกี่ยวกับเจ้าของ ที่เธอต้องรู้เพื่อทำงานแทนได้
-  /// ผู้ใช้แก้เองได้ในหน้าตั้งค่า — นี่คือค่าตั้งต้นที่พอใช้งานได้ทันที
+  /// ผู้ใช้แก้เองได้ในหน้าตั้งค่า
+  ///
+  /// 🔴 ค่าตั้งต้นเป็น**แบบฟอร์มว่าง** ไม่ใช่คนสมมติ · ของเดิมคือ "คุณเอ็กซ์"
+  /// เจ้าของกิจการที่มีคุณต้น คุณนภา คุณวิชัย และอนุมัติส่วนลดเองได้ 5%
+  /// โมเดลเชื่อทุกบรรทัด จึงเรียกผู้ใช้ผิดชื่อ อ้างถึงคนที่ไม่มีตัวตน
+  /// และอาจเสนอส่วนลดที่เจ้าของไม่เคยตั้งให้คนที่โทรเข้ามา
+  ///
+  /// บรรทัดที่ยังว่าง (`-`) บอกโมเดลตรง ๆ ว่ายังไม่รู้ ดีกว่าให้เดา
   static String defaultOwnerProfile(AppLang lang) => S(lang).pick(
         '''
+ชื่อเรียก: -
+งาน: -
+เวลาทำงาน: -
+ภาษา: ไทย
+คนที่ติดต่อบ่อย: -
+เรื่องที่ตัดสินใจแทนได้: ยืนยันเวลา ตอบรับทราบ
+เรื่องที่ต้องถามก่อนเสมอ: ราคา ส่วนลด สัญญา การจ่ายเงิน ข้อมูลส่วนตัว
+(บรรทัดที่เป็น - คือยังไม่ได้บอก — ห้ามเดาเอง ถ้าจำเป็นให้ถามเจ้าของ)
+''',
+        '''
+Call me: -
+Work: -
+Hours: -
+Languages: English
+Frequent contacts: -
+May decide alone: confirming times, acknowledgements
+Always ask first: pricing, discounts, contracts, payments, personal data
+(A line with - has not been filled in yet — never guess it; ask the owner if it matters)
+''',
+      );
+
+  /// โปรไฟล์ตั้งต้นรุ่นเก่า (คนสมมติ) ที่ยังค้างอยู่ในเครื่องที่เคยบันทึกไว้
+  ///
+  /// ใครที่ไม่เคยแก้เองแต่ค่าถูกเขียนลงเครื่องไปแล้ว (เช่นตอนสลับภาษา) จะยัง
+  /// ถือ "คุณเอ็กซ์" อยู่ตลอดไปถ้าไม่ตามไปเปลี่ยน · เทียบทั้งก้อนเท่านั้น
+  /// ถ้าแก้ไปแม้แต่ตัวเดียว = ของเขาเอง ห้ามแตะ
+  static bool isLegacyDefaultProfile(String v) {
+    final t = v.trim();
+    return t == _legacyOwnerTh.trim() || t == _legacyOwnerEn.trim();
+  }
+
+  static const _legacyOwnerTh = '''
 ชื่อเรียก: คุณเอ็กซ์
 งาน: เจ้าของกิจการ ดูแลงานออกแบบและงานขายเอง
 เวลาทำงาน: จันทร์–ศุกร์ 09:00–18:00 · เสาร์บ่ายบางครั้ง
@@ -22,8 +61,9 @@ abstract final class MindPersona {
 เรื่องที่ตัดสินใจแทนได้: เลื่อนนัด ยืนยันเวลา ตอบรับทราบ ส่งไฟล์ที่เคยส่งแล้ว
 เรื่องที่ต้องถามก่อนเสมอ: ราคา ส่วนลด สัญญา การจ่ายเงิน ข้อมูลส่วนตัว
 เพดานส่วนลดที่อนุมัติเองได้: 5% (เกินกว่านี้ต้องถาม)
-''',
-        '''
+''';
+
+  static const _legacyOwnerEn = '''
 Call me: X
 Work: business owner, handles design and sales personally
 Hours: Mon–Fri 09:00–18:00 · occasional Saturday afternoons
@@ -32,8 +72,7 @@ Frequent contacts: Ton (design team) · Napa (artwork) · Wichai (Siamtech, clie
 May decide alone: rescheduling, confirming times, acknowledgements, resending files already sent
 Always ask first: pricing, discounts, contracts, payments, personal data
 Discount ceiling without asking: 5%
-''',
-      );
+''';
 
   /// ขอบเขตการตอบ — เธอทำอะไรได้ ทำอะไรไม่ได้
   /// ค่าตั้งต้นเขียนแบบ default-deny ตามหลักที่ปลอดภัยกว่า
@@ -323,6 +362,20 @@ Never, under any circumstances:
     );
   }
 
+  /// "ตอนนี้คือเมื่อไหร่" หนึ่งบรรทัด · ละเอียดถึงชั่วโมง ดูเหตุผลใน [system]
+  static String nowLine(DateTime now, AppLang lang) {
+    final hour = '${now.hour.toString().padLeft(2, '0')}:00';
+    if (lang == AppLang.th) {
+      const days = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
+      return 'ตอนนี้: วัน${days[now.weekday - 1]}ที่ '
+          '${now.day}/${now.month}/${now.year} ช่วงเวลา $hour น.';
+    }
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
+        'Saturday', 'Sunday'];
+    return 'Now: ${days[now.weekday - 1]} '
+        '${now.day}/${now.month}/${now.year}, in the $hour hour';
+  }
+
   static String system({
     required MindMode mode,
     required double flirt,
@@ -334,6 +387,7 @@ Never, under any circumstances:
     String memories = '',
     String schedule = '',
     String calls = '',
+    DateTime? now,
   }) {
     final s = S(lang);
 
@@ -360,8 +414,15 @@ Never, under any circumstances:
       ..writeln(s.pick(
         'ห้ามใส่อิโมจิ เพราะข้อความนี้จะถูกอ่านออกเสียง',
         'Never use emoji — this text will be read aloud.',
-      ))
-      ..writeln();
+      ));
+
+    // 🔴 โมเดลไม่มีนาฬิกา · ตารางนัดข้างล่างเขียนเป็นวันที่กับเวลา แต่ไม่มีใคร
+    // บอกว่า "ตอนนี้" คือเมื่อไหร่ "บ่ายนี้ว่างไหม" จึงได้คำตอบที่เดาเอา
+    //
+    // ละเอียดแค่ชั่วโมงโดยตั้งใจ · prompt ที่เปลี่ยนทุกนาทีบังคับให้สมอง
+    // ในเครื่องสร้าง session ใหม่แล้วอ่านทั้งบทซ้ำทุกตา ซึ่งช้ามากบนมือถือ
+    if (now != null) buffer.writeln(nowLine(now, lang));
+    buffer.writeln();
 
     if (onCall) {
       buffer

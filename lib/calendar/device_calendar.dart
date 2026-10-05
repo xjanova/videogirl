@@ -60,18 +60,30 @@ class CalendarEvent {
     if (begin == null || end == null) return null;
 
     final color = (raw['color'] as num?)?.toInt();
+    final allDay = raw['allDay'] == true;
+    // นัดที่ไม่มีเวลาจบ (บางบัญชีส่ง 0 มา) ให้ถือว่ายาวหนึ่งชั่วโมง
+    // ดีกว่าโชว์ว่าจบก่อนเริ่ม
+    final endMs = end > begin ? end : begin + (allDay ? 86400000 : 3600000);
     return CalendarEvent(
       id: (raw['id'] as num?)?.toInt() ?? begin,
       title: '${raw['title'] ?? ''}'.trim(),
-      begin: DateTime.fromMillisecondsSinceEpoch(begin),
-      // นัดที่ไม่มีเวลาจบ (บางบัญชีส่ง 0 มา) ให้ถือว่ายาวหนึ่งชั่วโมง
-      // ดีกว่าโชว์ว่าจบก่อนเริ่ม
-      end: DateTime.fromMillisecondsSinceEpoch(end > begin ? end : begin + 3600000),
-      allDay: raw['allDay'] == true,
+      begin: allDay ? _allDayDate(begin) : DateTime.fromMillisecondsSinceEpoch(begin),
+      end: allDay ? _allDayDate(endMs) : DateTime.fromMillisecondsSinceEpoch(endMs),
+      allDay: allDay,
       location: (raw['location'] as String?)?.trim(),
       calendar: raw['calendar'] as String?,
       color: color == null || color == 0 ? null : color,
     );
+  }
+
+  /// 🔴 นัดทั้งวันของ Android เก็บเป็น**เที่ยงคืน UTC** ไม่ใช่เวลาท้องถิ่น
+  ///
+  /// อ่านตรง ๆ ในไทย (UTC+7) นัดทั้งวันของเมื่อวานจะจบตอน 07:00 วันนี้ จึงค้าง
+  /// อยู่ใน "วันนี้" และ prompt ไปจนเจ็ดโมงเช้า · ส่วนโซนเวลาติดลบ นัดจะเลื่อน
+  /// ไปอยู่วันก่อนหน้าทั้งก้อน · เอาแค่วันที่จาก UTC มาสร้างเป็นวันท้องถิ่น
+  static DateTime _allDayDate(int ms) {
+    final u = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+    return DateTime(u.year, u.month, u.day);
   }
 }
 
@@ -100,8 +112,32 @@ class DeviceCalendar extends ChangeNotifier {
   ///
   /// เริ่มที่**ต้นวัน** ไม่ใช่ตอนนี้ เพราะนัดที่ผ่านไปแล้วเมื่อเช้ายังเป็นส่วนหนึ่ง
   /// ของวันนี้ · คนถามว่า "วันนี้มีอะไรบ้าง" ไม่ได้ถามว่า "เหลืออะไรบ้าง"
-  Future<void> load({int days = 7}) async {
-    _set(CalendarStage.loading);
+  Future<void> load({int days = 7}) {
+    // เรียกซ้อนกัน (กลับเข้าแอป + กดแท็บพร้อมกัน) = รอรอบเดียวกัน ไม่ยิงซ้ำ
+    return _loading ??= _load(days).whenComplete(() => _loading = null);
+  }
+
+  Future<void>? _loading;
+
+  /// โหลดใหม่ถ้าของที่มีเก่าแล้ว — เรียกตอนกลับเข้าแอปและตอนเปิดแท็บปฏิทิน
+  ///
+  /// 🔴 ของเดิมโหลดครั้งเดียวตอนเปิดแอป · ให้สิทธิ์ทีหลังแล้วแท็บยังขึ้นว่าต้อง
+  /// ให้สิทธิ์ · นัดที่เพิ่มทีหลังไม่โผล่ · ข้ามเที่ยงคืนแล้ว "วันนี้" ยังเป็นเมื่อวาน
+  /// และเธอตอบเรื่องตารางจากของเก่าทั้งหมด
+  Future<void> refreshIfStale({Duration maxAge = const Duration(minutes: 2)}) {
+    final at = _loadedAt;
+    final now = DateTime.now();
+    final stale = _stage != CalendarStage.ready ||
+        at == null ||
+        at.day != now.day ||
+        now.difference(at) > maxAge;
+    return stale ? load() : Future<void>.value();
+  }
+
+  Future<void> _load(int days) async {
+    // 🔴 มีรายการอยู่แล้ว = ห้ามสลับเป็นวงหมุนทั้งจอ · ดึงลงเพื่อรีเฟรชแล้ว
+    // รายการหายวับ (รวมถึงตัวดึงรีเฟรชเอง) แล้วค่อยกลับมา อ่านได้ว่าพัง
+    if (_stage != CalendarStage.ready) _set(CalendarStage.loading);
 
     // ถามระบบใหม่ทุกครั้ง ไม่เชื่อค่าที่จำไว้ — สิทธิ์ถูกถอนได้จากหน้าตั้งค่า
     // ของเครื่องตอนที่แอปเราไม่ได้อยู่หน้าจอ แล้วไม่มีใครมาบอกเรา
@@ -165,6 +201,9 @@ class DeviceCalendar extends ChangeNotifier {
     }
     return null;
   }
+
+  /// วันนี้ยังเหลือนัดไหม — คนละคำถามกับ [next] ที่มองไปทั้งสัปดาห์
+  bool get todayHasMore => today.any((e) => !e.isPast);
 
   /// จัดกลุ่มตามวัน สำหรับหน้าที่โชว์ทั้งสัปดาห์
   Map<DateTime, List<CalendarEvent>> get byDay {

@@ -40,7 +40,9 @@ class MindInCallService : InCallService() {
     override fun onCallRemoved(call: Call) {
         super.onCallRemoved(call)
         call.unregisterCallback(callback)
-        if (current == call) current = null
+        // 🔴 สายซ้อนจบไปหนึ่งสาย ≠ ไม่มีสายแล้ว · ของเดิมตั้ง null ทิ้ง จอสาย
+        // จึงปิดตัวเองทั้งที่สายแรกยังคุยอยู่ และวางสายจากจอนี้ไม่ได้อีก
+        if (current == call) current = pick(calls)
         if (calls.isEmpty()) {
             // 🔴 ต้องคืนเสียงก่อนปล่อย service เป็น null
             //
@@ -93,6 +95,20 @@ class MindInCallService : InCallService() {
         @JvmStatic
         var mindHandling = false
 
+        /** สายที่ควรเป็นตัวหลักจากหลายสาย: กำลังคุย > กำลังดัง > ตัวแรก */
+        private fun pick(calls: List<Call>): Call? =
+            calls.firstOrNull { stateOf(it) == Call.STATE_ACTIVE }
+                ?: calls.firstOrNull { stateOf(it) == Call.STATE_RINGING }
+                ?: calls.firstOrNull()
+
+        /** สายที่กำลังคุยอยู่จริง ไม่ว่าจะมีสายซ้อนดังอยู่หรือไม่ */
+        private fun activeCall(): Call? =
+            service?.calls?.firstOrNull { stateOf(it) == Call.STATE_ACTIVE }
+
+        /** มีมากกว่าหนึ่งสายอยู่ตอนนี้ไหม — สายซ้อน */
+        @JvmStatic
+        fun hasOtherCall(): Boolean = (service?.calls?.size ?: 0) > 1
+
         /** ทำเสียงออกลำโพงหรือหูฟัง · ใช้ตอนจะให้เธอพูดออกลำโพง */
         @JvmStatic
         fun setSpeaker(on: Boolean) {
@@ -125,13 +141,17 @@ class MindInCallService : InCallService() {
          */
         @JvmStatic
         fun callInfo(context: android.content.Context): Map<String, Any?> {
-            val call = current
+            // 🔴 "มีสายที่คุยอยู่ไหม" ต้องดูจากทุกสาย ไม่ใช่สายที่เพิ่งเข้ามา
+            // · สายซ้อนดังขึ้นมาระหว่างที่เธอคุยสายแรก = `current` ชี้ไปสายที่ดัง
+            // แล้วฝั่ง Dart เห็น live=false → ปิดบทสนทนาและคืนเสียงกลางสายแรก
+            val talking = activeCall()
+            val call = talking ?: current
             val state = stateOf(call)
             val number = call?.details?.handle?.schemeSpecificPart
             return mapOf(
                 "state" to state,
                 "live" to (state == Call.STATE_ACTIVE),
-                "ringing" to (state == Call.STATE_RINGING),
+                "ringing" to (stateOf(current) == Call.STATE_RINGING),
                 "mind" to mindHandling,
                 "speaker" to speakerOn(),
                 "number" to number,

@@ -289,11 +289,12 @@ class MindJournal extends ChangeNotifier {
     final db = _db;
     if (db != null) {
       try {
-        await db.clearJournal();
-        for (final e in _entries) {
-          await db.putJournal(_toRow(e));
-        }
-        await db.trimJournal(kJournalLimit);
+        // 🔴 ในธุรกรรมเดียว และจากสำเนารายการ ไม่ใช่รายการสด
+        // · ของเดิมล้างตารางแล้วใส่ทีละแถว — แอปถูกฆ่ากลางทาง (เจอบ่อยตอน
+        // สมองในเครื่องกินแรม) = ไทม์ไลน์หายทั้งหมด · และบันทึกสองเรื่องติดกัน
+        // ทำให้รายการถูกแก้ระหว่างวนลูป → ConcurrentModificationError
+        await db.replaceJournal(
+            [for (final e in List.of(_entries)) _toRow(e)], kJournalLimit);
         return;
       } on Object catch (e) {
         debugPrint('journal: เขียนลงฐานไม่ได้ ตกไปใช้ไฟล์ — $e');

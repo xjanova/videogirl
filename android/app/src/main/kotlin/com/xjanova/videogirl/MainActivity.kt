@@ -60,6 +60,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        dartAlive = true
         ensureWatchChannel()
         speech.attach(flutterEngine.dartExecutor.binaryMessenger)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
@@ -305,6 +306,7 @@ class MainActivity : FlutterActivity() {
     /// ตอนที่ยังฟังอยู่ = ไมค์ค้างจนกว่าระบบจะเก็บกวาดเอง ซึ่งอาจนาน
     override fun onDestroy() {
         speech.dispose()
+        dartAlive = false
         super.onDestroy()
     }
 
@@ -629,6 +631,15 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        /// ฝั่ง Dart (ที่เป็นคนคุยในสายจริง ๆ) ยังมีชีวิตอยู่ไหม
+        ///
+        /// จอสายเนทีฟรับสายเองได้ แต่**คุยไม่ได้** · บทสนทนาทั้งหมดอยู่ใน
+        /// CallSession ฝั่ง Dart · ดู InCallActivity.armAutoAnswer
+        @JvmStatic
+        @Volatile
+        var dartAlive = false
+            private set
+
         private const val CHANNEL = "giggok/system"
         private const val REQ_CAMERA = 8747
         private const val REQ_ALL_FILES = 8756

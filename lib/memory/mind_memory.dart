@@ -329,10 +329,9 @@ class MindMemory extends ChangeNotifier {
       try {
         // เขียนทับทั้งชุด · ความจำมีไม่เกิน 200 เรื่องตามเพดาน การไล่หา
         // ว่าอะไรเปลี่ยนบ้างแล้วเขียนเฉพาะตัวนั้น ซับซ้อนกว่าที่ได้คืน
-        await db.clearMemories();
-        for (final f in _facts) {
-          await db.putMemory(_toRow(f));
-        }
+        // 🔴 ในธุรกรรมเดียว + จากสำเนา · ล้างแล้วใส่ทีละแถวนอกธุรกรรม แล้วแอป
+        // ถูกฆ่ากลางทาง = ความจำหายทั้งหมด
+        await db.replaceMemories([for (final f in List.of(_facts)) _toRow(f)]);
         return;
       } on Object catch (e) {
         debugPrint('memory: เขียนลงฐานไม่ได้ ตกไปใช้ไฟล์ — $e');

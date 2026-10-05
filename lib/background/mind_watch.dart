@@ -80,9 +80,11 @@ class MindWatch extends ChangeNotifier {
     notifyListeners();
     try {
       await _ask('requestNotify');
-      await _service.startService();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(kPrefWatchEnabled, true);
+      // ให้ปลั๊กอินรู้ว่าเปิดเครื่องใหม่แล้วต้องเริ่มเอง — มันอ่านค่านี้จากการตั้งค่า
+      await configureMindBackground();
+      await _service.startService();
     } catch (e) {
       debugPrint('watch: เปิดไม่สำเร็จ — $e');
     } finally {
@@ -99,6 +101,8 @@ class MindWatch extends ChangeNotifier {
       _service.invoke('stop');
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(kPrefWatchEnabled, false);
+      // ไม่งั้นเปิดเครื่องรอบหน้าบริการจะกลับมาเอง ทั้งที่เพิ่งกดปิดไป
+      await configureMindBackground();
     } catch (e) {
       debugPrint('watch: ปิดไม่สำเร็จ — $e');
     } finally {

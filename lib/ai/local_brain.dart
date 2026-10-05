@@ -11,7 +11,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
@@ -20,19 +22,24 @@ import 'openai_client.dart';
 
 /// รุ่นที่เลือกได้ — ทุกตัวเป็น Apache-2.0 โหลดได้โดยไม่ต้องมี token
 ///
-/// 🔴 **ไม่มีทางเดิน GPU ให้เลือก และไม่ใช่เพราะเราไม่อยากได้**
+/// ## 🔴 ไฟล์เดียวกันรันได้ทั้ง CPU และ GPU — ไม่ใช่ไฟล์ `-gpu`
 ///
-/// ไฟล์ `-gpu.litertlm` ของ litert-community สร้างเมื่อ 2026-08-06 ด้วยรูปแบบ
-/// ใหม่ที่ประกาศ `backend_constraint: gpu_artisan` และข้างในมีแต่ส่วน
-/// `gpu_artisan` กับ `tf_lite_artisan_text_decoder`
+/// ไฟล์ `-gpu.litertlm` ของ litert-community **ไม่ใช่ไฟล์ GPU ของ Android**
+/// มันขนาดเท่าไฟล์ `-web` ทุกไบต์ (2,008,432,640 สำหรับ E2B) คือรุ่น WebGPU
+/// ที่ประกาศ `gpu_artisan` · LiteRT-LM บน Android จึงตายด้วย
+/// `NOT_FOUND: TF_LITE_PREFILL_DECODE not found in the model` · ดู [retiredModels]
 ///
-/// LiteRT-LM 0.10.0 (ตัวที่ flutter_gemma 0.13.6 พ่วงมา) หาส่วนชื่อ
-/// `tf_lite_prefill_decode` ซึ่ง**ไม่มีอยู่ในไฟล์พวกนั้น** จึงตายตอนสร้าง engine
-/// ด้วยข้อความ `NOT_FOUND: TF_LITE_PREFILL_DECODE not found in the model`
-/// — อ่านหัวไฟล์จริงทั้งสี่ตัวจาก Hugging Face แล้วยืนยันด้วยตาเมื่อ 2026-09-03
+/// ไฟล์ปกติ (ไม่มีคำต่อท้าย) คือตัวที่ Google วัดบน Android ทั้ง CPU และ GPU
+/// (การ์ดโมเดล: S26 Ultra GPU อ่าน prompt 3,808 โทเค็น/วิ เทียบ CPU 557)
+/// อ่านหัวไฟล์ซ้ำเมื่อ 2026-10-05: `backend_constraint: cpu` ผูกอยู่กับ**ส่วน
+/// เสียงและภาพเท่านั้น** (`tf_lite_audio_adapter`, `tf_lite_vision_adapter`,
+/// `tf_lite_audio_encoder_hw`) ส่วนตัวคิดหลัก `tf_lite_prefill_decode` ไม่มีข้อจำกัด
+/// และมี `prefer_activation_type: fp16` ซึ่งเป็นของ GPU · บันทึกเก่าที่บอกว่า
+/// "ทั้งไฟล์เป็น cpu" อ่านป้ายผิดส่วน
 ///
-/// ไฟล์ที่ไม่มี `-gpu` ประกาศ `backend_constraint: cpu` และมีส่วนที่รันไทม์
-/// ตัวนี้ต้องการครบ · เราจึงเสนอเฉพาะตัวพวกนี้ ดู [retiredModels]
+/// ใช้ CPU หรือ GPU จึงไม่ใช่เรื่องของรุ่น แต่เป็นการตั้งค่าของ [LocalBrain]
+/// (ดู [LocalBrain.useGpu]) · `id` ยังลงท้าย `-cpu` เพราะมันคือชื่อที่ปลั๊กอิน
+/// จำไว้ว่าติดตั้งอะไรไปแล้ว เปลี่ยนชื่อ = เครื่องที่โหลดไว้ต้องโหลดใหม่ 2–4 GB
 enum GemmaVariant {
   e2bCpu(
     id: 'gemma-4-e2b-cpu',
@@ -41,7 +48,6 @@ enum GemmaVariant {
     file: 'gemma-4-E2B-it.litertlm',
     repo: 'litert-community/gemma-4-E2B-it-litert-lm',
     bytes: 2588147712,
-    backend: PreferredBackend.cpu,
   ),
   e4bCpu(
     id: 'gemma-4-e4b-cpu',
@@ -50,7 +56,6 @@ enum GemmaVariant {
     file: 'gemma-4-E4B-it.litertlm',
     repo: 'litert-community/gemma-4-E4B-it-litert-lm',
     bytes: 3659530240,
-    backend: PreferredBackend.cpu,
   );
 
   const GemmaVariant({
@@ -60,12 +65,10 @@ enum GemmaVariant {
     required this.file,
     required this.repo,
     required this.bytes,
-    required this.backend,
   });
 
   final String id, label, hint, file, repo;
   final int bytes;
-  final PreferredBackend backend;
 
   String get url => 'https://huggingface.co/$repo/resolve/main/$file';
 
@@ -82,6 +85,8 @@ enum GemmaVariant {
 }
 
 /// รุ่นที่เคยเสนอแล้วถอดออก — เก็บชื่อกับที่อยู่ไว้เพื่อ**ตามไปลบไฟล์**เท่านั้น
+///
+/// สองตัวนี้คือไฟล์ WebGPU ที่เคยเข้าใจผิดว่าเป็นไฟล์ GPU ของ Android (ดู [GemmaVariant])
 ///
 /// 🔴 ถอดออกจาก [GemmaVariant] เฉย ๆ ไม่พอ · คนที่โหลด `-gpu` ไปแล้วจะเหลือ
 /// ไฟล์ 2–3 GB ที่**ไม่มีปุ่มไหนในแอปลบได้อีกเลย** เพราะทั้งปุ่มลบและการ
@@ -111,8 +116,11 @@ class LocalBrain extends ChangeNotifier {
     S Function()? strings,
     GemmaVariant? initialVariant,
     this.onVariantPicked,
+    bool useGpu = true,
+    this.onUseGpuChanged,
   })  : _s = strings ?? _thai,
         _variant = initialVariant ?? GemmaVariant.e2bCpu,
+        _useGpu = useGpu,
         // รุ่นที่จำมาจากรอบก่อน = เขาเลือกเองไว้แล้ว · การตรวจอัตโนมัติ
         // ต้องไม่มาทับ ไม่งั้นการเลือกในหน้าตั้งค่าจะอยู่ได้แค่รอบเดียว
         _userPicked = initialVariant != null;
@@ -122,6 +130,119 @@ class LocalBrain extends ChangeNotifier {
 
   /// บอกฝั่งที่เก็บค่าว่าผู้ใช้เลือกรุ่นไหน — ต้องรอดข้ามการเปิดปิดแอป
   final void Function(GemmaVariant)? onVariantPicked;
+
+  // ── GPU ─────────────────────────────────────────────────
+  //
+  // ช้าบนมือถือคือการ**อ่าน prompt** ไม่ใช่การพิมพ์คำตอบ · prompt ของเธอยาว
+  // (บุคลิก ความจำ ตารางนัด และบทสนทนาที่เล่าย้อน) และ CPU อ่านได้ราว 557
+  // โทเค็น/วิ ส่วน GPU ราว 3,800 (การ์ดโมเดล S26 Ultra) · คำตอบแรกจึงต่างกัน
+  // หลายวินาทีต่อตา
+
+  /// ผู้ใช้อยากให้ใช้ GPU ไหม — ค่าตั้งต้นคือใช้
+  bool _useGpu;
+  bool get useGpu => _useGpu;
+
+  /// บอกฝั่งที่เก็บค่าว่าผู้ใช้เปิด/ปิด GPU
+  final void Function(bool)? onUseGpuChanged;
+
+  /// โมเดลที่เปิดอยู่ใช้อะไรคิดจริง · null = ยังไม่ได้เปิด
+  PreferredBackend? _activeBackend;
+  PreferredBackend? get activeBackend => _activeBackend;
+
+  /// คิดด้วย GPU อยู่จริงไหม · null = ยังไม่ได้เปิดโมเดล ยังไม่รู้
+  bool? get runningOnGpu => _activeBackend == null
+      ? null
+      : _activeBackend == PreferredBackend.gpu;
+
+  /// GPU ของเครื่องนี้ใช้ไม่ได้ — ลองแล้วล้ม หรือเคยพาแอปตายกลางทาง
+  bool _gpuBroken = false;
+  bool get gpuBroken => _gpuBroken;
+
+  /// ธงใน SharedPreferences — ต้องรอดการที่ process ตายกลางทาง
+  ///
+  /// ไดรเวอร์ GPU บางรุ่นพา process ล่มทั้งก้อนตอนเปิด engine ซึ่ง try/catch
+  /// จับไม่ได้ · ถ้าไม่จำไว้ แอปจะเปิด GPU → ตาย → เปิดใหม่ → ตาย วนไปไม่จบ
+  static const _kGpuTrying = 'gemmaGpuTrying';
+  static const _kGpuBroken = 'gemmaGpuBroken';
+
+  bool _gpuMemoLoaded = false;
+
+  Future<void> _loadGpuMemo() async {
+    if (_gpuMemoLoaded) return;
+    _gpuMemoLoaded = true;
+    try {
+      final p = await SharedPreferences.getInstance();
+      if (p.getBool(_kGpuTrying) ?? false) {
+        // รอบก่อนเปิด GPU ค้างไว้แล้วไม่เคยกลับมาบอกว่าจบ = แอปตายกลางทาง
+        debugPrint('gemma: รอบก่อนเปิด GPU แล้วแอปตาย — ใช้ CPU แทน');
+        await p.setBool(_kGpuBroken, true);
+        await p.remove(_kGpuTrying);
+      }
+      _gpuBroken = p.getBool(_kGpuBroken) ?? false;
+    } on Object catch (e) {
+      debugPrint('gemma: อ่านธง GPU ไม่ได้ — $e');
+    }
+  }
+
+  static Future<void> _writeGpuFlag(String key, bool v) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      v ? await p.setBool(key, true) : await p.remove(key);
+    } on Object catch (e) {
+      debugPrint('gemma: เขียนธง GPU ไม่ได้ — $e');
+    }
+  }
+
+  /// เปิด/ปิด GPU · เปิดใหม่ = ให้โอกาส GPU อีกรอบ แม้เคยล้มมาแล้ว
+  Future<void> setUseGpu(bool v) async {
+    if (_useGpu == v && !(v && _gpuBroken)) return;
+    _useGpu = v;
+    onUseGpuChanged?.call(v);
+    if (v && _gpuBroken) {
+      _gpuBroken = false;
+      await _writeGpuFlag(_kGpuBroken, false);
+    }
+    // โมเดลที่เปิดอยู่ผูกกับ backend เดิม · ปิดทิ้ง ตาถัดไปเปิดใหม่ด้วยค่าใหม่
+    await _release();
+    if (!_disposed) notifyListeners();
+  }
+
+  /// เปิดโมเดล — ลอง GPU ก่อน ไม่ได้ก็ CPU
+  ///
+  /// ปลั๊กอินเปิด engine จริงตอน `createModel` (ไม่ใช่ตอนสร้าง chat) และล้าง
+  /// สถานะตัวเองเมื่อล้ม จึงเรียกซ้ำด้วย CPU ได้ทันทีในรอบเดียวกัน
+  Future<InferenceModel> _createModel() async {
+    await _loadGpuMemo();
+    if (_useGpu && !_gpuBroken) {
+      await _writeGpuFlag(_kGpuTrying, true);
+      try {
+        final m = await _createWith(PreferredBackend.gpu);
+        _activeBackend = PreferredBackend.gpu;
+        return m;
+      } on Object catch (e) {
+        // เครื่องไม่มี OpenCL / หน่วยความจำ GPU ไม่พอ / ไดรเวอร์ไม่รองรับ
+        // · จำไว้ว่าเครื่องนี้ GPU ใช้ไม่ได้ ไม่ต้องรอให้มันล้มซ้ำทุกครั้งที่เปิดแอป
+        debugPrint('gemma: เปิด GPU ไม่ได้ ใช้ CPU แทน — $e');
+        _gpuBroken = true;
+        await _writeGpuFlag(_kGpuBroken, true);
+      } finally {
+        await _writeGpuFlag(_kGpuTrying, false);
+      }
+    }
+    final m = await _createWith(PreferredBackend.cpu);
+    _activeBackend = PreferredBackend.cpu;
+    return m;
+  }
+
+  Future<InferenceModel> _createWith(PreferredBackend backend) =>
+      FlutterGemmaPlugin.instance.createModel(
+        modelType: ModelType.gemmaIt,
+        fileType: ModelFileType.litertlm,
+        preferredBackend: backend,
+        // มายด์ตอบสั้น แต่ system prompt (ข้อมูลเจ้าของ + ขอบเขต) ยาวพอควร
+        // และตอนที่ต้องเล่าบทสนทนาย้อนหลัง คำถามเดียวก็ยาวได้หลายพันตัวอักษร
+        maxTokens: 8192,
+      );
 
   GemmaVariant _variant;
   GemmaVariant get variant => _variant;
@@ -144,6 +265,8 @@ class LocalBrain extends ChangeNotifier {
   /// และเปลี่ยนได้จริงระหว่างใช้งาน (โหลดเสร็จ ลบทิ้ง สลับรุ่น)
   Future<void> detectDevice() async {
     _device ??= await DeviceCapability.detect();
+    // หน้าตั้งค่าต้องรู้ตั้งแต่ก่อนทักคำแรก ว่าเครื่องนี้ GPU เคยใช้ไม่ได้
+    await _loadGpuMemo();
 
     // 🔴 **ต้องรู้ก่อนว่ามีอะไรโหลดไว้แล้ว ก่อนจะไปเลือกรุ่นให้เขา**
     //
@@ -276,6 +399,14 @@ class LocalBrain extends ChangeNotifier {
   /// คำว่า "Bad state:" จะหลุดถึงหน้าจอ
   @visibleForTesting
   static String shortenError(Object e) {
+    // 🔴 ข้อผิดพลาดจากเนทีฟมาเป็น `PlatformException(code, message, …)`
+    // ซึ่งไม่มีโคลอนหลังชื่อคลาส ตัวตัดข้างล่างจึงจับไม่ได้ แล้วทั้งก้อนดิบ
+    // ไปขึ้นกลางแชท · ใช้แค่ข้อความของมัน
+    if (e is PlatformException) {
+      return shortenError(e.message?.trim().isNotEmpty == true
+          ? e.message!
+          : e.code);
+    }
     final first = e
         .toString()
         .split('\n')
@@ -325,6 +456,10 @@ class LocalBrain extends ChangeNotifier {
       );
 
   Future<void> selectVariant(GemmaVariant v) async {
+    // 🔴 ห้ามสลับกลางการโหลด · การโหลดที่ยังวิ่งอยู่จะไปตรวจความครบและเข้า
+    // ทะเบียนกับรุ่นที่**เพิ่งเลือก** แทนรุ่นที่มันโหลดจริง แล้วปุ่มโหลดโผล่
+    // กลับมาให้กดซ้อนอีกตัว
+    if (_stage == LocalModelStage.downloading) return;
     // ผู้ใช้เลือกเอง = การตรวจอัตโนมัติต้องไม่มาเปลี่ยนทับทีหลัง
     _userPicked = true;
     onVariantPicked?.call(v);
@@ -411,6 +546,10 @@ class LocalBrain extends ChangeNotifier {
 
   /// เช็คว่าโมเดลอยู่ในเครื่องแล้วหรือยัง — ไล่ **ทุกรุ่น** ไม่ใช่เฉพาะรุ่นที่เลือก
   Future<void> refresh() async {
+    // กำลังโหลดอยู่ = สถานะจริงคือ "กำลังโหลด" · สแกนตอนนี้จะเขียนทับเป็น
+    // missing แล้วแถบความคืบหน้าหาย ปุ่มโหลดโผล่กลับมาทั้งที่ยังโหลดอยู่
+    // (แตะสมองตัวเดิมซ้ำในหน้าตั้งค่าก็มาถึงตรงนี้)
+    if (_stage == LocalModelStage.downloading) return;
     try {
       await _ensurePlugin();
       await _sweepRetired();
@@ -441,6 +580,9 @@ class LocalBrain extends ChangeNotifier {
 
   /// โหลดโมเดลลงเครื่อง — หลาย GB ต้องมีไวไฟและพื้นที่ว่างพอ
   Future<void> download() async {
+    if (_stage == LocalModelStage.downloading) return; // แตะซ้ำ = ไม่โหลดซ้อน
+    // ผูกกับรุ่นที่เริ่มโหลด ไม่ใช่รุ่นที่เลือกอยู่ตอนจบ
+    final v = _variant;
     _progress = 0;
     _bytesPerSecond = 0;
     _startedAt = DateTime.now();
@@ -448,7 +590,7 @@ class LocalBrain extends ChangeNotifier {
     try {
       await _ensurePlugin();
       final stream = FlutterGemmaPlugin.instance.modelManager
-          .downloadModelWithProgress(_spec(_variant));
+          .downloadModelWithProgress(_spec(v));
       await for (final p in stream) {
         if (_disposed) return;
         _progress = p.currentFileProgress;
@@ -465,20 +607,20 @@ class LocalBrain extends ChangeNotifier {
       // สตรีมจบไม่ได้แปลว่าไฟล์ครบ · เน็ตหลุดกลางทางแล้วสตรีมปิดตัวเองเงียบ ๆ
       // ก็มาถึงบรรทัดนี้เหมือนกัน · ถ้าไม่ตรวจ ผู้ใช้จะได้ไฟล์ครึ่งเดียวที่
       // ระบบบอกว่า "พร้อมใช้" แล้วไปเจอข้อความ engine ที่แปลไม่ออกตอนกดคุย
-      if (!await isComplete(_variant)) {
+      if (!await isComplete(v)) {
         // ลบทิ้งเลย · เก็บไว้แปลว่ารอบหน้า `isModelInstalled` ยังตอบ true
         // แล้วผู้ใช้จะติดอยู่ในวงเดิมโดยไม่มีปุ่มให้กดโหลดใหม่
-        await _removeFile(_variant);
-        _installed.remove(_variant);
+        await _removeFile(v);
+        _installed.remove(v);
         _set(LocalModelStage.failed, error: _s().errModelIncomplete);
         return;
       }
 
       // โหลดจบแล้วต้องเข้าทะเบียนทันที ไม่ต้องรอสแกนรอบหน้า ไม่งั้นสลับไป
       // รุ่นอื่นแล้วกลับมาจะขึ้นปุ่มโหลดซ้ำทั้งที่เพิ่งโหลดเสร็จ
-      _installed.add(_variant);
+      _installed.add(v);
       _set(LocalModelStage.ready);
-    } on Exception catch (e) {
+    } on Object catch (e) {
       debugPrint('gemma: โหลดโมเดลไม่สำเร็จ — $e');
       _set(LocalModelStage.failed, error: _s().errDownloadModel(shortenError(e)));
     }
@@ -507,7 +649,8 @@ class LocalBrain extends ChangeNotifier {
   /// ให้เธอคิดคำตอบโดยไม่ต่อเน็ต
   ///
   /// [system] เปลี่ยนได้ทุกครั้ง (โหมด/ระดับการจีบ/ข้อมูลเจ้าของ)
-  /// systemInstruction ผูกกับ session ตอนสร้าง จึงต้องสร้าง chat ใหม่เมื่อมันเปลี่ยน
+  /// systemInstruction ผูกกับ session ตอนสร้าง จึงต้องสร้าง chat ใหม่เมื่อมัน
+  /// เปลี่ยน**จริง** (ดู [sessionKeyOf] ว่าอะไรนับว่าเปลี่ยน)
   /// คิวของงานที่ยิงเข้าโมเดลตัวเดียวกัน
   ///
   /// 🔴 **มีสองคนเรียกพร้อมกันได้จริง** — การคุยปกติ กับการสกัดความจำที่ถูก
@@ -610,7 +753,15 @@ class LocalBrain extends ChangeNotifier {
     }
   }
 
-  String _withTranscript(List<Turn> history) => transcriptFor(history, _s());
+  String _withTranscript(List<Turn> history) =>
+      transcriptFor(history, _s(), her: herName?.call());
+
+  /// ชื่อที่เจ้าของตั้งให้เธอ · null = ชื่อเดิม
+  ///
+  /// 🔴 ป้ายในบทที่เล่าย้อนต้องเป็นชื่อเดียวกับใน system prompt · ตั้งชื่อใหม่แล้ว
+  /// บทยังเขียนว่า "มายด์:" = โมเดลเห็นสองคน คนหนึ่งชื่อใหม่ อีกคนชื่อเก่าที่พูด
+  /// ทุกบรรทัดของเธอ
+  String? Function()? herName;
 
   /// บทสนทนาก่อนหน้าเป็นข้อความก้อนเดียว ต่อท้ายด้วยคำที่เพิ่งพิมพ์มา
   ///
@@ -620,13 +771,14 @@ class LocalBrain extends ChangeNotifier {
   /// เข้ามาคือฝั่งผู้ใช้ แล้วคำตอบเก่าของเธอจะกลายเป็นคำที่เจ้าของพูด
   /// ติดป้ายเองในข้อความจึงเป็นวิธีเดียวที่บทบาทไม่สลับ
   @visibleForTesting
-  static String transcriptFor(List<Turn> history, S s) {
+  static String transcriptFor(List<Turn> history, S s, {String? her}) {
     if (history.isEmpty) return '';
     final past = history.sublist(0, history.length - 1);
     if (past.isEmpty) return history.last.text.trim();
 
+    final herLabel = (her?.trim().isNotEmpty ?? false) ? her!.trim() : s.speakerHer;
     final lines = past
-        .map((t) => '${t.fromHer ? s.speakerHer : s.speakerMe}: ${t.text}')
+        .map((t) => '${t.fromHer ? herLabel : s.speakerMe}: ${t.text}')
         .join('\n');
     return '${s.localRecap}\n$lines\n\n'
         '${s.speakerMe}: ${history.last.text.trim()}';
@@ -728,23 +880,54 @@ class LocalBrain extends ChangeNotifier {
     }
   }
 
+  /// session ที่เปิดอยู่เกิดเมื่อไหร่ และต่อมาแล้วกี่ตา
+  DateTime? _sessionAt;
+  int _sessionTurns = 0;
+
+  /// 🔴 ใช้ session เดิมต่อได้นานแค่ไหน แม้ตัวเลขใน prompt จะขยับไปแล้ว
+  ///
+  /// session ใหม่ = โมเดลต้องอ่าน prompt ทั้งก้อนและบทสนทนาที่เล่าย้อนใหม่
+  /// ทั้งหมด ซึ่งคือส่วนที่ช้าที่สุดบนมือถือ · ของเดิมสร้างใหม่ทุกครั้งที่ prompt
+  /// ต่างไปแม้แต่ตัวเลขเดียว และ prompt ของเธอมีตัวเลขที่ขยับทุกตา (ความผูกพัน
+  /// เป็น %, ระดับงอน, ชั่วโมงตอนนี้) = อ่านใหม่ทั้งบท**ทุกตา**
+  ///
+  /// ตอนนี้ตัวเลขที่ขยับไม่นับเป็นการเปลี่ยน (ดู [sessionKeyOf]) แต่ต้องมีเพดาน
+  /// ไม่งั้นเธอจะคิดด้วยตัวเลขเก่าไปตลอด · เปลี่ยนจริง (เรื่องใหม่ในความจำ
+  /// สายเข้าใหม่ สลับโหมด) ยังสร้างใหม่ทันทีเหมือนเดิม
+  static const _sessionMaxTurns = 8;
+  static const _sessionMaxAge = Duration(minutes: 30);
+
+  bool get _sessionFresh =>
+      _sessionTurns < _sessionMaxTurns &&
+      _sessionAt != null &&
+      DateTime.now().difference(_sessionAt!) < _sessionMaxAge;
+
+  /// ป้ายที่บอกว่า prompt สองก้อน "ต่างกันจริง" ไหม
+  ///
+  /// ตัวเลขทุกตัวถูกมองข้าม — ที่ขยับทุกตาคือตัวเลขล้วน (% ความผูกพัน,
+  /// ระดับงอน, จำนวนวันที่รู้จัก, ชั่วโมงตอนนี้) ส่วนเรื่องที่ควรสร้าง session
+  /// ใหม่ทันทีมาเป็น**บรรทัด**เสมอ (ความจำใหม่ นัดใหม่ สายใหม่ เริ่มงอน
+  /// เปลี่ยนสถานะความสัมพันธ์)
+  @visibleForTesting
+  static String sessionKeyOf(String system) =>
+      system.replaceAll(RegExp(r'\d+'), '#');
+
   /// คืนค่าว่า session ที่ได้ **ต่อจากบทสนทนาเดิมได้เลย** หรือเพิ่งเกิดใหม่
   Future<bool> _ensureChat(String system, List<Turn> history) async {
     await _ensurePlugin();
     if (_model == null) {
       _markActive();
-      _model = await FlutterGemmaPlugin.instance.createModel(
-        modelType: ModelType.gemmaIt,
-        fileType: ModelFileType.litertlm,
-        preferredBackend: _variant.backend,
-        // มายด์ตอบสั้น แต่ system prompt (ข้อมูลเจ้าของ + ขอบเขต) ยาวพอควร
-        // และตอนที่ต้องเล่าบทสนทนาย้อนหลัง คำถามเดียวก็ยาวได้หลายพันตัวอักษร
-        maxTokens: 8192,
-      );
+      _model = await _createModel();
       _loadedSystem = null;
+      if (!_disposed) notifyListeners(); // หน้าตั้งค่าบอกว่าใช้ GPU หรือ CPU อยู่
     }
 
-    if (_chat != null && _loadedSystem == system && _continues(history)) {
+    final key = sessionKeyOf(system);
+    if (_chat != null &&
+        _loadedSystem == key &&
+        _sessionFresh &&
+        _continues(history)) {
+      _sessionTurns++;
       return true;
     }
 
@@ -756,20 +939,36 @@ class LocalBrain extends ChangeNotifier {
       randomSeed: 1,
       systemInstruction: system,
     );
-    _loadedSystem = system;
+    _loadedSystem = key;
+    _sessionAt = DateTime.now();
+    _sessionTurns = 0;
     _fed = const [];
     return false;
   }
 
-  Future<void> _release() async {
+  /// ปล่อยโมเดล — **ต่อคิวเดียวกับการคิดคำตอบ**
+  ///
+  /// สลับรุ่น/ลบโมเดลระหว่างที่เธอกำลังคิดอยู่ = ปิด session ที่เนทีฟกำลัง
+  /// สร้างคำตอบให้อยู่ · ต่อคิวไว้ ให้คำตอบที่ค้างอยู่จบก่อนค่อยปล่อย
+  Future<void> _release() {
+    final done = Completer<void>();
+    _queue = _queue.then((_) async {
+      await _releaseNow();
+      done.complete();
+    });
+    return done.future;
+  }
+
+  Future<void> _releaseNow() async {
     try {
       await _chat?.close();
       await _model?.close();
-    } on Exception {
+    } on Object {
       // ปิดไม่ได้ก็ปล่อย จะสร้างใหม่รอบหน้าอยู่แล้ว
     }
     _chat = null;
     _model = null;
+    _activeBackend = null;
     _loadedSystem = null;
     // session ที่ถือประวัติไว้ตายไปพร้อมกัน · ไม่ล้างที่นี่ = ตาถัดไปเชื่อว่า
     // เนทีฟยังจำบทสนทนาเดิมได้ แล้วส่งไปแค่คำเดียวให้ session ที่ว่างเปล่า

@@ -47,6 +47,8 @@
     <!-- Android 14 (API 34) บังคับว่าถ้าใช้ foregroundServiceType ต้องขอสิทธิ์
          ที่คู่กันด้วย ไม่งั้น startForeground โยน SecurityException ทันที -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- บริการเฝ้างานของเธอใช้ specialUse ไม่ใช่ dataSync — ดูที่ <service> ข้างล่าง -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
 
     <!-- Android 13 (API 33) การแจ้งเตือนกลายเป็นสิทธิ์ที่ต้องขอ
          ไม่ได้ขอ = บริการรันอยู่จริงแต่ผู้ใช้ไม่เห็นอะไรเลย -->
@@ -131,9 +133,12 @@
 
              ทั้งสอง Activity เป็นเนทีฟล้วน ไม่ใช่ Flutter เพราะต้องขึ้นได้
              ทันทีโดยไม่รอ engine — สายดังแล้วจอว่างหลายวินาที = รับสายไม่ได้ -->
+        <!-- exported="false" · จอนี้เปิดจาก InCallService ของเราเองเท่านั้น
+             เปิดให้แอปอื่นสั่งเปิดได้ = จอที่มีปุ่มรับ/วางสายถูกเรียกขึ้นมาทับ
+             จอล็อกได้จากแอปไหนก็ได้ -->
         <activity
             android:name=".InCallActivity"
-            android:exported="true"
+            android:exported="false"
             android:launchMode="singleInstance"
             android:excludeFromRecents="true"
             android:showOnLockScreen="true"
@@ -180,10 +185,21 @@
         <!-- ประเภทของ foreground service ต้องประกาศใน manifest
              ประกาศแค่ตอนเรียก startForeground ไม่พอ — Android ปฏิเสธ
              ปลั๊กอินประกาศ <service> มาให้แล้ว เราเติมแค่ประเภทเข้าไป -->
+        <!-- 🔴 specialUse ไม่ใช่ dataSync · Android 15 (API 35):
+             1. ห้ามเปิด dataSync จาก BOOT_COMPLETED — ปลั๊กอินดักแค่
+                SecurityException จึงเด้งทั้งแอปทุกครั้งที่เปิดเครื่อง
+             2. dataSync มีเพดาน 6 ชม. ต่อวัน แล้วระบบเรียก onTimeout ซึ่งปลั๊กอิน
+                ไม่ได้รับ = แอปเด้งราว 6 ชม. หลังเปิดสวิตช์เฝ้างาน
+             งานนี้ไม่ใช่ "ซิงก์ข้อมูล" อยู่แล้ว แต่เป็นผู้ช่วยที่เฝ้าอยู่ตลอด
+             (ต้องตรงกับ foregroundServiceTypes ใน lib/background/mind_background.dart) -->
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
-            android:foregroundServiceType="dataSync"
-            tools:node="merge" />
+            android:foregroundServiceType="specialUse"
+            tools:node="merge">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Personal assistant that keeps watching for updates and calls while the app is closed, at the owner's request"/>
+        </service>
 
         <!-- 🔴 ตัวนี้คือเหตุผลที่โหลดโมเดล Gemma ไม่ได้ (แก้ 1 ก.ย. 2026)
              ห้ามลบ และห้ามคิดว่าซ้ำกับตัวบน — คนละ service คนละปลั๊กอิน
@@ -214,6 +230,17 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- 🔴 GPU ของเครื่องสำหรับสมองในเครื่อง (LiteRT-LM ใช้ OpenCL)
+             Android 12+ ไม่ยอมให้แอปเปิดไลบรารีของผู้ผลิตเครื่องที่ไม่ได้ประกาศ
+             ไว้ตรงนี้ · ไม่ประกาศ = GPU เปิดไม่ขึ้นทุกเครื่อง แล้วตกไปใช้ CPU
+             ซึ่งอ่าน prompt ช้ากว่าราว 7 เท่า · required="false" เพราะเครื่อง
+             ที่ไม่มีก็ยังต้องติดตั้งแอปได้ (แค่ใช้ CPU ไป)
+             libvndksupport — ชิป Mali ต้องใช้ตัวนี้ถึงจะโหลด OpenCL ได้ -->
+        <uses-native-library android:name="libOpenCL.so" android:required="false"/>
+        <uses-native-library android:name="libOpenCL-car.so" android:required="false"/>
+        <uses-native-library android:name="libOpenCL-pixel.so" android:required="false"/>
+        <uses-native-library android:name="libvndksupport.so" android:required="false"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

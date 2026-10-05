@@ -494,7 +494,17 @@ class MindSoul extends ChangeNotifier {
   bool _askDone = false;
 
   /// สายที่เธออยากถามว่าใคร · null = ไม่มีอะไรค้างอยู่
-  String? get askAbout => _askDone ? null : _askAbout;
+  ///
+  /// หมดอายุเองด้วย · prompt บอกเธอว่า "เมื่อกี้มีสาย" ถ้าเจ้าของไม่ได้เปิดแอป
+  /// หลายวัน เธอจะถามถึงสายเมื่อสามวันก่อนว่าเป็นเรื่องเมื่อกี้
+  String? get askAbout {
+    if (_askDone) return null;
+    final at = _askAboutAt;
+    if (at != null && _now().difference(at) > _askFreshFor) return null;
+    return _askAbout;
+  }
+
+  static const _askFreshFor = Duration(hours: 12);
 
   DateTime? get askAboutAt => _askAboutAt;
 
