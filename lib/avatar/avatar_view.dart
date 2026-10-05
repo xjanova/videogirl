@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../i18n/strings.dart';
 import '../theme/tokens.dart';
+import 'stage_bridge.dart';
 
 /// อารมณ์ที่มายด์แสดงได้ — ตรงกับ MOOD_EXPRESSION ใน avatar.js
 /// ถ้าเพิ่มที่นี่ต้องไปเพิ่มใน BrainX ด้วย ไม่งั้นจะตกกลับเป็น neutral เงียบ ๆ
@@ -113,12 +114,14 @@ enum MindMocapPhase { off, starting, calibrating, live, failed }
 ///
 /// ทุกคำสั่งเงียบไว้ถ้าเวทียังไม่พร้อม เพราะ UI เรียกได้ตลอดเวลา
 /// (ผู้ใช้กดส่งข้อความได้ตั้งแต่วินาทีแรก แต่ VRM 33MB ยังโหลดไม่เสร็จ)
-class MindAvatarController extends ChangeNotifier {
+class MindAvatarController extends ChangeNotifier
+    implements MindLips, StudioStage {
   InAppWebViewController? _web;
   bool _ready = false;
   String? _error;
 
   /// โมเดลโหลดขึ้นเวทีแล้วหรือยัง (รวมคลิปท่าทางครบแล้ว)
+  @override
   bool get ready => _ready;
 
   /// **ตัวเธอขึ้นจอแล้ว** — มาก่อน [ready] หลายวินาที เพราะคลิปท่าทาง
@@ -221,6 +224,98 @@ class MindAvatarController extends ChangeNotifier {
     } catch (e) {
       debugPrint('avatar: เล่นเสียงไม่สำเร็จ — $e');
       return false;
+    }
+  }
+
+  // ── ปากตามเสียงในสาย (ดู MindLips) ───────────────────────
+
+  @override
+  Future<bool> prepareLips(Uint8List bytes, {required String mime}) async {
+    final web = _web;
+    if (web == null || !_ready || bytes.isEmpty) return false;
+    try {
+      final res = await web.callAsyncJavaScript(
+        functionBody: 'return await window.minde.lipsPrepare(b64, mime);',
+        arguments: {'b64': base64Encode(bytes), 'mime': mime},
+      );
+      return res?.error == null && res?.value == true;
+    } catch (e) {
+      debugPrint('avatar: เตรียมปากตามเสียงในสายไม่สำเร็จ — $e');
+      return false;
+    }
+  }
+
+  @override
+  Future<void> startLips({Duration lead = Duration.zero}) =>
+      _call('window.minde.lipsGo(${lead.inMilliseconds / 1000})');
+
+  @override
+  Future<void> restLips() => _call('window.minde.lipsRest()');
+
+  // ── สตูดิโอ: ฉากหลัง กล้อง อัดคลิป ───────────────────────
+
+  /// null = พื้นโปร่ง (เห็นพื้นของแอป) · '#rrggbb' = ฉากสีทึบ
+  @override
+  Future<void> setBackdrop(String? hex) =>
+      _call('window.minde.backdrop(${hex == null ? 'null' : _jsString(hex)})');
+
+  /// เวทีเต็มจอ — กล้องนิ่งตามช็อตที่เลือก ไม่ดึงเข้าออกเองตอนพูด
+  @override
+  Future<void> setStudio(bool on) => _call('window.minde.studio($on)');
+
+  /// บอกช็อตปัจจุบันให้เวทีรู้แน่ ๆ — [setMocapShot] ข้ามถ้าค่าเท่าเดิม
+  /// แต่ค่าฝั่งนี้กับฝั่งเวทีอาจไม่ตรงกันตั้งแต่เปิดแอป (เวทีเริ่มที่ face เสมอ)
+  @override
+  Future<void> syncMocapShot(MindMocapShot s) async {
+    _mocapShot = s;
+    notifyListeners();
+    await _call("window.minde.mocapShot('${s.name}')");
+  }
+
+  /// ผู้รับก้อนคลิป · ตั้งก่อนเริ่มอัด ล้างเมื่อจบ
+  @override
+  MindRecordingSink? recordingSink;
+
+  /// ไมค์ในเวทีอนุญาต**เฉพาะช่วงที่กำลังเริ่มอัดคลิปที่ขอไมค์** · นอกนั้นปฏิเสธ
+  /// เสมอ (ดู onPermissionRequest)
+  bool _micForRecording = false;
+
+  @override
+  Future<MindRecStart> startRecording({required bool mic}) async {
+    final web = _web;
+    if (web == null || !_ready) return const MindRecStart.failed('no-stage');
+    _micForRecording = mic;
+    try {
+      final res = await web.callAsyncJavaScript(
+        functionBody: 'return await window.minde.recStart(opts);',
+        arguments: {
+          'opts': {'mic': mic},
+        },
+      );
+      final v = res?.value;
+      if (res?.error != null || v is! Map || v['ok'] != true) {
+        return MindRecStart.failed('${res?.error ?? (v is Map ? v['why'] : v)}');
+      }
+      return MindRecStart(ok: true, mime: '${v['mime'] ?? ''}', mic: v['mic'] == true);
+    } catch (e) {
+      return MindRecStart.failed('$e');
+    } finally {
+      _micForRecording = false;
+    }
+  }
+
+  @override
+  Future<void> stopRecording() => _call('window.minde.recStop()');
+
+  void _onRecChunk(Map msg) {
+    final sink = recordingSink;
+    final b64 = msg['b64'];
+    final seq = (msg['seq'] as num?)?.toInt();
+    if (sink == null || b64 is! String || seq == null) return;
+    try {
+      sink.recChunk(seq, base64Decode(b64));
+    } on FormatException catch (e) {
+      sink.recFailed('chunk $seq: $e');
     }
   }
 
@@ -593,21 +688,37 @@ class _MindAvatarViewState extends State<MindAvatarView> {
                         // ฝั่งนี้จึงไม่ต้องยิงถามรัว ๆ ข้ามสะพานเอง
                         case 'mocap':
                           widget.controller._readMocap(msg);
+
+                        // คลิปที่สตูดิโออัดอยู่ — ก้อนละวินาที เรียงลำดับมาแล้ว
+                        case 'rec-chunk':
+                          widget.controller._onRecChunk(msg);
+                        case 'rec-done':
+                          widget.controller.recordingSink?.recDone(
+                            '${msg['mime'] ?? ''}',
+                            (msg['chunks'] as num?)?.toInt() ?? -1,
+                          );
+                        case 'rec-failed':
+                          debugPrint('avatar: อัดคลิปสะดุด — ${msg['why']}');
+                          widget.controller.recordingSink
+                              ?.recFailed('${msg['why']}');
                       }
                       return null;
                     },
                   );
                 },
-                // กล้องเชิดหุ่นขอ getUserMedia — อนุญาตเฉพาะกล้องเท่านั้น
+                // กล้องเชิดหุ่นขอ getUserMedia — อนุญาตกล้อง และไมค์**เฉพาะ**
+                // ตอนสตูดิโอกำลังเริ่มอัดคลิปที่เจ้าของเลือกให้อัดเสียงไมค์ด้วย
                 //
-                // สิทธิ์ระดับระบบถูกขอไปแล้วใน startMocap() ตรงนี้เป็นชั้นของ
-                // WebView ล้วน ๆ · กรองให้เหลือเฉพาะกล้องแทนที่จะ grant ทุกอย่าง
-                // ที่ขอมา ไม่ใช่เพราะไม่ไว้ใจหน้านี้ (เสิร์ฟจาก localhost ของเราเอง)
-                // แต่เพราะวันหลังถ้ามีใครเผลอเรียกไมค์ในหน้านั้น มันจะไม่ได้ไมค์ไป
-                // เงียบ ๆ โดยไม่มีใครสังเกต
+                // สิทธิ์ระดับระบบถูกขอไปแล้วก่อนหน้า ตรงนี้เป็นชั้นของ WebView
+                // ล้วน ๆ · กรองแทนที่จะ grant ทุกอย่างที่ขอมา ไม่ใช่เพราะไม่ไว้ใจ
+                // หน้านี้ (เสิร์ฟจาก localhost ของเราเอง) แต่เพราะถ้าวันหลังมีใคร
+                // เผลอเรียกไมค์ในหน้านั้น มันจะไม่ได้ไมค์ไปเงียบ ๆ โดยไม่มีใครสังเกต
                 onPermissionRequest: (_, request) async {
+                  final mic = widget.controller._micForRecording;
                   final wanted = request.resources
-                      .where((r) => r == PermissionResourceType.CAMERA)
+                      .where((r) =>
+                          r == PermissionResourceType.CAMERA ||
+                          (mic && r == PermissionResourceType.MICROPHONE))
                       .toList();
                   return PermissionResponse(
                     resources: wanted,

@@ -34,6 +34,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../ai/openai_client.dart';
+import '../avatar/stage_bridge.dart';
 import '../i18n/strings_ai.dart';
 import '../state/mind_state.dart';
 import '../system/permissions.dart';
@@ -74,11 +75,13 @@ class CallSession extends ChangeNotifier {
     MethodChannel? channel,
     AudioRecorder? recorder,
     MindPermissions? permissions,
+    MindLips? lips,
   })  : _watch = watch,
         _state = state,
         _ch = channel ?? kSystemChannel,
         _injectedRecorder = recorder,
-        _perms = permissions ?? MindPermissions() {
+        _perms = permissions ?? MindPermissions(),
+        _lips = lips {
     _watch.addListener(_onWatch);
   }
 
@@ -86,6 +89,17 @@ class CallSession extends ChangeNotifier {
   final MindState _state;
   final MethodChannel _ch;
   final MindPermissions _perms;
+
+  /// ปากของเธอบนเวที · null = ไม่มีเวที (เทสต์ / จอสายเนทีฟตอนล็อกเครื่อง)
+  final MindLips? _lips;
+
+  /// หน่วงปากไว้เท่านี้หลังสั่งเล่นทางเนทีฟ
+  ///
+  /// ฝั่งเนทีฟต้องสร้าง MediaPlayer อ่านหัวไฟล์ (prepareAsync) แล้วเสียงยัง
+  /// ต้องวิ่งผ่านบัฟเฟอร์ลำโพงอีกชั้น ก่อนจะ "ได้ยิน" จริง · ส่วนเวทีที่เตรียม
+  /// ไฟล์ไว้แล้วออกตัวแทบทันที · ไม่หน่วง = ปากนำเสียงจนดูเป็นพากย์
+  /// ค่านี้ประมาณจากสองช่วงนั้นรวมกัน ไม่ได้วัดจากเครื่องจริง
+  static const lipLead = Duration(milliseconds: 60);
 
   /// สร้างตอนใช้จริงเท่านั้น — AudioRecorder ผูก MethodChannel ตั้งแต่
   /// constructor เหมือน FlutterTts ถ้าสร้างทันทีจะพังในเทสต์ที่ยังไม่มี binding
@@ -214,9 +228,16 @@ class CallSession extends ChangeNotifier {
     }
   }
 
+  /// สายนี้เธอเป็นคนคุย และเริ่มเมื่อไหร่ — ใช้จดบันทึกตอนสายจบ
+  bool _handled = false;
+  DateTime? _startedAt;
+
   /// เริ่มบทสนทนาของสายนี้
   void _begin() {
-    _lines.clear();
+    // ส่งสายคืนให้เธอหลังเจ้าของแทรก = สายเดิม · บทสนทนาต่อจากเดิม ไม่ล้าง
+    if (!_handled) _lines.clear();
+    _handled = true;
+    _startedAt ??= DateTime.now();
     _deaf = false;
     _mute = false;
     _error = null;
@@ -243,6 +264,23 @@ class CallSession extends ChangeNotifier {
 
     unawaited(_stopListening());
     unawaited(_invoke('callEndAudio'));
+
+    // 🔴 จดเรื่องที่ฝากไว้ **ทุกสายที่เธอเป็นคนคุย** · ของเดิมพอวางสาย
+    // บทสนทนาหายไปกับหน่วยความจำ เจ้าของไม่มีทางรู้ว่าใครฝากอะไรไว้
+    if (_handled && _lines.isNotEmpty) {
+      unawaited(_state
+          .takeCallNote(
+            who: _who,
+            lines: [for (final l in _lines) (fromHer: l.fromHer, text: l.text)],
+            at: _startedAt,
+          )
+          .catchError((Object e) {
+        debugPrint('สาย: จดบันทึกไม่สำเร็จ — ${e.runtimeType}');
+        return null;
+      }));
+    }
+    _handled = false;
+    _startedAt = null;
     _notify();
   }
 
@@ -392,8 +430,8 @@ class CallSession extends ChangeNotifier {
   ///
   /// 🔴 **ห้ามส่งไปที่ WebView** ทั้งที่นั่นเป็นทางเสียงปกติของเธอ
   /// เสียงในสายต้องออกช่องเสียงของสายเท่านั้น ไม่งั้นจะดังซ้อนสองทาง
-  /// แล้วก้องกลับเข้าไปในสาย · ปากยังขยับอยู่ เพราะตอนอารมณ์ `calling`
-  /// LipSync ใช้จังหวะที่สร้างเอง ไม่ได้อ่านจากคลื่นเสียง
+  /// แล้วก้องกลับเข้าไปในสาย · ปากบนเวทียังขยับตามคำจริง เพราะเวทีเล่น
+  /// ไฟล์เดียวกันแบบปิดเสียงเพื่ออ่านคลื่น (ดู [MindLips])
   Future<void> _speak(String text, {bool remember = false}) async {
     if (text.trim().isEmpty) return;
     if (remember) _lines.add(CallLine.her(text));
@@ -406,10 +444,17 @@ class CallSession extends ChangeNotifier {
 
     final utterance = await _state.speakForCall(text);
 
+    // ปากของเธอบนเวทีอ่านคลื่นจากไฟล์เดียวกันนี้ (เล่นแบบปิดเสียง) · เตรียม
+    // ก่อนเช็กซ้ำ เพราะการถอดไฟล์ฝั่งเวทีกินเวลาเหมือนกัน
+    final lips = _lips;
+    final lipsReady = lips != null &&
+        await lips.prepareLips(utterance.bytes, mime: utterance.mime);
+
     // 🔴 เช็กซ้ำหลังสังเคราะห์ · ระหว่างนั้น (ครึ่งวิถึงหลายวิ) เจ้าของอาจแทรก
     // สายไปแล้ว และเสียงถูกโอนกลับเข้าหูฟังแล้ว · เล่นต่อ = เสียงเธอดังใส่หู
     // เจ้าของที่เพิ่งยกเครื่องขึ้นแนบ ซึ่งเป็นสิ่งที่ [bargeIn] มีไว้กันพอดี
     if (!_live || !_mind || _disposed) {
+      await lips?.restLips();
       if (_turn == CallTurn.talking) _turn = CallTurn.none;
       _notify();
       return;
@@ -417,10 +462,15 @@ class CallSession extends ChangeNotifier {
 
     final file = await _writeTemp(utterance.bytes, _extFor(utterance.mime));
 
+    // ปล่อยปากพร้อมสั่งเล่น ไม่รอ · รอ = ปากออกตัวทีหลังเสียงเสมอ
+    if (lipsReady) unawaited(lips.startLips(lead: lipLead));
     final ok = await _invoke<bool>('callSpeak', {
       'path': file.path,
       'stream': _state.callStream,
     });
+    // ปิดปากทุกครั้ง ทั้งจบปกติ ถูกแทรกสาย และวางสาย · ไม่ปิด = ปากค้าง
+    // พึมพำต่อ (กรณีเตรียมไม่สำเร็จ) ทั้งที่เธอเงียบไปแล้ว
+    if (lips != null) unawaited(lips.restLips());
 
     // 🔴 "เล่นไม่จบ" ไม่ได้แปลว่า "เปิดลำโพงไม่ได้" เสมอไป
     //

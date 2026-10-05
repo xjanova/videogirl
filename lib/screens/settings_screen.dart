@@ -13,6 +13,8 @@ import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
 import '../ai/openai_config.dart';
 import '../ai/secret_store.dart';
+import '../license/mind_license.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
 import '../avatar/avatar_pack.dart';
@@ -308,6 +310,26 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
     );
     if (ok == true) await mem.forgetAll();
+  }
+
+  /// คัดลอกไลเซนส์ของเครื่องนี้ แล้วเปิดหน้าผูกบัญชีบนเว็บ
+  ///
+  /// 🔴 คีย์ไม่ลงใน URL (ประวัติเบราว์เซอร์ + log ของเซิร์ฟเวอร์) · คัดลอกให้
+  /// แล้วบอกว่าต้องไปวางในช่องบนหน้านั้น
+  Future<void> _linkAccount(MindState state, S t) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    await Clipboard.setData(ClipboardData(text: state.licenseKey));
+    var opened = false;
+    try {
+      opened = await launchUrl(MindLicense.linkPage(state.storeBaseUrl),
+          mode: LaunchMode.externalApplication);
+    } on Object catch (e) {
+      debugPrint('license: เปิดหน้าผูกบัญชีไม่ได้ — $e');
+    }
+    messenger?.showSnackBar(SnackBar(
+      content: Text(opened ? t.licenseLinkCopied : t.shopBuyFailed),
+      duration: const Duration(seconds: 5),
+    ));
   }
 
   /// ถามก่อนทำสิ่งที่ย้อนกลับไม่ได้ — ลบ เขียนทับ ล้าง
@@ -678,6 +700,26 @@ class _SettingsScreenState extends State<SettingsScreen>
               MaterialPageRoute<void>(builder: (_) => const ShopScreen()),
             ),
           ),
+          // ชุดที่ซื้อบนเว็บผูกกับ**บัญชีเว็บ** ส่วนไลเซนส์ของแอปผูกกับ**เครื่อง**
+          // ต้องผูกสองอย่างเข้าหากันครั้งเดียว ไม่งั้นซื้อแล้วร้านในแอปไม่เห็น
+          if (state.licenseKey.isNotEmpty) ...[
+            const SizedBox(height: MindSpace.xs),
+            Align(
+              alignment: Alignment.center,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _linkAccount(state, t),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(t.licenseLinkAccount,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: mode.accent)),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: MindSpace.md),
           MindSectionLabel(t.packAdd),
           const SizedBox(height: MindSpace.sm),

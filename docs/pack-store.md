@@ -110,19 +110,29 @@ Authorization: Bearer <token>
 เจ้าของสั่งให้ดูของเดิม (TpingApp / WinXTools) แล้วทำตาม · **มีอยู่แล้วจริง
 และเคยยืนยันกับเซิร์ฟเวอร์สดแล้ว** ไม่ต้องคิดระบบใหม่
 
-**Base:** `https://xman4289.com/api/v1/license` (Laravel)
-เช็คสุขภาพ `GET /api/health` → `{status:healthy, api_version:v1}`
+> 🔴 **แก้ 2026-10-05** — ส่วนนี้เคยเขียนว่าให้ใช้ `/api/v1/license/*` และว่า
+> `register-device` ไม่มี · **ผิดทั้งคู่** ตัว `/api/v1/license/*` เป็นของเก่าที่ไม่
+> กรองตามสินค้า (หาคีย์ข้ามทุกสินค้า และ `demo` ตั้งต้นเป็น skidrow-killer)
+> ตอนนั้นยิงได้ 404 เพราะ**ยังไม่มีสินค้า `giggok` ในระบบ** ไม่ใช่เพราะ path ผิด
 
-**Routes (POST):** `/activate` · `/validate` · `/deactivate` · `/demo`
+**Base:** `https://xman4289.com/api/v1/product/giggok` (แบบเดียวกับ Tping)
 
-> ⚠️ path แบบ `/api/v1/products/{slug}/*` ที่เคยเขียนไว้ในเอกสารเก่า **ผิด**
-> ยิงจริงได้ 404 · และ `/register-device` **ไม่มี** อย่าเรียก
+**ที่แอปใช้จริง:** `POST /check-machine` · `{machine_id, drm_id, android_id}`
+→ หลังบ้าน**สร้าง FREE key ให้เอง**ถ้าเครื่องนี้ยังไม่มี (เจ้าของเลือกแบบ
+LocalVPN) · ลงแอปใหม่บนเครื่องเดิมได้คีย์เดิม · ดู `lib/license/mind_license.dart`
 
-**ฟิลด์ที่เซิร์ฟเวอร์บังคับ (ขาดแล้ว 422):**
-- `/validate` ต้องมี `machine_id` + `license_key`
-- `/activate` และ `/demo` ต้องมี `machine_fingerprint`
-- → ส่ง **ทั้งสองตัว** (ค่าแฮชเดียวกัน) พร้อม `product` · `device_name` · `app_version`
-- ต้องมี header `Accept: application/json` ไม่งั้น Laravel อาจตอบเป็น HTML
+**รหัสเครื่อง:** SHA-256 ของ `giggok:<Widevine id>` / `giggok:<ANDROID_ID>`
+คำนวณฝั่ง Kotlin (`MainActivity.deviceIds`) · ค่าดิบไม่เคยออกจากเครื่อง
+`machine_id` ต้องยาว 32–64 ตัว (hex 64 พอดี)
+
+**ซื้อชุดบนเว็บแล้วไม่เห็นในแอป:** ความเป็นเจ้าของผูกกับ `license_keys.user_id`
+ซึ่ง FREE key ของเครื่องไม่มี · ผู้ใช้ผูกครั้งเดียวที่ `{base}/giggok/link`
+(ต้องล็อกอินบนเว็บ · แอปคัดลอกคีย์ให้ ไม่ใส่คีย์ลงใน URL)
+
+**ทางอื่นที่มี (ยังไม่ได้ใช้):** `register-device` · `activate` · `validate` ·
+`deactivate` · `demo` · `demo/check` · `pricing` — ฟิลด์ดูที่
+`xmanstudio/app/Http/Controllers/Api/ProductLicenseController.php`
+· ต้องมี header `Accept: application/json` ไม่งั้น Laravel อาจตอบเป็น HTML
 
 **ผลลัพธ์สำเร็จ:** `{success:true, data:{type, expires_at, days_remaining, …}}`
 `type` ∈ `lifetime` `yearly` `monthly` `weekly` `daily` `demo` `free`

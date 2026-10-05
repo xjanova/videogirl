@@ -65,6 +65,12 @@ class MindSpeech(private val activity: MainActivity) {
                     cancel()
                     result.success(true)
                 }
+                "transcribeFile" -> transcribeFile(
+                    call.argument<String>("path"),
+                    call.argument<String>("locale") ?: "th-TH",
+                    call.argument<Int>("rate") ?: 16000,
+                    result,
+                )
                 else -> result.notImplemented()
             }
         }
@@ -137,6 +143,128 @@ class MindSpeech(private val activity: MainActivity) {
                 recognizer?.stopListening()
             } catch (e: Throwable) {
                 finish()
+            }
+        }
+    }
+
+    /**
+     * ถอดเสียงจากไฟล์ WAV ที่อัดไว้แล้ว — **ใช้ตอนรับสายแทน**
+     *
+     * ## 🔴 ทำไมไม่ให้ตัวถอดเสียงฟังไมค์เองเหมือนในแชท
+     *
+     * ระหว่างมีสาย Android ไม่ยอมให้แอปอื่นแย่งไมค์ (บริการถอดเสียงคือแอปของ
+     * ระบบ ไม่ใช่เรา) · เราเป็นแอปโทรศัพท์หลักจึงอัดได้ แล้ว**ป้อนเสียงที่อัดแล้ว**
+     * ให้ตัวถอดเสียงผ่าน `EXTRA_AUDIO_SOURCE` แทน — มีตั้งแต่ Android 13
+     *
+     * ยังเป็นตัว on-device เท่านั้น เสียงคู่สายไม่ออกนอกเครื่อง
+     * ตอบกลับเป็น map: `{text}` หรือ `{error: <ชื่อเหตุ>}` · ตอบครั้งเดียวเสมอ
+     */
+    private fun transcribeFile(
+        path: String?,
+        locale: String,
+        rate: Int,
+        result: MethodChannel.Result,
+    ) {
+        if (Build.VERSION.SDK_INT < 33) {
+            result.success(mapOf("error" to "unavailable"))
+            return
+        }
+        if (path.isNullOrEmpty() || !java.io.File(path).exists()) {
+            result.success(mapOf("error" to "failed"))
+            return
+        }
+        // ไมค์ของแชทกำลังฟังอยู่ = ตัวถอดเสียงไม่ว่าง · ปกติไม่เกิดเพราะแชทหยุด
+        // ไมค์เองตอนสายเข้า แต่ถ้าเกิด ต้องตอบ ไม่ใช่ค้าง
+        if (listening) {
+            result.success(mapOf("error" to "busy"))
+            return
+        }
+
+        activity.runOnUiThread {
+            var done = false
+            var r: SpeechRecognizer? = null
+            var pipe: Array<android.os.ParcelFileDescriptor>? = null
+            val ui = android.os.Handler(android.os.Looper.getMainLooper())
+            var best = ""
+
+            fun finish(v: Map<String, Any?>) {
+                if (done) return
+                done = true
+                ui.removeCallbacksAndMessages(null)
+                try { r?.destroy() } catch (e: Throwable) {}
+                try { pipe?.get(0)?.close() } catch (e: Throwable) {}
+                result.success(v)
+            }
+
+            try {
+                val p = android.os.ParcelFileDescriptor.createPipe()
+                pipe = p
+                val rec = SpeechRecognizer.createOnDeviceSpeechRecognizer(activity)
+                r = rec
+                rec.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {}
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                    override fun onPartialResults(partial: Bundle?) {
+                        partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            ?.firstOrNull()?.takeIf { it.isNotBlank() }?.let { best = it }
+                    }
+                    override fun onResults(results: Bundle?) {
+                        val text = results
+                            ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            ?.firstOrNull()?.takeIf { it.isNotBlank() } ?: best
+                        finish(mapOf("text" to text))
+                    }
+                    override fun onError(error: Int) {
+                        // ไม่เข้าใจทั้งก้อน แต่ได้ยินบางคำระหว่างทาง = ใช้คำนั้น
+                        if (best.isNotBlank()) finish(mapOf("text" to best))
+                        else finish(mapOf("error" to codeOf(error)))
+                    }
+                })
+
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(
+                        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                    )
+                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale)
+                    .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                    .putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, p[0])
+                    .putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
+                    .putExtra(
+                        RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING,
+                        android.media.AudioFormat.ENCODING_PCM_16BIT
+                    )
+                    .putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, rate)
+                rec.startListening(intent)
+
+                // เขียนเสียงเข้าท่อจากอีกเธรด · ข้ามหัว WAV 44 ไบต์ ตัวถอดเสียง
+                // ต้องการ PCM ดิบ · ปิดท่อ = บอกว่าเสียงหมดแล้ว ให้สรุปผล
+                val writeEnd = p[1]
+                Thread {
+                    try {
+                        java.io.FileInputStream(path).use { input ->
+                            input.skip(44)
+                            android.os.ParcelFileDescriptor.AutoCloseOutputStream(writeEnd)
+                                .use { out -> input.copyTo(out) }
+                        }
+                    } catch (e: Throwable) {
+                        try { writeEnd.close() } catch (_: Throwable) {}
+                    }
+                }.start()
+
+                // ตาข่ายรับ · ตัวถอดเสียงบางรุ่นไม่ตอบอะไรเลยถ้าไม่รองรับการป้อน
+                // เสียงเอง ต้องไม่ปล่อยให้สายค้างรอผลที่ไม่มีวันมา
+                ui.postDelayed({
+                    if (best.isNotBlank()) finish(mapOf("text" to best))
+                    else finish(mapOf("error" to "timeout"))
+                }, 20000)
+            } catch (e: Throwable) {
+                finish(mapOf("error" to "start", "detail" to (e.message ?: "")))
             }
         }
     }

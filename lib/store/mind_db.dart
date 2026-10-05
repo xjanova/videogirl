@@ -35,7 +35,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 /// รุ่นของโครงตาราง — ขึ้นทีละหนึ่งเมื่อเพิ่ม/แก้ตาราง แล้วเขียนทางอัปเกรดไว้
-const _schemaVersion = 1;
+///
+/// 2 = ตาราง `call_notes` (บันทึกสายที่มายด์รับแทน)
+const _schemaVersion = 2;
 
 /// ชื่อไฟล์ฐาน · ใช้ชื่อเดียวกันทั้งในพื้นที่แอปและในสำเนาข้างนอก
 /// จะได้ไม่ต้องเดาว่าไฟล์ไหนคู่กับไฟล์ไหนตอนไปส่องด้วยตัวจัดการไฟล์
@@ -84,9 +86,9 @@ class MindDb {
         await _createAll(d);
       },
       onUpgrade: (d, from, to) async {
-        // ยังไม่มีรุ่นเก่าให้อัปเกรด · เมื่อถึงวันนั้นเขียนทีละขั้นที่นี่
-        // อย่า drop แล้วสร้างใหม่ นั่นคือการลบข้อมูลของผู้ใช้ทิ้ง
+        // ทีละขั้น · อย่า drop แล้วสร้างใหม่ นั่นคือการลบข้อมูลของผู้ใช้ทิ้ง
         debugPrint('db: อัปเกรดโครงตาราง $from → $to');
+        if (from < 2) await _createCallNotes(d);
       },
     );
     final mind = MindDb._(db);
@@ -179,7 +181,49 @@ class MindDb {
         value TEXT NOT NULL
       )
     ''');
+
+    await _createCallNotes(d);
   }
+
+  /// สายที่มายด์รับแทน — ใครโทรมา ฝากอะไรไว้ และบทสนทนาเต็ม
+  ///
+  /// แยกจาก `journal` เพราะไทม์ไลน์เก็บบรรทัดสั้น (ตัดที่ 160 ตัวอักษร)
+  /// ส่วนเรื่องที่คนฝากไว้ต้องอ่านได้ครบทุกคำ · ทั้งสองใช้ id เดียวกัน
+  static Future<void> _createCallNotes(DatabaseExecutor d) async {
+    await d.execute('''
+      CREATE TABLE IF NOT EXISTS call_notes (
+        id         TEXT PRIMARY KEY,
+        at         INTEGER NOT NULL,
+        who        TEXT NOT NULL,
+        summary    TEXT NOT NULL,
+        transcript TEXT NOT NULL,
+        seen       INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await d.execute(
+        'CREATE INDEX IF NOT EXISTS idx_call_notes_at ON call_notes(at)');
+  }
+
+  // ═══ บันทึกสาย ═════════════════════════════════════════
+
+  Future<List<Map<String, Object?>>> allCallNotes({int limit = 100}) =>
+      _db.query('call_notes', orderBy: 'at DESC', limit: limit);
+
+  Future<void> putCallNote(Map<String, Object?> row) => _db.insert(
+        'call_notes',
+        row,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+  Future<void> setCallNoteSeen(String id) => _db.update(
+        'call_notes',
+        {'seen': 1},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+  Future<void> deleteCallNote(String id) =>
+      _db.delete('call_notes', where: 'id = ?', whereArgs: [id]);
 
   // ═══ ค่าตั้งค่า ════════════════════════════════════════
   //
@@ -440,6 +484,8 @@ class MindDb {
       await txn.delete('messages');
       await txn.delete('memories');
       await txn.delete('journal');
+      // บทสนทนาของคนที่โทรมาก็เป็นข้อมูลของผู้ใช้ · ล้างทั้งหมดต้องรวมตัวนี้
+      await txn.delete('call_notes');
     });
     _settings.clear();
   }

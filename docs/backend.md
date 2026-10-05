@@ -35,9 +35,24 @@
 การเพิกถอนก็ได้ฟรี ถ้าตัว resolve อ่าน `users.is_active` จาก DB ทุก request อยู่แล้ว —
 ปิดบัญชีฝั่งเว็บ ตัดมือถือทันที ไม่ต้องมีตาราง token
 
-## API ที่แอปเรียก
+## API ที่แอปเรียกจริงตอนนี้ (2026-10-05)
 
-ฐาน: `https://xman4289.com/api/giggok/v1`
+| ทำอะไร | ปลายทาง | ตัวยืนยัน |
+|---|---|---|
+| สมองพร็อกซี | `POST /api/ai/v1/chat/completions` (รูปแบบ OpenAI) | Bearer = ไลเซนส์ |
+| ร้านชุด | `GET /api/packs` · `GET /api/packs/mine` · `POST /api/packs/{id}/download` | Bearer = ไลเซนส์ (ของฟรีไม่ต้อง) |
+| ไลเซนส์ฟรีของเครื่อง | `POST /api/v1/product/giggok/check-machine` | รหัสเครื่องแฮช |
+| เช็ครุ่นใหม่ | `GET /api/v1/product/giggok/update/check?current_version=` | — |
+| รายงานบั๊ก/crash | `POST /api/v1/bug-reports` | — |
+| ผูกเครื่องกับบัญชีเว็บ | หน้าเว็บ `/giggok/link` (ผู้ใช้เปิดเอง) | ล็อกอินเว็บ |
+
+ทั้งหมดต้องมีสินค้า slug `giggok` (`requires_license=true`) ในหลังบ้าน ·
+ไม่มี = ไลเซนส์/ร้าน/พร็อกซีตอบ 401/404 หมด (เป็นแบบนั้นจริงจนถึง 2026-10-05)
+
+> ส่วนข้างล่างคือ**แผนเดิม**ก่อนมีปลายทางจริง — `/api/giggok/v1/*` ไม่มีอยู่
+> เก็บไว้เป็นบันทึกการตัดสินใจเท่านั้น
+
+ฐาน (แผนเดิม ไม่ได้ใช้): `https://xman4289.com/api/giggok/v1`
 
 ### สมอง
 

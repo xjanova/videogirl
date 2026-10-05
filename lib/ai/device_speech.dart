@@ -52,6 +52,15 @@ enum SttFault {
       };
 }
 
+/// เครื่องนี้ถอดเสียงในเครื่องจากไฟล์ไม่ได้ — ถามซ้ำก็ไม่ได้ผล
+class SttUnavailable implements Exception {
+  const SttUnavailable(this.fault);
+  final SttFault fault;
+
+  @override
+  String toString() => 'SttUnavailable(${fault.name})';
+}
+
 class DeviceSpeech {
   DeviceSpeech._(this._ch) {
     _ch.setMethodCallHandler(_onNative);
@@ -128,6 +137,34 @@ class DeviceSpeech {
       debugPrint('stt: สั่งหยุดไม่ได้ — $e');
       _finish(null, SttFault.failed);
     }
+  }
+
+  /// ถอดเสียงจากไฟล์ WAV ที่อัดแล้ว (16 บิต ช่องเดียว) — ใช้ตอนรับสายแทน
+  ///
+  /// คืนข้อความ (ว่างได้ = ไม่ได้ยินคำพูด) หรือโยน [SttUnavailable] พร้อมเหตุ
+  /// เมื่อเครื่องนี้ทำไม่ได้เลย (Android ต่ำกว่า 13 / ไม่มีชุดภาษา) ซึ่งผู้เรียก
+  /// ต้องหยุดถามซ้ำ ไม่ใช่วนส่งทุกเทิร์น
+  Future<String> transcribeFile(String path,
+      {required String locale, int rate = 16000}) async {
+    final Map<Object?, Object?>? m;
+    try {
+      m = await _ch.invokeMethod<Map<Object?, Object?>>('transcribeFile', {
+        'path': path,
+        'locale': locale,
+        'rate': rate,
+      });
+    } on Object catch (e) {
+      debugPrint('stt: ถอดไฟล์ไม่ได้ — ${e.runtimeType}');
+      throw const SttUnavailable(SttFault.unavailable);
+    }
+    final err = m?['error'];
+    if (err == null) return '${m?['text'] ?? ''}'.trim();
+    final fault = SttFault.parse(err);
+    return switch (fault) {
+      // ไม่ได้ยินคำพูด / ไม่ทันตอบ = เทิร์นนี้เงียบ ไม่ใช่เครื่องทำไม่ได้
+      SttFault.noMatch || SttFault.busy || SttFault.failed => '',
+      _ => throw SttUnavailable(fault),
+    };
   }
 
   /// ทิ้งรอบนี้ไปเลย ไม่เอาผล

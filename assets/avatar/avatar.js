@@ -205,10 +205,10 @@ export class Avatar {
         this._autoWait = false;
         this.mood = m in MOOD_EXPRESSION ? m : 'neutral';
 
-        // ตอนคุยโทรศัพท์ปากต้องขยับตลอด แต่**ไม่มีเสียงให้วิเคราะห์**
-        // เสียงในสายแตะไม่ได้ทั้งขาเข้าและขาออก · ถ้าไม่เปิดโหมดนี้
-        // เธอจะยกโทรศัพท์ขึ้นมาแล้วปากนิ่งสนิทตลอดสาย
-        this.lip.babble = this.mood === 'calling';
+        // 🔴 ไม่ผูกปาก "พึมพำ" กับอารมณ์ 'calling' อีกแล้ว · ของเดิมเปิดไว้ทั้งสาย
+        // ปากจึงขยับตลอดแม้ตอนที่คู่สายพูดและเธอควรเงียบฟัง · ตอนนี้ปากในสาย
+        // อ่านคลื่นจากเสียงจริงของประโยคที่เธอพูด (ดู prepareLips)
+        if (this.mood !== 'calling') this.lip.babble = false;
 
         this._applyMood();
         return this;
@@ -245,8 +245,37 @@ export class Avatar {
         }
     }
 
+    /**
+     * ปากตามเสียงที่เล่นที่อื่น (เสียงเธอในสายโทรศัพท์) — ดู LipSync.prepare
+     *
+     * ไม่แตะกล้อง ท่าทาง หรือธง speaking · ตอนอยู่ในสายคลิปถือโทรศัพท์เป็นคน
+     * เล่าเรื่อง ถ้าสั่ง setTalking ท่าคุยจะมาทับจนเธอวางโทรศัพท์ลงกลางสาย
+     *
+     * เตรียมไม่สำเร็จ = พึมพำแทนจนกว่าจะ [restLips] · ปากขยับแบบประมาณ
+     * ยังดีกว่าปากนิ่งทั้งที่ปลายสายกำลังได้ยินเธอพูด
+     */
+    async prepareLips(url) {
+        let ok = false;
+        try { ok = await this.lip.prepare(url); } catch { ok = false; }
+        this.lip.babble = !ok;
+        return ok;
+    }
+
+    async goLips(lead) {
+        try { return await this.lip.go(lead); } catch {
+            this.lip.babble = true;
+            return false;
+        }
+    }
+
+    restLips() {
+        this.lip.stop();
+        this.lip.babble = false;
+    }
+
     stop() {
         this.lip.stop();
+        this.lip.babble = false;
         this.speaking = false;
         this.motion?.setBusy(false);
         this.motion?.setTalking(false);
@@ -283,7 +312,7 @@ export class Avatar {
     setMocapShot(name) {
         if (!['face', 'bust', 'full'].includes(name)) return this.mocapShot;
         this.mocapShot = name;
-        if (this.mocap.active) this.framing?.hold(name);
+        if (this.mocap.active || this.studio) this.framing?.hold(name);
         return this.mocapShot;
     }
 
@@ -300,8 +329,84 @@ export class Avatar {
         this.mocap.stop();
         // คืนกล้องให้ตัวจัดฉากอัตโนมัติ · มันจำได้ว่าระหว่างล็อกมันอยากได้ช็อต
         // ไหน จึงคืนกลับกลางประโยคได้โดยไม่กระโดด
-        this.framing?.release();
+        // ยกเว้นในสตูดิโอ ซึ่งกล้องเป็นของเจ้าของตลอด ไม่ว่าจะเชิดอยู่หรือไม่
+        if (this.studio) this.framing?.hold(this.mocapShot);
+        else this.framing?.release();
         return this.mocap.status();
+    }
+
+    // ── สตูดิโอ: ฉากหลัง กล้อง และพื้นตอนอัดคลิป ──────────────────────────
+
+    /**
+     * โหมดสตูดิโอ — เวทีเต็มจอสำหรับแชร์หน้าจอเข้าวิดีโอคอล / ไลฟ์ / อัดคลิป
+     *
+     * 🔴 กล้องต้อง**นิ่งตามที่เจ้าของเลือก**ตลอด · ตัวจัดฉากอัตโนมัติที่ดึง
+     * เข้า bust ตอนพูดแล้วถอยออก full ตอนเงียบ คือภาพที่กระชากไปมาในสาย
+     * วิดีโอคอลของคนอื่น ซึ่งดูเป็นกล้องเสียมากกว่าการกำกับภาพ
+     */
+    setStudio(on) {
+        this.studio = !!on;
+        if (this.studio) this.framing?.hold(this.mocapShot);
+        else if (!this.mocap.active) this.framing?.release();
+        return this.studio;
+    }
+
+    /**
+     * ฉากหลังของเวที · null = โปร่ง (เห็นพื้นของแอปข้างหลัง) ·
+     * '#rrggbb' = สีทึบ — ฉากเขียว/ฟ้าสำหรับตัดพื้นในแอปไลฟ์หรือ OBS
+     *
+     * ใช้ scene.background ไม่ใช่สีของ Flutter ข้างหลัง เพราะคลิปที่อัดอ่าน
+     * จากผืนผ้าใบนี้ตรง ๆ · พื้นที่วาดฝั่ง Flutter ไม่ติดไปในคลิป
+     * three.js แปลงสีเข้า-ออก sRGB ให้เอง พิกเซลที่ออกมาจึงตรงกับรหัสสีเป๊ะ
+     * ซึ่งตัวคีย์สีต้องการ
+     */
+    setBackdrop(spec) {
+        const hex = typeof spec === 'string' && /^#[0-9a-f]{6}$/i.test(spec)
+            ? spec.toLowerCase() : null;
+        this.backdrop = hex;
+        this._applyBackdrop();
+        return hex;
+    }
+
+    /**
+     * กำลังอัดคลิปอยู่ไหม
+     *
+     * 🔴 ฉากโปร่ง + อัดคลิป = ได้พื้นดำ · ตัวเข้ารหัสวิดีโอทิ้งช่อง alpha
+     * พื้นไล่สีของแอปอยู่ฝั่ง Flutter ไม่ได้อยู่ในผืนผ้าใบ จึงวาดสีไล่ของแอป
+     * ลงฉากแทนระหว่างอัด แล้วเอาออกเมื่อจบ
+     */
+    setRecording(on) {
+        this._recording = !!on;
+        this._applyBackdrop();
+    }
+
+    _applyBackdrop() {
+        if (this.backdrop) {
+            this.scene.background = new THREE.Color(this.backdrop);
+        } else if (this._recording) {
+            this.scene.background = this._appGradient();
+        } else {
+            this.scene.background = null;
+        }
+    }
+
+    /** พื้นไล่สีเดียวกับหน้าแรกของแอป (MindGradients.home) */
+    _appGradient() {
+        if (this._gradient) return this._gradient;
+        const c = document.createElement('canvas');
+        c.width = 4;
+        c.height = 256;
+        const g = c.getContext('2d');
+        const grad = g.createLinearGradient(0, 0, 0, c.height);
+        grad.addColorStop(0, '#fff2e4');
+        grad.addColorStop(0.46, '#f1e9ff');
+        grad.addColorStop(1, '#e2f8ff');
+        g.fillStyle = grad;
+        g.fillRect(0, 0, c.width, c.height);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        this._gradient = tex;
+        return tex;
     }
 
     /** Re-measure the resting face — new puppeteer, or the same one moved. */
@@ -481,8 +586,15 @@ export class Avatar {
             // Note this feeds the SAME `shape()` the audio path uses. There is
             // one mouth model in this app, and only where its two numbers come
             // from changes.
-            const m = this.mocap.mouth();
-            this.lip.shape(m.open, m.spread);
+            //
+            // 🔴 ยกเว้นตอนที่**เธอพูดอยู่จริง** (เสียงในแอปหรือในสาย) · คนเชิด
+            // ปิดปากนั่งดูอยู่ ถ้ากล้องยังชนะ เธอจะพูดทั้งประโยคโดยปากนิ่งสนิท
+            // ซึ่งเป็นภาพที่ผิดที่สุดในโหมดสตูดิโอ · ตอนนั้นปากเป็นของคลื่นเสียง
+            // ส่วนสีหน้า สายตา และท่าหัวยังเป็นของกล้องเหมือนเดิม
+            if (!this.lip.speaking && !this.lip.babble) {
+                const m = this.mocap.mouth();
+                this.lip.shape(m.open, m.spread);
+            }
             this.lip.applyTo(this.vrm);
 
             const e = this.mocap.emote;
@@ -635,6 +747,7 @@ export class Avatar {
         this.mocap.dispose();
         this.motion?.dispose();
         if (this.vrm) VRMUtils.deepDispose?.(this.vrm.scene);
+        this._gradient?.dispose();
         this.renderer.dispose();
         this.renderer.domElement.remove();
     }

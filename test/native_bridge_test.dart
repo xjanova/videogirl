@@ -326,4 +326,51 @@ void main() {
         reason: 'คลิปพวกนี้ผูกกับอารมณ์ที่ไม่มีอยู่ จะไม่มีวันได้เล่น: '
             '${bad.join(', ')}');
   });
+
+  /// สตูดิโอผูกสามฝั่งด้วยชื่อสตริงล้วน — Dart ↔ Kotlin ↔ JS
+  ///
+  /// ชื่อหลุดฝั่งไหน ปุ่มนั้นกดแล้วเงียบ: Kotlin ตอบ notImplemented ที่ถูกกลืน
+  /// ใน MethodChannelStudio · JS ที่ไม่มีฟังก์ชันโยน TypeError ใน
+  /// evaluateJavascript ที่ `_call` จับทิ้งไว้แค่ใน log
+  test('ชื่อเมธอดของสตูดิโอและปากในสายตรงกันทั้งสามฝั่ง', () {
+    final dart = File('lib/studio/mind_studio.dart').readAsStringSync();
+    for (final m in ['keepScreenOn', 'enterPip', 'autoPip', 'saveVideo']) {
+      expect(dart, contains("'$m'"), reason: 'Dart ไม่ได้เรียก $m แล้ว — เทสต์ล้าสมัย');
+      expect(kotlin, contains('"$m" ->'), reason: 'MindStudio.kt ไม่มี $m');
+    }
+    expect(kotlin, contains('invokeMethod("onPip"'));
+    expect(dart, contains("call.method == 'onPip'"));
+
+    final view = File('lib/avatar/avatar_view.dart').readAsStringSync();
+    final html = File('assets/avatar/index.html').readAsStringSync();
+    for (final fn in [
+      'lipsPrepare', 'lipsGo', 'lipsRest',
+      'backdrop', 'studio', 'recStart', 'recStop',
+    ]) {
+      expect(view, contains('window.minde.$fn('), reason: 'Dart ไม่ได้เรียก $fn แล้ว');
+      expect(RegExp('^  $fn[,:]', multiLine: true).hasMatch(html), isTrue,
+          reason: 'window.minde ใน index.html ไม่มี $fn');
+    }
+    for (final ev in ['rec-chunk', 'rec-done', 'rec-failed']) {
+      expect(view, contains("case '$ev'"), reason: 'Dart ไม่ฟัง $ev');
+    }
+    final rec = File('assets/avatar/recorder.js').readAsStringSync();
+    for (final ev in ['rec-chunk', 'rec-done', 'rec-failed']) {
+      expect(rec, contains("'$ev'"), reason: 'recorder.js ไม่ส่ง $ev');
+    }
+  });
+
+  /// ไมค์ในเวทีต้องได้เฉพาะตอนเริ่มอัดคลิปที่ขอไมค์ · ปล่อยเปิดตลอด = หน้าเว็บ
+  /// ไหนเผลอเรียก getUserMedia({audio}) ก็ได้ไมค์ไปเงียบ ๆ
+  test('WebView ให้ไมค์เฉพาะตอนสตูดิโอกำลังเริ่มอัด', () {
+    final view = File('lib/avatar/avatar_view.dart').readAsStringSync();
+    expect(view, contains('(mic && r == PermissionResourceType.MICROPHONE)'));
+    expect(view, contains('_micForRecording = false;'),
+        reason: 'ต้องปิดสิทธิ์ไมค์คืนหลังเริ่มอัดเสร็จเสมอ (finally)');
+  });
+
+  test('จอลอยต้องประกาศใน manifest ไม่งั้น enterPictureInPictureMode โยนทิ้ง', () {
+    final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    expect(manifest, contains('android:supportsPictureInPicture="true"'));
+  });
 }

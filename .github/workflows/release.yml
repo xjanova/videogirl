@@ -214,3 +214,15 @@ jobs:
             dist/giggok-${{ steps.ver.outputs.version }}.apk
             dist/SHA256SUMS.txt
             dist/debug-symbols-${{ steps.ver.outputs.version }}.zip
+
+      # ปลุก xman studio ให้ดึง release นี้ทันที แทนที่จะรอรอบ sync 10–30 นาที
+      #
+      # แอปถามรุ่นใหม่จาก xman studio ก่อน GitHub (lib/update/updater.dart) ·
+      # ปลายทางนี้ sync แบบอ่านผ่าน (read-through) เอง จึงไม่ต้องมี webhook
+      # หรือ secret · แบบเดียวกับ NetX · ล้มก็ไม่เป็นไร รอบ sync ปกติเก็บให้
+      - name: แจ้ง xman studio ให้ดึงรุ่นใหม่
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 30 -o /dev/null \
+            "https://xman4289.com/api/v1/product/giggok/update/check?current_version=0.0.0" \
+            || echo "::warning::แจ้ง xman studio ไม่สำเร็จ — รอรอบ sync ปกติ"

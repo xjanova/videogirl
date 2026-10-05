@@ -50,11 +50,10 @@ export class LipSync {
 
         // ── พูดพึมพำ (ไม่มีเสียงให้วิเคราะห์) ──────────────────
         //
-        // 🔴 ตอนคุยโทรศัพท์ **ไม่มีเสียงของเธอให้ฟัง** เสียงในสายเป็นทางเดิน
-        // ที่แอปแตะไม่ได้ ทั้งขาเข้าและขาออก · ถ้าปากขยับตามเสียงอย่างเดียว
-        // เธอจะยกโทรศัพท์ขึ้นมาแล้วอ้าปากค้างไว้เฉย ๆ ตลอดสาย
-        //
-        // โหมดนี้จึงสร้างจังหวะปากขึ้นเอง ให้ดูเหมือนกำลังคุย
+        // ทางสำรองเท่านั้น · ปกติตอนอยู่ในสายปากอ่านคลื่นจากเสียงจริงที่เล่น
+        // แบบปิดเสียง (ดู prepare) · ใช้โหมดนี้เฉพาะตอนไฟล์นั้นเล่นไม่ได้
+        // และเปิดเฉพาะช่วงที่เธอพูด ไม่ใช่ทั้งสาย — ของเดิมเปิดทั้งสาย
+        // ปากจึงขยับอยู่ตลอดแม้ตอนที่คู่สายพูดและเธอควรเงียบฟัง
         this.babble = false;
         this._bT = 0;
         this._bOn = false;
@@ -63,28 +62,129 @@ export class LipSync {
         this._bRate = 0;
         this._open = 0;
         this._spread = 0;
+        this._tailUntil = 0;
+        this._nodes = [];
+        this._src = null;
+        this._lag = null;
+        this._ready = null;
+        /** ปลายทางอัดคลิป — ดู setTap */
+        this.tap = null;
         this.weights = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
     }
 
     /**
-     * Play an mp3 and drive the mouth from it. Resolves when it finishes.
+     * AudioContext ตัวเดียวของเวที — สร้างตอนใช้ครั้งแรก ไม่ใช่ใน constructor
      *
-     * The AudioContext is created HERE, not in the constructor: browsers refuse
-     * to start one outside a user gesture, and one created at load time arrives
-     * suspended and silently stays that way — audible as "her mouth never
-     * moves", with no error anywhere to explain it.
+     * Browsers refuse to start one outside a user gesture, and one created at
+     * load time arrives suspended and silently stays that way — audible as "her
+     * mouth never moves", with no error anywhere to explain it.
      */
-    async play(url) {
-        this.stop();
-        const audio = new Audio(url);
-        audio.crossOrigin = 'anonymous';
-        this.audio = audio;
-
+    async context() {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         this.ctx = this.ctx || new Ctx();
         if (this.ctx.state === 'suspended') { try { await this.ctx.resume(); } catch {} }
+        return this.ctx;
+    }
 
-        const an = this.ctx.createAnalyser();
+    /**
+     * ระยะจากที่ตัววิเคราะห์เห็นคลื่น ถึงที่ลำโพงออกเสียงจริง (วินาที)
+     *
+     * 🔴 ตัววิเคราะห์อ่านคลื่น**ก่อน**มันออกลำโพง · บนมือถือช่วงนั้นยาวพอ
+     * ให้เห็นว่าปากขยับนำเสียง โดยเฉพาะลำโพง Bluetooth ที่หน่วงเป็นร้อยมิลลิวินาที
+     * จึงหน่วงคลื่นฝั่งวิเคราะห์ไว้เท่าที่เบราว์เซอร์บอกว่าเสียงหน่วง
+     * เครื่องที่ไม่บอก (ค่าเป็น 0/undefined) = ไม่หน่วง เหมือนของเดิม
+     */
+    outputLag() {
+        const c = this.ctx;
+        const lag = (Number(c?.outputLatency) || 0) + (Number(c?.baseLatency) || 0);
+        return Math.min(0.3, Math.max(0, lag));
+    }
+
+    /**
+     * Play an mp3 and drive the mouth from it. Resolves when it finishes.
+     */
+    async play(url) {
+        this.stop();
+        const audio = this._element(url);
+        await this.context();
+        this._wire(audio, { audible: true, delay: this.outputLag() });
+        const { ended } = await this._start(audio);
+        return await ended;
+    }
+
+    /**
+     * เตรียมขยับปากตามเสียงที่**ไม่ได้เล่นที่นี่** — เสียงเธอในสายโทรศัพท์
+     *
+     * 🔴 ตอนอยู่ในสาย เสียงจริงออกทางเนทีฟ (ช่องเสียงสาย) ห้ามดังจากเวทีซ้ำ
+     * ของเดิมจึงให้ปาก "พึมพำ" แบบสุ่มไปตลอดทั้งสาย รวมทั้งตอนที่คู่สาย
+     * กำลังพูดและเธอควรเงียบฟัง · ตอนนี้เล่นไฟล์เดียวกันที่นี่แบบ**ปิดเสียง**
+     * (gain 0) แล้วอ่านคลื่นจากมันแทน ปากจึงขยับตามคำที่เธอพูดจริงในสาย
+     *
+     * แยกเป็นสองจังหวะ (prepare → go) เพราะการถอดไฟล์ใช้เวลาไม่แน่นอน
+     * ถ้าเริ่มพร้อมกับฝั่งเนทีฟเลย ปากจะคลาดจากเสียงไปตามเวลาถอดไฟล์
+     * เตรียมให้เสร็จก่อน แล้วค่อยปล่อยพร้อมเสียงจริง
+     *
+     * คืน true เมื่อพร้อม · false = เล่นไม่ได้ (ผู้เรียกตกไปพึมพำแทน)
+     */
+    async prepare(url) {
+        this.stop();
+        const audio = this._element(url);
+        audio.preload = 'auto';
+        await this.context();
+        const ok = await new Promise(res => {
+            const t = setTimeout(() => res(false), 3000);
+            audio.oncanplaythrough = () => { clearTimeout(t); res(true); };
+            audio.onerror = () => { clearTimeout(t); res(false); };
+            audio.load();
+        });
+        if (!ok || this.audio !== audio) return false;
+        this._wire(audio, { audible: false, delay: 0 });
+        this._ready = audio;
+        return true;
+    }
+
+    /**
+     * ปล่อยปากที่เตรียมไว้ · lead = วินาทีที่หน่วงคลื่นให้ตรงกับเสียงที่ออก
+     * ลำโพงจริง (ฝั่งเนทีฟต้องเตรียมเครื่องเล่นกับส่งเสียงออกลำโพงก่อน)
+     */
+    async go(lead = 0) {
+        const audio = this._ready;
+        this._ready = null;
+        if (!audio || this.audio !== audio) return false;
+        if (this._lag) this._lag.delayTime.value = Math.min(0.5, Math.max(0, lead));
+        await this._start(audio);
+        return true;
+    }
+
+    /**
+     * ปลายทางอัดคลิป — เสียงเธอทุกประโยคไหลเข้าที่นี่ด้วย (ทั้งที่ดังจากเวที
+     * และที่เล่นแบบปิดเสียงตอนอยู่ในสาย) · null = เลิกอัด
+     */
+    setTap(node) {
+        if (this.tap && this._src) { try { this._src.disconnect(this.tap); } catch {} }
+        this.tap = node || null;
+        if (this.tap && this._src) { try { this._src.connect(this.tap); } catch {} }
+    }
+
+    _element(url) {
+        const audio = new Audio(url);
+        audio.crossOrigin = 'anonymous';
+        this.audio = audio;
+        return audio;
+    }
+
+    /**
+     * ต่อ <audio> เข้ากราฟ
+     *
+     *   src ─┬─► ลำโพง                       (เฉพาะ audible)
+     *        ├─► delay ─► analyser ─► gain 0 ─► ลำโพง   (ปาก · ต่อถึงปลายให้กราฟดึงข้อมูล)
+     *        └─► tap                           (อัดคลิป)
+     */
+    _wire(audio, { audible, delay }) {
+        for (const n of this._nodes) { try { n.disconnect(); } catch {} }
+        const ctx = this.ctx;
+        const src = ctx.createMediaElementSource(audio);
+        const an = ctx.createAnalyser();
         // SMALL WINDOW, ALMOST NO SMOOTHING. smoothingTimeConstant is an
         // exponential average over frames: at 0.55 each frame is 55% history,
         // two or three frames of lag on top of the FFT window — enough to blur
@@ -92,25 +192,58 @@ export class LipSync {
         // that blur is precisely what makes the mouth look out of step.
         an.fftSize = 256;
         an.smoothingTimeConstant = 0.1;
-        this.ctx.createMediaElementSource(audio).connect(an);
-        an.connect(this.ctx.destination);
+        const lag = ctx.createDelay(1);
+        lag.delayTime.value = delay;
+        const sink = ctx.createGain();
+        sink.gain.value = 0;
+        src.connect(lag);
+        lag.connect(an);
+        an.connect(sink);
+        sink.connect(ctx.destination);
+        if (audible) src.connect(ctx.destination);
+        if (this.tap) src.connect(this.tap);
+
+        this._src = src;
+        this._lag = lag;
+        this._nodes = [src, lag, an, sink];
         this.analyser = an;
         this.freq = new Uint8Array(an.frequencyBinCount);
         this.time = new Uint8Array(an.fftSize);
+    }
 
+    /**
+     * เริ่มเล่น แล้วคืน `{ ended }` — **ห่อไว้ในออบเจกต์โดยตั้งใจ**
+     * คืน Promise ตรง ๆ จาก async function จะถูกรวบเป็นการรอจนเล่นจบ
+     * ซึ่งทำให้คนที่อยากรู้แค่ "เริ่มแล้ว" ต้องรอทั้งประโยค
+     */
+    async _start(audio) {
         this.speaking = true;
-        try { await audio.play(); } catch (e) { this.speaking = false; throw e; }
+        this._tailUntil = 0;
+        try { await audio.play(); } catch (e) {
+            if (this.audio === audio) this.speaking = false;
+            throw e;
+        }
         // 🔴 จบด้วย pause ด้วย ไม่ใช่แค่ ended/error · stop() แค่ pause เสียง
         // ซึ่งไม่ยิง ended — ถ้าไม่ฟัง pause ฝั่ง Flutter ที่รอประโยคนี้อยู่
         // จะรอไปตลอดกาลทุกครั้งที่เธอถูกสั่งให้เงียบหรือมีประโยคใหม่มาแทรก
-        await new Promise(res => {
+        const ended = new Promise(res => {
             audio.onended = res; audio.onerror = res; audio.onpause = res;
+        }).then(() => {
+            if (this.audio !== audio) return true;
+            this.speaking = false;
+            // จบเองตามธรรมชาติ = คลื่นช่วงท้ายยังค้างอยู่ในตัวหน่วง อ่านต่ออีก
+            // เท่าที่หน่วงไว้ ไม่งั้นพยางค์สุดท้ายหายทุกประโยค
+            // ถูกสั่งหยุด (pause) = ปิดปากทันที
+            const d = this._lag?.delayTime.value ?? 0;
+            this._tailUntil = audio.ended ? performance.now() + d * 1000 : 0;
+            return true;
         });
-        if (this.audio === audio) this.speaking = false;
-        return true;
+        return { ended };
     }
 
     stop() {
+        this._ready = null;
+        this._tailUntil = 0;
         try { this.audio?.pause(); } catch {}
         this.speaking = false;
     }
@@ -124,7 +257,9 @@ export class LipSync {
         const ease = (rate) => 1 - Math.exp(-rate * dt);
         let open = 0, spread = 0;
 
-        if (this.speaking && this.analyser) {
+        const live = this.speaking
+            || (this._tailUntil > 0 && performance.now() < this._tailUntil);
+        if (live && this.analyser) {
             this.analyser.getByteTimeDomainData(this.time);
             let sum = 0;
             for (let i = 0; i < this.time.length; i++) {

@@ -193,6 +193,30 @@ List<DistilledFact> parseDistilled(String raw) {
 }
 
 /// ประกอบบทสนทนาให้โมเดลอ่าน
+/// คำสั่งสรุปสายที่มายด์รับแทน — สิ่งที่เลขาจดให้เจ้านายหลังวางหู
+///
+/// 🔴 สั่งห้ามแต่งเพิ่มชัด ๆ · โมเดลเล็กในเครื่องชอบเติมสิ่งที่ "น่าจะ" ถูกพูด
+/// (เบอร์ติดต่อกลับ เวลานัด) ซึ่งในบันทึกสายคือข้อมูลปลอมที่เจ้าของจะเชื่อ
+/// และเอาไปทำตาม
+String callSummaryPrompt(bool thai) => thai
+    ? '''
+คุณคือเลขาที่เพิ่งรับสายแทนเจ้านาย อ่านบทสนทนาข้างล่างแล้วจดให้เจ้านาย
+ไม่เกินสามประโยค: ใครโทรมา (ถ้ารู้) · ติดต่อเรื่องอะไร · ฝากอะไรไว้
+· ต้องโทรกลับ/ทำอะไรต่อไหม
+- เขียนเฉพาะสิ่งที่คู่สายพูดจริงในบทสนทนา ห้ามเดาหรือเติมเบอร์ เวลา ชื่อ
+  ที่ไม่ได้ถูกพูดถึง
+- ถ้าคู่สายไม่ได้บอกเรื่องอะไรเลย ให้เขียนว่าไม่ได้ฝากเรื่องไว้
+- ตอบเป็นข้อความธรรมดา ไม่มีหัวข้อ ไม่มีสัญลักษณ์นำหน้า'''
+    : '''
+You are an assistant who just took a call for your boss. Read the conversation
+below and write the boss a note of at most three sentences: who called (if
+known) · what it was about · any message left · whether to call back or do
+something.
+- Only write what the caller actually said in the conversation. Never guess or
+  add numbers, times or names that were not mentioned.
+- If the caller did not say what it was about, write that no message was left.
+- Plain text, no headings, no bullet symbols.''';
+
 String conversationBlock(
   List<({bool fromHer, String text})> turns, {
   required String me,

@@ -13,6 +13,7 @@ import 'screens/mail_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/timeline_screen.dart';
 import 'state/mind_state.dart';
+import 'studio/mind_studio.dart';
 import 'i18n/strings.dart';
 import 'theme/tokens.dart';
 import 'widgets/mind_nav_bar.dart';
@@ -80,11 +81,39 @@ class _MindShellState extends State<MindShell> {
   // ไม่ dispose อวาตาร์ที่นี่ — ผู้สร้างเป็นคนปิด (MindBootstrap)
   // ปิดจากที่นี่ = ตัวควบคุมตายทั้งที่ provider ยังแจกอยู่
 
+  /// ผลของสตูดิโอ (บันทึกคลิปแล้ว / ไมค์ไม่ติด / จอลอยไม่ได้) ขึ้นเป็นแถบล่าง
+  /// ที่เดียว · ต้องฟังจากที่นี่ เพราะคลิปอาจบันทึกเสร็จ**หลัง**ออกจากสตูดิโอแล้ว
+  MindStudio? _studio;
+  int _studioSeen = 0;
+
+  void _onStudio() {
+    final st = _studio;
+    if (st == null || !mounted || st.noticeSeq == _studioSeen) return;
+    _studioSeen = st.noticeSeq;
+    final msg = st.notice;
+    if (msg == null) return;
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(msg),
+        duration: const Duration(seconds: 6),
+      ));
+  }
+
+  @override
+  void dispose() {
+    _studio?.removeListener(_onStudio);
+    super.dispose();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_speakerWired) return;
     _speakerWired = true;
+
+    _studio = context.read<MindStudio>()..addListener(_onStudio);
+    _studioSeen = _studio!.noticeSeq;
 
     // ต่อทางออกของเสียงเข้ากับปากของเธอ
     // state สังเคราะห์ไบต์มาให้ แล้ว WebView เป็นคนเล่นและอ่านคลื่นไปขยับปาก
@@ -117,7 +146,11 @@ class _MindShellState extends State<MindShell> {
   /// ตั้งค่าแล้วกด Back เพื่อ "ย้อนกลับ" ถูกพาออกจากแอปไปเฉย ๆ
   /// ลำดับ: แท็บอื่น → กลับหน้าเธอ · แผงแชทเปิด → พับ · นอกนั้นค่อยออก
   void _onBack(MindState state) {
-    if (_tab != 0) {
+    // สตูดิโอเต็มจอ = Back คือออกจากสตูดิโอ ไม่ใช่ออกจากแอป
+    final studio = context.read<MindStudio>();
+    if (studio.active) {
+      unawaited(studio.exit());
+    } else if (_tab != 0) {
       _select(0);
     } else if (state.chatOpen) {
       state.collapseChat();
@@ -136,19 +169,20 @@ class _MindShellState extends State<MindShell> {
     // และแปลว่าพอสายจบ เจ้าของจะถูกทิ้งไว้ที่แท็บของเธอ แทนที่จะกลับไป
     // ที่หน้าที่ค้างอยู่ก่อนสายเข้า
     final onCall = context.select<CallSession, bool>((c) => c.onStage);
+    final studio = context.select<MindStudio, bool>((s) => s.active) && !onCall;
 
     return PopScope(
       // ระหว่างสาย Back ไม่ปิดแอป · สายยังอยู่ที่จอสายของเครื่อง
-      canPop: !onCall && _tab == 0 && !chatOpen,
+      canPop: !onCall && !studio && _tab == 0 && !chatOpen,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _onBack(context.read<MindState>());
       },
-      child: _scaffold(context, mode, speaking, onCall),
+      child: _scaffold(context, mode, speaking, onCall, studio),
     );
   }
 
-  Widget _scaffold(
-      BuildContext context, MindMode mode, bool speaking, bool onCall) {
+  Widget _scaffold(BuildContext context, MindMode mode, bool speaking,
+      bool onCall, bool studio) {
     return Scaffold(
       // ให้แผงแชทเลื่อนขึ้นเองตอนคีย์บอร์ดเด้ง ไม่งั้นช่องพิมพ์จะโดนบัง
       resizeToAvoidBottomInset: true,
@@ -159,9 +193,9 @@ class _MindShellState extends State<MindShell> {
       // SafeArea ในแต่ละหน้าจอจึงยังกันเนื้อหาไม่ให้มุดใต้แถบเหมือนเดิม
       extendBody: true,
       body: IndexedStack(
-        index: onCall ? 0 : _tab,
+        index: onCall || studio ? 0 : _tab,
         children: [
-          HomeScreen(avatar: _avatar, active: onCall || _tab == 0),
+          HomeScreen(avatar: _avatar, active: onCall || studio || _tab == 0),
           const MailScreen(),
           const CalendarScreen(),
           const TimelineScreen(),
@@ -169,7 +203,7 @@ class _MindShellState extends State<MindShell> {
         ],
       ),
       // ฟังเฉพาะตัวอวาตาร์ เพื่อไม่ให้ ready/error ลากทั้ง Scaffold มา rebuild
-      bottomNavigationBar: onCall
+      bottomNavigationBar: onCall || studio
           ? null
           : ListenableBuilder(
               listenable: _avatar,

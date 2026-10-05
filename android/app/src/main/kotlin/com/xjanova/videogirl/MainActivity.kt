@@ -8,6 +8,7 @@ import android.content.ContentUris
 import android.content.Intent
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -45,6 +46,9 @@ class MainActivity : FlutterActivity() {
     /// (ฝั่ง Dart ของช่องนั้นมี CallWatch เป็นเจ้าของ handler แต่ผู้เดียว)
     private val speech by lazy { MindSpeech(this) }
 
+    /// สตูดิโอ — จอลอย จอไม่ดับ เก็บคลิปลงแกลเลอรี · ช่องแยกเหมือนตัวถอดเสียง
+    private val studio by lazy { MindStudio(this) }
+
     /// ช่องคุยกับ Dart — เก็บไว้เพื่อ **ยิงกลับ** ตอนสายเข้า
     /// ไม่ใช่แค่ตอบคำถามที่ Dart ถามมา
     private var channel: MethodChannel? = null
@@ -63,6 +67,7 @@ class MainActivity : FlutterActivity() {
         dartAlive = true
         ensureWatchChannel()
         speech.attach(flutterEngine.dartExecutor.binaryMessenger)
+        studio.attach(flutterEngine.dartExecutor.binaryMessenger)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel!!.setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -168,6 +173,17 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
 
+                    // ── รหัสเครื่องสำหรับไลเซนส์ (แฮชแล้วเท่านั้น) ──
+                    "deviceIds" -> result.success(deviceIds())
+
+                    // ── แจ้งเตือนเรื่องที่ฝากไว้ทางโทรศัพท์ ────────
+                    "notifyCallNote" -> result.success(
+                        notifyCallNote(
+                            call.argument<String>("title"),
+                            call.argument<String>("body"),
+                        )
+                    )
+
                     // ── ติดตั้งแอปที่ไม่รู้จัก ────────────────────
                     "canInstall" -> result.success(canInstall())
                     "requestInstall" -> {
@@ -182,6 +198,44 @@ class MainActivity : FlutterActivity() {
     private fun granted(permission: String) = ContextCompat.checkSelfPermission(
         this, permission
     ) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * รหัสเครื่องสำหรับขอไลเซนส์ฟรีจาก xman studio — **แฮช SHA-256 แล้วเสมอ**
+     *
+     * แบบเดียวกับแอปพี่น้อง (Tping/LocalVPN) ที่หลังบ้านใช้จับคู่ไลเซนส์กับ
+     * เครื่อง: Widevine device id (อยู่รอดการถอนแอป) + ANDROID_ID (อยู่รอดการ
+     * ลงใหม่ด้วยกุญแจเซ็นเดิม) · ส่งเฉพาะแฮช ไม่ส่งค่าดิบ ค่าที่ได้จึงย้อนกลับไป
+     * เป็นรหัสจริงของเครื่องไม่ได้ และใช้กับแอปอื่นไม่ได้ (ผสมชื่อแอปไว้)
+     *
+     * ค่าใดอ่านไม่ได้ (บางเครื่องไม่มี Widevine) ก็ส่ง null ของตัวนั้น
+     */
+    private fun deviceIds(): Map<String, String?> {
+        fun sha(v: String): String = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("giggok:$v".toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
+        val drm = try {
+            val uuid = java.util.UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed") // Widevine
+            val md = android.media.MediaDrm(uuid)
+            try {
+                val bytes = md.getPropertyByteArray(android.media.MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
+                bytes.joinToString("") { "%02x".format(it) }
+            } finally {
+                if (Build.VERSION.SDK_INT >= 28) md.close() else @Suppress("DEPRECATION") md.release()
+            }
+        } catch (e: Throwable) {
+            null
+        }
+        val android = try {
+            Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+        } catch (e: Throwable) {
+            null
+        }
+        return mapOf(
+            "drm" to drm?.takeIf { it.isNotEmpty() }?.let(::sha),
+            "android" to android?.takeIf { it.isNotEmpty() }?.let(::sha),
+        )
+    }
 
     /**
      * เล่นเสียงเธอออกลำโพงให้ไมค์รับเข้าสาย แล้วตอบกลับ**เมื่อเล่นจบ**
@@ -306,8 +360,21 @@ class MainActivity : FlutterActivity() {
     /// ตอนที่ยังฟังอยู่ = ไมค์ค้างจนกว่าระบบจะเก็บกวาดเอง ซึ่งอาจนาน
     override fun onDestroy() {
         speech.dispose()
+        studio.detach()
         dartAlive = false
         super.onDestroy()
+    }
+
+    /// เข้า/ออกจอลอย — ฝั่ง Dart ซ่อนปุ่มทั้งหมดตอนเหลือแต่ตัวเธอในหน้าต่างเล็ก
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        studio.onPipChanged(isInPictureInPictureMode)
+    }
+
+    /// กด Home ตอนอยู่ในสตูดิโอ = ย่อเป็นจอลอย (Android 12 ขึ้นไประบบทำเอง)
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        studio.onUserLeaveHint()
     }
 
     override fun onRequestPermissionsResult(
@@ -420,6 +487,54 @@ class MainActivity : FlutterActivity() {
 
     /// Android 13+ การแจ้งเตือนเป็นสิทธิ์ที่ต้องขอ · ไม่ได้ขอ = บริการรันอยู่จริง
     /// แต่ผู้ใช้ไม่เห็นอะไรเลย แล้วจะคิดว่ามันไม่ทำงาน
+    /**
+     * แจ้งเจ้าของว่ามายด์รับสายแทนและรับฝากเรื่องไว้
+     *
+     * ช่องแยกจากของงานเบื้องหลัง เพราะความสำคัญต่างกัน: ตัวนั้นเงียบ ค้างอยู่
+     * ตลอด · ตัวนี้คือ "มีคนฝากเรื่องไว้" ต้องดังและเด้งให้เห็น · และเจ้าของ
+     * ปิดอย่างใดอย่างหนึ่งในตั้งค่าของเครื่องได้โดยไม่กระทบอีกอย่าง
+     *
+     * ไม่ได้สิทธิ์แจ้งเตือน = คืน false เงียบ ๆ · บันทึกยังอยู่ในไทม์ไลน์ครบ
+     */
+    private fun notifyCallNote(title: String?, body: String?): Boolean {
+        if (!notifyGranted()) return false
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            ?: return false
+        if (nm.getNotificationChannel(CALL_NOTE_CHANNEL) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CALL_NOTE_CHANNEL,
+                    getString(R.string.call_note_channel),
+                    NotificationManager.IMPORTANCE_HIGH,
+                )
+            )
+        }
+        val open = android.app.PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                android.app.PendingIntent.FLAG_IMMUTABLE,
+        )
+        val text = body.orEmpty()
+        val n = androidx.core.app.NotificationCompat.Builder(this, CALL_NOTE_CHANNEL)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title.orEmpty())
+            .setContentText(text)
+            .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
+            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_MESSAGE)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        return try {
+            // id ตามเวลา = แต่ละสายเป็นแจ้งเตือนของตัวเอง ไม่ทับกัน
+            nm.notify((System.currentTimeMillis() / 1000).toInt(), n)
+            true
+        } catch (e: SecurityException) {
+            false
+        }
+    }
+
     private fun notifyGranted(): Boolean {
         if (Build.VERSION.SDK_INT < 33) return true
         return ContextCompat.checkSelfPermission(
@@ -662,6 +777,9 @@ class MainActivity : FlutterActivity() {
         /// ต้องตรงกับ kMindChannelId ใน lib/background/mind_background.dart
         /// ไม่ตรงกัน = บริการหาช่องไม่เจอ แล้วตายแบบเดียวกับไม่มีช่องเลย
         private const val WATCH_CHANNEL = "mind_watch"
+
+        /// แจ้งเตือน "มายด์รับสายแทนและรับฝากเรื่องไว้"
+        private const val CALL_NOTE_CHANNEL = "call_notes"
         private const val GRANTED = "granted"
         private const val DENIED = "denied"
         private const val BLOCKED = "blocked"

@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../store/mind_kv.dart';
 import '../store/mind_vault.dart';
+import '../license/mind_license.dart';
 import '../store/mind_store.dart';
 
 import '../memory/distiller.dart';
@@ -13,7 +16,10 @@ import '../calendar/device_calendar.dart';
 import '../journal/mind_journal.dart';
 import '../memory/mind_memory.dart';
 import '../persona/mind_soul.dart';
+import '../phone/call_notes.dart';
 import '../phone/call_watch.dart';
+import '../studio/studio_backdrop.dart';
+import '../system/permissions.dart';
 import '../ai/brain_provider.dart';
 import '../ai/device_speech.dart';
 import '../avatar/avatar_view.dart';
@@ -105,6 +111,88 @@ class MindState extends ChangeNotifier {
 
   void attachCalls(CallWatch c) => _calls = c;
 
+  /// บันทึกสายที่เธอรับแทน — ฝากเรื่องอะไรไว้
+  CallNotes? _callNotes;
+
+  void attachCallNotes(CallNotes c) => _callNotes = c;
+
+  /// ก้อน "สายเข้าวันนี้" + "ข้อความที่ฝากไว้" สำหรับ prompt
+  String get _callsBlock {
+    final notes = _callNotes?.promptBlock(unseenTag: s.callNoteUnseenTag) ?? '';
+    return [
+      _calls?.promptBlock() ?? '',
+      if (notes.isNotEmpty) '${s.callNotesPromptHeader}\n$notes',
+    ].where((b) => b.trim().isNotEmpty).join('\n\n');
+  }
+
+  /// จดสายที่เพิ่งวาง — **รับฝากเรื่อง**
+  ///
+  /// เรียกจาก [CallSession] ตอนสายที่เธอรับแทนจบลง · สรุปด้วยสมองตัวที่เลือก
+  /// (ในเครื่องก็สรุปในเครื่อง) แล้วเก็บทั้งสรุปและบทสนทนาเต็ม ลงไทม์ไลน์
+  /// และแจ้งเตือนเจ้าของ · สรุปไม่ได้ก็ยังเก็บบทสนทนา ไม่ทิ้งเรื่องที่คนฝากไว้
+  Future<CallNote?> takeCallNote({
+    required String who,
+    required List<CallNoteLine> lines,
+    DateTime? at,
+  }) async {
+    if (lines.isEmpty) return null;
+    final when = at ?? _clock();
+    final callerSpoke =
+        lines.any((l) => !l.fromHer && l.text.trim().isNotEmpty);
+
+    var summary = callerSpoke ? '' : s.callNoteSilent;
+    if (callerSpoke) {
+      try {
+        final block = conversationBlock(
+          [for (final l in lines) (fromHer: l.fromHer, text: l.text)],
+          me: s.speakerCaller,
+          her: _soul?.name ?? s.speakerHer,
+        );
+        summary = (await _askBrain(
+          callSummaryPrompt(_lang == AppLang.th),
+          [(fromHer: false, text: block)],
+        ))
+            .trim();
+      } on Object catch (e) {
+        debugPrint('สาย: สรุปไม่สำเร็จ — ${e.runtimeType}');
+      }
+      // สรุปไม่ได้ = ใช้คำแรก ๆ ที่คู่สายพูดแทน · ดีกว่าบันทึกว่างเปล่า
+      if (summary.isEmpty) {
+        final first = lines.firstWhere((l) => !l.fromHer).text.trim();
+        summary = s.callNoteFallback(
+            first.length <= 120 ? first : '${first.substring(0, 119)}…');
+      }
+    }
+
+    final note = CallNote(
+      id: 'call-${when.microsecondsSinceEpoch}',
+      at: when,
+      who: who,
+      summary: summary,
+      lines: List.of(lines),
+    );
+    await _callNotes?.add(note);
+    unawaited(_journal?.record(
+          JournalKind.call,
+          s.callNoteTitle(who),
+          detail: summary,
+          id: note.id,
+        ) ??
+        Future<bool>.value(false));
+
+    // แจ้งเตือนแม้แอปอยู่เบื้องหลัง · สิทธิ์แจ้งเตือนไม่ได้ให้ = ฝั่งเนทีฟข้ามเงียบ ๆ
+    try {
+      await kSystemChannel.invokeMethod<bool>('notifyCallNote', {
+        'title': s.callNoteTitle(who),
+        'body': summary,
+      });
+    } on Object catch (e) {
+      debugPrint('สาย: แจ้งเตือนไม่ได้ — ${e.runtimeType}');
+    }
+    _notify();
+    return note;
+  }
+
   /// ตัวตนกับความสัมพันธ์ของเธอ — ราศี ความผูกพัน งอน
   ///
   /// ต่อเข้ามาทีหลังเหมือนปฏิทินและสมุดบันทึก · null ได้จริงในเทสต์
@@ -194,6 +282,8 @@ class MindState extends ChangeNotifier {
     _homeServerModel = p.getString('homeServerModel') ?? HomeServerDefaults.model;
     _autoReport = p.getBool('autoReport') ?? true;
     _mocapShot = MindMocapShot.parse(p.getString('mocapShot'));
+    _studioBackdrop = StudioBackdrops.parse(p.getString('studioBackdrop'));
+    _studioMic = p.getBool('studioMic') ?? false;
     _avatarPackUrl = p.getString('avatarPackUrl') ?? _packUrlDefault;
     _avatarPackId = p.getString('avatarPackId') ?? '';
     // 🔴 `?? _storeDefault` อย่างเดียวไม่พอ — เครื่องที่เคยลงรุ่นก่อนหน้า
@@ -595,6 +685,36 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
+  // ═══ สตูดิโอ ═══════════════════════════════════════════
+  //
+  // ค่าที่เจ้าของเลือกไว้ในสตูดิโอ (ดู MindStudio) · เก็บที่นี่เพราะเป็นค่า
+  // ตั้งของผู้ใช้เหมือน mocapShot — ตัวสตูดิโอถือแค่สถานะตอนรัน
+
+  String _studioBackdrop = StudioBackdrops.app;
+
+  /// `app` หรือ `#rrggbb` — ดู [StudioBackdrops]
+  String get studioBackdrop => _studioBackdrop;
+
+  void setStudioBackdrop(String v) {
+    final clean = StudioBackdrops.parse(v);
+    if (_studioBackdrop == clean) return;
+    _studioBackdrop = clean;
+    _save('studioBackdrop', clean);
+    _notify();
+  }
+
+  /// อัดเสียงไมค์ลงคลิปด้วยไหม · ปิดเป็นค่าตั้งต้น — คลิปมีเสียงเธออยู่แล้ว
+  /// และไมค์ที่เปิดโดยไม่ได้ตั้งใจคือเสียงในห้องที่หลุดลงคลิปไปแชร์ต่อ
+  bool _studioMic = false;
+  bool get studioMic => _studioMic;
+
+  void setStudioMic(bool v) {
+    if (_studioMic == v) return;
+    _studioMic = v;
+    _save('studioMic', v);
+    _notify();
+  }
+
   // ═══ ชุดตัวมายด์ ═══════════════════════════════════════
   //
   // โมเดล VRM กับคลิปท่าทางไม่ได้ฝังใน APK ที่ CI build (repo เป็น public
@@ -658,9 +778,32 @@ class MindState extends ChangeNotifier {
   String get licenseKey => _licenseKey;
 
   void setLicenseKey(String v) {
-    _licenseKey = v.trim();
+    // ตัวพิมพ์ใหญ่เสมอ · หลังบ้านเทียบคีย์ของร้านชุดและพร็อกซีแบบตรงตัว
+    // ส่วนตอน activate มันแปลงเป็นตัวใหญ่ให้ · พิมพ์เล็กมา = ผ่านที่หนึ่ง ตกอีกที่
+    _licenseKey = v.trim().toUpperCase();
     _save('licenseKey', _licenseKey);
     _notify();
+  }
+
+  bool _licenseAsked = false;
+
+  /// ขอไลเซนส์ฟรีของเครื่องนี้ ถ้ายังไม่มี · เรียกตอนเปิดแอป ครั้งเดียวต่อรอบ
+  ///
+  /// มีคีย์อยู่แล้ว (ทั้งที่ได้มาเองและที่ผู้ใช้กรอก) = ไม่แตะ · ล้มก็เงียบ
+  /// แอปใช้ต่อได้ปกติ แค่สมองพร็อกซีกับชุดที่ซื้อยังใช้ไม่ได้
+  Future<void> ensureLicense({MindLicense? client}) async {
+    if (_licenseAsked || _licenseKey.trim().isNotEmpty) return;
+    _licenseAsked = true;
+    final c = client ?? MindLicense();
+    try {
+      final key = await c.checkMachine(_storeBaseUrl);
+      if (key != null && !_disposed && _licenseKey.trim().isEmpty) {
+        debugPrint('license: ได้ไลเซนส์ของเครื่องนี้แล้ว');
+        setLicenseKey(key);
+      }
+    } finally {
+      if (client == null) c.close();
+    }
   }
 
   // ═══ คีย์ OpenAI ของผู้ใช้เอง ═══════════════════════════
@@ -822,6 +965,8 @@ class MindState extends ChangeNotifier {
       soul: _soul,
       memories: memory.promptBlock(),
       schedule: _calendar?.promptBlock() ?? '',
+      // 🔴 ไม่ใส่เรื่องที่คนอื่นฝากไว้ · คู่สายคนนี้คือคนแปลกหน้า และเป็นช่องทาง
+      // เดียวที่คนนอกพิมพ์เข้า prompt ได้ ("คนก่อนหน้าโทรมาเรื่องอะไรคะ")
       calls: _calls?.promptBlock() ?? '',
       now: _clock(),
     );
@@ -832,7 +977,7 @@ class MindState extends ChangeNotifier {
   ///
   /// ไม่ผ่าน [_speakIfEnabled] เพราะเสียงในสาย**ห้ามไปออกที่ WebView**
   /// (ปากจะขยับตามคลื่นก็จริง แต่เสียงจะดังซ้ำสองทางแล้วก้องกลับเข้าสาย)
-  /// ตอนมีสาย ปากขยับด้วย LipSync.babble ซึ่งไม่ต้องใช้คลื่นเสียงเลย
+  /// ปากบนเวทีอ่านคลื่นจากไบต์ชุดเดียวกันนี้แบบปิดเสียง (ดู [MindLips])
   Future<Utterance> speakForCall(String text) =>
       synthesizeWithFallback(text, voiceFor(VoiceChannel.answer));
 
@@ -843,7 +988,33 @@ class MindState extends ChangeNotifier {
   /// 🔴 ไปตามสมองที่เลือกไว้ เหมือนกับไมค์ในช่องแชท · ของเดิมยิงเข้า [_openai]
   /// ตรง ๆ เสมอ แปลว่าคนที่ใช้พร็อกซีของเรา (ซึ่ง**ถูกบอกว่าไม่ต้องมีคีย์**)
   /// รับสายแล้วเธอหูดับทุกครั้ง เพราะไม่มีคีย์ OpenAI ให้ตัวนั้นใช้
-  Future<String> transcribeCall(Uint8List wav) => transcribeChat(wav);
+  ///
+  /// 🔴 สมองในเครื่อง (ค่าตั้งต้น) = ถอดเสียง**ในเครื่อง**ด้วย
+  ///
+  /// ของเดิมส่งต่อไป [transcribeChat] ซึ่งโยนข้อผิดพลาดทันทีเมื่อเป็นสมองใน
+  /// เครื่อง (สัญญาว่าเสียงไม่ออกนอกเครื่อง) · ผลคือคนส่วนใหญ่ให้เธอรับสาย
+  /// แล้วเธอพูดทักได้คำเดียว จากนั้นหูดับทั้งสาย · ตอนนี้ป้อนเสียงที่อัดจากสาย
+  /// ให้ตัวถอดเสียงในเครื่องของ Android (13 ขึ้นไป) เสียงคู่สายไม่ออกไปไหน
+  Future<String> transcribeCall(Uint8List wav) async {
+    if (_brain != BrainProvider.onDevice) return transcribeChat(wav);
+
+    final dev = _speechEngine;
+    if (dev == null) throw OpenAiFailure(s.callNoOnDeviceStt);
+    final dir = await getTemporaryDirectory();
+    final f = File('${dir.path}${Platform.pathSeparator}'
+        'call_stt_${DateTime.now().microsecondsSinceEpoch}.wav');
+    await f.writeAsBytes(wav, flush: true);
+    try {
+      return await dev.transcribeFile(f.path, locale: _lang == AppLang.th ? 'th-TH' : 'en-US');
+    } on SttUnavailable catch (e) {
+      throw OpenAiFailure(e.fault == SttFault.language
+          ? s.micNoLanguagePack
+          : s.callNoOnDeviceStt);
+    } finally {
+      // เสียงคู่สายห้ามค้างอยู่ในเครื่องเกินจำเป็น
+      unawaited(f.delete().catchError((_) => f));
+    }
+  }
 
   // ═══ แชท ═══════════════════════════════════════════════
   /// บทสนทนาตัวอย่างตอนเปิดครั้งแรก
@@ -1400,7 +1571,7 @@ class MindState extends ChangeNotifier {
       soul: _soul,
       memories: memory.promptBlock(),
       schedule: _calendar?.promptBlock() ?? '',
-      calls: _calls?.promptBlock() ?? '',
+      calls: _callsBlock,
       now: _clock(),
     );
     final history = [

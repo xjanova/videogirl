@@ -22,12 +22,51 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:videogirl/ai/brain_provider.dart';
 import 'package:videogirl/avatar/avatar_pack.dart';
 import 'package:videogirl/avatar/avatar_view.dart';
+import 'package:videogirl/avatar/stage_bridge.dart';
 import 'package:videogirl/persona/mind_soul.dart';
 import 'package:videogirl/phone/call_session.dart';
 import 'package:videogirl/phone/call_watch.dart';
 import 'package:videogirl/screens/home_screen.dart';
 import 'package:videogirl/state/mind_state.dart';
+import 'package:videogirl/studio/mind_studio.dart';
 import 'package:videogirl/system/permissions.dart';
+
+/// เวทีที่พร้อมเสมอ — ในเทสต์ WebView สร้างไม่ได้ ตัวควบคุมจริงจึงไม่มีวันพร้อม
+class _ReadyStage implements StudioStage {
+  @override
+  bool get ready => true;
+  @override
+  MindRecordingSink? recordingSink;
+  @override
+  Future<void> setStudio(bool on) async {}
+  @override
+  Future<void> setBackdrop(String? hex) async {}
+  @override
+  Future<void> syncMocapShot(MindMocapShot s) async {}
+  @override
+  Future<MindRecStart> startRecording({required bool mic}) async =>
+      const MindRecStart.failed('test');
+  @override
+  Future<void> stopRecording() async {}
+}
+
+class _QuietPlatform implements StudioPlatform {
+  @override
+  Future<void> keepScreenOn(bool on) async {}
+  @override
+  Future<bool> enterPip(int w, int h) async => false;
+  @override
+  Future<void> autoPip(bool on, int w, int h) async {}
+  @override
+  Future<StudioSave> saveVideo(String path, String name, String mime) async =>
+      const StudioSave();
+  @override
+  Future<void> immersive(bool on) async {}
+  @override
+  set onPip(void Function(bool inPip)? listener) {}
+}
+
+late MindStudio _studio;
 
 /// ยาวพอ ๆ กับที่เธอตอบจริงเวลาถูกถามคำถามปลายเปิด
 const _long = 'คำตอบยาวแบบที่เธอตอบจริงเวลาเล่าอะไรสักเรื่องให้ฟัง '
@@ -61,6 +100,14 @@ Future<MindState> _mount(WidgetTester t) async {
       ChangeNotifierProvider(
           create: (_) => CallSession(watch: CallWatch(), state: state)),
       ChangeNotifierProvider(create: (_) => MindSoul()),
+      ChangeNotifierProvider(
+        create: (_) => _studio = MindStudio(
+          stage: _ReadyStage(),
+          state: state,
+          permissions: MindPermissions(),
+          platform: _QuietPlatform(),
+        ),
+      ),
     ],
     child: MaterialApp(home: Scaffold(body: HomeScreen(avatar: avatar))),
   ));
@@ -119,6 +166,36 @@ void main() {
     expect(s.voiceEnabled, isFalse, reason: 'กดแล้วต้องปิดจริง');
     expect(find.byIcon(Icons.volume_off_rounded), findsOneWidget,
         reason: 'ไอคอนต้องเปลี่ยนตาม ไม่งั้นกดแล้วไม่รู้ว่าติดไหม');
+
+    await _unmount(t, s);
+  });
+
+  /// 🔴 เข้าสตูดิโอต้องไม่สร้างเวทีใหม่
+  ///
+  /// เวทีคือ WebView + VRM 33MB · ถ้าโครงต้นไม้เปลี่ยนตำแหน่งตอนซ่อนหัวจอ
+  /// กับแผงแชท Flutter จะสร้างมันใหม่ทั้งก้อน = เธอหายไปโหลดใหม่หลายวินาที
+  /// ทุกครั้งที่กดเข้า/ออก โดยไม่มี error ที่ไหนบอก
+  testWidgets('🔴 สตูดิโอซ่อนทุกอย่างนอกจากเวที และเวทีเป็นตัวเดิม', (t) async {
+    final s = await _mount(t);
+    final before = t.element(find.byType(MindAvatarView));
+    expect(find.byIcon(Icons.videocam_rounded), findsOneWidget,
+        reason: 'ทางเข้าสตูดิโอต้องอยู่บนเวที');
+
+    await _studio.enter();
+    await t.pump(const Duration(milliseconds: 400));
+
+    expect(identical(t.element(find.byType(MindAvatarView)), before), isTrue,
+        reason: 'เวทีถูกสร้างใหม่ = เธอหายไปโหลดใหม่ทั้งตัว');
+    expect(find.text('MIND'), findsNothing, reason: 'หัวจอติดไปในภาพที่แชร์');
+    expect(find.byIcon(Icons.videocam_rounded), findsNothing,
+        reason: 'ปุ่มบนเวทีติดไปในภาพที่แชร์');
+    final full = t.getSize(find.byType(MindAvatarView));
+    expect(full.height, closeTo(2340 / 3, 1), reason: 'เวทีต้องเต็มจอ');
+
+    await _studio.exit();
+    await t.pump(const Duration(milliseconds: 400));
+    expect(identical(t.element(find.byType(MindAvatarView)), before), isTrue);
+    expect(find.text('MIND'), findsOneWidget);
 
     await _unmount(t, s);
   });

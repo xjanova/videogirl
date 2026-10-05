@@ -52,8 +52,17 @@ extension AiStrings on S {
         'Used both for our assistant service and for what you own in the shop',
       );
   String get licenseNeeded => pick(
-        'ต้องใส่รหัสสิทธิ์ก่อนถึงจะใช้บริการของเราได้',
-        'Enter a license code before using our service',
+        'ยังไม่ได้รหัสสิทธิ์ของเครื่องนี้ — แอปจะขอให้เองเมื่อต่อเน็ต ลองเปิดแอปใหม่อีกครั้ง',
+        "This phone has no licence yet — the app requests one by itself when "
+            "it's online. Try reopening the app.",
+      );
+  String get licenseLinkAccount => pick(
+        'ซื้อชุดบนเว็บแล้วไม่เห็น? ผูกเครื่องนี้กับบัญชีเว็บ',
+        'Bought something on the web? Link this phone to your account',
+      );
+  String get licenseLinkCopied => pick(
+        'คัดลอกรหัสของเครื่องนี้แล้ว — วางในช่องบนหน้าเว็บที่เปิดขึ้นมา',
+        "This phone's code is copied — paste it into the box on the page that opened",
       );
   String get proxyModelNote => pick(
         'ถ้าบริการยังไม่เปิดรุ่นที่เลือกไว้ จะใช้รุ่นที่เราตั้งไว้ให้แทน',
@@ -431,6 +440,41 @@ extension AiStrings on S {
 
   /// ยังไม่ได้โหลดชุดภาษาลงเครื่อง — พบบ่อยกว่าเครื่องเก่าเสียอีก
   /// และเป็นกรณีที่**ผู้ใช้แก้เองได้** จึงต้องบอกว่าไปแก้ที่ไหน
+  // ── บันทึกสายที่รับแทน ──
+  String callNoteTitle(String who) => pick(
+        'มายด์รับสายแทน · ${who.isEmpty ? 'เบอร์ที่ไม่แสดง' : who}',
+        'Mind took a call · ${who.isEmpty ? 'hidden number' : who}',
+      );
+  String get callNoteSilent => pick(
+        'คู่สายไม่ได้พูดอะไร หรือวางสายไปก่อน',
+        'The caller said nothing, or hung up first',
+      );
+  String callNoteFallback(String firstWords) => pick(
+        'คู่สายบอกว่า: "$firstWords" (สรุปอัตโนมัติไม่สำเร็จ เปิดดูบทสนทนาเต็มได้)',
+        'The caller said: "$firstWords" (couldn\'t summarise — open the full conversation)',
+      );
+  String get callNotesPromptHeader => pick(
+        '=== ข้อความที่มายด์รับฝากไว้ทางโทรศัพท์ (บอกเจ้าของได้) ===',
+        '=== Messages Mind took on the phone (tell the owner) ===',
+      );
+  String get callNoteUnseenTag =>
+      pick('(เจ้าของยังไม่ได้อ่าน)', '(not read by the owner yet)');
+  String get speakerCaller => pick('คู่สาย', 'Caller');
+  String get callNoteSheetTitle => pick('บันทึกสาย', 'Call note');
+  String get callNoteConversation => pick('บทสนทนาเต็ม', 'Full conversation');
+  String get callNoteDelete => pick('ลบบันทึกนี้', 'Delete this note');
+  String get callNoteDeleteConfirm => pick(
+        'ลบบันทึกสายนี้ทั้งสรุปและบทสนทนา? ย้อนกลับไม่ได้',
+        'Delete this call note and its conversation? This cannot be undone.',
+      );
+
+  String get callNoOnDeviceStt => pick(
+        'เครื่องนี้ถอดเสียงคู่สายในเครื่องไม่ได้ (ต้อง Android 13 ขึ้นไป) — '
+            'มายด์ยังพูดแทนได้ พิมพ์ข้อความให้เธอพูดเข้าสายได้เลย',
+        "This phone can't transcribe the caller on-device (needs Android 13+) — "
+            'she can still speak for you; type what she should say.',
+      );
+
   String get micNoLanguagePack => pick(
         'ยังไม่ได้โหลดชุดภาษาสำหรับถอดเสียงในเครื่อง · '
         'โหลดได้ที่ตั้งค่าเครื่อง → ระบบ → ภาษาและการป้อนข้อมูล',

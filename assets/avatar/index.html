@@ -32,6 +32,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { Avatar } from './avatar.js';
+import { StageRecorder } from './recorder.js';
 
 const stage = document.getElementById('stage');
 
@@ -122,6 +123,53 @@ async function speakBytes(b64, mime) {
     // ปล่อยทันทีที่เล่นจบ ไม่งั้นคุยยาว ๆ จะสะสมไฟล์เสียงไว้ในหน่วยความจำทั้งหมด
     URL.revokeObjectURL(url);
   }
+}
+
+// ── ปากตามเสียงในสาย ─────────────────────────────────────────────
+//
+// เสียงเธอในสายโทรศัพท์เล่นทางเนทีฟ (ช่องเสียงสาย) · ที่นี่เล่นไฟล์เดียวกัน
+// แบบปิดเสียงเพื่ออ่านคลื่นไปขยับปากเท่านั้น (ดู LipSync.prepare)
+// ไฟล์เก็บไว้จนกว่าจะ rest/เตรียมประโยคใหม่ ไม่งั้น <audio> ที่ยังเล่นอยู่
+// จะอ่านจาก blob ที่ถูกปล่อยไปแล้ว
+
+let lipsUrl = null;
+const dropLipsUrl = () => {
+  if (lipsUrl) { URL.revokeObjectURL(lipsUrl); lipsUrl = null; }
+};
+
+async function lipsPrepare(b64, mime) {
+  if (!avatar) return false;
+  dropLipsUrl();
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  lipsUrl = URL.createObjectURL(new Blob([bytes], { type: mime || 'audio/mpeg' }));
+  return await avatar.prepareLips(lipsUrl);
+}
+
+/** lead = วินาทีที่หน่วงปากให้ตรงกับเสียงที่ออกลำโพงจริงของฝั่งเนทีฟ */
+const lipsGo = (lead) => avatar?.goLips(Number(lead) || 0) ?? false;
+
+function lipsRest() {
+  avatar?.restLips();
+  dropLipsUrl();
+}
+
+// ── อัดคลิป ─────────────────────────────────────────────────────
+let recorder = null;
+
+async function recStart(opts) {
+  if (!avatar?.renderer) return { ok: false, why: 'no-stage' };
+  recorder ??= new StageRecorder(avatar.renderer.domElement, avatar.lip, post);
+  avatar.setRecording(true);
+  const res = await recorder.start(opts ?? {});
+  if (!res.ok) avatar.setRecording(false);
+  return res;
+}
+
+function recStop() {
+  avatar?.setRecording(false);
+  return recorder?.stop() ?? false;
 }
 
 /**
@@ -234,6 +282,18 @@ window.minde = {
   stand: ()    => avatar?.stand(),
   /** 'bust' ตอนคุย · 'full' ตอนยืนเฉย ๆ */
   frame: (n)   => avatar?.framing?.set(n),
+
+  // ── ปากตามเสียงในสาย ──
+  lipsPrepare,
+  lipsGo,
+  lipsRest,
+
+  // ── สตูดิโอ ──
+  /** null = พื้นโปร่ง · '#rrggbb' = ฉากสีทึบ (ฉากเขียว ฉากฟ้า ฯลฯ) */
+  backdrop: (hex) => avatar?.setBackdrop(hex) ?? null,
+  studio:   (on)  => avatar?.setStudio(on) ?? false,
+  recStart,
+  recStop,
 
   /**
    * ค่าสีหน้าที่กำลังใช้อยู่จริงในวินาทีนี้

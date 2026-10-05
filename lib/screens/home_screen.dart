@@ -9,11 +9,14 @@ import '../avatar/avatar_view.dart';
 import '../persona/mind_soul.dart';
 import '../phone/call_session.dart';
 import '../state/mind_state.dart';
+import '../studio/mind_studio.dart';
+import '../studio/studio_overlay.dart';
 import '../system/permissions.dart';
 import 'shop_screen.dart';
 import '../theme/app_theme.dart';
 import '../i18n/enum_labels.dart';
 import '../i18n/strings.dart';
+import '../i18n/strings_studio.dart';
 import '../theme/tokens.dart';
 import '../widgets/call_panel.dart';
 import '../widgets/glass.dart';
@@ -239,17 +242,33 @@ class _HomeScreenState extends State<HomeScreen>
     // ตอนที่คำที่พิมพ์จะถูกพูดออกไปให้คนแปลกหน้าฟัง
     final onCall = call.onStage;
 
+    // สตูดิโอ = เวทีเต็มจอ ไม่มีหัวจอ ไม่มีแผงแชท · สายเข้ามาชนะเสมอ
+    // (เจ้าของต้องเห็นปุ่มรับ/วาง ไม่ใช่ปุ่มฉากหลัง)
+    final studio = context.select<MindStudio, bool>((s) => s.active) && !onCall;
+
     _pinLogIfNew('${state.messages.length}/${state.sending}');
 
+    // 🔴 โครงต้นไม้ต้อง**เหมือนเดิมทุกตำแหน่ง**ทั้งตอนเข้าและออกสตูดิโอ
+    //
+    // เวที (WebView + VRM 33MB) อยู่ใน Expanded ตัวกลาง · ถ้าหัวจอหรือแผงล่าง
+    // หายออกจาก Column ไปเฉย ๆ ตำแหน่งลูกจะเลื่อน Flutter จับคู่ไม่ติด แล้ว
+    // สร้าง WebView ใหม่ทั้งก้อน = เธอหายไปโหลดใหม่หลายวินาทีทุกครั้งที่กด
+    // จึงซ่อนด้วย Visibility (ชนิดเดิม ตำแหน่งเดิม) แทนการถอดออก
     return LiquidBackground(
       gradient: onCall ? MindGradients.incomingCall : MindGradients.home,
       orbs: Orb.home,
       child: SafeArea(
+        top: !studio,
+        bottom: !studio,
+        left: !studio,
+        right: !studio,
         child: Column(
           children: [
-            _header(state, mode),
-            Expanded(child: _stage(state, mode)),
-            AnimatedSwitcher(
+            Visibility(visible: !studio, child: _header(state, mode)),
+            Expanded(child: _stage(state, mode, studio: studio)),
+            Visibility(
+              visible: !studio,
+              child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 320),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
@@ -270,11 +289,22 @@ class _HomeScreenState extends State<HomeScreen>
                       : KeyedSubtree(
                           key: const ValueKey('pill'),
                           child: _chatPill(state, mode)),
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// เข้าสตูดิโอ — พับแชทและปิดไมค์ของแชทก่อน · ไมค์ที่ค้างอยู่ใต้เวทีเต็มจอ
+  /// คือไมค์ที่เจ้าของมองไม่เห็นว่ายังเปิด
+  Future<void> _openStudio(MindState state) async {
+    if (_voice.busy) await _voice.cancel();
+    if (!mounted) return;
+    if (state.chatOpen) state.collapseChat();
+    _focus.unfocus();
+    await context.read<MindStudio>().enter();
   }
 
   // ── หัวจอ ───────────────────────────────────────────────
@@ -312,7 +342,7 @@ class _HomeScreenState extends State<HomeScreen>
   static const _bubbleTop = 14 / 452;
   static const _bubbleMaxWidth = 210 / 380;
 
-  Widget _stage(MindState state, MindMode mode) {
+  Widget _stage(MindState state, MindMode mode, {bool studio = false}) {
     final bubble = state.bubbleText;
     final thinkingOverHead = state.sending && state.bubbleEnabled;
 
@@ -332,7 +362,7 @@ class _HomeScreenState extends State<HomeScreen>
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onTap: state.showBubbleAgain,
+                  onTap: studio ? null : state.showBubbleAgain,
                   child: MindAvatarView(
                     controller: widget.avatar,
                     mode: mode,
@@ -342,7 +372,18 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
 
+              // สตูดิโอ: ปุ่มของมันเองเท่านั้น ที่เหลือบนเวทีทั้งหมดติดไปในภาพ
+              if (studio)
+                Positioned.fill(
+                  child: StudioOverlay(
+                    studio: context.read<MindStudio>(),
+                    avatar: widget.avatar,
+                    state: state,
+                  ),
+                ),
+
               // วงแหวนเรืองรอบตัวเธอ ขยายออกแล้วจาง
+              if (!studio)
               Positioned(
                 left: w * _ringLeft,
                 top: h * _ringTop,
@@ -371,6 +412,7 @@ class _HomeScreenState extends State<HomeScreen>
 
               // ปุ่มเชิดหุ่น — อยู่บนเวทีไม่ใช่ในหน้าตั้งค่า เพราะเป็นสวิตช์
               // ที่คนกดขณะ**มองหน้าเธออยู่** ไม่ใช่ค่าที่ตั้งทิ้งไว้
+              if (!studio)
               Positioned(
                 right: 10,
                 top: 10,
@@ -389,6 +431,13 @@ class _HomeScreenState extends State<HomeScreen>
                     // ตราราศีของเธอ — เป็นทั้งปุ่มเปิดสเตตัสและตัวบอกอารมณ์
                     // ในตัวมันเอง (สีวงแหวนกับจุดมุมขวาเปลี่ยนตามอารมณ์)
                     SoulBadge(mode: mode),
+                    // สตูดิโอ — เธอเต็มจอสำหรับแชร์หน้าจอเข้าวิดีโอคอล ไลฟ์ อัดคลิป
+                    _StageIconButton(
+                      fallback: Icons.videocam_rounded,
+                      tooltip: S.of(context).studioOpen,
+                      mode: mode,
+                      onTap: () => _openStudio(state),
+                    ),
                     // ทางเข้าร้านอยู่บนเวที ไม่ใช่ซ่อนในหน้าตั้งค่าอย่างเดียว
                     // เพราะของที่ขายคือของที่ **เห็นผลบนเวทีนี้** (ชุด ตัวละคร
                     // ของประดับ) คนควรกดซื้อได้จากที่ที่มองเห็นของอยู่
@@ -407,6 +456,7 @@ class _HomeScreenState extends State<HomeScreen>
               ),
 
               // แถบบอกสถานะกล้อง — ขึ้นเฉพาะตอนมีอะไรต้องบอกจริง ๆ
+              if (!studio)
               Positioned(
                 left: 12,
                 right: 12,
@@ -426,7 +476,8 @@ class _HomeScreenState extends State<HomeScreen>
               // ปิดฟองคำพูดไว้ = ปิดฟองกำลังคิดด้วย · มันกินที่เดียวกัน
               // และคนที่ปิดมันปิดเพราะอยากเห็นหน้าเธอโล่ง ๆ ไม่ใช่เพราะ
               // ไม่อยากอ่านคำตอบ · สัญญาณยังอยู่ครบในแผงแชทกับปุ่มพับ
-              if (bubble.isNotEmpty || (state.sending && state.bubbleEnabled))
+              if (!studio &&
+                  (bubble.isNotEmpty || (state.sending && state.bubbleEnabled)))
                 Positioned(
                   left: w * _bubbleLeft,
                   top: h * _bubbleTop,
@@ -1027,14 +1078,15 @@ class _HomeScreenState extends State<HomeScreen>
 /// ถ้าประกอบสดทีละที่ ขนาดกับเงาจะเริ่มไม่ตรงกันเหมือนที่เคยเกิดกับปุ่มทั้งแอป
 class _StageIconButton extends StatelessWidget {
   const _StageIconButton({
-    required this.asset,
+    this.asset,
     required this.fallback,
     required this.tooltip,
     required this.mode,
     required this.onTap,
   });
 
-  final String asset;
+  /// ภาพไอคอนที่เจนมา · null = ใช้ไอคอนเส้นตรง ๆ (ไม่ยิงโหลดไฟล์ที่ไม่มีอยู่)
+  final String? asset;
   final IconData fallback;
   final String tooltip;
   final MindMode mode;
@@ -1057,12 +1109,14 @@ class _StageIconButton extends StatelessWidget {
             child: SizedBox(
               width: 24,
               height: 24,
-              child: Image.asset(
-                asset,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) =>
-                    Icon(fallback, size: 20, color: mode.accent),
-              ),
+              child: asset == null
+                  ? Icon(fallback, size: 20, color: mode.accent)
+                  : Image.asset(
+                      asset!,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) =>
+                          Icon(fallback, size: 20, color: mode.accent),
+                    ),
             ),
           ),
         ),

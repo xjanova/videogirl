@@ -1,9 +1,20 @@
-/// อัปเดตตัวเองจาก GitHub Releases ของ xjanova/videogirl
+/// อัปเดตตัวเอง — ถาม xman studio ก่อน ถ้าไม่ได้ค่อยถอยไปอ่าน GitHub Releases
 ///
-/// repo เป็น **public** จึงอ่าน API ได้ตรงโดยไม่ต้องมี token
+/// ## ทำไมถาม xman studio
+///
+/// กฎของบ้าน (2026-09-24): ลูกค้าต้องไม่เห็น GitHub หรือ repo เลย · หลังบ้าน
+/// sync release เองทุก 10 นาที (`products:sync-releases`) แล้วเสิร์ฟ APK ผ่าน
+/// xman4289.com พร้อม sha256 · แอปพี่น้อง (Tping, NetX) ใช้ปลายทางเดียวกัน
+/// `GET /api/v1/product/{slug}/update/check?current_version=X.Y.Z`
+///
+/// ## ทำไมยังมี GitHub เป็นทางสำรอง
+///
+/// วันที่หลังบ้านล่ม หรือสินค้ายังไม่ได้ลงทะเบียน (ตอบ 404) เครื่องที่ลงแอปไปแล้ว
+/// ต้องยังอัปเดตได้ ไม่งั้นบั๊กที่ทำให้หลังบ้านเรียกไม่ติดจะถูกแช่แข็งไว้ในเครื่อง
+/// ผู้ใช้ตลอดไป · repo เป็น public จึงอ่าน API ได้โดยไม่ต้องมี token
 /// อย่าใส่ GitHub token ลง APK เด็ดขาด — APK แกะได้ ใครก็อ่าน token เจอ
-/// ถ้าวันหนึ่งเปลี่ยน repo เป็น private ต้องย้ายไปให้เซิร์ฟเวอร์อ่านแทน
-/// แล้วให้แอปคุยกับเซิร์ฟเวอร์ ไม่ใช่ยัด token ลงเครื่องผู้ใช้
+///
+/// ทั้งสองทาง: **ไม่มี sha256 = ไม่ติดตั้ง** เหมือนเดิมทุกประการ
 library;
 
 import 'dart:convert';
@@ -54,10 +65,26 @@ class UpdateInfo {
 
 enum UpdateStage { idle, checking, available, downloading, verifying, ready, failed }
 
+/// สินค้าในระบบของ xman studio
+const kStoreProductSlug = 'giggok';
+
+/// ที่อยู่หลังบ้านตั้งต้น — ตัวเดียวกับ MindState._storeDefault
+const kUpdateStoreDefault = String.fromEnvironment(
+  'STORE_BASE_URL',
+  defaultValue: 'https://xman4289.com',
+);
+
 class Updater extends ChangeNotifier {
-  Updater({http.Client? httpClient, S Function()? strings})
-      : _s = strings ?? _thai,
+  Updater({
+    http.Client? httpClient,
+    S Function()? strings,
+    String Function()? storeBaseOf,
+  })  : _s = strings ?? _thai,
+        _storeBaseOf = storeBaseOf ?? (() => kUpdateStoreDefault),
         _http = httpClient ?? http.Client();
+
+  /// อ่านตอนใช้จริง · ผู้ใช้/การตั้งค่าเปลี่ยนที่อยู่หลังบ้านได้ระหว่างแอปเปิด
+  final String Function() _storeBaseOf;
 
   final S Function() _s;
   static S _thai() => const S(AppLang.th);
@@ -113,6 +140,19 @@ class Updater extends ChangeNotifier {
       final info = await PackageInfo.fromPlatform();
       _current = info.version;
 
+      // ── ทางหลัก: xman studio ──
+      final fromStore = await _checkStore(_current);
+      if (fromStore != null) {
+        if (fromStore.version.isEmpty) {
+          _set(UpdateStage.idle); // หลังบ้านตอบชัดว่าไม่มีรุ่นใหม่
+          return null;
+        }
+        _pending = fromStore;
+        _set(UpdateStage.available);
+        return _pending;
+      }
+
+      // ── ทางสำรอง: GitHub Releases ──
       final res = await _http.get(
         Uri.parse(_releaseApi),
         headers: const {'Accept': 'application/vnd.github+json'},
@@ -161,10 +201,68 @@ class Updater extends ChangeNotifier {
 
       _set(UpdateStage.available);
       return _pending;
-    } on Exception {
+    } on Object {
       _set(UpdateStage.failed, error: _s().updateNoConnection);
       return null;
     }
+  }
+
+  /// ถาม xman studio · คืน
+  /// - `UpdateInfo` ที่ version ว่าง = ตอบชัดว่าไม่มีรุ่นใหม่
+  /// - `UpdateInfo` ปกติ = มีรุ่นใหม่ พร้อมลิงก์ที่เสิร์ฟผ่านหลังบ้านและ sha256
+  /// - `null` = ถามไม่สำเร็จ (ล่ม/ยังไม่ลงทะเบียน/ตอบหน้าตาแปลก) → ไปทางสำรอง
+  @visibleForTesting
+  Future<UpdateInfo?> checkStoreForTest(String current) => _checkStore(current);
+
+  Future<UpdateInfo?> _checkStore(String current) async {
+    final base = _storeBaseOf().trim().replaceAll(RegExp(r'/+$'), '');
+    if (base.isEmpty) return null;
+    try {
+      final res = await _http.get(
+        Uri.parse('$base/api/v1/product/$kStoreProductSlug/update/check')
+            .replace(queryParameters: {'current_version': current}),
+        headers: const {'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) {
+        debugPrint('update: หลังบ้านตอบ ${res.statusCode} — ลองทางสำรอง');
+        return null;
+      }
+      final j = jsonDecode(utf8.decode(res.bodyBytes));
+      if (j is! Map) return null;
+      // บางปลายทางของบ้านห่อด้วย {success, data:{…}} · รับทั้งสองแบบ
+      final m = j['data'] is Map ? j['data'] as Map : j;
+      if (m['has_update'] != true) {
+        return const UpdateInfo(
+            version: '', notes: '', apkUrl: '', apkName: '', sizeBytes: 0,
+            sha256: null);
+      }
+      final version = _normalize('${m['latest_version'] ?? ''}');
+      final url = '${m['download_url'] ?? ''}';
+      // ตรวจซ้ำฝั่งเราด้วย · ตัวเลขที่หลังบ้านบอกว่าใหม่ แต่ไม่ใหม่กว่าจริง
+      // (เช่นแคชเก่า) ต้องไม่พาไปติดตั้งรุ่นเดิมทับ
+      if (version.isEmpty || url.isEmpty || !_isNewer(version, current)) {
+        return null;
+      }
+      final sha = '${m['sha256'] ?? ''}'.trim().toLowerCase();
+      return UpdateInfo(
+        version: version,
+        notes: cleanNotes('${m['changelog'] ?? ''}'),
+        apkUrl: url,
+        apkName: _safeApkName('${m['filename'] ?? ''}', version),
+        sizeBytes: (m['file_size'] is num) ? (m['file_size'] as num).toInt() : 0,
+        sha256: RegExp(r'^[0-9a-f]{64}$').hasMatch(sha) ? sha : null,
+      );
+    } on Object catch (e) {
+      debugPrint('update: ถามหลังบ้านไม่ได้ — ${e.runtimeType}');
+      return null;
+    }
+  }
+
+  /// ชื่อไฟล์ที่ปลอดภัยสำหรับเขียนลงแคช · ชื่อจากเซิร์ฟเวอร์ห้ามมี path
+  static String _safeApkName(String raw, String version) {
+    final base = raw.split(RegExp(r'[\\/]')).last.trim();
+    if (RegExp(r'^[A-Za-z0-9._-]+\.apk$').hasMatch(base)) return base;
+    return 'giggok-$version.apk';
   }
 
   Future<String?> _fetchExpectedHash(List<dynamic> assets, String apkName) async {

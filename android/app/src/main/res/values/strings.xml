@@ -26,4 +26,5 @@
     <string name="call_mind_mute_warn">เปิดลำโพงไม่ได้ ปลายสายจะไม่ได้ยินเธอ</string>
     <string name="dial_call">โทร</string>
     <string name="dial_hint">กดเบอร์</string>
+    <string name="call_note_channel">มายด์รับฝากเรื่องทางโทรศัพท์</string>
 </resources>

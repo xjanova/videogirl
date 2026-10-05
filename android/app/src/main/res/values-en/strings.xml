@@ -16,4 +16,5 @@
     <string name="call_mind_mute_warn">Speakerphone refused — the caller will not hear her</string>
     <string name="dial_call">Call</string>
     <string name="dial_hint">Enter a number</string>
+    <string name="call_note_channel">Messages Mind took on the phone</string>
 </resources>

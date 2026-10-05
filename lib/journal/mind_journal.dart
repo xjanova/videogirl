@@ -212,10 +212,14 @@ class MindJournal extends ChangeNotifier {
   ///
   /// ไม่ await การเขียนไฟล์ในผู้เรียกส่วนใหญ่ — การบันทึกต้องไม่ทำให้
   /// สิ่งที่กำลังเกิดขึ้นช้าลง ถ้าเขียนดิสก์ไม่ทันก็ยังเห็นบนจอทันทีอยู่ดี
+  ///
+  /// [id] ใส่เองได้ — ใช้ผูกรายการบนไทม์ไลน์กับบันทึกที่ยาวกว่า (บันทึกสาย)
+  /// ให้แตะแล้วเปิดของเต็มได้
   Future<bool> record(
     JournalKind kind,
     String title, {
     String detail = '',
+    String? id,
   }) async {
     final t = title.trim();
     if (t.isEmpty) return false;
@@ -229,7 +233,7 @@ class MindJournal extends ChangeNotifier {
     _entries.insert(
       0,
       JournalEntry(
-        id: '${_clock().microsecondsSinceEpoch}',
+        id: id ?? '${_clock().microsecondsSinceEpoch}',
         at: _clock(),
         kind: kind,
         title: _clip(t),

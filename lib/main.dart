@@ -11,6 +11,7 @@ import 'avatar/avatar_pack.dart';
 import 'calendar/device_calendar.dart';
 import 'journal/mind_journal.dart';
 import 'persona/mind_soul.dart';
+import 'phone/call_notes.dart';
 import 'phone/call_session.dart';
 import 'phone/call_watch.dart';
 import 'avatar/avatar_view.dart';
@@ -24,6 +25,7 @@ import 'diagnostics/debug_reporter.dart';
 import 'diagnostics/mind_log.dart';
 import 'store/mind_store.dart';
 import 'store/mind_vault.dart';
+import 'studio/mind_studio.dart';
 import 'screens/unsupported_screen.dart';
 import 'shell.dart';
 import 'i18n/strings.dart';
@@ -116,6 +118,9 @@ class _MindBootstrapState extends State<MindBootstrap>
   /// สมุดบันทึกเรื่องที่เกิดขึ้นจริง — แท็บไทม์ไลน์อ่านจากตรงนี้
   final MindJournal _journal = MindJournal();
 
+  /// บันทึกสายที่เธอรับแทน — ใครฝากอะไรไว้
+  final CallNotes _callNotes = CallNotes();
+
   /// สายโทรเข้า — เธอต้องรู้ว่าใครโทรมาถึงจะเป็นเลขาได้
   late final CallWatch _calls = CallWatch(
     permissions: _perms,
@@ -131,6 +136,8 @@ class _MindBootstrapState extends State<MindBootstrap>
     watch: _calls,
     state: _state,
     permissions: _perms,
+    // ปากของเธอบนเวทีขยับตามเสียงที่พูดเข้าสายจริง (ดู MindLips)
+    lips: _avatar,
   );
 
   /// ตัวตนของมายด์เครื่องนี้ — วันเกิด ราศี ความผูกพัน
@@ -151,6 +158,13 @@ class _MindBootstrapState extends State<MindBootstrap>
   /// ตัวควบคุมอวาตาร์อยู่ที่นี่ ไม่ใช่ในเชลล์ เพราะหน้าเปิดแอปต้องอ่าน
   /// ความคืบหน้าการโหลด VRM มาโชว์เป็นเปอร์เซ็นต์จริง
   final MindAvatarController _avatar = MindAvatarController();
+
+  /// สตูดิโอ — เวทีเต็มจอสำหรับแชร์หน้าจอเข้าวิดีโอคอล ไลฟ์ฉากเขียว และอัดคลิป
+  late final MindStudio _studio = MindStudio(
+    stage: _avatar,
+    state: _state,
+    permissions: _perms,
+  );
 
   /// พร้อมสร้างเชลล์หรือยัง — ต้องมีเซิร์ฟเวอร์ + ค่าที่ตั้งไว้ + ทะเบียนชุด
   ///
@@ -248,6 +262,9 @@ class _MindBootstrapState extends State<MindBootstrap>
       _journal.attachDb(_store?.db);
       await _journal.load();
       _state.attachJournal(_journal);
+      _callNotes.attachDb(_store?.db);
+      await _callNotes.load();
+      _state.attachCallNotes(_callNotes);
       _pack.onInstalled = (pack) => _journal.record(
         JournalKind.pack,
         pack.nameFor(_state.lang == AppLang.th),
@@ -280,6 +297,10 @@ class _MindBootstrapState extends State<MindBootstrap>
     } catch (e) {
       debugPrint('boot: ตั้งบริการเบื้องหลังไม่สำเร็จ — $e');
     }
+
+    // ไลเซนส์ฟรีของเครื่องนี้ (สมองพร็อกซี + ร้านชุด) · ไม่รอ ไม่มีอะไรบนจอแรก
+    // ต้องใช้มัน และล้มได้เงียบ ๆ โดยแอปยังใช้ได้ปกติ
+    unawaited(_state.ensureLicense());
 
     // อ่านปฏิทินตั้งแต่เปิดแอป ไม่ใช่รอให้เปิดแท็บปฏิทินก่อน
     //
@@ -323,6 +344,7 @@ class _MindBootstrapState extends State<MindBootstrap>
     _calls.onCallEnded = null;
     _session.dispose();
     _soul.dispose();
+    _studio.dispose();
     _avatar.dispose();
     _state.dispose();
     _pack.dispose();
@@ -355,13 +377,20 @@ class _MindBootstrapState extends State<MindBootstrap>
         ChangeNotifierProvider.value(value: _avatar),
         ChangeNotifierProvider.value(value: _state.memory),
         // ไม่ส่ง strings = ข้อความผิดพลาดของการอัปเดตเป็นไทยเสมอ
-        ChangeNotifierProvider(create: (_) => Updater(strings: () => _state.s)),
+        ChangeNotifierProvider(
+          create: (_) => Updater(
+            strings: () => _state.s,
+            storeBaseOf: () => _state.storeBaseUrl,
+          ),
+        ),
         ChangeNotifierProvider(create: (_) => MindWatch()..refresh()),
         ChangeNotifierProvider.value(value: _perms..refresh()),
         ChangeNotifierProvider.value(value: _calendar),
         ChangeNotifierProvider.value(value: _journal),
+        ChangeNotifierProvider.value(value: _callNotes),
         ChangeNotifierProvider.value(value: _calls),
         ChangeNotifierProvider.value(value: _session),
+        ChangeNotifierProvider.value(value: _studio),
         ChangeNotifierProvider.value(value: _soul),
         ChangeNotifierProvider.value(value: _vault),
         // 🔴 ต่อตัวเฝ้าข้อผิดพลาดตั้งแต่สร้าง — ไม่ใช่รอให้ใครเปิดหน้าตั้งค่า

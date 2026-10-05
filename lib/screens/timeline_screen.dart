@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../calendar/device_calendar.dart';
 import '../i18n/strings.dart';
+import '../i18n/strings_ai.dart';
 import '../journal/mind_journal.dart';
+import '../phone/call_notes.dart';
 import '../phone/call_watch.dart';
 import '../state/mind_state.dart';
 import '../theme/app_theme.dart';
@@ -36,6 +40,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
     final journal = context.watch<MindJournal>();
     final cal = context.watch<DeviceCalendar>();
     final calls = context.watch<CallWatch>();
+    // ฟังไว้ให้เครื่องหมาย "ยังไม่อ่าน" อัปเดตเองหลังเปิดดู
+    context.watch<CallNotes>();
     final today = journal.today;
 
     return LiquidBackground(
@@ -183,8 +189,12 @@ class _TimelineScreenState extends State<TimelineScreen> {
 
   Widget _row(JournalEntry e, MindMode mode, S t, {required bool last}) {
     final dot = _dotColour(e.kind, mode);
+    // สายที่เธอรับแทน = มีบันทึกเต็ม (สรุป + บทสนทนา) แตะเปิดดูได้
+    final note = e.kind == JournalKind.call
+        ? context.read<CallNotes>().byId(e.id)
+        : null;
 
-    return IntrinsicHeight(
+    final row = IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 11,
@@ -237,6 +247,27 @@ class _TimelineScreenState extends State<TimelineScreen> {
                     Text(_detailOf(e, t),
                         style: const TextStyle(
                             fontSize: 11.5, height: 1.6, color: MindColors.ink60)),
+                  if (note != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        spacing: 5,
+                        children: [
+                          Icon(
+                            note.seen
+                                ? Icons.chat_bubble_outline_rounded
+                                : Icons.mark_chat_unread_rounded,
+                            size: 13,
+                            color: mode.accent,
+                          ),
+                          Text(t.callNoteConversation,
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: mode.accent)),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -244,6 +275,95 @@ class _TimelineScreenState extends State<TimelineScreen> {
         ],
       ),
     );
+
+    if (note == null) return row;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openNote(note, mode, t),
+      child: row,
+    );
+  }
+
+  /// สรุปสาย + บทสนทนาเต็ม · เปิดแล้วนับว่าเจ้าของรู้เรื่องแล้ว
+  Future<void> _openNote(CallNote note, MindMode mode, S t) async {
+    final notes = context.read<CallNotes>();
+    final journal = context.read<MindJournal>();
+    unawaited(notes.markSeen(note.id));
+    final her = context.read<MindState>().soul?.name ?? t.speakerHer;
+
+    final delete = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (c) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .7,
+        maxChildSize: .95,
+        builder: (c, scroll) => ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+          children: [
+            Text(t.callNoteSheetTitle,
+                style: MindType.overline.copyWith(color: mode.accent)),
+            const SizedBox(height: 6),
+            Text(t.callNoteTitle(note.who),
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700, height: 1.4)),
+            Text('${t.dayLabel(note.at)} · ${_clock(note.at)}',
+                style: mindMono(size: 10.5, color: MindColors.ink50)),
+            const SizedBox(height: 12),
+            Text(note.summary,
+                style: const TextStyle(fontSize: 13.5, height: 1.6)),
+            const SizedBox(height: 18),
+            MindSectionLabel(t.callNoteConversation),
+            const SizedBox(height: 8),
+            for (final l in note.lines)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text.rich(TextSpan(children: [
+                  TextSpan(
+                      text: '${l.fromHer ? her : t.speakerCaller}: ',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: l.fromHer ? mode.accent : MindColors.ink)),
+                  TextSpan(text: l.text),
+                ]), style: const TextStyle(fontSize: 12.5, height: 1.55)),
+              ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => Navigator.pop(c, true),
+                icon: const Icon(Icons.delete_outline_rounded,
+                    color: Color(0xFFE0357A)),
+                label: Text(t.callNoteDelete,
+                    style: const TextStyle(color: Color(0xFFE0357A))),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (delete != true || !mounted) return;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        content: Text(t.callNoteDeleteConfirm),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false), child: Text(t.cancel)),
+          TextButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: Text(t.callNoteDelete)),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    await notes.remove(note.id);
+    await journal.forget(note.id);
   }
 
   String _clock(DateTime at) {
