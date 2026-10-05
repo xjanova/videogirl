@@ -29,7 +29,13 @@ class _UpdateCardState extends State<UpdateCard> {
     if (_checkedOnce) return;
     _checkedOnce = true;
     // เช็คเงียบ ๆ ครั้งเดียวตอนเข้าหน้านี้ ไม่ยิงทุกครั้งที่ rebuild
-    context.read<Updater>().check();
+    //
+    // 🔴 หลังวาดเฟรมนี้เสร็จ ไม่ใช่ตอนนี้ · check() เปลี่ยนสถานะเป็น "กำลังเช็ค"
+    // ทันทีแบบ sync = สั่งวาด Provider ใหม่กลางการวาด (assert ใน debug และ
+    // ใน release การ์ดค้างสถานะเก่าไปหนึ่งเฟรม)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<Updater>().check();
+    });
   }
 
   @override

@@ -86,6 +86,12 @@ class _MindShellState extends State<MindShell> {
   MindStudio? _studio;
   int _studioSeen = 0;
 
+  /// หมวดที่เปิดอยู่ในหน้าตั้งค่า · Back ต้องปิดหมวดก่อน ไม่ใช่พาออกจากแท็บ
+  final _settingsSection = ValueNotifier<SettingsSection?>(null);
+
+  /// ตำแหน่งของหน้าตั้งค่าใน IndexedStack
+  static const _settingsTab = 4;
+
   void _onStudio() {
     final st = _studio;
     if (st == null || !mounted || st.noticeSeq == _studioSeen) return;
@@ -103,6 +109,7 @@ class _MindShellState extends State<MindShell> {
   @override
   void dispose() {
     _studio?.removeListener(_onStudio);
+    _settingsSection.dispose();
     super.dispose();
   }
 
@@ -150,6 +157,8 @@ class _MindShellState extends State<MindShell> {
     final studio = context.read<MindStudio>();
     if (studio.active) {
       unawaited(studio.exit());
+    } else if (_tab == _settingsTab && _settingsSection.value != null) {
+      _settingsSection.value = null;
     } else if (_tab != 0) {
       _select(0);
     } else if (state.chatOpen) {
@@ -199,7 +208,7 @@ class _MindShellState extends State<MindShell> {
           const MailScreen(),
           const CalendarScreen(),
           const TimelineScreen(),
-          const SettingsScreen(),
+          SettingsScreen(section: _settingsSection),
         ],
       ),
       // ฟังเฉพาะตัวอวาตาร์ เพื่อไม่ให้ ready/error ลากทั้ง Scaffold มา rebuild

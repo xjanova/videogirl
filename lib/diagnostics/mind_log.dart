@@ -53,9 +53,45 @@ abstract final class MindLog {
 
     final original = debugPrint;
     debugPrint = (String? message, {int? wrapWidth}) {
-      if (message != null) add(message);
-      original(message, wrapWidth: wrapWidth);
+      if (message == null) return original(message, wrapWidth: wrapWidth);
+      final kept = scrub(message);
+      if (kept == null) return;
+      add(kept);
+      original(kept, wrapWidth: wrapWidth);
     };
+  }
+
+  /// บรรทัดของปลั๊กอินสมองที่**พิมพ์ข้อความสนทนาออกมาทั้งก้อน**
+  ///
+  /// 🔴 flutter_gemma พิมพ์ทุกอย่างที่ส่งเข้าโมเดล (รวมบทสนทนาที่เล่าย้อน)
+  /// และทุกคำที่เธอตอบ ลง `debugPrint` · บรรทัดพวกนั้นมาอยู่ในวงแหวนนี้ แล้ว
+  /// ไหลไปกับรายงานบั๊กที่ส่งออกนอกเครื่อง — ทั้งที่สัญญาของสมองในเครื่องคือ
+  /// "คุยอะไรไม่ออกนอกเครื่อง" · และตอนสตรีมมันพิมพ์**ทุกคำสามรอบ**
+  /// ซึ่งดันบรรทัดที่ใช้ไล่บั๊กจริงตกวงแหวนไปหมด
+  ///
+  /// ตัวที่พิมพ์ทีละคำ: ทิ้งเลย · ตัวที่พิมพ์ทั้งก้อน: เก็บว่าเกิดขึ้น ไม่เก็บเนื้อหา
+  static const _perToken = [
+    'InferenceChat: Received filtered token',
+    'InferenceChat: Emitting text token',
+    'InferenceChat: No function processing, emitting token',
+  ];
+  static const _wholeText = [
+    'Current Message:',
+    'InferenceChat: Raw response from native model',
+    'InferenceChat: Complete response accumulated',
+    'InferenceChat: Created message object',
+  ];
+
+  /// คืนบรรทัดที่ปลอดภัยจะเก็บ · null = ทิ้งทั้งบรรทัด
+  @visibleForTesting
+  static String? scrub(String message) {
+    for (final p in _perToken) {
+      if (message.startsWith(p)) return null;
+    }
+    for (final p in _wholeText) {
+      if (message.startsWith(p)) return '$p [content removed, ${message.length} chars]';
+    }
+    return message;
   }
 
   static void add(String message) {

@@ -296,6 +296,7 @@ class MindState extends ChangeNotifier {
     // คีย์อยู่คนละที่กับค่าอื่น (Keystore ไม่ใช่ SharedPreferences) จึงอ่านแยก
     _openAiKey = await SecretStore.read(SecretStore.kOpenAiKey);
     _licenseKey = p.getString('licenseKey') ?? '';
+    _licenseType = p.getString('licenseType') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
     _realtimeModel = p.getString('realtimeModel') ?? OpenAiConfig.realtimeModel;
 
@@ -639,6 +640,12 @@ class MindState extends ChangeNotifier {
     unawaited(localBrain.detectDevice());
   }
 
+  /// เปิดสมองในเครื่องเข้าหน่วยความจำรอไว้ — ดู [LocalBrain.preload]
+  void preloadLocalBrain() {
+    if (_brain != BrainProvider.onDevice || _disposed) return;
+    unawaited(localBrain.preload());
+  }
+
   void setHomeServerUrl(String v) {
     _homeServerUrl = v.trim();
     _save('homeServerUrl', _homeServerUrl);
@@ -777,32 +784,61 @@ class MindState extends ChangeNotifier {
   String _licenseKey = '';
   String get licenseKey => _licenseKey;
 
+  /// ชนิดไลเซนส์จากหลังบ้าน ('free' · 'lifetime' · …) · ว่าง = ผู้ใช้ใส่เอง
+  /// (หลังบ้านไม่ได้บอก)
+  String _licenseType = '';
+  String get licenseType => _licenseType;
+
   void setLicenseKey(String v) {
     // ตัวพิมพ์ใหญ่เสมอ · หลังบ้านเทียบคีย์ของร้านชุดและพร็อกซีแบบตรงตัว
     // ส่วนตอน activate มันแปลงเป็นตัวใหญ่ให้ · พิมพ์เล็กมา = ผ่านที่หนึ่ง ตกอีกที่
     _licenseKey = v.trim().toUpperCase();
     _save('licenseKey', _licenseKey);
+    // ใส่เองไม่รู้ชนิด · ลบทิ้ง = ไม่มีชนิด
+    _licenseType = '';
+    _save('licenseType', '');
     _notify();
   }
 
   bool _licenseAsked = false;
 
+  /// กำลังลงทะเบียนเครื่องกับหลังบ้านอยู่
+  bool _licenseBusy = false;
+  bool get licenseBusy => _licenseBusy;
+
+  /// ลงทะเบียนอัตโนมัติรอบล่าสุดไม่สำเร็จ (ไม่มีเน็ต / หลังบ้านไม่ตอบ)
+  bool _licenseFailed = false;
+  bool get licenseFailed => _licenseFailed && _licenseKey.isEmpty;
+
   /// ขอไลเซนส์ฟรีของเครื่องนี้ ถ้ายังไม่มี · เรียกตอนเปิดแอป ครั้งเดียวต่อรอบ
   ///
   /// มีคีย์อยู่แล้ว (ทั้งที่ได้มาเองและที่ผู้ใช้กรอก) = ไม่แตะ · ล้มก็เงียบ
   /// แอปใช้ต่อได้ปกติ แค่สมองพร็อกซีกับชุดที่ซื้อยังใช้ไม่ได้
-  Future<void> ensureLicense({MindLicense? client}) async {
-    if (_licenseAsked || _licenseKey.trim().isNotEmpty) return;
+  ///
+  /// [retry] = ผู้ใช้กดลองใหม่เอง · ข้ามธง "ถามไปแล้วรอบนี้"
+  Future<void> ensureLicense({MindLicense? client, bool retry = false}) async {
+    if (_licenseKey.trim().isNotEmpty || _licenseBusy) return;
+    if (_licenseAsked && !retry) return;
     _licenseAsked = true;
+    _licenseBusy = true;
+    _licenseFailed = false;
+    _notify();
     final c = client ?? MindLicense();
     try {
-      final key = await c.checkMachine(_storeBaseUrl);
-      if (key != null && !_disposed && _licenseKey.trim().isEmpty) {
-        debugPrint('license: ได้ไลเซนส์ของเครื่องนี้แล้ว');
-        setLicenseKey(key);
+      final got = await c.checkMachine(_storeBaseUrl);
+      if (_disposed) return;
+      if (got != null && _licenseKey.trim().isEmpty) {
+        debugPrint('license: ได้ไลเซนส์ของเครื่องนี้แล้ว (${got.type})');
+        setLicenseKey(got.key);
+        _licenseType = got.type;
+        _save('licenseType', got.type);
+      } else if (got == null) {
+        _licenseFailed = true;
       }
     } finally {
+      _licenseBusy = false;
       if (client == null) c.close();
+      _notify();
     }
   }
 
@@ -1169,6 +1205,25 @@ class MindState extends ChangeNotifier {
   bool _sending = false;
   bool get sending => _sending;
 
+  /// คำตอบที่เธอกำลังพิมพ์อยู่ (สมองในเครื่องสตรีมทีละคำ) · ว่าง = ยังไม่มีคำแรก
+  ///
+  /// มีเฉพาะระหว่าง [sending] · พอคำตอบจริงลงบทสนทนาแล้วตัวนี้ว่างเสมอ
+  /// ไม่งั้นข้อความเดียวกันจะโผล่สองที่
+  String get partialReply => _sending ? _partial : '';
+  String _partial = '';
+  DateTime _partialAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// คำใหม่มาทีละโทเค็น (หลายสิบครั้งต่อวินาที) · วาดจอใหม่ทุกครั้ง = หน้าจอ
+  /// แย่งเครื่องกับสมองที่กำลังคิด · วาดไม่เกินราว 10 ครั้งต่อวินาทีพอให้ตาเห็นว่าไหล
+  void _showPartial(String text) {
+    if (!_sending || _disposed) return;
+    _partial = text.trim();
+    final now = DateTime.now();
+    if (now.difference(_partialAt) < const Duration(milliseconds: 100)) return;
+    _partialAt = now;
+    _notify();
+  }
+
   String? _lastError;
 
   /// ข้อความผิดพลาดล่าสุดที่พอบอกผู้ใช้ได้ — ไม่มี stack trace
@@ -1226,7 +1281,10 @@ class MindState extends ChangeNotifier {
 
   Future<void> _send(String text) async {
     _sending = true;
+    _partial = '';
     _lastError = null;
+    // คุยต่ออยู่ = ยังไม่ว่าง · เลื่อนการสกัดความจำ (สมองในเครื่อง) ออกไปก่อน
+    if (_distilTimer != null) _armDistil();
     _push(ChatMessage.me(text));
     _notify();
 
@@ -1276,6 +1334,7 @@ class MindState extends ChangeNotifier {
       // ของเดิมเก็บมันเหมือนคำตอบจริง: ลงฐานถาวร ลงไทม์ไลน์ว่า "ตอบแล้ว"
       // และส่งกลับเข้าโมเดลในตาถัดไป · คีย์ผิดห้าครั้ง = ห้าบรรทัด
       // "ขอโทษค่ะ คิดไม่ได้" ที่โมเดลอ่านว่าเป็นสิ่งที่ตัวเองเคยพูด
+      _partial = '';
       _push(ChatMessage.her(reply), ephemeral: failed);
       _sending = false;
       _notify();
@@ -1301,6 +1360,7 @@ class MindState extends ChangeNotifier {
       // กรณีที่หลุดออกมากลางคัน
       if (_sending) {
         _sending = false;
+        _partial = '';
         _notify();
       }
     }
@@ -1577,7 +1637,7 @@ class MindState extends ChangeNotifier {
     final history = [
       for (final m in _context) (fromHer: m.fromHer, text: m.text),
     ];
-    return _askBrain(system, history);
+    return _askBrain(system, history, onPartial: _showPartial);
   }
 
   /// ยิงคำถามไปที่สมองที่เลือกไว้
@@ -1587,11 +1647,13 @@ class MindState extends ChangeNotifier {
   /// จะมีทางใดทางหนึ่งที่แก้ไปที่เดียวแล้วอีกที่ไม่ตาม
   Future<String> _askBrain(
     String system,
-    List<({bool fromHer, String text})> history,
-  ) async {
+    List<({bool fromHer, String text})> history, {
+    void Function(String partial)? onPartial,
+  }) async {
     if (_brain == BrainProvider.onDevice) {
       debugPrint('สมอง: ในเครื่อง ${localBrain.variant.label}');
-      return localBrain.reply(system: system, history: history);
+      return localBrain.reply(
+          system: system, history: history, onPartial: onPartial);
     }
 
     final (:client, :model, :ours) = _networkBrain();
@@ -1799,8 +1861,15 @@ class MindState extends ChangeNotifier {
     // อาจมีเรื่องที่ควรจำแค่เรื่องเดียว
     if (m.fromHer) {
       if (++_sinceDistill >= kDistillEvery) {
-        _sinceDistill = 0;
-        unawaited(_distil());
+        if (_brain == BrainProvider.onDevice) {
+          // 🔴 สมองในเครื่องมีตัวเดียว คิดได้ทีละงาน · สกัดทันทีหลังตอบ =
+          // ข้อความถัดไปต้องรอให้สกัดจบก่อน แล้วยังต้องอ่านบทสนทนาใหม่ทั้งหมด
+          // (การสกัดใช้บทบาทคนละตัว ปิดบทสนทนาที่เปิดค้างไว้ทิ้ง) · รอให้ว่างก่อน
+          _armDistil();
+        } else {
+          _sinceDistill = 0;
+          unawaited(_distil());
+        }
       }
       // 🔴 จำตัวนับข้ามการเปิดปิดแอป · ของเดิมเริ่มที่ 0 ทุกครั้ง คนที่คุยรอบละ
       // 3–5 ประโยคจึงไม่เคยถึงรอบสกัด — ไม่มีความจำใหม่ และความผูกพันไม่ขยับเลย
@@ -1810,17 +1879,51 @@ class MindState extends ChangeNotifier {
 
   static const _kSinceDistill = 'sinceDistill';
 
+  /// เงียบนานเท่านี้ถึงนับว่าว่าง พอจะให้สมองในเครื่องไปสกัดความจำได้
+  static const distilIdle = Duration(seconds: 45);
+
+  Timer? _distilTimer;
+
+  /// รอให้ว่างก่อนสกัดความจำอยู่ไหม — ดู [_armDistil]
+  @visibleForTesting
+  bool get debugDistilPending => _distilTimer?.isActive ?? false;
+
+  /// ตาที่ยังไม่ได้สกัดความจำ
+  @visibleForTesting
+  int get debugSinceDistill => _sinceDistill;
+
+  /// ตั้งนาฬิกาสกัดความจำใหม่ · มีคนคุยต่อ = เลื่อนออกไปอีก
+  void _armDistil() {
+    _distilTimer?.cancel();
+    _distilTimer = Timer(distilIdle, _distilWhenIdle);
+  }
+
+  void _distilWhenIdle() {
+    if (_disposed) return;
+    if (_sending || _speaking) {
+      _armDistil();
+      return;
+    }
+    _distilTimer = null;
+    // สกัดทุกตาที่ค้างมา ไม่ใช่แค่หกตาล่าสุด · คุยรวดเดียวสิบตาแล้วค่อยหยุด
+    // = สิบตานั้นต้องถูกอ่านครบ
+    final turns = _sinceDistill;
+    _sinceDistill = 0;
+    _kv?.setInt(_kSinceDistill, 0);
+    unawaited(_distil(turns: turns));
+  }
+
   /// สกัดสิ่งที่ควรจำออกจากบทสนทนาล่าสุด แล้วเก็บลงความจำถาวร
   ///
   /// เงียบเสมอเมื่อพลาด — นี่เป็นงานเบื้องหลังที่ผู้ใช้ไม่ได้สั่ง
   /// ขึ้น error ให้เห็นจะกลายเป็นการรบกวนด้วยเรื่องที่เขาไม่ได้ขอ
-  Future<void> _distil() async {
+  Future<void> _distil({int turns = kDistillEvery}) async {
     if (_context.length < 4) return;
     try {
       // 🔴 เฉพาะช่วงที่ยังไม่เคยสกัด (สองบรรทัดต่อตา) ไม่ใช่ทั้งหน้าต่าง 16 บรรทัด
       // · ของเดิมส่งทั้งหน้าต่างทุก 12 บรรทัด สี่บรรทัดจึงถูกให้คะแนนซ้ำสองรอบ
       // ทั้งการปฏิบัติและการจีบ = ความผูกพันขยับเร็วกว่าที่ออกแบบไว้
-      const fresh = kDistillEvery * 2;
+      final fresh = turns * 2;
       final recent = _context.length > fresh
           ? _context.sublist(_context.length - fresh)
           : _context;
@@ -1890,6 +1993,7 @@ class MindState extends ChangeNotifier {
     _disposed = true;
     _bubbleTimer?.cancel();
     _chatTimer?.cancel();
+    _distilTimer?.cancel();
     _openai.close();
     _speech.dispose();
     if (hasLocalBrain) _lazyLocal!.dispose();

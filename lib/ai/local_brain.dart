@@ -17,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
+import '../i18n/strings_settings.dart';
 import 'device_capability.dart';
 import 'openai_client.dart';
 
@@ -110,6 +111,50 @@ const retiredModels = <({String name, String url})>[
 
 /// สถานะของโมเดลในเครื่อง
 enum LocalModelStage { unknown, missing, downloading, ready, failed }
+
+/// ผลวัดของคำตอบหนึ่งครั้ง — **วัดจากเครื่องนี้จริง** ไม่ใช่ตัวเลขจากการ์ดโมเดล
+///
+/// มีไว้ตอบคำถามที่เจ้าของถามได้ตลอด: "ใช้รุ่นไหน โหลดมาจริงไหม ทำไมช้า"
+/// · ถ้าไม่มีตัวเลขจริง ทุกคำตอบคือการเดา และการเดาผิดคือการแก้ผิดจุด
+class LocalReplyStats {
+  const LocalReplyStats({
+    required this.variant,
+    required this.backend,
+    required this.loadMs,
+    required this.newSession,
+    required this.firstMs,
+    required this.totalMs,
+    required this.chars,
+  });
+
+  final GemmaVariant variant;
+  final PreferredBackend backend;
+
+  /// เวลาเปิดสมอง (อ่านไฟล์เข้าหน่วยความจำ + เตรียม GPU) ถ้าเกิดในคำตอบนี้
+  /// · null = เปิดรอไว้แล้ว ไม่ได้เสียเวลานี้
+  final int? loadMs;
+
+  /// ต้องอ่านบทบาทและบทสนทนาใหม่ทั้งหมดไหม · true = ตานี้ช้ากว่าปกติ
+  final bool newSession;
+
+  /// จากเริ่มคิดถึงคำแรก (ไม่รวมเวลาเปิดสมอง)
+  final int firstMs;
+
+  /// จากเริ่มคิดถึงคำสุดท้าย (ไม่รวมเวลาเปิดสมอง)
+  final int totalMs;
+
+  final int chars;
+
+  /// ตัวอักษรต่อวินาทีช่วงพิมพ์คำตอบ · ตัวอักษรเพราะนับได้ตรง ๆ และคนอ่านเข้าใจ
+  /// ส่วน "โทเค็น" ของภาษาไทยไม่ตรงกับคำ บอกไปก็เทียบอะไรไม่ได้
+  double get charsPerSecond {
+    final gen = totalMs - firstMs;
+    return gen <= 0 ? 0 : chars * 1000 / gen;
+  }
+
+  /// รอทั้งหมดก่อนเห็นคำแรก (รวมเปิดสมอง ถ้ามี)
+  int get waitMs => (loadMs ?? 0) + firstMs;
+}
 
 class LocalBrain extends ChangeNotifier {
   LocalBrain({
@@ -355,6 +400,28 @@ class LocalBrain extends ChangeNotifier {
   InferenceChat? _chat;
   String? _loadedSystem;
   bool _disposed = false;
+
+  /// เปิดสมองอยู่ในหน่วยความจำแล้วไหม · false = คำถามถัดไปต้องรอเปิดก่อน
+  bool get loaded => _model != null;
+
+  /// เปิดสมองครั้งล่าสุดใช้เวลากี่มิลลิวินาที · null = ยังไม่เคยเปิด
+  int? _lastLoadMs;
+  int? get lastLoadMs => _lastLoadMs;
+
+  /// ผลวัดของคำตอบล่าสุด · null = ยังไม่ได้ตอบสักครั้งในรอบนี้
+  LocalReplyStats? _lastStats;
+  LocalReplyStats? get lastStats => _lastStats;
+
+  /// ขนาดไฟล์ที่อยู่ในเครื่องจริงของแต่ละรุ่น (จากการสแกนล่าสุด)
+  final Map<GemmaVariant, int> _onDisk = {};
+
+  /// ไบต์ของไฟล์ที่อยู่ในเครื่องจริง · null = ไม่มีไฟล์
+  int? bytesOnDisk(GemmaVariant v) => _onDisk[v];
+
+  bool _benchmarking = false;
+
+  /// กำลังทดสอบความเร็วอยู่
+  bool get benchmarking => _benchmarking;
 
   /// บทสนทนาที่ **session ปัจจุบันเห็นมาแล้ว** เรียงเก่า→ใหม่
   ///
@@ -663,14 +730,18 @@ class LocalBrain extends ChangeNotifier {
   /// ซึ่งช้ากว่าเดิม แต่เป็นความช้าที่ถูกต้อง ไม่ใช่ความเร็วที่พัง
   Future<void> _queue = Future<void>.value();
 
+  /// [onPartial] ได้ข้อความที่พิมพ์มาแล้วทั้งก้อนทุกครั้งที่มีคำใหม่ · ให้หน้าจอ
+  /// โชว์คำตอบระหว่างที่เธอยังคิดอยู่ ไม่ต้องนั่งดูจุดสามจุดจนจบประโยค
   Future<String> reply({
     required String system,
     required List<Turn> history,
+    void Function(String partial)? onPartial,
   }) {
     final done = Completer<String>();
     _queue = _queue.then((_) async {
       try {
-        done.complete(await _reply(system: system, history: history));
+        done.complete(await _reply(
+            system: system, history: history, onPartial: onPartial));
       } on Object catch (e, st) {
         // คิวต้องไม่พังตามงานที่ล้ม ไม่งั้นทุกคำถามหลังจากนี้จะล้มตามกันหมด
         done.completeError(e, st);
@@ -682,6 +753,7 @@ class LocalBrain extends ChangeNotifier {
   Future<String> _reply({
     required String system,
     required List<Turn> history,
+    void Function(String partial)? onPartial,
   }) async {
     // 🔴 `unknown` ไม่ใช่ "ยังไม่ได้โหลด" แต่คือ "ยังไม่ได้ดู"
     //
@@ -714,8 +786,12 @@ class LocalBrain extends ChangeNotifier {
     if (last.isEmpty) throw OpenAiFailure(_s().errNothingToAnswer);
 
     try {
+      final coldStart = _model == null;
       final continued = await _ensureChat(system, history);
       final chat = _chat!;
+
+      // นับจากตรงนี้ · เวลาเปิดสมอง (ถ้ามี) แยกไว้อีกตัว จะได้รู้ว่าช้าเพราะอะไร
+      final clock = Stopwatch()..start();
 
       // ต่อจากของเดิมได้ = เนทีฟถือประวัติไว้ครบแล้ว ส่งแค่คำล่าสุดพอ
       // ต่อไม่ได้ = session เพิ่งเกิดใหม่และว่างเปล่า ต้องเล่าย้อนให้ฟังก่อน
@@ -723,14 +799,43 @@ class LocalBrain extends ChangeNotifier {
         text: continued ? last : _withTranscript(history),
         isUser: true,
       ));
-      final res = await chat.generateChatResponse();
 
-      final text = switch (res) {
-        TextResponse r => r.token,
-        _ => '',
-      };
+      // 🔴 สตรีมทีละคำ ไม่ใช่รอทั้งก้อน
+      //
+      // บนมือถือคำตอบหนึ่งประโยคกินเวลาหลายวินาที · ของเดิมรอจนจบแล้วค่อยโชว์
+      // ทั้งก้อน คนถามเห็นจุดสามจุดค้างอยู่ตลอดช่วงนั้นแล้วอ่านว่า "ช้า" ทั้งที่
+      // คำแรกพร้อมตั้งนานแล้ว · ความเร็วจริงเท่าเดิม แต่ไม่ต้องรอดูความว่างเปล่า
+      final buf = StringBuffer();
+      int? firstMs;
+      await for (final r in chat.generateChatResponseAsync()) {
+        if (r is! TextResponse || r.token.isEmpty) continue;
+        firstMs ??= clock.elapsedMilliseconds;
+        buf.write(r.token);
+        onPartial?.call(buf.toString());
+      }
+      clock.stop();
+
+      final text = buf.toString();
       if (text.trim().isEmpty) {
         throw OpenAiFailure(_s().errLocalEmpty);
+      }
+
+      final backend = _activeBackend;
+      if (backend != null) {
+        _lastStats = LocalReplyStats(
+          variant: _variant,
+          backend: backend,
+          loadMs: coldStart ? _lastLoadMs : null,
+          newSession: !continued,
+          firstMs: firstMs ?? clock.elapsedMilliseconds,
+          totalMs: clock.elapsedMilliseconds,
+          chars: text.trim().length,
+        );
+        debugPrint('gemma: ตอบใน ${_lastStats!.waitMs} ms ถึงคำแรก · '
+            'ทั้งหมด ${_lastStats!.totalMs} ms · ${backend.name}'
+            '${coldStart ? ' (เปิดสมอง ${_lastLoadMs ?? '?'} ms)' : ''}'
+            '${continued ? '' : ' · อ่านบทสนทนาใหม่'}');
+        if (!_disposed) notifyListeners();
       }
 
       // session ถือครบทั้งบทสนทนา **บวกคำตอบที่เพิ่งสร้าง** แล้ว
@@ -838,7 +943,11 @@ class LocalBrain extends ChangeNotifier {
 
   Future<bool> isComplete(GemmaVariant v) async {
     final actual = await installedBytes(v);
-    if (actual == null) return false;
+    if (actual == null) {
+      _onDisk.remove(v);
+      return false;
+    }
+    _onDisk[v] = actual;
     final diff = (actual - v.bytes).abs() / v.bytes;
     if (diff <= _sizeTolerance) return true;
     debugPrint('gemma: ${v.id} ไฟล์ไม่ครบ — มี $actual ควรมี ${v.bytes}');
@@ -915,12 +1024,7 @@ class LocalBrain extends ChangeNotifier {
   /// คืนค่าว่า session ที่ได้ **ต่อจากบทสนทนาเดิมได้เลย** หรือเพิ่งเกิดใหม่
   Future<bool> _ensureChat(String system, List<Turn> history) async {
     await _ensurePlugin();
-    if (_model == null) {
-      _markActive();
-      _model = await _createModel();
-      _loadedSystem = null;
-      if (!_disposed) notifyListeners(); // หน้าตั้งค่าบอกว่าใช้ GPU หรือ CPU อยู่
-    }
+    if (_model == null) await _open();
 
     final key = sessionKeyOf(system);
     if (_chat != null &&
@@ -944,6 +1048,66 @@ class LocalBrain extends ChangeNotifier {
     _sessionTurns = 0;
     _fed = const [];
     return false;
+  }
+
+  /// เปิดสมองเข้าหน่วยความจำ แล้วจับเวลาไว้บอกเจ้าของ
+  Future<void> _open() async {
+    final clock = Stopwatch()..start();
+    _markActive();
+    _model = await _createModel();
+    _lastLoadMs = clock.elapsedMilliseconds;
+    _loadedSystem = null;
+    debugPrint('gemma: เปิดสมอง ${_variant.id} ด้วย ${_activeBackend?.name} '
+        'ใน $_lastLoadMs ms');
+    if (!_disposed) notifyListeners(); // หน้าตั้งค่าบอกว่าใช้ GPU หรือ CPU อยู่
+  }
+
+  /// เปิดสมองรอไว้ก่อน ไม่ต้องรอให้ทักคำแรก
+  ///
+  /// 🔴 การเปิดสมองคือส่วนที่ช้าที่สุดของคำถามแรก — อ่านไฟล์ 2–3 GB เข้า
+  /// หน่วยความจำ และบน GPU ต้องคอมไพล์ shader อีกรอบ รวมกันหลายวินาทีถึง
+  /// หลายสิบวินาที · ของเดิมเริ่มทำตอนเจ้าของกดส่งคำแรก เขาจึงจ่ายเวลานี้
+  /// ทุกครั้งที่เปิดแอป ทั้งที่แอปว่างอยู่ตั้งแต่เปิดขึ้นมา
+  ///
+  /// ต่อคิวเดียวกับการคิด · ล้มก็เงียบ คำถามแรกจะลองเปิดเองอีกรอบอยู่แล้ว
+  Future<void> preload() {
+    final done = Completer<void>();
+    _queue = _queue.then((_) async {
+      try {
+        if (_stage == LocalModelStage.unknown) await refresh();
+        if (_disposed || _model != null || _stage != LocalModelStage.ready) {
+          return;
+        }
+        await _ensurePlugin();
+        await _open();
+      } on Object catch (e) {
+        debugPrint('gemma: เปิดสมองรอไว้ไม่สำเร็จ — ${shortenError(e)}');
+      } finally {
+        done.complete();
+      }
+    });
+    return done.future;
+  }
+
+  /// ทดสอบความเร็วด้วยคำถามสั้น ๆ คำถามเดียว แล้วคืนผลวัดจริง
+  ///
+  /// ให้เจ้าของเห็นกับตาว่าโมเดลอยู่ในเครื่องจริงและตอบได้เร็วแค่ไหน · ใช้บทบาท
+  /// สั้น ๆ ของมันเอง ซึ่งแปลว่าตาถัดไปของบทสนทนาจริงต้องอ่านบทใหม่หนึ่งรอบ
+  Future<LocalReplyStats?> benchmark() async {
+    if (_benchmarking) return null;
+    _benchmarking = true;
+    if (!_disposed) notifyListeners();
+    try {
+      final s = _s();
+      await reply(
+        system: s.gemmaBenchSystem,
+        history: [(fromHer: false, text: s.gemmaBenchQuestion)],
+      );
+      return _lastStats;
+    } finally {
+      _benchmarking = false;
+      if (!_disposed) notifyListeners();
+    }
   }
 
   /// ปล่อยโมเดล — **ต่อคิวเดียวกับการคิดคำตอบ**

@@ -246,7 +246,7 @@ class _HomeScreenState extends State<HomeScreen>
     // (เจ้าของต้องเห็นปุ่มรับ/วาง ไม่ใช่ปุ่มฉากหลัง)
     final studio = context.select<MindStudio, bool>((s) => s.active) && !onCall;
 
-    _pinLogIfNew('${state.messages.length}/${state.sending}');
+    _pinLogIfNew('${state.messages.length}/${state.sending}/${state.partialReply.length}');
 
     // 🔴 โครงต้นไม้ต้อง**เหมือนเดิมทุกตำแหน่ง**ทั้งตอนเข้าและออกสตูดิโอ
     //
@@ -491,7 +491,13 @@ class _HomeScreenState extends State<HomeScreen>
                       curve: Curves.easeOut,
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 260),
-                        child: thinkingOverHead
+                        child: thinkingOverHead && state.partialReply.isNotEmpty
+                            ? SpeechBubble(
+                                key: const ValueKey('partial'),
+                                text: state.partialReply,
+                                maxWidth: w * _bubbleMaxWidth,
+                              )
+                            : thinkingOverHead
                             ? const ThinkingPuff(key: ValueKey('puff'))
                             : SpeechBubble(
                                 key: const ValueKey('said'),
@@ -557,7 +563,9 @@ class _HomeScreenState extends State<HomeScreen>
                   // ระหว่างคิดต้องบอกว่ากำลังคิด — แผงหุบไปแล้ว ปุ่มนี้คือ
                   // **ที่เดียวที่เหลือ**ให้รู้ว่าคำถามที่เพิ่งส่งไปยังมีชีวิตอยู่
                   state.sending
-                      ? t.thinkingLabel
+                      ? (state.partialReply.isEmpty
+                          ? t.thinkingLabel
+                          : state.partialReply)
                       : last.isEmpty
                           ? t.chatTapToOpen
                           : last,
@@ -678,7 +686,17 @@ class _HomeScreenState extends State<HomeScreen>
                       axisAlignment: -1,
                       child: FadeTransition(opacity: anim, child: child),
                     ),
-                    child: state.sending
+                    // คำแรกมาแล้ว = โชว์คำตอบที่กำลังพิมพ์แทนจุดสามจุด
+                    // (สมองในเครื่องสตรีมทีละคำ) · key เดียวกันตลอดการพิมพ์
+                    // ไม่งั้นทุกคำใหม่จะเล่นแอนิเมชันเข้าออกซ้ำ
+                    child: state.sending && state.partialReply.isNotEmpty
+                        ? Padding(
+                            key: const ValueKey('partial'),
+                            padding: const EdgeInsets.only(top: MindSpace.gap),
+                            child: _message(
+                                ChatMessage.her('${state.partialReply} …'), mode),
+                          )
+                        : state.sending
                         ? Padding(
                             key: const ValueKey('thinking'),
                             padding: const EdgeInsets.only(top: MindSpace.gap),

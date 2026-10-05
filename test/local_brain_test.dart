@@ -293,7 +293,7 @@ void _activeModelGroup() {
     test('🔴 ต้องเรียก **ก่อน** createModel', () {
       // การสร้างจริงอยู่ใน _createModel (ลอง GPU แล้วค่อย CPU) · ที่ต้องคุมคือ
       // จุดเรียกมัน ต้องมี _markActive นำหน้าติดกันเสมอ
-      expect(src, contains('_markActive();\n      _model = await _createModel();'),
+      expect(src, matches(RegExp(r'_markActive\(\);\n\s*_model = await _createModel\(\);')),
           reason: 'ต้องตั้งรุ่นที่ใช้ติดกันก่อนบรรทัดที่สร้างโมเดล');
       expect(
           RegExp(r'FlutterGemmaPlugin\.instance\.createModel\(')

@@ -34,13 +34,27 @@ import '../widgets/buttons.dart';
 import '../widgets/glass.dart';
 import '../widgets/liquid_background.dart';
 import '../widgets/screen_header.dart';
+import '../ai/openai_client.dart';
+import '../i18n/strings_settings.dart';
 import '../widgets/update_card.dart';
 import 'text_editor_screen.dart';
 
-/// ตั้งค่าบุคลิก — artboard 2g ขยายให้ครบของจริง
-/// โหมด · ระดับการจีบ · สมอง · เสียง · ข้อมูลเกี่ยวกับเรา · ขอบเขต · รับสาย
+/// หมวดของหน้าตั้งค่า — เรียงตามคำถามที่คนถามบ่อยก่อน
+///
+/// 🔴 ของเดิมเป็นการ์ดเรียงยาวสิบเจ็ดใบในหน้าเดียว · คนที่อยากรู้ว่า "ซีเรียล
+/// อยู่ไหน" หรือ "ใช้โมเดลไหน" ต้องเลื่อนหาเอง แล้วหาไม่เจอ (ซีเรียลเคยโผล่
+/// เฉพาะตอนเลือกสมองแบบพร็อกซีด้วยซ้ำ)
+enum SettingsSection { account, her, brain, you, calls, general, data }
+
+/// ตั้งค่า — หน้าแรกเป็นเมนูหมวด แตะแล้วเข้าไปดูการ์ดของหมวดนั้น
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.section});
+
+  /// หมวดที่เปิดอยู่ · null = หน้าเมนู
+  ///
+  /// shell ถือตัวนี้ไว้ เพราะปุ่ม Back ของ Android ต้องปิดหมวดก่อน ไม่ใช่
+  /// พาออกจากแท็บตั้งค่าไปเลย
+  final ValueNotifier<SettingsSection?>? section;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -52,9 +66,20 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// เปลี่ยนค่าตอนที่แอปเรา**ไม่ได้อยู่หน้าจอ** ถ้าไม่อ่านใหม่ตอนกลับมา
   /// การ์ดจะบอกว่ายังไม่ได้ให้ ทั้งที่เพิ่งไปกดให้มาหมาด ๆ
   /// แล้วผู้ใช้จะกดวนอยู่อย่างนั้นโดยไม่รู้ว่าจริง ๆ สำเร็จไปแล้ว
+  late final ValueNotifier<SettingsSection?> _open =
+      widget.section ?? ValueNotifier<SettingsSection?>(null);
+
+  void _onSection() {
+    if (mounted) setState(() {});
+  }
+
+  /// ซีเรียลโชว์เต็มอยู่ไหม · ค่าตั้งต้นซ่อนกลาง — หน้าจอถูกแคปไปถามคนอื่นได้เสมอ
+  bool _showSerial = false;
+
   @override
   void initState() {
     super.initState();
+    _open.addListener(_onSection);
     WidgetsBinding.instance.addObserver(this);
     // การ์ดข้อมูลต้องบอกสถานะจริงตั้งแต่วินาทีที่เห็น ไม่ใช่ค้างที่
     // "ยังไม่ได้ให้สิทธิ์" ทั้งที่ให้ไปแล้ว จนกว่าจะมีอะไรมากระตุก
@@ -68,6 +93,8 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   void dispose() {
+    _open.removeListener(_onSection);
+    if (widget.section == null) _open.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -100,56 +127,183 @@ class _SettingsScreenState extends State<SettingsScreen>
     final state = context.watch<MindState>();
     final mode = state.mode;
     final t = S.of(context);
+    final open = _open.value;
 
     return LiquidBackground(
       gradient: MindGradients.settings,
       orbs: Orb.settings,
       child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-              MindSpace.lg, 0, MindSpace.lg, MindSpace.lg),
-          children: [
-            // ListView มีขอบซ้ายขวาอยู่แล้ว หัวจอจึงต้องไม่ใส่ซ้ำ
-            // ไม่งั้นจะเยื้องเข้าเป็นสองเท่าของอีกสามจอ
-            MindScreenHeader(
-              overline: t.tabSettings,
-              title: t.settingsTitle,
-              padding: const EdgeInsets.fromLTRB(
-                  0, MindSpace.lg, 0, MindSpace.md),
-            ),
-            _languageCard(state, mode, t),
-            const SizedBox(height: MindSpace.md),
-            // วางไว้บนสุด ๆ เพราะถ้ายังไม่มีชุด ผู้ใช้จะเห็นกรอบแทนตัวเธอ
-            // ตั้งแต่เปิดแอป ซึ่งเป็นคำถามแรกที่จะเกิดขึ้นในหัว
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: open == null
+              ? _menu(state, mode, t)
+              : _sectionPage(open, state, mode, t),
+        ),
+      ),
+    );
+  }
+
+  static const _listPadding =
+      EdgeInsets.fromLTRB(MindSpace.lg, 0, MindSpace.lg, MindSpace.lg);
+
+  // ── หน้าเมนูหมวด ─────────────────────────────────────────
+
+  Widget _menu(MindState state, MindMode mode, S t) {
+    return ListView(
+      key: const ValueKey('settings-menu'),
+      padding: _listPadding,
+      children: [
+        // ListView มีขอบซ้ายขวาอยู่แล้ว หัวจอจึงต้องไม่ใส่ซ้ำ
+        // ไม่งั้นจะเยื้องเข้าเป็นสองเท่าของอีกสามจอ
+        MindScreenHeader(
+          overline: t.tabSettings,
+          title: t.settingsMenuTitle,
+          padding: const EdgeInsets.fromLTRB(0, MindSpace.lg, 0, MindSpace.md),
+        ),
+        for (final sec in SettingsSection.values) ...[
+          _menuTile(sec, state, mode, t),
+          const SizedBox(height: MindSpace.sm),
+        ],
+      ],
+    );
+  }
+
+  static IconData _iconOf(SettingsSection sec) => switch (sec) {
+        SettingsSection.account => Icons.vpn_key_rounded,
+        SettingsSection.her => Icons.face_retouching_natural_rounded,
+        SettingsSection.brain => Icons.psychology_rounded,
+        SettingsSection.you => Icons.person_rounded,
+        SettingsSection.calls => Icons.call_rounded,
+        SettingsSection.general => Icons.tune_rounded,
+        SettingsSection.data => Icons.shield_outlined,
+      };
+
+  static String _titleOf(SettingsSection sec, S t) => switch (sec) {
+        SettingsSection.account => t.settingsSecAccount,
+        SettingsSection.her => t.settingsSecHer,
+        SettingsSection.brain => t.settingsSecBrain,
+        SettingsSection.you => t.settingsSecYou,
+        SettingsSection.calls => t.settingsSecCalls,
+        SettingsSection.general => t.settingsSecGeneral,
+        SettingsSection.data => t.settingsSecData,
+      };
+
+  /// บรรทัดใต้ชื่อหมวด — สถานะจริงของหมวดนั้น ไม่ใช่คำอธิบายลอย ๆ ถ้าบอกได้
+  /// · (ข้อความ, เป็นเรื่องที่ต้องแก้ไหม)
+  (String, bool) _summaryOf(SettingsSection sec, MindState state, S t) {
+    switch (sec) {
+      case SettingsSection.account:
+        if (state.licenseKey.isNotEmpty) {
+          return ('${_licenseTypeLabel(state, t)} · ${SecretStore.mask(state.licenseKey)}', false);
+        }
+        if (state.licenseBusy) return (t.licenseRegistering, false);
+        if (state.licenseFailed) return (t.licenseRegisterFailed, true);
+        return (t.licenseNone, true);
+      case SettingsSection.brain:
+        final brain = state.brain.labelOf(t);
+        if (state.brain != BrainProvider.onDevice) return (brain, false);
+        final lb = state.localBrain;
+        final backend = switch (lb.runningOnGpu) {
+          true => ' · GPU',
+          false => ' · CPU',
+          null => '',
+        };
+        final missing = lb.stage == LocalModelStage.missing ||
+            lb.stage == LocalModelStage.failed;
+        return ('$brain · ${lb.variant.label}$backend', missing);
+      case SettingsSection.her:
+        return (t.settingsSecHerHint, false);
+      case SettingsSection.you:
+        return (t.settingsSecYouHint, false);
+      case SettingsSection.calls:
+        return (t.settingsSecCallsHint, false);
+      case SettingsSection.general:
+        return (t.settingsSecGeneralHint, false);
+      case SettingsSection.data:
+        return (t.settingsSecDataHint, false);
+    }
+  }
+
+  Widget _menuTile(SettingsSection sec, MindState state, MindMode mode, S t) {
+    final (summary, warn) = _summaryOf(sec, state, t);
+    return Semantics(
+      button: true,
+      label: _titleOf(sec, t),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _open.value = sec,
+        child: GlassPanel(
+          radius: MindRadius.card,
+          fill: MindColors.glass62,
+          filter: MindGlass.light,
+          shadows: MindShadows.card(),
+          padding: const EdgeInsets.symmetric(
+              horizontal: MindSpace.md, vertical: 13),
+          child: Row(
+            spacing: MindSpace.md,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: mode.accent.withValues(alpha: .12),
+                ),
+                child: Icon(_iconOf(sec), size: 20, color: mode.accent),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 3,
+                  children: [
+                    Text(_titleOf(sec, t), style: MindType.title),
+                    Text(
+                      summary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        height: 1.45,
+                        color: warn ? const Color(0xFFB46A00) : MindColors.ink55,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, size: 20, color: mode.accent),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── หน้าของหมวด ──────────────────────────────────────────
+
+  Widget _sectionPage(
+      SettingsSection sec, MindState state, MindMode mode, S t) {
+    final cards = <Widget>[
+      ...switch (sec) {
+        SettingsSection.account => [
+            _licenseCard(state, mode, t),
+            UpdateCard(mode: mode),
+          ],
+        SettingsSection.her => [
+            // ยังไม่มีชุด = เห็นกรอบแทนตัวเธอตั้งแต่เปิดแอป · เป็นเรื่องแรกของหมวดนี้
             _avatarPackCard(context, state, mode, t),
-            const SizedBox(height: MindSpace.md),
             // ตัวตนอยู่ติดกับชุด เพราะเป็นคำถามเดียวกันในหัวคนดู — "เธอเป็นใคร"
             _soulCard(context, mode, t),
-            const SizedBox(height: MindSpace.md),
-            _watchCard(context, mode, t),
-            const SizedBox(height: MindSpace.md),
-            _permissionCard(context, mode, t),
-            const SizedBox(height: MindSpace.md),
-            _memoryCard(context, state, mode, t),
-            const SizedBox(height: MindSpace.md),
-            _dataCard(context, state, mode, t),
-            const SizedBox(height: MindSpace.md),
-            _debugCard(context, state, mode, t),
-            const SizedBox(height: MindSpace.md),
-            // เตือนเฉพาะตอนที่ "เลือกใช้คีย์ตัวเองแล้วแต่ยังไม่ได้ใส่คีย์"
-            // เดิมเตือนทุกครั้งที่ไม่มีคีย์ตอน build ซึ่งตอนนี้คือ **ทุกเครื่อง
-            // ที่ปล่อยจริง** และไม่เกี่ยวกับคนที่ใช้สมองในเครื่องหรือพร็อกซีเลย
-            if (state.brain.needsOwnKey && !state.hasOwnKey) _noKeyBanner(),
             _modeCard(state, mode),
-            const SizedBox(height: MindSpace.md),
             _flirtCard(state, mode),
-            const SizedBox(height: MindSpace.md),
             _bubbleCard(state, mode),
-            const SizedBox(height: MindSpace.md),
+          ],
+        SettingsSection.brain => [
+            // เตือนเฉพาะตอนที่ "เลือกใช้คีย์ตัวเองแล้วแต่ยังไม่ได้ใส่คีย์"
+            if (state.brain.needsOwnKey && !state.hasOwnKey) _noKeyBanner(),
             _brainCard(state, mode),
-            const SizedBox(height: MindSpace.md),
             _voiceCard(state, mode),
-            const SizedBox(height: MindSpace.md),
+          ],
+        SettingsSection.you => [
             _longTextCard(
               state: state,
               mode: mode,
@@ -160,7 +314,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               onSave: state.setOwnerProfile,
               onReset: () => MindPersona.defaultOwnerProfile(state.lang),
             ),
-            const SizedBox(height: MindSpace.md),
             _longTextCard(
               state: state,
               mode: mode,
@@ -171,12 +324,172 @@ class _SettingsScreenState extends State<SettingsScreen>
               onSave: state.setBoundaries,
               onReset: () => MindPersona.defaultBoundaries(state.lang),
             ),
-            const SizedBox(height: MindSpace.md),
-            _callCard(state, mode),
-            const SizedBox(height: MindSpace.md),
-            UpdateCard(mode: mode),
+            _memoryCard(context, state, mode, t),
           ],
+        SettingsSection.calls => [_callCard(state, mode)],
+        SettingsSection.general => [
+            _languageCard(state, mode, t),
+            _permissionCard(context, mode, t),
+            _watchCard(context, mode, t),
+          ],
+        SettingsSection.data => [
+            _dataCard(context, state, mode, t),
+            _debugCard(context, state, mode, t),
+          ],
+      },
+    ];
+
+    return ListView(
+      key: ValueKey(sec),
+      padding: _listPadding,
+      children: [
+        MindScreenHeader(
+          overline: t.settingsMenuTitle,
+          title: _titleOf(sec, t),
+          padding: const EdgeInsets.fromLTRB(0, MindSpace.lg, 0, MindSpace.md),
+          trailing: Semantics(
+            button: true,
+            label: t.settingsBack,
+            child: Tooltip(
+              message: t.settingsBack,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _open.value = null,
+                child: GlassPanel(
+                  radius: MindRadius.pill,
+                  fill: MindColors.glass80,
+                  padding: const EdgeInsets.all(9),
+                  child: Icon(Icons.close_rounded, size: 20, color: mode.accent),
+                ),
+              ),
+            ),
+          ),
         ),
+        for (final c in cards) ...[c, const SizedBox(height: MindSpace.md)],
+      ],
+    );
+  }
+
+  // ── ไลเซนส์ ─────────────────────────────────────────────
+
+  static String _licenseTypeLabel(MindState state, S t) => switch (state.licenseType) {
+        '' => t.licenseManual,
+        'free' => t.licenseTypeFree,
+        final other => t.licenseTypeOf(other),
+      };
+
+  /// ซีเรียลของเครื่องนี้ — อยู่ให้เห็นเสมอ ไม่ว่าจะเลือกสมองแบบไหน
+  ///
+  /// 🔴 ของเดิมโผล่เฉพาะตอนเลือกสมองแบบพร็อกซี · คนที่ใช้สมองในเครื่อง (ค่า
+  /// ตั้งต้น) ไม่มีทางรู้เลยว่าเครื่องตัวเองลงทะเบียนแล้วหรือยัง และไม่มีที่ให้
+  /// ใส่ซีเรียลที่ซื้อมา
+  Widget _licenseCard(MindState state, MindMode mode, S t) {
+    final key = state.licenseKey;
+    final has = key.isNotEmpty;
+    final (status, tone, icon) = has
+        ? (t.licenseRegistered(_licenseTypeLabel(state, t)), const Color(0xFF00A894),
+            Icons.verified_rounded)
+        : state.licenseBusy
+            ? (t.licenseRegistering, MindColors.ink55, Icons.hourglass_top_rounded)
+            : state.licenseFailed
+                ? (t.licenseRegisterFailed, const Color(0xFFB46A00),
+                    Icons.error_outline_rounded)
+                : (t.licenseNone, const Color(0xFFB46A00), Icons.error_outline_rounded);
+
+    return _card(
+      mode: mode,
+      label: t.licenseSection,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: MindSpace.sm,
+        children: [
+          Text(t.licenseSerial,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+              color: MindColors.glass80,
+              borderRadius: BorderRadius.circular(MindRadius.control),
+              border: Border.all(color: MindColors.glassBorder, width: 1),
+            ),
+            child: SelectableText(
+              !has
+                  ? t.licenseNone
+                  : _showSerial
+                      ? key
+                      : SecretStore.mask(key),
+              style: mindMono(size: 13, weight: FontWeight.w600, color: MindColors.ink),
+            ),
+          ),
+          Row(
+            spacing: 7,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 15, color: tone),
+              Expanded(
+                child: Text(status,
+                    style: TextStyle(fontSize: 11, height: 1.45, color: tone)),
+              ),
+            ],
+          ),
+          Wrap(
+            spacing: MindSpace.sm,
+            runSpacing: MindSpace.sm,
+            children: [
+              if (has) ...[
+                _plainButton(
+                  label: _showSerial ? t.licenseHide : t.licenseShow,
+                  mode: mode,
+                  onTap: () => setState(() => _showSerial = !_showSerial),
+                ),
+                _plainButton(
+                  label: t.licenseCopy,
+                  mode: mode,
+                  onTap: () async {
+                    final messenger = ScaffoldMessenger.maybeOf(context);
+                    await Clipboard.setData(ClipboardData(text: key));
+                    messenger?.showSnackBar(SnackBar(content: Text(t.licenseCopied)));
+                  },
+                ),
+              ],
+              if (!has && !state.licenseBusy)
+                _plainButton(
+                  label: t.licenseRetry,
+                  mode: mode,
+                  onTap: () => state.ensureLicense(retry: true),
+                ),
+              _plainButton(
+                label: t.licenseEnter,
+                mode: mode,
+                onTap: () => _editText(
+                  state: state,
+                  mode: mode,
+                  title: t.licenseSerial,
+                  hint: t.licenseEnterHint,
+                  value: key,
+                  onSave: (v) {
+                    state.setLicenseKey(v);
+                    // ลบซีเรียลทิ้ง = ขอไลเซนส์ฟรีของเครื่องนี้กลับมา
+                    if (v.trim().isEmpty) {
+                      unawaited(state.ensureLicense(retry: true));
+                    }
+                  },
+                  onReset: () => '',
+                ),
+              ),
+            ],
+          ),
+          // ชุดที่ซื้อบนเว็บผูกกับ**บัญชีเว็บ** ส่วนไลเซนส์ของแอปผูกกับ**เครื่อง**
+          if (has)
+            _linkRow(
+              title: t.licenseLinkAccount,
+              value: t.licenseLinkCopied,
+              mode: mode,
+              onTap: () => _linkAccount(state, t),
+            ),
+          Text(t.licenseWhy,
+              style: const TextStyle(fontSize: 10.5, height: 1.55, color: MindColors.ink55)),
+        ],
       ),
     );
   }
@@ -1424,11 +1737,107 @@ class _SettingsScreenState extends State<SettingsScreen>
             if (!lb.deviceTooSmall) ...[
               const SizedBox(height: MindSpace.md),
               _gpuRow(lb, mode),
+              const SizedBox(height: MindSpace.md),
+              _modelTruth(lb, mode),
             ],
           ],
         );
       },
     );
+  }
+
+  /// ของจริงตอนนี้ — รุ่นไหน ไฟล์อยู่ในเครื่องจริงไหม คิดด้วยอะไร เร็วแค่ไหน
+  ///
+  /// 🔴 ตอบคำถามที่เจ้าของถามจริง: "ใช้โมเดลไหนกันแน่ ชื่อยังเหมือนเดิม
+  /// โหลดมาจริงหรือเปล่า" · ของเดิมบอกแค่ "โหลดลงเครื่องแล้ว" กับชื่อรุ่น
+  /// ซึ่งเหมือนเดิมทุกตัวอักษรหลังเปลี่ยนไปใช้ GPU — มองจากจอแล้วไม่มีอะไร
+  /// ต่างเลย ทั้งที่ข้างในเปลี่ยน · ตัวเลขข้างล่างวัดจากเครื่องนี้ทั้งหมด
+  Widget _modelTruth(LocalBrain lb, MindMode mode) {
+    final t = S.of(context);
+    String sec(int ms) => (ms / 1000).toStringAsFixed(1);
+    final onDisk = lb.bytesOnDisk(lb.variant);
+    final stats = lb.lastStats;
+    final backend = switch (lb.runningOnGpu) {
+      true => 'GPU',
+      false => 'CPU',
+      null => null,
+    };
+
+    final lines = <(IconData, String, Color)>[
+      onDisk == null
+          ? (Icons.cloud_download_outlined, t.gemmaNotOnDisk, const Color(0xFFB46A00))
+          : (Icons.sd_storage_rounded,
+              t.gemmaOnDisk(lb.variant.file, (onDisk / 1073741824).toStringAsFixed(2)),
+              MindColors.ink75),
+      backend == null
+          ? (Icons.power_settings_new_rounded, t.gemmaClosed, MindColors.ink55)
+          : (Icons.memory_rounded,
+              t.gemmaOpen(backend, sec(lb.lastLoadMs ?? 0)), MindColors.ink75),
+      if (stats != null)
+        (
+          Icons.speed_rounded,
+          [
+            t.gemmaLastReply(sec(stats.waitMs), sec(stats.totalMs + (stats.loadMs ?? 0)),
+                stats.charsPerSecond.toStringAsFixed(0)),
+            if (stats.loadMs != null) t.gemmaLastReplyLoad(sec(stats.loadMs!)),
+            if (stats.newSession) t.gemmaLastReplyReread,
+          ].join(' · '),
+          MindColors.ink75,
+        ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: MindColors.glass80,
+        borderRadius: BorderRadius.circular(MindRadius.control),
+        border: Border.all(color: MindColors.glassBorder, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 7,
+        children: [
+          Text('${t.gemmaNow} · ${lb.variant.label}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          for (final (icon, text, tone) in lines)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 7,
+              children: [
+                Icon(icon, size: 14, color: tone),
+                Expanded(
+                  child: Text(text,
+                      style: TextStyle(fontSize: 10.5, height: 1.5, color: tone)),
+                ),
+              ],
+            ),
+          Text(t.gemmaSameFile,
+              style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+          if (lb.stage == LocalModelStage.ready)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _plainButton(
+                label: lb.benchmarking ? t.gemmaBenching : t.gemmaBench,
+                mode: mode,
+                onTap: lb.benchmarking ? null : () => _benchmark(lb),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _benchmark(LocalBrain lb) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final failed = S.of(context).somethingWrong;
+    try {
+      await lb.benchmark();
+    } on OpenAiFailure catch (e) {
+      messenger?.showSnackBar(SnackBar(content: Text(e.message)));
+    } on Object catch (e) {
+      debugPrint('gemma: ทดสอบความเร็วไม่สำเร็จ — $e');
+      messenger?.showSnackBar(SnackBar(content: Text(failed)));
+    }
   }
 
   /// สวิตช์ GPU + บอกว่าตอนนี้คิดด้วยอะไรจริง

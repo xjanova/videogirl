@@ -302,6 +302,13 @@ class _MindBootstrapState extends State<MindBootstrap>
     // ต้องใช้มัน และล้มได้เงียบ ๆ โดยแอปยังใช้ได้ปกติ
     unawaited(_state.ensureLicense());
 
+    // เปิดสมองในเครื่องรอไว้ก่อนเจ้าของทักคำแรก — เปิดสมองคือส่วนที่ช้าที่สุด
+    // ของคำถามแรก (ดู LocalBrain.preload) · หน่วงไว้ให้เวทีโหลดตัวเธอเสร็จก่อน
+    // ทั้งสองแย่ง GPU กับหน่วยความจำก้อนเดียวกัน
+    unawaited(Future<void>.delayed(const Duration(seconds: 8), () {
+      if (mounted) _state.preloadLocalBrain();
+    }));
+
     // อ่านปฏิทินตั้งแต่เปิดแอป ไม่ใช่รอให้เปิดแท็บปฏิทินก่อน
     //
     // ถ้ารอ เธอจะตอบว่าไม่รู้ตารางจนกว่าเจ้าของจะบังเอิญกดแท็บนั้น
