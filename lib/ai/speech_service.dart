@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -142,7 +141,61 @@ class SpeechService {
     if (bytes.isEmpty) {
       throw OpenAiFailure(_s().errTtsEmpty);
     }
+    // 🔴 ไฟล์ที่มีแต่หัว WAV = เครื่องไม่ได้อ่านอะไรออกมาเลย · ส่วนใหญ่เพราะ
+    // ยังไม่มีเสียงของภาษานั้นในเครื่อง (ภาษาไทยต้องโหลดเพิ่มเองบนหลายรุ่น)
+    // ของเดิมส่งไฟล์เงียบนี้ไปเล่นต่อ ทุกทางตอบว่าเล่นสำเร็จ แล้วเธอเงียบเฉย ๆ
+    final secs = wavSeconds(bytes);
+    if (secs != null && secs < minSpeechSeconds) {
+      debugPrint('เสียงเครื่อง: ได้เสียงแค่ ${secs.toStringAsFixed(2)} วิ '
+          '(${bytes.length} ไบต์) ภาษา $_deviceLang');
+      throw OpenAiFailure(await _languageReady()
+          ? _s().errTtsEmpty
+          : _s().errTtsNoVoice);
+    }
     return (bytes: bytes, mime: 'audio/wav');
+  }
+
+  /// ไฟล์สั้นกว่านี้นับว่าไม่มีเสียงพูด · คำเดียวที่สั้นที่สุดยังยาวกว่านี้
+  static const minSpeechSeconds = 0.15;
+
+  /// ความยาวเสียงในไฟล์ WAV (วินาที) · null = อ่านหัวไฟล์ไม่ออก (ไม่ตัดสิน)
+  ///
+  /// เดินทีละ chunk ไม่ใช่อ่านตำแหน่งตายตัว — บางเครื่องแทรก chunk `LIST`
+  /// ก่อน `data` · และบางเครื่องเขียนขนาด data เป็น 0/0xFFFFFFFF ตอนเขียน
+  /// แบบสตรีม จึงใช้ขนาดที่เหลือจริงของไฟล์แทนเมื่อค่านั้นเชื่อไม่ได้
+  @visibleForTesting
+  static double? wavSeconds(Uint8List b) {
+    if (b.length < 12) return null;
+    String tag(int at) => String.fromCharCodes(b.sublist(at, at + 4));
+    if (tag(0) != 'RIFF' || tag(8) != 'WAVE') return null;
+    final view = ByteData.sublistView(b);
+    int? byteRate;
+    var at = 12;
+    while (at + 8 <= b.length) {
+      final id = tag(at);
+      final size = view.getUint32(at + 4, Endian.little);
+      final body = at + 8;
+      if (id == 'fmt ' && body + 12 <= b.length) {
+        byteRate = view.getUint32(body + 8, Endian.little);
+      } else if (id == 'data') {
+        if (byteRate == null || byteRate == 0) return null;
+        final left = b.length - body;
+        final n = (size == 0 || size > left) ? left : size;
+        return n / byteRate;
+      }
+      at = body + size + (size.isOdd ? 1 : 0);
+    }
+    return null;
+  }
+
+  /// เครื่องมีเสียงของภาษาที่ใช้อยู่ไหม · ถามไม่ได้ = ถือว่ามี (ไม่กล่าวหาเครื่อง)
+  Future<bool> _languageReady() async {
+    try {
+      final ok = await _tts.isLanguageAvailable(_deviceLang ?? 'th-TH');
+      return ok != false;
+    } on Object {
+      return true;
+    }
   }
 
   /// ภาษาที่ตั้งให้เสียงเครื่องไว้ล่าสุด

@@ -24,6 +24,14 @@
 const LOW = [0, 8], MID = [8, 40], HIGH = [40, 120];
 
 /**
+ * เล่นไปกี่วินาทีโดยไม่มีคลื่นเลยสักนิด ถึงนับว่า "เสียงไม่ออก"
+ *
+ * ยาวกว่าช่วงเงียบหัวไฟล์ของ TTS ทุกเจ้าที่เคยเจอ (สูงสุดราวครึ่งวินาที)
+ * แต่สั้นพอที่สลับไปเล่นทางสำรองแล้วยังไม่รู้สึกว่าเธอเงียบไปนาน
+ */
+const SILENCE_PROBE = 1.2;
+
+/**
  * Where each viseme sits on two axes: how open the mouth is, and how spread
  * (1) versus rounded (0) it is. Blending by distance on this plane means the
  * mouth moves BETWEEN shapes instead of snapping between five poses, which is
@@ -107,9 +115,57 @@ export class LipSync {
         this.stop();
         const audio = this._element(url);
         await this.context();
-        this._wire(audio, { audible: true, delay: this.outputLag() });
+        // 🔴 context ที่ไม่ได้ running = เสียงเข้ากราฟแล้วหายเงียบ แต่ <audio>
+        // ยังเดินจนจบและบอกว่า "เล่นสำเร็จ" · ให้ล้มตรงนี้ ฝั่งแอปจะได้สลับไป
+        // เล่นทางเครื่องเล่นของ Android แทนที่จะปล่อยให้เธอเงียบโดยไม่มีใครรู้
+        if (this.ctx.state !== 'running') throw new Error(`audio-context-${this.ctx.state}`);
+        const lag = this.outputLag();
+        this._wire(audio, { audible: true, delay: lag });
         const { ended } = await this._start(audio);
-        return await ended;
+        const how = await Promise.race([
+            ended.then(() => 'ended'),
+            this._watchSilence(audio, lag),
+        ]);
+        if (how === 'silent') {
+            this.stop();
+            throw new Error('silent-output');
+        }
+        return true;
+    }
+
+    /**
+     * จับเสียงที่ "เล่นอยู่แต่ไม่มีอะไรออกมา" — คืน 'silent' ถ้าเล่นไปแล้ว
+     * [SILENCE_PROBE] วินาทีโดยไม่มีคลื่นเข้ากราฟเลย · เจอเสียงเมื่อไหร่ก็เลิกเฝ้า
+     * (Promise นั้นค้างไว้เฉย ๆ ซึ่งไม่เป็นไร — การแข่งตัดสินที่ 'ended' แทน)
+     *
+     * ที่มา: เจ้าของเจอ "ไม่มีเสียงเฉยเลย" — ทางนี้คืนว่าเล่นสำเร็จทุกประโยค
+     * แอปจึงไม่เคยลองทางสำรอง · สาเหตุที่ทำแบบนี้ได้มีหลายทางและเดาจากโค้ด
+     * ไม่ได้ (WebView อัปเดตตัวเอง, context ถูกพักโดยระบบ, ตัวเล่นเสียงของ
+     * WebView หลุด) · วัดคลื่นที่เข้ากราฟจริงจับได้ทุกทางในที่เดียว
+     */
+    _watchSilence(audio, lag) {
+        const an = this.analyser;
+        if (!an) return new Promise(() => {});
+        const buf = new Uint8Array(an.fftSize);
+        return new Promise(res => {
+            const t = setInterval(() => {
+                if (this.audio !== audio || audio.paused || audio.ended) {
+                    clearInterval(t);
+                    return;
+                }
+                an.getByteTimeDomainData(buf);
+                for (let i = 0; i < buf.length; i++) {
+                    if (Math.abs(buf[i] - 128) > 1) {
+                        clearInterval(t);
+                        return;
+                    }
+                }
+                if (audio.currentTime >= SILENCE_PROBE + lag) {
+                    clearInterval(t);
+                    res('silent');
+                }
+            }, 80);
+        });
     }
 
     /**

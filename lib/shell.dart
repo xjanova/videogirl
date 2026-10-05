@@ -15,6 +15,7 @@ import 'screens/timeline_screen.dart';
 import 'state/mind_state.dart';
 import 'studio/mind_studio.dart';
 import 'i18n/strings.dart';
+import 'i18n/strings_ai.dart';
 import 'theme/tokens.dart';
 import 'widgets/mind_nav_bar.dart';
 
@@ -131,9 +132,23 @@ class _MindShellState extends State<MindShell> {
     final state = context.read<MindState>();
     // ทั้งสองทางไม่ได้ = คืน false แล้ว state บอกผู้ใช้เอง · state รู้ว่าเสียงนั้น
     // ถูกสั่งเงียบไปเองหรือเปล่า ที่นี่ไม่รู้ (ทางสำรองคืน false ตอนถูกตัดกลางคันด้วย)
-    state.speaker = (u) async =>
-        await _avatar.speakBytes(u.bytes, mime: u.mime) ||
-        await MindAudio.play(u.bytes, mime: u.mime);
+    state.speaker = (u) async {
+      var played = await _avatar.speakBytes(u.bytes, mime: u.mime);
+      if (!played) {
+        // ทางสำรอง: เครื่องเล่นของ Android · ปากขยับแบบประมาณระหว่างนั้น
+        unawaited(_avatar.setBabble(true));
+        try {
+          played = await MindAudio.play(u.bytes, mime: u.mime);
+        } finally {
+          unawaited(_avatar.setBabble(false));
+        }
+      }
+      // เล่น "สำเร็จ" แต่เสียงสื่อของเครื่องเป็นศูนย์ = ไม่มีใครได้ยิน · บอกตรง ๆ
+      if (played && await MindAudio.mediaMuted() == true && mounted) {
+        state.reportError(state.s.errMediaMuted);
+      }
+      return played;
+    };
     state.silencer = () async {
       await _avatar.stop();
       await MindAudio.stop();

@@ -373,4 +373,19 @@ void main() {
     final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     expect(manifest, contains('android:supportsPictureInPicture="true"'));
   });
+
+  /// ทางสำรองของเสียง: เวทีเงียบ → เครื่องเล่น Android + ปากประมาณ ·
+  /// เสียงสื่อเป็นศูนย์ → บอกเจ้าของ · ชื่อหลุดฝั่งไหน ทางสำรองนั้นเงียบตาม
+  test('ทางสำรองของเสียงผูกครบสามฝั่ง', () {
+    expect(kotlin, contains('"mediaVolume" ->'));
+    expect(File('lib/ai/mind_audio.dart').readAsStringSync(), contains("'mediaVolume'"));
+    final html = File('assets/avatar/index.html').readAsStringSync();
+    expect(RegExp(r'^  babble[,:]', multiLine: true).hasMatch(html), isTrue);
+    final view = File('lib/avatar/avatar_view.dart').readAsStringSync();
+    expect(view, contains('window.minde.babble('));
+    expect(view, contains("why.startsWith('silent-output')"));
+    final lip = File('assets/avatar/lipsync.js').readAsStringSync();
+    expect(lip, contains("throw new Error('silent-output')"),
+        reason: 'เวทีที่เล่นเงียบต้องบอกว่าล้ม ไม่ใช่บอกว่าเล่นสำเร็จ');
+  });
 }

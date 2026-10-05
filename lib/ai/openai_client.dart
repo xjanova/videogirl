@@ -90,14 +90,22 @@ class OpenAiClient {
       throw OpenAiFailure(_s().errNoKey);
     }
 
+    final m = model ?? OpenAiConfig.brainModel;
+    // ส่งระดับการคิดเฉพาะตอนคุยกับ OpenAI ตรง ๆ · พร็อกซีของเราเลือกรุ่นเอง
+    // ฝั่งเซิร์ฟเวอร์ และเซิร์ฟเวอร์ในบ้าน (Ollama ฯลฯ) ไม่รู้จักฟิลด์นี้
+    final effort =
+        _baseUrl == OpenAiConfig.baseUrl ? OpenAiConfig.effortFor(m) : null;
     final body = jsonEncode({
-      'model': model ?? OpenAiConfig.brainModel,
+      'model': m,
       'messages': [
         {'role': 'system', 'content': system},
         for (final t in history)
           {'role': t.fromHer ? 'assistant' : 'user', 'content': t.text},
       ],
-      'max_completion_tokens': 600,
+      'reasoning_effort': ?effort,
+      // เพดานนับรวมการคิดภายในด้วย · คิดได้ (low/minimal หรือไม่รู้ว่ารุ่นนี้
+      // คิดไหม) = เผื่อที่ให้ยังเหลือพอสำหรับคำตอบ · ไม่คิด = 600 พอสำหรับเธอ
+      'max_completion_tokens': effort == 'none' ? 600 : 2000,
     });
 
     final res = await _post('/chat/completions', body);

@@ -178,7 +178,37 @@ class MindAvatarController extends ChangeNotifier
 
   void _onSpeakFailed(String why) {
     _speakError = why;
+    // เวทีเล่นแล้วไม่มีเสียงออก (context ถูกพัก / ตัวเล่นเสียงของ WebView
+    // หลุด) · ส่งเข้าเวทีอีกก็เงียบอีก และต้องรอ 1.2 วิทุกประโยคกว่าจะรู้ ·
+    // พักทางนี้ไว้สิบนาทีแล้วค่อยลองใหม่ ระหว่างนั้นเสียงไปทางสำรองตรง ๆ
+    if (why.startsWith('silent-output') || why.startsWith('audio-context')) {
+      _stageQuietUntil = DateTime.now().add(const Duration(minutes: 10));
+    }
     notifyListeners();
+  }
+
+  /// เวทีเงียบ — ข้ามไปทางสำรองจนถึงเวลานี้ · null = เวทีใช้ได้
+  DateTime? _stageQuietUntil;
+
+  /// เวทีเล่นเสียงได้จริงตอนนี้ไหม (ไม่นับว่าเวทีพร้อมหรือยัง)
+  bool get stageAudioOk =>
+      _stageQuietUntil == null || DateTime.now().isAfter(_stageQuietUntil!);
+
+  /// ขยับปากแบบประมาณ ตอนเสียงเล่นทางเครื่องเล่นของ Android แทนเวที
+  Future<void> setBabble(bool on) => _call('window.minde.babble($on)');
+
+  /// renderer ของ WebView ตาย (ส่วนใหญ่ระบบฆ่าทิ้งตอนหน่วยความจำไม่พอ ·
+  /// สมองในเครื่องกินเป็น GB) · ไม่ใช่ "หาตัวเธอไม่เจอ" จึงไม่ขึ้น error
+  /// แค่ถือว่าเวทียังไม่พร้อม (เสียงไปทางสำรอง) แล้วโหลดหน้าเวทีใหม่
+  void _onRendererGone(InAppWebViewController web) {
+    debugPrint('avatar: renderer ของเวทีหายไป — โหลดเวทีใหม่');
+    _ready = false;
+    _visible = false;
+    _loadPercent = 0;
+    notifyListeners();
+    unawaited(web.reload().catchError((Object e) {
+      debugPrint('avatar: โหลดเวทีใหม่ไม่สำเร็จ — $e');
+    }));
   }
 
   Future<void> setMood(MindMood mood) => _call("window.minde.mood('${mood.name}')");
@@ -201,6 +231,10 @@ class MindAvatarController extends ChangeNotifier
   /// ผู้ใช้ได้ยินความเงียบและอ่านว่า "เธอไม่ยอมพูด" · ดู [MindAudio]
   Future<bool> speakBytes(Uint8List bytes, {String mime = 'audio/mpeg'}) async {
     final web = _web;
+    if (!stageAudioOk) {
+      debugPrint('avatar: เวทีเงียบเมื่อครู่ — ไปทางสำรองตรง ๆ');
+      return false;
+    }
     if (web == null || !_ready) {
       debugPrint('avatar: เวทียังรับเสียงไม่ได้ '
           '(web=${web != null} ready=$_ready) — ต้องไปทางสำรอง');
@@ -734,6 +768,8 @@ class _MindAvatarViewState extends State<MindAvatarView> {
                 // Mixamo — motion.js ข้ามให้อยู่แล้ว แต่ WebView ยิง callback นี้
                 // ทุก subresource ที่พลาด ถ้าไม่กรอง เธอจะโดนซ่อนหลัง placeholder
                 // ทั้งที่ยืนอยู่บนเวทีเรียบร้อยแล้ว
+                onRenderProcessGone: (web, _) =>
+                    widget.controller._onRendererGone(web),
                 onReceivedError: (_, request, err) {
                   if (request.isForMainFrame ?? false) {
                     widget.controller._onError(err.description);

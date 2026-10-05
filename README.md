@@ -74,6 +74,7 @@ assets/avatar/ เครื่องยนต์ VRM (ยกจาก BrainX) + 
 
 - [docs/security.md](docs/security.md) — ทำไมคีย์ใน APK ยังไม่ปลอดภัยพอสำหรับปล่อยจริง
 - [docs/telephony.md](docs/telephony.md) — ข้อจำกัดของ Android เรื่องเสียงสายโทรศัพท์
+- [docs/openai-models.md](docs/openai-models.md) — รุ่น OpenAI ที่ใช้ ตรวจกับเอกสารจริง และวันที่รุ่นเสียง/ถอดเสียงจะถูกปิด
 - [docs/studio.md](docs/studio.md) — ทำไมเป็นแชร์จอ ไม่ใช่กล้องเสมือน · ฉากเขียว · อัดคลิป · ปากในสาย
 - [docs/release.md](docs/release.md) — วิธีออก release ให้ auto-update ทำงาน
 - [THIRD_PARTY.md](THIRD_PARTY.md) — ไลบรารีและสินทรัพย์ของคนอื่น

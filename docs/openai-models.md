@@ -1,0 +1,46 @@
+# รุ่นของ OpenAI ที่แอปใช้ — ตรวจล่าสุด 2026-10-06
+
+ตรวจกับเอกสาร OpenAI โดยตรง (developers.openai.com/api/docs/models และหน้า
+deprecations) · โค้ดอยู่ที่ `lib/ai/openai_config.dart` · ถ้าหน้านี้กับโค้ดขัดกัน
+ให้เชื่อโค้ด แล้วมาแก้หน้านี้
+
+## สมอง (`/v1/chat/completions`)
+
+| id | ในรายการ | หมายเหตุ |
+|---|---|---|
+| `gpt-5.6-sol` | ✅ ค่าตั้งต้น | ตัวท็อปของรุ่น 5.6 |
+| `gpt-6.1-sol` | ✅ | ใหม่ (29 ก.ย. 2026) · ไม่รับ `reasoning_effort: none` → ใช้ `low` |
+| `gpt-5.6-terra` | ✅ | ระดับ mini |
+| `gpt-6-luna` | ✅ | ถูกและเร็วที่สุด (แทน `gpt-5.6-luna`) |
+| `gpt-6-astra` | ✅ | ตัวท็อป แพงสุด · ไม่รับ `none` และไม่รับ temperature |
+| `gpt-5.5`, `gpt-5.4-mini`, `gpt-5.6-luna` | ❌ ถอดออก | ยังไม่ถูกปิด ใช้ต่อได้ผ่านช่องพิมพ์ชื่อรุ่นเอง |
+
+🔴 **ต้องส่ง `reasoning_effort` เสมอ** (`OpenAiConfig.effortFor`) · ไม่ส่ง =
+รุ่น 5.6/6 คิดภายในระดับ medium และ `max_completion_tokens` **นับรวม reasoning
+tokens** · เพดาน 600 ของแอปจึงหมดไปกับการคิดได้ แล้วคำตอบกลับมาว่าง
+ส่งเฉพาะตอนยิง OpenAI ตรง — พร็อกซีของเรากับเซิร์ฟเวอร์ในบ้านไม่รู้จักฟิลด์นี้
+
+## เสียงพูด (`/v1/audio/speech`)
+
+- เหลือ `gpt-4o-mini-tts` ตัวเดียว · `tts-1` / `tts-1-hd` ถูกประกาศเลิกใช้ และ**ใช้กับ
+  เสียง ballad / marin / cedar ไม่ได้** · ค่าที่เคยเลือกถูกย้ายตอนโหลด (`migrateTts`)
+- เสียง: marin, cedar (OpenAI แนะนำว่าดีที่สุด), coral, shimmer, sage, nova, ballad
+- ⚠️ **`gpt-4o-mini-tts` ถูกประกาศปิด 2027-01-06** และยังไม่มีรุ่นแทนบน endpoint นี้
+  (ตัวแทนที่ประกาศคือ `gpt-realtime-2.1-mini` ซึ่งเป็น Realtime API) — **ต้องย้ายก่อนวันนั้น**
+
+## ถอดเสียง (`/v1/audio/transcriptions`)
+
+- ยังใช้ `whisper-1` · ⚠️ **ปิด 2027-02-26**
+- ตัวแทนที่ OpenAI แนะนำคือ `gpt-transcribe` · ส่ง multipart แบบเดียวกันได้ แต่ใช้
+  `languages[]` แทน `language` และยังยืนยันไม่ได้ว่ารับภาษาไทย (`th`) · ต้องลองจริง
+  ก่อนย้าย
+
+## Realtime
+
+- `gpt-realtime-2.1`, `gpt-realtime-2.1-mini` · `gpt-realtime` ถูกถอด (ปิด 2027-01-20)
+  ค่าที่เคยเลือกถูกย้ายไป 2.1 ตอนโหลด (`migrateRealtime`)
+
+## สิ่งที่ยังยืนยันจากเอกสารไม่ได้
+
+- คุณภาพภาษาไทยของทุกรุ่น (เอกสารไม่พูดถึง)
+- `gpt-transcribe` รับ `th` ไหม / รับ `response_format=text` ไหม

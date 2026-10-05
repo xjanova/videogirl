@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../i18n/strings.dart';
 import 'mind_persona.dart';
+import 'openai_config.dart';
 import 'speech_service.dart';
 
 /// ช่องทางที่เธอเปล่งเสียง — แต่ละช่องตั้งเสียงและโมเดลแยกกันได้
@@ -79,7 +80,8 @@ class VoiceProfile {
           orElse: () => fallback.engine,
         ),
         voice: j['voice'] as String? ?? fallback.voice,
-        model: j['model'] as String? ?? fallback.model,
+        // รุ่นที่เลิกเสนอแล้ว (tts-1 · tts-1-hd) ย้ายมารุ่นที่ใช้ได้กับทุกเสียง
+        model: OpenAiConfig.migrateTts(j['model'] as String? ?? fallback.model),
         instructions: j['instructions'] as String? ?? fallback.instructions,
       );
 

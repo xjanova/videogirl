@@ -9,6 +9,8 @@ import android.content.Intent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.media.AudioManager
+import android.os.Bundle
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -156,6 +158,7 @@ class MainActivity : FlutterActivity() {
                         call.argument<String>("stream"),
                         result
                     )
+                    "mediaVolume" -> result.success(mediaVolume())
                     "callStopSpeak" -> {
                         CallAudio.stop()
                         result.success(true)
@@ -363,6 +366,28 @@ class MainActivity : FlutterActivity() {
         studio.detach()
         dartAlive = false
         super.onDestroy()
+    }
+
+    /// ปุ่มเพิ่ม/ลดเสียงตอนอยู่ในแอป = เสียงสื่อ (ช่องที่เสียงเธอออก)
+    ///
+    /// 🔴 ไม่ตั้ง = ตอนเธอเงียบอยู่ ปุ่มเสียงไปปรับเสียงเรียกเข้าแทน · คนที่ได้ยิน
+    /// เธอเบาแล้วกดเพิ่มเสียง จะเพิ่มผิดช่องแล้วเธอเบาเท่าเดิม
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        volumeControlStream = AudioManager.STREAM_MUSIC
+    }
+
+    /// ระดับเสียงสื่อตอนนี้ · {now, max} — เสียงเธอออกช่องนี้ทั้งจากเวทีและทางสำรอง
+    private fun mediaVolume(): Map<String, Int>? {
+        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
+        return try {
+            mapOf(
+                "now" to am.getStreamVolume(AudioManager.STREAM_MUSIC),
+                "max" to am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            )
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /// เข้า/ออกจอลอย — ฝั่ง Dart ซ่อนปุ่มทั้งหมดตอนเหลือแต่ตัวเธอในหน้าต่างเล็ก

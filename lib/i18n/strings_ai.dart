@@ -136,11 +136,16 @@ extension AiStrings on S {
       );
 
   // ═══ โมเดลของ OpenAI ═══════════════════════════════════
-  String get modelSolHint =>
-      pick('ฉลาดที่สุด เหมือนคนที่สุด · ค่าเริ่มต้น', 'Smartest and most human · default');
-  String get modelPersonaHint => pick('รุ่น 5.6 อีกบุคลิก', 'Another 5.6 personality');
-  String get modelOlderHint => pick('รุ่นก่อนหน้า ถูกกว่า', 'Previous generation, cheaper');
-  String get modelFastestHint => pick('เร็วและถูกที่สุด', 'Fastest and cheapest');
+  String get modelSolHint => pick('ฉลาดที่สุดของรุ่น 5.6 ตอบไว · ค่าเริ่มต้น',
+      'Smartest of 5.6 and quick to answer · default');
+  String get modelSol61Hint => pick('รุ่นใหม่ล่าสุด คิดละเอียดกว่า แต่ตอบช้ากว่าเล็กน้อย',
+      'Newest, more careful, a little slower to answer');
+  String get modelTerraHint =>
+      pick('ระดับกลาง ราคาราวครึ่งของ Sol', 'Mid tier, about half the price of Sol');
+  String get modelLunaHint => pick('เร็วและถูกที่สุด', 'Fastest and cheapest');
+  String get modelAstraHint => pick('ตัวท็อปของ OpenAI แพงที่สุด ตอบช้าที่สุด',
+      "OpenAI's top model — most expensive and slowest");
+  String get modelTypedHint => pick('รุ่นที่พิมพ์เอง', 'A model you typed in');
 
   String get ttsSteerable =>
       pick('สั่งอารมณ์เสียงได้ · สมจริงที่สุด', 'Tone can be steered · most lifelike');
@@ -159,6 +164,10 @@ extension AiStrings on S {
   String get voiceSage => pick('Sage — สุขุม เป็นทางการ', 'Sage — composed and formal');
   String get voiceNova => pick('Nova — สดใส กระฉับกระเฉง', 'Nova — bright and brisk');
   String get voiceBallad => pick('Ballad — ช้า อ่อนโยน', 'Ballad — slow and gentle');
+  String get voiceMarin =>
+      pick('Marin — เป็นธรรมชาติที่สุด (OpenAI แนะนำ)', 'Marin — most natural (recommended by OpenAI)');
+  String get voiceCedar =>
+      pick('Cedar — เป็นธรรมชาติ โทนทุ้ม (OpenAI แนะนำ)', 'Cedar — natural, deeper tone (recommended by OpenAI)');
 
   // ═══ Gemma ในเครื่อง ═══════════════════════════════════
   String get gemmaVariant => pick('รุ่นที่ใช้', 'Model variant');
@@ -507,7 +516,20 @@ extension AiStrings on S {
       pick('เครื่องนี้สังเคราะห์เสียงไม่สำเร็จ', 'This phone could not synthesise speech');
   String get errTtsNoFile => pick('เครื่องนี้ไม่รองรับการบันทึกเสียงเป็นไฟล์',
       'This phone cannot write speech to a file');
-  String get errTtsEmpty => pick('ไฟล์เสียงที่ได้ว่างเปล่า', 'The audio file came back empty');
+  String get errTtsEmpty => pick(
+        'เสียงของเครื่องไม่ได้อ่านอะไรออกมา · ลองเปลี่ยนเสียงในหน้าตั้งค่า › สมองและเสียง',
+        "The phone's voice produced no speech — try another voice in Settings › Brain & voice",
+      );
+  String get errTtsNoVoice => pick(
+        'เครื่องนี้ยังไม่มีเสียงภาษาไทย เธอจึงพูดไม่ออก · ไปที่ตั้งค่าเครื่อง › '
+            'การจัดการทั่วไป/ภาษา › แปลงข้อความเป็นเสียง แล้วโหลดเสียงภาษาไทย',
+        'This phone has no voice for this language installed, so she cannot speak — '
+            'open phone Settings › Language › Text-to-speech and download the voice',
+      );
+  String get errMediaMuted => pick(
+        'เสียงสื่อของเครื่องปิดอยู่ เลยไม่ได้ยินเธอ · กดปุ่มเพิ่มเสียงข้างเครื่อง',
+        "The phone's media volume is at zero, so you can't hear her — press volume up",
+      );
 
   // ═══ อัปเดต ════════════════════════════════════════════
   String updateCheckFailed(int code) =>
@@ -567,9 +589,11 @@ extension AiStrings on S {
   // ═══ คำอธิบายที่หาจาก id ═══════════════════════════════
   String brainModelHint(String id) => switch (id) {
         'gpt-5.6-sol' => modelSolHint,
-        'gpt-5.6-luna' || 'gpt-5.6-terra' => modelPersonaHint,
-        'gpt-5.5' => modelOlderHint,
-        _ => modelFastestHint,
+        'gpt-6.1-sol' => modelSol61Hint,
+        'gpt-5.6-terra' => modelTerraHint,
+        'gpt-6-luna' => modelLunaHint,
+        'gpt-6-astra' => modelAstraHint,
+        _ => modelTypedHint,
       };
 
   String voiceLabel(String id) => switch (id) {
@@ -577,7 +601,10 @@ extension AiStrings on S {
         'shimmer' => voiceShimmer,
         'sage' => voiceSage,
         'nova' => voiceNova,
-        _ => voiceBallad,
+        'ballad' => voiceBallad,
+        'marin' => voiceMarin,
+        'cedar' => voiceCedar,
+        _ => id,
       };
 
   String ttsModelHint(String id) => switch (id) {

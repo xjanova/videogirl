@@ -298,7 +298,8 @@ class MindState extends ChangeNotifier {
     _licenseKey = p.getString('licenseKey') ?? '';
     _licenseType = p.getString('licenseType') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
-    _realtimeModel = p.getString('realtimeModel') ?? OpenAiConfig.realtimeModel;
+    _realtimeModel = OpenAiConfig.migrateRealtime(
+        p.getString('realtimeModel') ?? OpenAiConfig.realtimeModel);
 
     for (final c in VoiceChannel.values) {
       final raw = p.getString('voice_${c.name}');

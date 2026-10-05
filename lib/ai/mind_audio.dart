@@ -59,6 +59,20 @@ abstract final class MindAudio {
     }
   }
 
+  /// เสียงสื่อของเครื่องปิดสนิทอยู่ไหม · null = ถามไม่ได้ (ไม่ใช่ Android)
+  ///
+  /// เสียงเธอออกช่องสื่อทั้งสองทาง · ช่องนี้เป็นศูนย์ = เล่น "สำเร็จ" ทุกประโยค
+  /// แต่ไม่มีใครได้ยินอะไรเลย ซึ่งจากฝั่งแอปแยกไม่ออกจากเสียงที่ออกปกติ
+  static Future<bool?> mediaMuted() async {
+    try {
+      final v = await kSystemChannel.invokeMethod<Map<Object?, Object?>>('mediaVolume');
+      final now = v?['now'];
+      return now is int ? now <= 0 : null;
+    } on Object {
+      return null;
+    }
+  }
+
   /// หยุดเสียงที่กำลังเล่นอยู่ทันที
   static Future<void> stop() async {
     try {

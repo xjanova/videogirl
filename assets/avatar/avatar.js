@@ -273,6 +273,16 @@ export class Avatar {
         this.lip.babble = false;
     }
 
+    /**
+     * ขยับปากแบบประมาณ ตอนเสียงเล่นทางเครื่องเล่นของ Android แทนเวที
+     * (เวทีเงียบ หรือยังไม่พร้อม) · ปากขยับไม่ตรงคำ ยังดีกว่าพูดอยู่แต่ปากนิ่ง
+     */
+    setBabble(on) {
+        this.lip.babble = !!on;
+        this.speaking = !!on;
+        this.motion?.setTalking(!!on);
+    }
+
     stop() {
         this.lip.stop();
         this.lip.babble = false;
