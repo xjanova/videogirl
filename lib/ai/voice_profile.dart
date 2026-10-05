@@ -95,6 +95,14 @@ class VoiceProfile {
   /// ส่วน voice/model/instructions ยังคงค่า OpenAI ที่เลือกมาแล้วไว้เหมือนเดิม
   /// ทั้งที่เสียงเครื่องไม่ได้ใช้ — เพื่อให้วันที่สลับไป openai ได้ของที่ตั้งไว้ดี
   /// อยู่แล้วทันที ไม่ใช่ค่าว่างที่ต้องมานั่งกรอกใหม่
+  /// รุ่น/เสียงตั้งต้นของ OpenAI — ใช้ตอนสลับกลับมาจากเจ้าอื่น (ดู PremiumCatalog.adapt)
+  static const openAiDefaults = VoiceProfile(
+    engine: TtsEngine.openai,
+    voice: 'coral',
+    model: 'gpt-4o-mini-tts',
+    instructions: '',
+  );
+
   static VoiceProfile defaultFor(VoiceChannel c, AppLang lang) => switch (c) {
         // คุยกับเจ้าของ: นุ่ม อบอุ่น เป็นตัวเธอ
         VoiceChannel.chat => VoiceProfile(

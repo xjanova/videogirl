@@ -23,6 +23,11 @@ abstract final class SecretStore {
   /// คีย์ OpenAI ที่ผู้ใช้กรอกเอง
   static const kOpenAiKey = 'openai_api_key';
 
+  /// คีย์ของเจ้าเสียงพรีเมียมที่ผู้ใช้กรอกเอง — ดู [TtsEngine.isPremium]
+  static const kGeminiKey = 'gemini_api_key';
+  static const kElevenLabsKey = 'elevenlabs_api_key';
+  static const kAzureSpeechKey = 'azure_speech_key';
+
   /// อ่านค่า — คืนค่าว่างถ้าไม่มีหรืออ่านไม่ได้
   ///
   /// อ่านไม่ได้ไม่ควรทำให้แอปพัง · เครื่องบางรุ่นมี Keystore ที่มีปัญหาจริง

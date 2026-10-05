@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
 import 'openai_client.dart';
+import 'premium_tts.dart';
 import 'voice_clone.dart';
 import 'voice_profile.dart';
 
@@ -20,10 +21,23 @@ import 'voice_profile.dart';
 enum TtsEngine {
   openai,
   device,
-  clone;
+  clone,
+
+  /// Google Gemini TTS — คีย์ AI Studio ของผู้ใช้
+  gemini,
+
+  /// ElevenLabs — คีย์ของผู้ใช้
+  elevenlabs,
+
+  /// Microsoft Azure AI Speech — คีย์ + ภูมิภาคของผู้ใช้
+  azure;
 
   /// ต้องมีคีย์ OpenAI ไหม
   bool get needsOpenAiKey => this == TtsEngine.openai;
+
+  /// เจ้าเสียงพรีเมียมที่ใช้คีย์ของผู้ใช้เอง (ไม่นับ OpenAI ที่มีช่องคีย์อยู่แล้ว)
+  bool get isPremium =>
+      this == TtsEngine.gemini || this == TtsEngine.elevenlabs || this == TtsEngine.azure;
 
   /// ทางที่ **ต่อสายไว้จริง** และเอาไปโชว์ให้ผู้ใช้เลือกได้
   ///
@@ -33,7 +47,13 @@ enum TtsEngine {
   /// เครื่องเงียบ ๆ ทุกครั้ง = ฟีเจอร์ที่ดูเหมือนมีแต่พัง ซึ่งแย่กว่าไม่มี
   ///
   /// **วันที่ต่อสายเสร็จ ให้เอากลับเข้ามาที่นี่ที่เดียว** หน้าตั้งค่าอ่านจากตัวนี้
-  static List<TtsEngine> get wired => const [TtsEngine.openai, TtsEngine.device];
+  static List<TtsEngine> get wired => const [
+        TtsEngine.device,
+        TtsEngine.openai,
+        TtsEngine.gemini,
+        TtsEngine.elevenlabs,
+        TtsEngine.azure,
+      ];
 }
 
 /// เสียงหนึ่งชุดที่พร้อมส่งเข้าปากเธอ
@@ -49,9 +69,13 @@ class SpeechService {
     OpenAiClient? openai,
     FlutterTts? deviceTts,
     S Function()? strings,
+    this.premium,
   })  : _s = strings ?? _thai,
         _openai = openai ?? OpenAiClient(strings: strings),
         _injectedTts = deviceTts;
+
+  /// เจ้าเสียงพรีเมียม (Gemini · ElevenLabs · Azure) · null = ไม่ได้ต่อ
+  final PremiumTts? premium;
 
   final S Function() _s;
   static S _thai() => const S(AppLang.th);
@@ -87,12 +111,22 @@ class SpeechService {
         ),
       TtsEngine.device => await _synthesizeOnDevice(clean),
 
+      TtsEngine.gemini || TtsEngine.elevenlabs || TtsEngine.azure =>
+        await _requirePremium().speak(profile.engine, clean, profile,
+            thai: _s().isThai),
+
       // เสียงโคลนอยู่ฝั่งเซิร์ฟเวอร์ ใช้ voice เป็น id ของเสียงที่โคลนไว้
       TtsEngine.clone => (
           bytes: await _requireClone().speak(clean, voiceId: profile.voice),
           mime: 'audio/mpeg',
         ),
     };
+  }
+
+  PremiumTts _requirePremium() {
+    final p = premium;
+    if (p == null) throw OpenAiFailure(_s().errTtsFailed);
+    return p;
   }
 
   /// บริการโคลนเสียง — ฉีดเข้ามาจาก state เมื่อผู้ใช้ตั้งค่าเซิร์ฟเวอร์แล้ว

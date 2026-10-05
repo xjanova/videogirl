@@ -36,6 +36,9 @@ import '../widgets/liquid_background.dart';
 import '../widgets/screen_header.dart';
 import '../ai/openai_client.dart';
 import '../i18n/strings_settings.dart';
+import '../i18n/strings_voice.dart';
+import '../ai/premium_catalog.dart';
+import '../ai/premium_tts.dart';
 import '../widgets/update_card.dart';
 import 'text_editor_screen.dart';
 
@@ -1877,6 +1880,152 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  // ── เสียงพรีเมียม (Gemini · ElevenLabs · Azure) ───────────
+  //
+  // คีย์ของผู้ใช้เก็บในที่เก็บลับของเครื่อง · รุ่นและเสียงมีให้เลือกเฉพาะตัว
+  // คุณภาพสูงที่พูดไทยได้ (ดู PremiumCatalog) · การเช่าเสียงผ่านบริการของเรา
+  // ยังปิดไว้ — หลังบ้าน aixman ยังไม่มีระบบเสียง (ดู docs/premium-voices.md)
+  List<Widget> _premiumVoice(
+      MindState state, VoiceChannel channel, VoiceProfile profile, MindMode mode) {
+    final t = S.of(context);
+    final e = profile.engine;
+    final name = PremiumTts.providerName(e);
+    final key = state.premiumKey(e);
+    final thai = state.lang == AppLang.th;
+    void set(VoiceProfile p) => state.setVoice(channel, p);
+
+    final voices = switch (e) {
+      TtsEngine.gemini => PremiumCatalog.geminiVoices,
+      TtsEngine.elevenlabs => state.accountVoices(e),
+      TtsEngine.azure => [
+          ...PremiumCatalog.azureVoices(thai: thai),
+          for (final v in state.accountVoices(e))
+            if (!PremiumCatalog.azureVoices(thai: thai).any((c) => c.id == v.id)) v,
+        ],
+      _ => const <PremiumVoice>[],
+    };
+    final canLoad = e == TtsEngine.elevenlabs || e == TtsEngine.azure;
+    final models = PremiumCatalog.modelsOf(e);
+
+    return [
+      const SizedBox(height: 7),
+      _linkRow(
+        title: t.premiumKeyTitle(name),
+        value: key.isEmpty ? t.premiumKeyNotSet : SecretStore.mask(key),
+        mode: mode,
+        onTap: () => _editText(
+          state: state,
+          mode: mode,
+          title: t.premiumKeyTitle(name),
+          hint: switch (e) {
+            TtsEngine.gemini => t.premiumKeyEditorGemini,
+            TtsEngine.elevenlabs => t.premiumKeyEditorElevenLabs,
+            _ => t.premiumKeyEditorAzure,
+          },
+          value: key,
+          onSave: (v) => state.setPremiumKey(e, v),
+          onReset: () => '',
+        ),
+      ),
+      if (e == TtsEngine.azure) ...[
+        const SizedBox(height: 7),
+        _linkRow(
+          title: t.azureRegionTitle,
+          value: state.azureRegion.isEmpty ? t.premiumKeyNotSet : state.azureRegion,
+          mode: mode,
+          onTap: () => _editText(
+            state: state,
+            mode: mode,
+            title: t.azureRegionTitle,
+            hint: t.azureRegionEditor,
+            value: state.azureRegion,
+            onSave: state.setAzureRegion,
+            onReset: () => 'southeastasia',
+          ),
+        ),
+      ],
+      if (!state.premiumReady(e)) ...[
+        const SizedBox(height: 7),
+        Text(
+          e == TtsEngine.azure && key.isNotEmpty ? t.azureNeedsRegion : t.premiumKeyNeeded(name),
+          style: const TextStyle(fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00)),
+        ),
+      ],
+      if (models.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        Text(t.premiumModel,
+            style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+        const SizedBox(height: 7),
+        for (final m in models)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: _choiceRow(
+              title: m,
+              selected: profile.model == m,
+              mode: mode,
+              onTap: () => set(profile.copyWith(model: m)),
+            ),
+          ),
+      ],
+      const SizedBox(height: 7),
+      Text(t.premiumVoice,
+          style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+      const SizedBox(height: 7),
+      for (final v in voices)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 7),
+          child: _choiceRow(
+            title: v.name,
+            subtitle: v.detail.isEmpty ? null : v.detail,
+            selected: profile.voice == v.id,
+            mode: mode,
+            onTap: () => set(profile.copyWith(voice: v.id)),
+          ),
+        ),
+      if (canLoad)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: _plainButton(
+            label: state.voicesLoading(e) ? t.elevenVoicesLoading : t.elevenVoicesLoad,
+            mode: mode,
+            onTap: state.voicesLoading(e) || !state.premiumReady(e)
+                ? null
+                : () async {
+                    final messenger = ScaffoldMessenger.maybeOf(context);
+                    final err = await state.loadAccountVoices(e);
+                    messenger?.showSnackBar(SnackBar(
+                      content: Text(err ?? t.elevenVoicesLoaded(state.accountVoices(e).length)),
+                    ));
+                  },
+          ),
+        ),
+      if (e == TtsEngine.elevenlabs && voices.isEmpty) ...[
+        const SizedBox(height: 4),
+        Text(t.elevenPickVoice,
+            style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+      ],
+      const SizedBox(height: 7),
+      if (e == TtsEngine.gemini)
+        _linkRow(
+          title: t.premiumStyle,
+          value: profile.instructions,
+          mode: mode,
+          onTap: () => _editText(
+            state: state,
+            mode: mode,
+            title: t.premiumStyle,
+            hint: t.premiumStyleEditor,
+            value: profile.instructions,
+            onSave: (v) => set(profile.copyWith(instructions: v)),
+            onReset: () => VoiceProfile.defaultFor(channel, state.lang).instructions,
+          ),
+        )
+      else
+        Text(t.premiumNoStyle,
+            style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+    ];
+  }
+
   // ── เสียง แยกตามช่องทาง ──────────────────────
   Widget _voiceCard(MindState state, MindMode mode) {
     final channel = _voiceTab;
@@ -1937,26 +2086,26 @@ class _SettingsScreenState extends State<SettingsScreen>
                 style: mindMono(
                     size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
             const SizedBox(height: 7),
-            Row(
-              spacing: 7,
-              children: [
-                // .wired ไม่ใช่ .values — เสียงโคลนยังไม่ได้ต่อสาย
-                // (ดู TtsEngine.wired) เลือกได้แต่ไม่ทำงานคือฟีเจอร์ปลอม
-                for (final e in TtsEngine.wired)
-                  Expanded(
-                    child: _segment(
-                      text: e.labelOf(S.of(context)),
-                      selected: profile.engine == e,
-                      mode: mode,
-                      onTap: () =>
-                          state.setVoice(channel, profile.copyWith(engine: e)),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(profile.engine.hintOf(S.of(context)),
-                style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
+            // .wired ไม่ใช่ .values — เสียงโคลนยังไม่ได้ต่อสาย
+            // (ดู TtsEngine.wired) เลือกได้แต่ไม่ทำงานคือฟีเจอร์ปลอม
+            // · แนวตั้งเพราะมีห้าเจ้าแล้ว ปุ่มเรียงแถวเดียวอ่านชื่อไม่ออก
+            for (final e in TtsEngine.wired)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: _choiceRow(
+                  title: e.labelOf(S.of(context)),
+                  subtitle: e.hintOf(S.of(context)),
+                  selected: profile.engine == e,
+                  mode: mode,
+                  // สลับเจ้า = ปรับรุ่นกับเสียงให้เป็นของเจ้าใหม่ด้วย
+                  onTap: () => state.setVoice(
+                      channel,
+                      PremiumCatalog.adapt(profile, e,
+                          thai: state.lang == AppLang.th)),
+                ),
+              ),
+            if (profile.engine.isPremium)
+              ..._premiumVoice(state, channel, profile, mode),
 
             if (usingOpenAi) ...[
               // 🔴 ช่องกรอกคีย์ต้องมาอยู่ตรงนี้ด้วย

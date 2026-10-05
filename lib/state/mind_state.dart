@@ -27,8 +27,11 @@ import '../ai/local_brain.dart';
 import '../ai/mind_persona.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
+import '../i18n/strings_voice.dart';
 import '../ai/openai_client.dart';
 import '../ai/openai_config.dart';
+import '../ai/premium_catalog.dart';
+import '../ai/premium_tts.dart';
 import '../ai/secret_store.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
@@ -83,6 +86,11 @@ class MindState extends ChangeNotifier {
             strings: () => s,
           ),
           strings: () => s,
+          premium: PremiumTts(
+            keyOf: premiumKey,
+            azureRegion: () => _azureRegion,
+            strings: () => s,
+          ),
         );
   }
 
@@ -295,6 +303,21 @@ class MindState extends ChangeNotifier {
 
     // คีย์อยู่คนละที่กับค่าอื่น (Keystore ไม่ใช่ SharedPreferences) จึงอ่านแยก
     _openAiKey = await SecretStore.read(SecretStore.kOpenAiKey);
+    _geminiKey = await SecretStore.read(SecretStore.kGeminiKey);
+    _elevenLabsKey = await SecretStore.read(SecretStore.kElevenLabsKey);
+    _azureKey = await SecretStore.read(SecretStore.kAzureSpeechKey);
+    _azureRegion = p.getString('azureRegion') ?? '';
+    for (final e in const [TtsEngine.elevenlabs, TtsEngine.azure]) {
+      try {
+        final raw = p.getString('voices_${e.name}');
+        if (raw == null) continue;
+        _accountVoices[e] = [
+          for (final v in jsonDecode(raw) as List) ?PremiumVoice.fromJson(v),
+        ];
+      } on Object {
+        // รายชื่อที่จำไว้เพี้ยน = โหลดใหม่ได้ ไม่ใช่เรื่องที่ต้องล้ม
+      }
+    }
     _licenseKey = p.getString('licenseKey') ?? '';
     _licenseType = p.getString('licenseType') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
@@ -872,6 +895,93 @@ class MindState extends ChangeNotifier {
       // ใช้ได้รอบนี้ แต่ปิดแอปแล้วหาย · ต้องบอก ไม่ใช่ให้ไปเจอเองพรุ่งนี้
       reportError(s.errKeyNotSaved);
     }
+    _notify();
+  }
+
+  // ═══ คีย์ของเจ้าเสียงพรีเมียม (Gemini · ElevenLabs · Azure) ═══
+  //
+  // อยู่ใน SecretStore เหมือนคีย์ OpenAI · ไม่มีคีย์ = เจ้านั้นตกไปใช้เสียงเครื่อง
+  // (synthesizeWithFallback) แล้วการ์ดเสียงบอกว่าต้องใส่คีย์ ไม่เงียบเฉย ๆ
+  String _geminiKey = '';
+  String _elevenLabsKey = '';
+  String _azureKey = '';
+
+  /// ภูมิภาคของ Azure Speech (เช่น southeastasia) · ไม่ใช่ความลับ เก็บใน prefs
+  String _azureRegion = '';
+  String get azureRegion => _azureRegion;
+
+  /// คีย์ของเจ้านั้น · ว่าง = ยังไม่ได้ใส่ (หรือไม่ใช่เจ้าที่ต้องมีคีย์)
+  String premiumKey(TtsEngine e) => switch (e) {
+        TtsEngine.gemini => _geminiKey,
+        TtsEngine.elevenlabs => _elevenLabsKey,
+        TtsEngine.azure => _azureKey,
+        _ => '',
+      };
+
+  /// เจ้านั้นพร้อมใช้ไหม (Azure ต้องมีภูมิภาคด้วย)
+  bool premiumReady(TtsEngine e) =>
+      premiumKey(e).isNotEmpty && (e != TtsEngine.azure || _azureRegion.isNotEmpty);
+
+  Future<void> setPremiumKey(TtsEngine e, String v) async {
+    final value = v.trim();
+    final slot = switch (e) {
+      TtsEngine.gemini => SecretStore.kGeminiKey,
+      TtsEngine.elevenlabs => SecretStore.kElevenLabsKey,
+      TtsEngine.azure => SecretStore.kAzureSpeechKey,
+      _ => null,
+    };
+    if (slot == null) return;
+    switch (e) {
+      case TtsEngine.gemini:
+        _geminiKey = value;
+      case TtsEngine.elevenlabs:
+        _elevenLabsKey = value;
+      case TtsEngine.azure:
+        _azureKey = value;
+      default:
+        break;
+    }
+    if (!await SecretStore.write(slot, value)) reportError(s.errKeyNotSaved);
+    _notify();
+  }
+
+  /// เสียงที่โหลดมาจากบัญชีของผู้ใช้ (ElevenLabs / Azure) · จำข้ามการเปิดแอป
+  final Map<TtsEngine, List<PremiumVoice>> _accountVoices = {};
+  List<PremiumVoice> accountVoices(TtsEngine e) => _accountVoices[e] ?? const [];
+
+  TtsEngine? _voicesLoading;
+  bool voicesLoading(TtsEngine e) => _voicesLoading == e;
+
+  /// โหลดรายชื่อเสียงจากบัญชี · คืนข้อความผิดพลาด หรือ null เมื่อสำเร็จ
+  Future<String?> loadAccountVoices(TtsEngine e) async {
+    final premium = _speech.premium;
+    if (premium == null || _voicesLoading != null) return null;
+    _voicesLoading = e;
+    _notify();
+    try {
+      final list = switch (e) {
+        TtsEngine.elevenlabs => await premium.elevenVoices(),
+        TtsEngine.azure => await premium.azureVoiceList(),
+        _ => const <PremiumVoice>[],
+      };
+      _accountVoices[e] = list;
+      _save('voices_${e.name}', jsonEncode([for (final v in list) v.toJson()]));
+      return null;
+    } on OpenAiFailure catch (err) {
+      return err.message;
+    } on Object catch (err) {
+      debugPrint('เสียง: โหลดรายชื่อเสียง ${e.name} ไม่ได้ — ${err.runtimeType}');
+      return s.premiumFailed(PremiumTts.providerName(e));
+    } finally {
+      _voicesLoading = null;
+      _notify();
+    }
+  }
+
+  void setAzureRegion(String v) {
+    // ภูมิภาคเป็นส่วนหนึ่งของชื่อโดเมน · เก็บเฉพาะตัวอักษร/ตัวเลข กันใส่ URL ทั้งเส้นมา
+    _azureRegion = v.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    _save('azureRegion', _azureRegion);
     _notify();
   }
 
@@ -1610,6 +1720,9 @@ class MindState extends ChangeNotifier {
       } on OpenAiFailure catch (e) {
         debugPrint('เสียง: ${profile.engine.name} ไม่สำเร็จ (${e.message}) '
             '— ตกมาใช้เสียงของเครื่อง');
+        // 🔴 บอกเจ้าของว่าทำไมเสียงเปลี่ยน · เงียบ ๆ = เขาเลือกเสียงพรีเมียม
+        // ไว้ (คีย์ผิด/เครดิตหมด) แล้วได้ยินเสียงเครื่องโดยไม่รู้ว่าต้องแก้อะไร
+        reportError(e.message);
       }
     }
     return _speech.synthesize(

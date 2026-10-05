@@ -3,6 +3,7 @@ import '../ai/device_capability.dart';
 import '../ai/local_brain.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
+import 'strings_voice.dart';
 import '../persona/mind_name.dart';
 import '../persona/mind_soul.dart';
 import '../state/mind_state.dart';
@@ -43,12 +44,18 @@ extension TtsEngineLabels on TtsEngine {
         TtsEngine.openai => s.ttsOpenAi,
         TtsEngine.device => s.ttsDevice,
         TtsEngine.clone => s.ttsClone,
+        TtsEngine.gemini => s.ttsGemini,
+        TtsEngine.elevenlabs => s.ttsElevenLabs,
+        TtsEngine.azure => s.ttsAzure,
       };
 
   String hintOf(S s) => switch (this) {
         TtsEngine.openai => s.ttsOpenAiHint,
         TtsEngine.device => s.ttsDeviceHint,
         TtsEngine.clone => s.ttsCloneHint,
+        TtsEngine.gemini => s.ttsGeminiHint,
+        TtsEngine.elevenlabs => s.ttsElevenLabsHint,
+        TtsEngine.azure => s.ttsAzureHint,
       };
 }
 
