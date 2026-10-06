@@ -103,7 +103,13 @@ void main() {
     addTearDown(s.dispose);
     s.debugBrainX = BrainXLink(
       cloud: BrainXCloud(client: cloud, baseUrl: 'https://serverbrain.test'),
-      xman: MockClient((_) async => _json({'linked': true, 'active': true, 'key': 'BRX-PAID'})),
+      // หลังบ้านล็อกอินแทน ส่งมาแค่ token (คีย์ไม่ถึงมือถือ)
+      xman: MockClient((_) async => _json({
+            'linked': true,
+            'active': true,
+            'token': 'bxc_t',
+            'account': {'licenseType': 'monthly', 'isValid': true, 'noteCount': 10},
+          })),
       readSecret: (_) async => '',
       writeSecret: (_, _) async => true,
       flushDelay: const Duration(milliseconds: 5),

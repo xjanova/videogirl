@@ -238,6 +238,32 @@ class DeviceCalendar extends ChangeNotifier {
     }).join('\n');
   }
 
+  /// ช่วงที่เจ้าของไม่ว่าง **ไม่มีชื่อนัด ไม่มีสถานที่** — สำหรับตอนรับสายแทนเท่านั้น
+  ///
+  /// 🔴 คนปลายสายคือคนแปลกหน้า · ของเดิมส่งตารางเต็ม (ชื่อนัด + สถานที่) เข้าไป
+  /// แล้วกันด้วยคำสั่งว่า "ห้ามอ่านให้ฟัง" อย่างเดียว · คนที่หลอกโมเดลเก่งทำให้
+  /// หลุดได้ · ไม่ส่งไปเลย = ไม่มีอะไรให้หลุด · ที่เธอต้องรู้ในสายมีแค่ว่างหรือไม่ว่าง
+  String busyBlock({Duration ahead = const Duration(hours: 48), DateTime? now}) {
+    final at = now ?? DateTime.now();
+    final until = at.add(ahead);
+    String two(int n) => n.toString().padLeft(2, '0');
+    final rows = [
+      for (final e in _events)
+        if (e.end.isAfter(at) && e.begin.isBefore(until))
+          '- ${two(e.begin.day)}/${two(e.begin.month)}'
+              '${e.allDay ? ' all day' : ' ${two(e.begin.hour)}:${two(e.begin.minute)}-${two(e.end.hour)}:${two(e.end.minute)}'}'
+              ' busy',
+    ];
+    return rows.join('\n');
+  }
+
+  @visibleForTesting
+  void debugSetEvents(List<CalendarEvent> events) {
+    _events
+      ..clear()
+      ..addAll(events);
+  }
+
   void _set(CalendarStage s) {
     _stage = s;
     notifyListeners();

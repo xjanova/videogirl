@@ -12,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:videogirl/ai/mind_persona.dart';
+import 'package:videogirl/ai/secret_store.dart';
 import 'package:videogirl/brainx/brainx_cloud.dart';
 import 'package:videogirl/brainx/brainx_link.dart';
 import 'package:videogirl/i18n/strings.dart';
@@ -127,6 +128,14 @@ void main() {
         flushDelay: const Duration(milliseconds: 10),
       );
 
+  /// หลังบ้านตอบเหมือน xmanstudio: ล็อกอินคลาวด์ให้แล้ว ส่งมาแค่ token กับบัญชี
+  Map<String, Object?> xmanToken(_FakeCloud cloud) => {
+        'linked': true,
+        'active': true,
+        'token': cloud.token,
+        'account': {'licenseType': 'monthly', 'isValid': true, 'daysRemaining': 20, 'noteCount': 1886},
+      };
+
   MockClient xmanSays(Map<String, Object?> body, {void Function(http.Request)? seen}) =>
       MockClient((req) async {
         seen?.call(req);
@@ -134,20 +143,49 @@ void main() {
       });
 
   group('🔴 บัญชี xman เดียวกัน = คีย์เดียวกัน · จ่าย BrainX แล้วมือถือเชื่อมฟรี', () {
-    test('เชื่อมด้วยบัญชี: ได้คีย์จากหลังบ้าน แล้วล็อกอินคลาวด์ ไม่ต้องพิมพ์อะไร', () async {
+    test('🔴 เชื่อมด้วยบัญชี: หลังบ้านล็อกอินแทน ส่งมาแค่ token · คีย์ไม่เคยถึงมือถือ', () async {
       final cloud = _FakeCloud();
       final secrets = <String, String>{};
       http.Request? asked;
-      final link = linkWith(
-          cloud, xmanSays({'linked': true, 'active': true, 'key': 'BRX-PAID'}, seen: (r) => asked = r), secrets);
+      final link = linkWith(cloud, xmanSays(xmanToken(cloud), seen: (r) => asked = r), secrets);
       addTearDown(link.dispose);
 
       await link.connectViaXman(storeBase: 'https://xman4289.com', license: 'FREE-DEVICE');
+      expect(asked!.method, 'POST');
       expect(asked!.url.toString(), 'https://xman4289.com/api/ai/v1/brainx');
       expect(asked!.headers['Authorization'], 'Bearer FREE-DEVICE');
+      expect((jsonDecode(asked!.body) as Map)['device_name'], 'GigGok (Android)');
       expect(link.state, BrainXState.connected);
       expect(link.account!.noteCount, 1886);
-      expect(secrets.values, contains('bxc_test_token'), reason: 'token เก็บในที่เก็บความลับ');
+      expect(secrets[SecretStore.kBrainXToken], 'bxc_test_token', reason: 'token เก็บในที่เก็บความลับ');
+      expect(secrets[SecretStore.kBrainXKey] ?? '', isEmpty);
+      expect(cloud.calls.where((c) => c.contains('login')), isEmpty, reason: 'มือถือไม่ได้ล็อกอินเอง ไม่มีคีย์ให้ล็อกอิน');
+
+      // ใช้ token นั้นค้นสมองได้จริง
+      expect(await link.recall('เชียงใหม่'), isNotEmpty);
+    });
+
+    test('🔴 คีย์ที่พิมพ์เองก็ไม่ลงเครื่อง · รุ่นเก่าที่เคยเก็บคีย์ไว้ ถูกลบตอนเปิดแอป', () async {
+      final secrets = <String, String>{};
+      final link = linkWith(_FakeCloud(), xmanSays({}), secrets);
+      addTearDown(link.dispose);
+      await link.connectWithKey('BRX-PAID');
+      expect(link.state, BrainXState.connected);
+      expect(secrets.values, isNot(contains('BRX-PAID')));
+
+      final old = <String, String>{SecretStore.kBrainXToken: 'bxc_test_token', SecretStore.kBrainXKey: 'BRX-PAID'};
+      final upgraded = linkWith(_FakeCloud(), xmanSays({}), old);
+      addTearDown(upgraded.dispose);
+      await upgraded.load();
+      expect(upgraded.connected, isTrue, reason: 'token เดิมยังใช้ได้ ไม่ต้องเชื่อมใหม่');
+      expect(old[SecretStore.kBrainXKey], isEmpty);
+    });
+
+    test('BrainX Cloud หมดอายุ (หลังบ้านบอก) = บอกให้ต่ออายุ', () async {
+      final link = linkWith(_FakeCloud(), xmanSays({'linked': true, 'active': false, 'expired': true}), {});
+      addTearDown(link.dispose);
+      await link.connectViaXman(storeBase: 'https://xman4289.com', license: 'X');
+      expect(link.state, BrainXState.expired);
     });
 
     test('ยังไม่ได้ผูกบัญชี / ยังไม่มี BrainX Cloud = บอกสิ่งที่ต้องทำ ไม่ล็อกอินมั่ว', () async {
@@ -196,14 +234,25 @@ void main() {
       expect(cloud.calls.where((c) => c == 'POST /mcp').length, 4);
     });
 
-    test('token ถูกเพิกถอน → ล็อกอินใหม่เองด้วยคีย์เดิม แล้วค้นต่อได้', () async {
+    test('token ถูกเพิกถอน → ขอใหม่เงียบ ๆ ผ่านหลังบ้าน (ไม่มีคีย์ในเครื่องก็ได้) แล้วค้นต่อได้', () async {
+      final cloud = _FakeCloud();
+      final secrets = <String, String>{SecretStore.kBrainXToken: 'bxc_test_token'};
+      final link = linkWith(cloud, MockClient((_) async => _json(xmanToken(cloud))), secrets)
+        ..xmanSource = (() => (storeBase: 'https://xman4289.com', license: 'FREE-DEVICE'));
+      addTearDown(link.dispose);
+      await link.load(); // เปิดแอปใหม่: มีแค่ token
+      cloud.token = 'bxc_new_token'; // คลาวด์เพิกถอนตัวเก่า
+      expect(await link.recall('เชียงใหม่'), isNotEmpty);
+      expect(secrets[SecretStore.kBrainXToken], 'bxc_new_token');
+    });
+
+    test('token ถูกเพิกถอน · ใส่คีย์เองไว้ในรอบนี้ → ล็อกอินใหม่ได้ในรอบนี้', () async {
       final cloud = _FakeCloud();
       final link = linkWith(cloud, xmanSays({}), {});
       addTearDown(link.dispose);
       await link.connectWithKey('BRX-PAID');
-      cloud.token = 'bxc_new_token'; // คลาวด์เพิกถอนตัวเก่า
-      final hits = await link.recall('เชียงใหม่');
-      expect(hits, isNotEmpty);
+      cloud.token = 'bxc_new_token';
+      expect(await link.recall('เชียงใหม่'), isNotEmpty);
     });
 
     test('ค้นไม่ทันเวลา = ตอบจากที่มี ไม่รอ', () async {

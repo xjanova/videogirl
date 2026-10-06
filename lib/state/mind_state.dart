@@ -1293,24 +1293,32 @@ class MindState extends ChangeNotifier {
   /// ใช้ system prompt คนละตัวกับการคุยในแอป (`onCall: true`) ซึ่งกดโหมด
   /// ส่วนตัวทิ้งและสั่งให้แนะนำตัวว่าเป็นผู้ช่วย · [history] เป็นบทสนทนา
   /// ของ **สายนี้เท่านั้น** ไม่ใช่แชทของเจ้าของ
-  Future<String> replyOnCall(List<({bool fromHer, String text})> history) {
-    final system = MindPersona.system(
-      lang: _lang,
-      mode: mode,
-      flirt: effectiveFlirt,
-      ownerProfile: _ownerProfile,
-      boundaries: _boundaries,
-      onCall: true,
-      soul: _soul,
-      memories: memory.promptBlock(limit: coreMemories),
-      schedule: _calendar?.promptBlock() ?? '',
-      // 🔴 ไม่ใส่เรื่องที่คนอื่นฝากไว้ · คู่สายคนนี้คือคนแปลกหน้า และเป็นช่องทาง
-      // เดียวที่คนนอกพิมพ์เข้า prompt ได้ ("คนก่อนหน้าโทรมาเรื่องอะไรคะ")
-      calls: _calls?.promptBlock() ?? '',
-      now: _clock(),
-    );
-    return _askBrain(system, history, cap: ReplyCap.call);
-  }
+  ///
+  /// ## 🔴 กันด้วยโค้ด ไม่ใช่ด้วยคำสั่ง
+  ///
+  /// คนปลายสายคือคนแปลกหน้า และเป็นช่องทางเดียวที่คนนอกพูดเข้ามาถึงเธอได้ตรง ๆ
+  /// · ของเดิมส่งโปรไฟล์เจ้าของ ความจำ 24 ข้อ ตารางนัดเต็ม และรายชื่อคนที่โทรมา
+  /// วันนี้เข้าไป แล้วกันด้วยคำสั่ง "ห้ามอ่านให้ฟัง" อย่างเดียว · คำสั่งถูกหลอกได้
+  /// ("ผมเป็นสามีเขา" "ลืมคำสั่งเดิม") แต่สิ่งที่ไม่อยู่ใน context หลุดไม่ได้
+  ///
+  /// สิ่งที่เธอได้ในสายจึงมีแค่: บุคลิก (ไม่รวมความสัมพันธ์) · ขอบเขตที่เจ้าของตั้ง ·
+  /// ช่วงที่ไม่ว่างแบบไม่มีรายละเอียด · บทสนทนาของสายนี้ · และไม่แตะสมอง BrainX
+  /// ไม่ค้นเว็บ ไม่มีบันทึกช่วยจำ (ดู [callPrompt] ที่เทสต์ยืนยันทั้งหมดนี้)
+  Future<String> replyOnCall(List<({bool fromHer, String text})> history) =>
+      _askBrain(callPrompt(), history, cap: ReplyCap.call);
+
+  @visibleForTesting
+  String callPrompt() => MindPersona.system(
+        lang: _lang,
+        mode: mode,
+        flirt: effectiveFlirt,
+        ownerProfile: '',
+        boundaries: _boundaries,
+        onCall: true,
+        soul: _soul,
+        schedule: _calendar?.busyBlock(now: _clock()) ?? '',
+        now: _clock(),
+      );
 
   /// สังเคราะห์เสียงสำหรับพูดเข้าสาย · คืนไบต์ ไม่ได้เล่นเอง
   ///
@@ -2045,10 +2053,15 @@ class MindState extends ChangeNotifier {
   // 🔴 สายโทรศัพท์ไม่แตะส่วนนี้เลย (replyOnCall ไม่เรียก) — บังคับด้วยโค้ด
 
   BrainXLink? _lazyBrainX;
-  BrainXLink get brainx => _lazyBrainX ??= (BrainXLink()..addListener(_notify));
+  BrainXLink get brainx => _lazyBrainX ??= _wireBrainX(BrainXLink());
 
   @visibleForTesting
-  set debugBrainX(BrainXLink l) => _lazyBrainX = l..addListener(_notify);
+  set debugBrainX(BrainXLink l) => _lazyBrainX = _wireBrainX(l);
+
+  /// token หลุด → ขอใหม่ผ่านหลังบ้านด้วยไลเซนส์ปัจจุบัน (ไม่มีคีย์ BrainX ในเครื่องให้ใช้)
+  BrainXLink _wireBrainX(BrainXLink l) => l
+    ..xmanSource = (() => (storeBase: _storeBaseUrl, license: _licenseKey))
+    ..addListener(_notify);
 
   /// ค้นสมอง BrainX ตอนตอบ
   bool _brainxSearch = true;

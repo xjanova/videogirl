@@ -2,8 +2,9 @@
 ///
 /// ดู [BrainXCloud] ว่าทำไมและใช้อะไรของคลาวด์ · ตัวนี้คือส่วนที่แอปจับต้อง:
 ///
-/// - **เชื่อม** ด้วยบัญชี xman ที่ผูกเครื่องไว้ (หลังบ้านส่งคีย์ BrainX ของบัญชีมาให้)
-///   หรือใส่คีย์เอง · ไม่มี BrainX Cloud = บอกให้สมัคร (มือถือเชื่อมฟรีเมื่อจ่ายฝั่งคอมแล้ว)
+/// - **เชื่อม** ด้วยบัญชี xman ที่ผูกเครื่องไว้ (หลังบ้านล็อกอินแทน แล้วส่งมาแค่ token
+///   ของเครื่องนี้) หรือใส่คีย์เอง · ไม่มี BrainX Cloud = บอกให้สมัคร (มือถือเชื่อมฟรี
+///   เมื่อจ่ายฝั่งคอมแล้ว) · 🔴 คีย์ BrainX ไม่ถูกเก็บลงเครื่องเลย มีแต่ token
 /// - **ค้น** ทุกครั้งที่ตอบ — เวลาจำกัดสั้น ค้นไม่ทันก็ตอบจากที่มี
 /// - **ส่งขึ้น** ความจำ บทสนทนา (วันละไฟล์) และความสัมพันธ์ · รวมเป็นชุดแล้วค่อยส่ง
 ///   ไม่ยิงทุกข้อความ
@@ -94,7 +95,6 @@ class BrainXLink extends ChangeNotifier {
   String get buyUrl => _buyUrl;
 
   String _token = '';
-  String _key = '';
   bool _disposed = false;
 
   void _set(BrainXState s, {String? error}) {
@@ -104,64 +104,102 @@ class BrainXLink extends ChangeNotifier {
   }
 
   /// อ่าน token ที่เคยได้ · ไม่ยิงเน็ต (ตรวจกับคลาวด์ทีหลังใน [refreshAccount])
+  ///
+  /// 🔴 รุ่นก่อน (0.1.37) เก็บคีย์ BrainX ไว้ในเครื่องด้วย → ลบทิ้งตรงนี้ · คีย์คือบัญชี
+  /// ทั้งก้อน หมุนเปลี่ยนไม่ได้ ส่วน token เป็นของเครื่องเดียว เพิกถอนได้จากคอม
   Future<void> load() async {
     _token = await _read(SecretStore.kBrainXToken);
-    _key = await _read(SecretStore.kBrainXKey);
+    if ((await _read(SecretStore.kBrainXKey)).isNotEmpty) await _write(SecretStore.kBrainXKey, '');
     if (_token.isNotEmpty) _set(BrainXState.connected);
   }
 
   /// เชื่อมด้วยบัญชี xman ที่ผูกเครื่องนี้ไว้ — ไม่ต้องพิมพ์คีย์
+  ///
+  /// 🔴 หลังบ้านล็อกอิน BrainX แทนเรา แล้วส่งมาแค่ token ของเครื่องนี้ · คีย์ของบัญชี
+  /// ไม่เคยออกจากเซิร์ฟเวอร์ · ใครได้ไลเซนส์ GigGok ไปก็ขโมยคีย์สมองไม่ได้
   Future<void> connectViaXman({required String storeBase, required String license}) async {
     if (_state == BrainXState.connecting) return;
     _set(BrainXState.connecting);
+    final r = await _signInViaXman(storeBase, license);
+    final t = r.token;
+    if (t == null) {
+      _set(r.state, error: _xmanError);
+      return;
+    }
+    _token = t;
+    _manualKey = '';
+    _account = r.account;
+    await _write(SecretStore.kBrainXToken, _token);
+    _set(r.account.isValid ? BrainXState.connected : BrainXState.expired);
+  }
+
+  String? _xmanError;
+
+  static const _noAccount =
+      BrainXAccount(licenseType: '', isValid: false, daysRemaining: null, usedBytes: 0, quotaBytes: 0, noteCount: 0);
+
+  /// ขอ token จากหลังบ้าน · ไม่แตะสถานะ (ใช้ทั้งตอนเชื่อมและตอนล็อกอินใหม่เงียบ ๆ)
+  Future<({String? token, BrainXAccount account, BrainXState state})> _signInViaXman(
+      String storeBase, String license) async {
+    _xmanError = null;
     final base = storeBase.trim().replaceAll(RegExp(r'/+$'), '');
     if (base.isEmpty || license.trim().isEmpty) {
-      _set(BrainXState.notLinked);
-      return;
+      return (token: null, account: _noAccount, state: BrainXState.notLinked);
     }
     Map<String, Object?> j;
     try {
-      final res = await _xman.get(Uri.parse('$base/api/ai/v1/brainx'), headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer ${license.trim()}',
-      }).timeout(const Duration(seconds: 15));
-      if (res.statusCode == 401) {
-        _set(BrainXState.failed, error: 'LICENSE');
-        return;
-      }
+      final res = await _xman
+          .post(Uri.parse('$base/api/ai/v1/brainx'),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ${license.trim()}',
+              },
+              body: jsonEncode({'device_name': deviceName}))
+          // หลังบ้านต้องไปล็อกอินคลาวด์อีกทอด (รอได้ถึง 15 วิ)
+          .timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) {
-        _set(BrainXState.failed, error: 'HTTP_${res.statusCode}');
-        return;
+        _xmanError = res.statusCode == 401 ? 'LICENSE' : 'HTTP_${res.statusCode}';
+        return (token: null, account: _noAccount, state: BrainXState.failed);
       }
       final d = jsonDecode(utf8.decode(res.bodyBytes));
       j = d is Map ? d.cast<String, Object?>() : const {};
     } on Object {
-      _set(BrainXState.failed, error: 'OFFLINE');
-      return;
+      _xmanError = 'OFFLINE';
+      return (token: null, account: _noAccount, state: BrainXState.failed);
     }
     if (j['buy_url'] is String) _buyUrl = j['buy_url'] as String;
-    if (j['linked'] != true) {
-      _set(BrainXState.notLinked);
-      return;
+    if (j['linked'] != true) return (token: null, account: _noAccount, state: BrainXState.notLinked);
+    final token = j['token'];
+    if (j['active'] != true || token is! String || token.isEmpty) {
+      final s = j['expired'] == true ? BrainXState.expired : BrainXState.notSubscribed;
+      return (token: null, account: _noAccount, state: s);
     }
-    final key = j['key'];
-    if (j['active'] != true || key is! String || key.isEmpty) {
-      _set(BrainXState.notSubscribed);
-      return;
-    }
-    await connectWithKey(key);
+    final a = j['account'];
+    return (
+      token: token,
+      account: BrainXAccount.fromJson(a is Map ? a.cast<String, Object?>() : const {}),
+      state: BrainXState.connected,
+    );
   }
 
-  /// เชื่อมด้วยคีย์ BrainX (มาจากหลังบ้าน หรือผู้ใช้ใส่เอง)
+  /// ทางเชื่อมผ่านหลังบ้านสำหรับล็อกอินใหม่เงียบ ๆ เมื่อ token ถูกเพิกถอน · ตั้งโดย MindState
+  /// (อ่านค่าปัจจุบันทุกครั้ง · ไม่จำไลเซนส์ไว้ในตัวนี้)
+  ({String storeBase, String license}) Function()? xmanSource;
+
+  /// คีย์ที่ผู้ใช้พิมพ์เอง · อยู่ในหน่วยความจำเท่านั้น ไม่ลงเครื่อง (ปิดแอป = หาย)
+  String _manualKey = '';
+
+  /// เชื่อมด้วยคีย์ BrainX ที่ผู้ใช้ใส่เอง (เครื่องที่ไม่ได้ผูกบัญชี xman)
+  /// · เก็บแค่ token · ตัวคีย์ไม่ลงเครื่อง
   Future<void> connectWithKey(String key) async {
     _set(BrainXState.connecting);
     try {
       final r = await _cloud.login(key, device: deviceName);
       _token = r.token;
-      _key = key.trim();
+      _manualKey = key.trim();
       _account = r.account;
       await _write(SecretStore.kBrainXToken, _token);
-      await _write(SecretStore.kBrainXKey, _key);
       _set(r.account.isValid ? BrainXState.connected : BrainXState.expired);
     } on BrainXCloudError catch (e) {
       _set(switch (e.code) {
@@ -175,7 +213,7 @@ class BrainXLink extends ChangeNotifier {
   Future<void> disconnect() async {
     final t = _token;
     _token = '';
-    _key = '';
+    _manualKey = '';
     _account = null;
     _pending.clear();
     _flushTimer?.cancel();
@@ -185,11 +223,23 @@ class BrainXLink extends ChangeNotifier {
     if (t.isNotEmpty) unawaited(_cloud.logout(t));
   }
 
-  /// token ถูกเพิกถอน (ออกจากระบบจากคอม · ครบจำนวนเครื่อง) → ล็อกอินใหม่เองด้วยคีย์เดิม
+  /// token ถูกเพิกถอน (ออกจากระบบจากคอม · ครบจำนวนเครื่อง) → ขอใหม่เงียบ ๆ
+  /// ผ่านหลังบ้าน (หรือคีย์ที่พิมพ์ไว้ในรอบนี้) · ไม่มีทั้งคู่ = ให้ผู้ใช้เชื่อมใหม่
   Future<bool> _relogin() async {
-    if (_key.isEmpty) return false;
+    final via = xmanSource?.call();
+    if (via != null && via.storeBase.trim().isNotEmpty && via.license.trim().isNotEmpty) {
+      final r = await _signInViaXman(via.storeBase, via.license);
+      if (r.token case final t?) {
+        _token = t;
+        _account = r.account;
+        await _write(SecretStore.kBrainXToken, _token);
+        return true;
+      }
+      if (r.state == BrainXState.expired) _set(BrainXState.expired, error: 'LICENSE_EXPIRED');
+    }
+    if (_manualKey.isEmpty) return false;
     try {
-      final r = await _cloud.login(_key, device: deviceName);
+      final r = await _cloud.login(_manualKey, device: deviceName);
       _token = r.token;
       _account = r.account;
       await _write(SecretStore.kBrainXToken, _token);

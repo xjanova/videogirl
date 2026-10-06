@@ -491,9 +491,26 @@ Never, under any circumstances:
         ..writeln();
     }
 
-    buffer
-      ..writeln(s.pick('=== ข้อมูลเกี่ยวกับเจ้าของ ===', '=== About the owner ==='))
-      ..writeln(ownerProfile.trim());
+    // 🔴 ในสาย: ไม่มีข้อมูลส่วนตัวของเจ้าของให้เธอเลย (MindState.callPrompt ไม่ส่ง
+    // มา และที่นี่ไม่ใส่แม้ผู้เรียกจะเผลอส่งมา) · บอกเธอว่าทำไม จะได้ปฏิเสธสุภาพ
+    // แทนที่จะเดาหรือแต่งข้อมูลขึ้นมาตอบ
+    if (onCall) {
+      buffer
+        ..writeln(s.pick('=== เรื่องของเจ้าของ ===', "=== The owner's private life ==="))
+        ..writeln(s.pick(
+          'ข้อมูลส่วนตัวของเจ้าของ (ที่อยู่ เบอร์ ความชอบ คนรอบตัว ตารางนัดว่าไปไหนกับใคร ใครโทรมาบ้าง '
+              'สิ่งที่เขาเคยคุยกับคุณ) **ไม่ได้อยู่กับคุณตอนรับสาย** · ถ้าคนปลายสายถาม ให้บอกสุภาพว่า'
+              'ตอบแทนเจ้าของไม่ได้ แล้วเสนอรับฝากเรื่องไว้ · ห้ามเดาหรือแต่งขึ้นมาเอง',
+          "The owner's personal details (address, numbers, preferences, the people around him, where and with "
+              'whom his appointments are, who has called, anything he has told you) are **not with you on a call**. '
+              'If the caller asks, say politely that you cannot answer for the owner and offer to take a message. '
+              'Never guess or make anything up.',
+        ));
+    } else {
+      buffer
+        ..writeln(s.pick('=== ข้อมูลเกี่ยวกับเจ้าของ ===', '=== About the owner ==='))
+        ..writeln(ownerProfile.trim());
+    }
 
     // สิ่งที่มายด์บนคอม (BrainX) สังเกตเห็น · คนเดียวกัน สมองก้อนเดียวกัน
     // ไม่ใส่ตอนอยู่ในสาย — คนแปลกหน้าไม่ควรได้อะไรจากสมองของเจ้าของ
@@ -516,7 +533,7 @@ Never, under any circumstances:
     // สองอย่างนี้เชื่อถือได้ไม่เท่ากัน: โปรไฟล์คือสิ่งที่เจ้าของยืนยันเอง
     // ส่วนความจำคือสิ่งที่เธอสรุปเอาเอง ซึ่งอาจสรุปผิด · บอกให้โมเดลรู้ว่า
     // อันไหนเป็นอันไหน จะได้ไม่ยืนยันเรื่องที่ตัวเองเดามาเหมือนเป็นข้อเท็จจริง
-    if (memories.trim().isNotEmpty) {
+    if (memories.trim().isNotEmpty && !onCall) {
       buffer
         ..writeln()
         ..writeln(s.pick(
@@ -535,7 +552,20 @@ Never, under any circumstances:
     // แยกจากความจำเพราะเชื่อถือได้คนละระดับ: อันนี้อ่านมาตรง ๆ ไม่ได้สรุปเอง
     // และ**หมดอายุเร็ว** — นัดเมื่อวานไม่ใช่เรื่องที่ควรพูดถึงพรุ่งนี้
     // บอกให้โมเดลรู้ว่านี่คือของจริง จะได้ตอบเรื่องตารางโดยไม่ต้องเดา
-    if (schedule.trim().isNotEmpty) {
+    if (schedule.trim().isNotEmpty && onCall) {
+      // ในสายได้แค่ช่วงที่ไม่ว่าง (DeviceCalendar.busyBlock) · ไม่มีชื่อนัด/สถานที่
+      buffer
+        ..writeln()
+        ..writeln(s.pick(
+          '=== ช่วงที่เจ้าของไม่ว่าง (ไม่มีรายละเอียดโดยตั้งใจ) ===',
+          '=== When the owner is busy (no details, on purpose) ===',
+        ))
+        ..writeln(s.pick(
+          '(ใช้บอกได้แค่ว่าว่างหรือไม่ว่าง และนัดโทรกลับช่วงที่ว่าง)',
+          '(use it only to say whether he is free, and to suggest a time to call back)',
+        ))
+        ..writeln(schedule.trim());
+    } else if (schedule.trim().isNotEmpty) {
       buffer
         ..writeln()
         ..writeln(s.pick(
@@ -553,7 +583,7 @@ Never, under any circumstances:
     //
     // รูปแบบต่อบรรทัด: เวลา ชนิด(incoming/missed/outgoing) ใคร
     // ชนิดส่งเป็นคำอังกฤษเพราะเป็นคำของระบบ ไม่ใช่ข้อความที่ผู้ใช้เห็น
-    if (calls.trim().isNotEmpty) {
+    if (calls.trim().isNotEmpty && !onCall) {
       buffer
         ..writeln()
         ..writeln(s.pick(
