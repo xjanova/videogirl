@@ -159,6 +159,12 @@ class MainActivity : FlutterActivity() {
                         result
                     )
                     "mediaVolume" -> result.success(mediaVolume())
+                    // ปุ่มย้อนกลับที่หน้าแรก = พักแอปไว้เบื้องหลัง ไม่ใช่ปิด
+                    "moveToBack" -> result.success(moveTaskToBack(true))
+                    "exitApp" -> {
+                        result.success(true)
+                        exitApp()
+                    }
                     "callStopSpeak" -> {
                         CallAudio.stop()
                         result.success(true)
@@ -375,6 +381,20 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         volumeControlStream = AudioManager.STREAM_MUSIC
+    }
+
+    /// ปิดแอปจริง — ทางเดียวที่คืนหน่วยความจำของสมองในเครื่องกับตัวเธอทั้งหมด
+    ///
+    /// 🔴 `finish()` อย่างเดียวไม่พอ · โปรเซสยังอยู่ (บริการเฝ้างานอยู่ในโปรเซส
+    /// เดียวกัน) และหน่วยความจำของ Dart/WebView ที่ระบบยังไม่เก็บก็ยังค้าง ·
+    /// ปิดหน้าทิ้งจากรายการแอปล่าสุดก่อน แล้วค่อยจบโปรเซส ให้ฝั่ง Dart ตอบกลับ
+    /// ทันก่อน (ไม่งั้นช่องสื่อสารค้างครึ่งทาง)
+    private fun exitApp() {
+        dartAlive = false
+        finishAndRemoveTask()
+        android.os.Handler(mainLooper).postDelayed({
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }, 400)
     }
 
     /// ระดับเสียงสื่อตอนนี้ · {now, max} — เสียงเธอออกช่องนี้ทั้งจากเวทีและทางสำรอง

@@ -95,4 +95,39 @@ extension SettingsStrings on S {
   String get gemmaBenchSystem =>
       pick('ตอบสั้นที่สุด ประโยคเดียว เป็นภาษาไทย', 'Answer in one short sentence.');
   String get gemmaBenchQuestion => pick('สวัสดี วันนี้เป็นยังไงบ้าง', 'Hi, how is your day going?');
+
+  // ── ออกจากแอป ──
+  String get exitApp => pick('ออกจากแอป', 'Quit the app');
+  String get exitTitle => pick('ปิดแอปและคืนหน่วยความจำ?', 'Close the app and free its memory?');
+  String get exitBody => pick(
+        'สมองในเครื่องกับตัวเธอจะถูกปล่อยออกจากหน่วยความจำ · ระหว่างที่ปิดอยู่ เธอรับสายแทนไม่ได้'
+            'จนกว่าจะเปิดแอปใหม่\n\nถ้าแค่อยากออกไปใช้แอปอื่น กดย้อนกลับก็พอ — แอปจะพักอยู่เบื้องหลัง'
+            'และพร้อมใช้ต่อทันที',
+        'The on-device brain and her stage will be released from memory. While closed, she cannot '
+            'answer calls until you open the app again.\n\nIf you only want to use another app, press '
+            'Back — the app stays ready in the background.',
+      );
+  String get exitOk => pick('ปิดแอป', 'Quit');
+  String get exitDuringCall =>
+      pick('มีสายอยู่ — วางสายก่อนค่อยปิดแอป', 'A call is in progress — hang up before quitting');
+  String get exitCardHint => pick(
+        'ปุ่มย้อนกลับไม่ปิดแอป แอปจะพักอยู่เบื้องหลังให้เธอพร้อมรับสาย · ปิดจริงได้ที่ปุ่มนี้เท่านั้น',
+        'Back does not close the app — it waits in the background so she can answer calls. '
+            'Only this button really closes it',
+      );
+
+  // ── เปิดสมองล่วงหน้า ──
+  String get preloadBrain => pick('เปิดสมองรอไว้ตั้งแต่เปิดแอป', 'Open the brain as soon as the app starts');
+  String get preloadBrainHint => pick(
+        'คำแรกตอบเร็วขึ้น แต่กินหน่วยความจำ 2–3 GB ทันทีที่เปิดแอป · ถ้าตัวเธอหายบ่อยให้ปิดไว้',
+        'First reply comes faster, but takes 2–3 GB of memory right away — turn off if she keeps disappearing',
+      );
+
+  // ── รับสายตอนแอปอยู่เบื้องหลัง ──
+  String get callBackgroundHint => pick(
+        'แอปอยู่เบื้องหลังนาน ๆ ระบบอาจปิดแอปเอง แล้วเธอจะรับสายไม่ได้ · เปิด "เฝ้างาน" ในหมวดทั่วไป'
+            'ให้แอปถูกปิดยากขึ้น',
+        'If the app sits in the background for long, the system may close it and she cannot answer — '
+            'turn on "Watch" under General to keep it alive',
+      );
 }

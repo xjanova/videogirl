@@ -142,6 +142,12 @@ class S {
   String get avatarPlaceholder => _('มายด์กำลังมา…', 'Mind is on her way…');
   String get avatarMissing =>
       _('ยังไม่ได้โหลดตัวมายด์', "Mind's pack is not downloaded yet");
+  String get avatarBroken => _('ตัวมายด์โหลดไม่ขึ้นรอบนี้ — ชุดยังอยู่ในเครื่อง ไม่ต้องโหลดใหม่',
+      "Mind's stage failed this time — her pack is still on the phone, no need to download it again");
+  String get avatarLowMemory => _(
+      'เครื่องปิดตัวมายด์ทิ้งซ้ำ ๆ เพราะหน่วยความจำไม่พอ · ปิดแอปอื่นที่เปิดค้าง หรือปิด "เปิดสมองรอไว้" แล้วลองใหม่',
+      'The phone keeps closing Mind for lack of memory — close other apps or turn off "open the brain early", then retry');
+  String get avatarRetry => _('ลองโหลดตัวมายด์ใหม่', 'Load Mind again');
 
   // ═══ ร้านของมายด์ ══════════════════════════════════════
   String get shopTitle => _('ร้านของมายด์', "Mind's shop");

@@ -12,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:videogirl/state/mind_state.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:videogirl/avatar/avatar_view.dart';
 import 'package:videogirl/diagnostics/debug_report.dart';
 import 'package:videogirl/diagnostics/debug_reporter.dart';
 import 'package:videogirl/diagnostics/mind_log.dart';
@@ -296,6 +297,23 @@ void _autoSendGroup() {
     tearDown(() {
       reporter.dispose();
       state.dispose();
+    });
+
+    test('🔴 ตัวเธอหาย/เวทีเงียบ = ส่งเองด้วย (ไม่ขึ้นใต้ช่องพิมพ์ก็ต้องเห็น)', () async {
+      await setUpAll_();
+      final avatar = MindAvatarController();
+      addTearDown(avatar.dispose);
+      reporter.watch(state: state, avatar: avatar);
+
+      avatar.debugIncident('renderer-gone x1');
+      await letItSend();
+      expect(http_.posts, hasLength(1),
+          reason: 'เจ้าของเจอตัวเธอหายซ้ำ ๆ แต่ระบบรายงานมี 0 ฉบับ');
+
+      // เรื่องเดิมซ้ำในหน้าต่างกันซ้ำ = ไม่ยิงซ้ำ
+      avatar.debugIncident('renderer-gone x1');
+      await letItSend();
+      expect(http_.posts, hasLength(1));
     });
 
     test('มีข้อผิดพลาดใหม่ = ส่งเอง ไม่ต้องรอใครกด', () async {

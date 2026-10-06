@@ -292,6 +292,7 @@ class MindState extends ChangeNotifier {
     _mocapShot = MindMocapShot.parse(p.getString('mocapShot'));
     _studioBackdrop = StudioBackdrops.parse(p.getString('studioBackdrop'));
     _studioMic = p.getBool('studioMic') ?? false;
+    _preloadBrain = p.getBool('preloadBrain') ?? false;
     _avatarPackUrl = p.getString('avatarPackUrl') ?? _packUrlDefault;
     _avatarPackId = p.getString('avatarPackId') ?? '';
     // 🔴 `?? _storeDefault` อย่างเดียวไม่พอ — เครื่องที่เคยลงรุ่นก่อนหน้า
@@ -666,8 +667,29 @@ class MindState extends ChangeNotifier {
 
   /// เปิดสมองในเครื่องเข้าหน่วยความจำรอไว้ — ดู [LocalBrain.preload]
   void preloadLocalBrain() {
-    if (_brain != BrainProvider.onDevice || _disposed) return;
+    if (_brain != BrainProvider.onDevice || _disposed || !_preloadBrain) return;
     unawaited(localBrain.preload());
+  }
+
+  /// เปิดสมองรอไว้ตั้งแต่เปิดแอปไหม · **ปิดเป็นค่าตั้งต้น**
+  ///
+  /// 🔴 เคยเปิดเองทุกเครื่องในรุ่น 0.1.26 · สมอง 2–3 GB โหลดเข้าหน่วยความจำ
+  /// ตอนที่เวทีเพิ่งโหลดตัวเธอเสร็จ (แย่ง GPU และหน่วยความจำก้อนเดียวกัน) แล้ว
+  /// เจ้าของเจอ "ตัวเธอหายไป และไม่พูด" · ให้เลือกเปิดเองบนเครื่องที่รับไหว
+  bool _preloadBrain = false;
+  bool get preloadBrain => _preloadBrain;
+
+  void setPreloadBrain(bool v) {
+    if (_preloadBrain == v) return;
+    _preloadBrain = v;
+    _save('preloadBrain', v);
+    _notify();
+  }
+
+  /// เก็บกวาดก่อนปิดแอปจริง — เงียบเสียง แล้วปล่อยสมองออกจากหน่วยความจำ
+  Future<void> prepareExit() async {
+    await hush();
+    if (hasLocalBrain) await localBrain.unload();
   }
 
   void setHomeServerUrl(String v) {

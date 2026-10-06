@@ -36,6 +36,9 @@ import '../widgets/liquid_background.dart';
 import '../widgets/screen_header.dart';
 import '../ai/openai_client.dart';
 import '../i18n/strings_settings.dart';
+import '../phone/call_session.dart';
+import '../studio/mind_studio.dart';
+import '../system/app_life.dart';
 import '../i18n/strings_voice.dart';
 import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
@@ -162,6 +165,24 @@ class _SettingsScreenState extends State<SettingsScreen>
           overline: t.tabSettings,
           title: t.settingsMenuTitle,
           padding: const EdgeInsets.fromLTRB(0, MindSpace.lg, 0, MindSpace.md),
+          trailing: Semantics(
+            button: true,
+            label: t.exitApp,
+            child: Tooltip(
+              message: t.exitApp,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _exitApp(state),
+                child: GlassPanel(
+                  radius: MindRadius.pill,
+                  fill: MindColors.glass80,
+                  padding: const EdgeInsets.all(9),
+                  child: const Icon(Icons.power_settings_new_rounded,
+                      size: 20, color: Color(0xFFE0357A)),
+                ),
+              ),
+            ),
+          ),
         ),
         for (final sec in SettingsSection.values) ...[
           _menuTile(sec, state, mode, t),
@@ -334,6 +355,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             _languageCard(state, mode, t),
             _permissionCard(context, mode, t),
             _watchCard(context, mode, t),
+            _exitCard(state, mode, t),
           ],
         SettingsSection.data => [
             _dataCard(context, state, mode, t),
@@ -371,6 +393,53 @@ class _SettingsScreenState extends State<SettingsScreen>
         for (final c in cards) ...[c, const SizedBox(height: MindSpace.md)],
       ],
     );
+  }
+
+  // ── ออกจากแอป ───────────────────────────────────────────
+
+  Widget _exitCard(MindState state, MindMode mode, S t) {
+    return _card(
+      mode: mode,
+      label: t.exitApp,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: MindSpace.sm,
+        children: [
+          Text(t.exitCardHint,
+              style: const TextStyle(fontSize: 11, height: 1.5, color: MindColors.ink60)),
+          MindButton(
+            label: t.exitApp,
+            icon: Icons.power_settings_new_rounded,
+            mode: mode,
+            expand: true,
+            onTap: () => _exitApp(state),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ปิดแอปจริง — ทางเดียวที่ปิดแอปได้ (ปุ่มย้อนกลับแค่พักไว้เบื้องหลัง)
+  ///
+  /// เก็บกวาดก่อนเสมอ: คลิปที่อัดค้างต้องถูกบันทึก กล้องต้องปิด สมองต้องถูก
+  /// ปล่อย · มีสายอยู่ = ไม่ปิด (ปิดตอนนั้นคือสายที่เธอถืออยู่หลุดมือ)
+  Future<void> _exitApp(MindState state) async {
+    final t = S.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (context.read<CallSession>().live) {
+      messenger?.showSnackBar(SnackBar(content: Text(t.exitDuringCall)));
+      return;
+    }
+    if (!await _confirm(context, title: t.exitTitle, body: t.exitBody, ok: t.exitOk, t: t)) {
+      return;
+    }
+    if (!mounted) return;
+    final studio = context.read<MindStudio>();
+    final avatar = context.read<MindAvatarController>();
+    await studio.exit();
+    if (avatar.mocapOn) await avatar.stopMocap();
+    await state.prepareExit();
+    await AppLife.exit();
   }
 
   // ── ไลเซนส์ ─────────────────────────────────────────────
@@ -1741,6 +1810,31 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: MindSpace.md),
               _gpuRow(lb, mode),
               const SizedBox(height: MindSpace.md),
+              Row(
+                spacing: MindSpace.md,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 3,
+                      children: [
+                        Text(S.of(context).preloadBrain,
+                            style: const TextStyle(
+                                fontSize: 12.5, fontWeight: FontWeight.w600, color: MindColors.ink)),
+                        Text(S.of(context).preloadBrainHint,
+                            style: const TextStyle(
+                                fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                      ],
+                    ),
+                  ),
+                  _toggle(
+                    on: state.preloadBrain,
+                    mode: mode,
+                    onTap: () => state.setPreloadBrain(!state.preloadBrain),
+                  ),
+                ],
+              ),
+              const SizedBox(height: MindSpace.md),
               _modelTruth(lb, mode),
             ],
           ],
@@ -2332,6 +2426,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             ],
           ),
+          if (state.autoAnswer && !context.watch<MindWatch>().on) ...[
+            const SizedBox(height: 8),
+            Text(S.of(context).callBackgroundHint,
+                style: const TextStyle(fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
+          ],
           if (state.autoAnswer) ...[
             const SizedBox(height: 14),
             Text(S.of(context).ringDelayTitle,

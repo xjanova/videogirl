@@ -481,7 +481,9 @@ class DebugReporter extends ChangeNotifier {
   }) {
     _watched?.removeListener(_onStateChanged);
     _watched = state..addListener(_onStateChanged);
-    _avatar = avatar;
+    _avatar?.removeListener(_onAvatarChanged);
+    _avatar = avatar?..addListener(_onAvatarChanged);
+    _seenIncidents = avatar?.incidents ?? 0;
     _vault = vault;
     _lastSeenError = state.lastError;
     // รับข้อผิดพลาดที่ไม่มีใครดัก รวมถึงตัวที่เกิดก่อนหน้านี้ระหว่างเปิดแอป
@@ -555,6 +557,24 @@ class DebugReporter extends ChangeNotifier {
       _report = keepReport;
       if (!_disposed) notifyListeners();
     }
+  }
+
+  int _seenIncidents = 0;
+
+  /// ตัวเธอหาย / เวทีพัง / เวทีเงียบ → ส่งรายงานเองด้วยกฎเดียวกับข้อผิดพลาด
+  ///
+  /// ไม่ขึ้นใต้ช่องพิมพ์ จึงไม่เคยผ่าน [_onStateChanged] · เจ้าของเจอตัวเธอหาย
+  /// ซ้ำแล้วซ้ำอีก แต่ระบบรายงานไม่มีสักฉบับให้ไล่
+  void _onAvatarChanged() {
+    final a = _avatar;
+    if (a == null || a.incidents == _seenIncidents) return;
+    _seenIncidents = a.incidents;
+    final what = a.lastIncident;
+    if (what == null || !auto || _sentThisRun >= maxPerRun) return;
+    final last = _sentAt[what];
+    if (last != null && DateTime.now().difference(last) < repeatAfter) return;
+    _debounce?.cancel();
+    _debounce = Timer(settle, () => unawaited(_autoSend(what)));
   }
 
   void _onStateChanged() {
@@ -642,6 +662,7 @@ class DebugReporter extends ChangeNotifier {
     _disposed = true;
     _debounce?.cancel();
     _watched?.removeListener(_onStateChanged);
+    _avatar?.removeListener(_onAvatarChanged);
     _http.close();
     super.dispose();
   }

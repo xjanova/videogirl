@@ -14,6 +14,7 @@ import 'screens/settings_screen.dart';
 import 'screens/timeline_screen.dart';
 import 'state/mind_state.dart';
 import 'studio/mind_studio.dart';
+import 'system/app_life.dart';
 import 'i18n/strings.dart';
 import 'i18n/strings_ai.dart';
 import 'theme/tokens.dart';
@@ -178,6 +179,10 @@ class _MindShellState extends State<MindShell> {
       _select(0);
     } else if (state.chatOpen) {
       state.collapseChat();
+    } else {
+      // 🔴 หน้าแรกแล้วไม่มีอะไรให้ปิด = พักแอปไว้เบื้องหลัง **ไม่ใช่ปิด**
+      // ปิดแอปได้ทางเดียวคือปุ่ม "ออกจากแอป" (ดู AppLife)
+      unawaited(AppLife.moveToBack());
     }
   }
 
@@ -185,7 +190,6 @@ class _MindShellState extends State<MindShell> {
   Widget build(BuildContext context) {
     final mode = context.select<MindState, MindMode>((s) => s.mode);
     final speaking = context.select<MindState, bool>((s) => s.speaking);
-    final chatOpen = context.select<MindState, bool>((s) => s.chatOpen);
 
     // มีสายที่เธอถืออยู่ = ตัดมาแท็บของเธอ แล้วเก็บแถบนำทางไปก่อน
     //
@@ -197,7 +201,9 @@ class _MindShellState extends State<MindShell> {
 
     return PopScope(
       // ระหว่างสาย Back ไม่ปิดแอป · สายยังอยู่ที่จอสายของเครื่อง
-      canPop: !onCall && !studio && _tab == 0 && !chatOpen,
+      // ไม่ปล่อยให้ Flutter ปิดหน้าแอปเองเลย · ทุกกรณีไปที่ _onBack
+      // (ย้อนจนสุด = พักไว้เบื้องหลัง) · ดู AppLife ว่าทำไม
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _onBack(context.read<MindState>());
       },

@@ -388,4 +388,18 @@ void main() {
     expect(lip, contains("throw new Error('silent-output')"),
         reason: 'เวทีที่เล่นเงียบต้องบอกว่าล้ม ไม่ใช่บอกว่าเล่นสำเร็จ');
   });
+
+  /// ปุ่มย้อนกลับพักแอป · ปุ่มออกจากแอปปิดจริง — ชื่อหลุด = ปุ่มกดแล้วเงียบ
+  /// (ปุ่มย้อนกลับจะไม่ทำอะไรเลย เพราะ PopScope ไม่ปล่อยให้ Flutter ปิดหน้าเอง)
+  test('พักแอป/ปิดแอปผูกถึง Kotlin', () {
+    final dart = File('lib/system/app_life.dart').readAsStringSync();
+    for (final m in ['moveToBack', 'exitApp']) {
+      expect(dart, contains("'$m'"));
+      expect(activity, contains('"$m" ->'), reason: 'MainActivity ไม่มี $m');
+    }
+    final shell = File('lib/shell.dart').readAsStringSync();
+    expect(shell, contains('canPop: false'),
+        reason: 'ปล่อยให้ Flutter ปิดหน้าเอง = กดย้อนกลับแล้วแอปตาย ต้องโหลดใหม่ทั้งหมด');
+    expect(shell, contains('AppLife.moveToBack()'));
+  });
 }

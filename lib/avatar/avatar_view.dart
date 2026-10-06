@@ -168,7 +168,53 @@ class MindAvatarController extends ChangeNotifier
     // สัญญาณที่ไม่มีวันมา แล้วค้างอยู่บนโลโก้ตลอดกาล
     _visible = false;
     _error = message;
+    _incident('stage-error: ${message.split('\n').first}');
     notifyListeners();
+  }
+
+  // ── เหตุการณ์ที่ทำให้ตัวเธอหายหรือเงียบ ─────────────────────
+  //
+  // 🔴 ของพวกนี้ไม่ขึ้นเป็นข้อผิดพลาดใต้ช่องพิมพ์ ตัวส่งรายงานอัตโนมัติจึงไม่เคย
+  // เห็น · เจ้าของเจอ "ตัวเธอหายไปอีกแล้ว และไม่พูด" แต่ในระบบรายงานมี 0 ฉบับ
+  // · นับไว้ที่นี่ ให้ DebugReporter ฟังแล้วส่งเอง
+
+  int _incidents = 0;
+
+  /// นับเพิ่มทุกครั้งที่ตัวเธอหาย/เวทีพัง/เวทีเงียบ
+  int get incidents => _incidents;
+
+  String? _lastIncident;
+  String? get lastIncident => _lastIncident;
+
+  void _incident(String what) {
+    _incidents++;
+    _lastIncident = what.length <= 160 ? what : '${what.substring(0, 159)}…';
+    debugPrint('avatar: เหตุการณ์ — $_lastIncident');
+  }
+
+  @visibleForTesting
+  void debugIncident(String what) {
+    _incident(what);
+    notifyListeners();
+  }
+
+  /// renderer ตายติดกันถี่ ๆ = หน่วยความจำไม่พอจริง ไม่ใช่โชคไม่ดี
+  final List<DateTime> _gone = [];
+
+  /// เวทีถูกระบบปิดซ้ำจนหยุดโหลดใหม่เอง · หน้าจอบอกเรื่องหน่วยความจำ
+  bool _lowMemory = false;
+  bool get lowMemory => _lowMemory;
+
+  /// ทางที่หน้าเวทีใช้อยู่ (ตั้งจากตัว widget) · ใช้ตอนลองโหลดใหม่
+  Uri? _url;
+
+  /// ลองโหลดตัวเธอใหม่ (ผู้ใช้แตะ)
+  Future<void> retry() async {
+    final url = _url;
+    if (url == null) return;
+    _lowMemory = false;
+    _gone.clear();
+    await _reload(url);
   }
 
   /// เสียงพูดพังไม่ใช่เรื่องเดียวกับเวทีพัง — เธอยังยืนอยู่ได้
@@ -183,6 +229,7 @@ class MindAvatarController extends ChangeNotifier
     // พักทางนี้ไว้สิบนาทีแล้วค่อยลองใหม่ ระหว่างนั้นเสียงไปทางสำรองตรง ๆ
     if (why.startsWith('silent-output') || why.startsWith('audio-context')) {
       _stageQuietUntil = DateTime.now().add(const Duration(minutes: 10));
+      _incident('stage-silent: $why');
     }
     notifyListeners();
   }
@@ -201,10 +248,21 @@ class MindAvatarController extends ChangeNotifier
   /// สมองในเครื่องกินเป็น GB) · ไม่ใช่ "หาตัวเธอไม่เจอ" จึงไม่ขึ้น error
   /// แค่ถือว่าเวทียังไม่พร้อม (เสียงไปทางสำรอง) แล้วโหลดหน้าเวทีใหม่
   void _onRendererGone(InAppWebViewController web) {
-    debugPrint('avatar: renderer ของเวทีหายไป — โหลดเวทีใหม่');
     _ready = false;
     _visible = false;
     _loadPercent = 0;
+    final now = DateTime.now();
+    _gone
+      ..add(now)
+      ..removeWhere((t) => now.difference(t) > const Duration(minutes: 5));
+    _incident('renderer-gone x${_gone.length}');
+    // 🔴 ตายสามรอบในห้านาที = โหลดใหม่ก็ตายอีก · วนต่อ = เครื่องร้อน แบตหมด
+    // และทุกอย่างในแอปช้าตาม · หยุดแล้วบอกตรง ๆ ให้ผู้ใช้เลือกเอง
+    if (_gone.length >= 3) {
+      _lowMemory = true;
+      notifyListeners();
+      return;
+    }
     notifyListeners();
     unawaited(web.reload().catchError((Object e) {
       debugPrint('avatar: โหลดเวทีใหม่ไม่สำเร็จ — $e');
@@ -650,6 +708,7 @@ class _MindAvatarViewState extends State<MindAvatarView> {
   @override
   Widget build(BuildContext context) {
     _loadedKey ??= _packKey;
+    widget.controller._url = _stageUrl();
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (context, _) {
@@ -783,7 +842,14 @@ class _MindAvatarViewState extends State<MindAvatarView> {
               ),
             ),
             if (!widget.controller.visible)
-              _AvatarPlaceholder(mode: widget.mode, failed: failed),
+              _AvatarPlaceholder(
+                mode: widget.mode,
+                failed: failed,
+                lowMemory: widget.controller.lowMemory,
+                // ไม่ใช่ "ยังไม่ได้โหลดชุด" — ชุดอยู่ แต่เวทีพังหรือถูกระบบปิด
+                missingPack: _looksMissing(widget.controller.error),
+                onRetry: widget.controller.retry,
+              ),
           ],
         );
       },
@@ -800,13 +866,36 @@ class _MindAvatarViewState extends State<MindAvatarView> {
 /// ภาพออร่าเจนจาก Magnific (0 เครดิต) แล้วคีย์พื้นขาวออกด้วย ffmpeg ให้เป็น
 /// alpha จริง — `mix-blend-mode` หรือปล่อยพื้นขาวไว้จะเห็นเป็นกล่องสี่เหลี่ยม
 /// ทับพื้นไล่สีของจอ
+/// ข้อผิดพลาดนี้แปลว่า "ไม่มีไฟล์ตัวเธอ" ไหม (404 / หาไม่เจอ)
+///
+/// 🔴 ของเดิมทุกข้อผิดพลาดขึ้นว่า "ยังไม่ได้โหลดตัวมายด์" ทั้งที่ชุดอยู่ในเครื่อง
+/// แค่เวทีพังหรือถูกระบบปิด · ผู้ใช้จึงไปโหลดชุดซ้ำที่ไม่ได้ช่วยอะไร
+bool _looksMissing(String? error) {
+  final e = (error ?? '').toLowerCase();
+  return e.contains('404') || e.contains('not found') || e.contains('err_file_not_found');
+}
+
 class _AvatarPlaceholder extends StatelessWidget {
-  const _AvatarPlaceholder({required this.mode, required this.failed});
+  const _AvatarPlaceholder({
+    required this.mode,
+    required this.failed,
+    this.lowMemory = false,
+    this.missingPack = true,
+    this.onRetry,
+  });
 
   final MindMode mode;
 
   /// พังจริง (หาไฟล์ไม่เจอ) ต่างจาก "กำลังโหลดอยู่" — ต้องบอกคนละอย่าง
   final bool failed;
+
+  /// เวทีถูกระบบปิดซ้ำ ๆ เพราะหน่วยความจำไม่พอ
+  final bool lowMemory;
+
+  /// ข้อผิดพลาดคือ "ไม่มีไฟล์ชุด" (ไม่ใช่เวทีพังด้วยเหตุอื่น)
+  final bool missingPack;
+
+  final Future<void> Function()? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -829,7 +918,13 @@ class _AvatarPlaceholder extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            failed ? s.avatarMissing : s.avatarPlaceholder,
+            lowMemory
+                ? s.avatarLowMemory
+                : !failed
+                    ? s.avatarPlaceholder
+                    : missingPack
+                        ? s.avatarMissing
+                        : s.avatarBroken,
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 12.5,
@@ -838,12 +933,19 @@ class _AvatarPlaceholder extends StatelessWidget {
               color: MindColors.ink60,
             ),
           ),
-          if (failed) ...[
+          if (failed && missingPack && !lowMemory) ...[
             const SizedBox(height: 4),
             Text(
               s.packMissingHint,
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 11, color: MindColors.ink45),
+            ),
+          ],
+          if ((failed && !missingPack) || lowMemory) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: onRetry,
+              child: Text(s.avatarRetry),
             ),
           ],
         ],
