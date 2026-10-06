@@ -10,6 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:videogirl/ai/brain_provider.dart';
+import 'package:videogirl/ai/openai_config.dart';
+import 'package:videogirl/ai/proxy_account.dart';
+import 'package:videogirl/i18n/strings_ai.dart';
 import 'package:videogirl/avatar/avatar_pack.dart';
 import 'package:videogirl/avatar/avatar_view.dart';
 import 'package:videogirl/background/mind_watch.dart';
@@ -119,6 +122,76 @@ void main() {
     section.value = SettingsSection.account;
     await t.pump(const Duration(milliseconds: 300));
     expect(find.text(_s(t).licenseRetry), findsOneWidget);
+    await t.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
+  testWidgets('🔴 ผ่านบริการเรา: โชว์เครดิต หลอดโควต้า ปุ่มเติม และเฉพาะรุ่นที่เปิดให้บริการ',
+      (t) async {
+    final (state, section) = await _mount(t);
+    state
+      ..setBrain(BrainProvider.mindProxy)
+      ..setLicenseKey('FREE-ABCDEFGHIJKLMNOPQRST')
+      ..debugSetProxyAccount(ProxyAccount.fromJson({
+        'enabled': true,
+        'linked': true,
+        'balance': 12.5,
+        'daily_cap': 50,
+        'today': {'spent': 10, 'messages': 20},
+        'topup_url': 'https://xman4289.com/wallet/topup',
+        'link_url': 'https://xman4289.com/giggok/link',
+        'models': [
+          {'id': 'gpt-6-luna', 'label': 'Luna ประหยัด', 'price': 0.5},
+        ],
+        'default_model': 'gpt-6-luna',
+      }));
+    section.value = SettingsSection.brain;
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pump(const Duration(milliseconds: 300));
+
+    final s = _s(t);
+    await t.scrollUntilVisible(find.text(s.proxyCreditTitle), 300);
+    expect(find.text(s.proxyMoney('12.50')), findsOneWidget);
+    expect(find.text(s.proxyMessagesLeft(25, 'Luna ประหยัด', '0.50')), findsOneWidget);
+    expect(find.text(s.proxyToday('10.00', '50.00')), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsWidgets);
+    expect(find.text(s.proxyTopup), findsOneWidget);
+    await t.scrollUntilVisible(find.text('Luna ประหยัด'), 300);
+    expect(find.text(s.proxyPrice('0.50')), findsOneWidget);
+    // รุ่น OpenAI ของคีย์ตัวเองต้องไม่โผล่ในส่วนของบริการเรา
+    for (final m in OpenAiConfig.brainChoices) {
+      expect(find.text(m.label), findsNothing, reason: m.id);
+    }
+    expect(t.takeException(), isNull);
+
+    await t.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
+  testWidgets('ยังไม่ผูกบัญชี = ปุ่มผูกบัญชีแทนปุ่มเติม', (t) async {
+    final (state, section) = await _mount(t);
+    state
+      ..setBrain(BrainProvider.mindProxy)
+      ..setLicenseKey('FREE-ABCDEFGHIJKLMNOPQRST')
+      ..debugSetProxyAccount(ProxyAccount.fromJson({
+        'enabled': true,
+        'linked': false,
+        'balance': 0,
+        'daily_cap': 0,
+        'today': {'spent': 0, 'messages': 0},
+        'topup_url': 'https://xman4289.com/wallet/topup',
+        'link_url': 'https://xman4289.com/giggok/link',
+        'models': [
+          {'id': 'gpt-6-luna', 'label': 'Luna', 'price': 0.5},
+        ],
+      }));
+    section.value = SettingsSection.brain;
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pump(const Duration(milliseconds: 300));
+    final s = _s(t);
+    await t.scrollUntilVisible(find.text(s.proxyLink), 300);
+    expect(find.text(s.proxyLink), findsOneWidget);
+    expect(find.text(s.proxyTopup), findsNothing);
     await t.pumpWidget(const SizedBox.shrink());
     state.dispose();
   });

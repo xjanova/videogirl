@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 
 import '../i18n/strings.dart';
@@ -10,10 +11,14 @@ import 'openai_config.dart';
 /// ข้อผิดพลาดที่เอาไปโชว์ผู้ใช้ได้เลย — ไม่มี stack trace ไม่มีคำว่า Exception
 /// และไม่มีคีย์หลุดออกมา
 class OpenAiFailure implements Exception {
-  const OpenAiFailure(this.message, {this.status});
+  const OpenAiFailure(this.message, {this.status, this.code});
 
   final String message;
   final int? status;
+
+  /// รหัสเหตุผลจากพร็อกซีของเรา (`insufficient_credit` · `not_linked` ·
+  /// `daily_cap` · `wallet_inactive`) · หน้าจอใช้เลือกปุ่มที่ต้องโชว์ (เติมเงิน/ผูกบัญชี)
+  final String? code;
 
   @override
   String toString() => message;
@@ -128,8 +133,15 @@ class OpenAiClient {
     if (content is! String || content.trim().isEmpty) {
       throw OpenAiFailure(_s().errEmptyReply);
     }
+    // พร็อกซีของเราแนบว่าข้อความนี้หักไปเท่าไหร่ เหลือเท่าไหร่ · หลอดเครดิต
+    // ขยับได้ทันทีโดยไม่ต้องถามซ้ำ (ดู ProxyAccount)
+    final billing = json is Map ? json['giggok_billing'] : null;
+    lastBilling = billing is Map ? billing.cast<String, Object?>() : null;
     return content.trim();
   }
+
+  /// ค่าใช้จ่ายของคำตอบล่าสุดจากพร็อกซีของเรา · null = ไม่ได้ผ่านพร็อกซี
+  Map<String, Object?>? lastBilling;
 
   /// แปลงข้อความเป็นเสียงพูด คืน mp3 เป็นไบต์
   ///
@@ -230,14 +242,43 @@ class OpenAiClient {
     }
 
     if (res.statusCode >= 400) {
-      throw OpenAiFailure(_readableError(res), status: res.statusCode);
+      final code = upstream == Upstream.proxy ? proxyCode(res.bodyBytes) : null;
+      throw OpenAiFailure(_readableError(res), status: res.statusCode, code: code);
     }
     return res.bodyBytes;
+  }
+
+  /// รหัสเหตุผลที่พร็อกซีของเราแนบมากับ error (`error.code`) · null = ไม่มี
+  @visibleForTesting
+  static String? proxyCode(List<int> body) {
+    try {
+      final m = jsonDecode(utf8.decode(body));
+      final err = m is Map ? m['error'] : null;
+      final c = err is Map ? err['code'] : null;
+      return c is String && c.isNotEmpty ? c : null;
+    } on Object {
+      return null;
+    }
   }
 
   /// แปลง error ของ OpenAI เป็นภาษาคน — และไม่เผยรายละเอียดระบบให้ผู้ใช้เห็น
   String _readableError(http.Response res) {
     final s = _s();
+    // 🔴 เรื่องเงินของพร็อกซีต้องมาก่อนกฎตามรหัสสถานะ · ไม่งั้น "ยังไม่ได้ผูกบัญชี"
+    // (403) กลายเป็น "รหัสสิทธิ์ใช้ไม่ได้" และ "ถึงเพดานวันนี้" (429) กลายเป็น
+    // "ส่งถี่เกินไป" ซึ่งบอกให้ไปทำคนละอย่างกับที่ต้องทำจริง
+    if (upstream == Upstream.proxy) {
+      switch (proxyCode(res.bodyBytes)) {
+        case 'insufficient_credit':
+          return s.errProxyNoCredit;
+        case 'not_linked':
+          return s.errProxyNotLinked;
+        case 'daily_cap':
+          return s.errProxyDailyCap;
+        case 'wallet_inactive':
+          return s.errProxyWalletInactive;
+      }
+    }
     switch ((upstream, res.statusCode)) {
       case (Upstream.openai, 401):
         return s.errBadKey;

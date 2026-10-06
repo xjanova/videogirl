@@ -36,6 +36,7 @@ import '../ai/openai_client.dart';
 import '../ai/openai_config.dart';
 import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
+import '../ai/proxy_account.dart';
 import '../ai/secret_store.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
@@ -335,6 +336,7 @@ class MindState extends ChangeNotifier {
     _licenseKey = p.getString('licenseKey') ?? '';
     _licenseType = p.getString('licenseType') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
+    _proxyModel = p.getString('proxyModel') ?? '';
 
     for (final c in VoiceChannel.values) {
       final raw = p.getString('voice_${c.name}');
@@ -1126,6 +1128,67 @@ class MindState extends ChangeNotifier {
     _brainModel = v;
     _save('brainModel', v);
     _notify();
+  }
+
+  // ═══ เครดิตของ "ผ่านบริการเรา" (กระเป๋าเงิน xman studio) ═══════════
+  //
+  // หักทุกข้อความ ไม่มีโควต้าฟรี · ราคาและรุ่นที่เปิดให้ใช้ตั้งที่หลังบ้าน
+  // แอปโชว์เฉพาะรุ่นที่หลังบ้านเปิด (ดู ProxyAccount)
+
+  /// รุ่นของบริการเรา · แยกจาก [brainModel] (รุ่น OpenAI ของคีย์ตัวเอง) เพราะ
+  /// สองรายการนี้คนละชุดกัน · ใช้ร่วมกันแล้วสลับไปมาจะได้รุ่นที่อีกฝั่งไม่มี
+  String _proxyModel = '';
+  String get proxyModel => _proxyModel;
+
+  void setProxyModel(String id) {
+    _proxyModel = id.trim();
+    _save('proxyModel', _proxyModel);
+    _notify();
+  }
+
+  ProxyAccount? _proxyAccount;
+  ProxyAccount? get proxyAccount => _proxyAccount;
+  bool _proxyAccountBusy = false;
+  bool get proxyAccountBusy => _proxyAccountBusy;
+  String? _proxyAccountError;
+  String? get proxyAccountError => _proxyAccountError;
+
+  /// รุ่นที่ข้อความถัดไปจะใช้จริง (ที่เลือกถ้ายังเปิด · ไม่งั้นรุ่นแรกที่เปิด)
+  ProxyModel? get proxyModelInUse => _proxyAccount?.modelFor(_proxyModel);
+
+  @visibleForTesting
+  void debugSetProxyAccount(ProxyAccount? a) {
+    _proxyAccount = a;
+    _notify();
+  }
+
+  /// ถามหลังบ้านว่าเครดิตเหลือเท่าไหร่ ใช้ไปวันนี้เท่าไหร่ และเปิดรุ่นอะไรไว้
+  Future<void> refreshProxyAccount({@visibleForTesting ProxyAccountClient? client}) async {
+    if (_proxyAccountBusy) return;
+    final base = _storeBaseUrl.trim();
+    final lic = _licenseKey.trim();
+    if (base.isEmpty || lic.isEmpty) {
+      _proxyAccountError = base.isEmpty ? s.shopNoUrl : s.licenseNeeded;
+      _notify();
+      return;
+    }
+    _proxyAccountBusy = true;
+    _notify();
+    final c = client ?? ProxyAccountClient();
+    try {
+      _proxyAccount = await c.fetch(baseUrl: base, license: lic);
+      _proxyAccountError = null;
+    } on ProxyAccountError catch (e) {
+      _proxyAccountError = switch (e.problem) {
+        ProxyAccountProblem.offline => s.errOffline,
+        ProxyAccountProblem.license => s.errLicenseRejected,
+        ProxyAccountProblem.server => s.errProxyFailed(e.status ?? 0),
+      };
+    } finally {
+      if (client == null) c.close();
+      _proxyAccountBusy = false;
+      if (!_disposed) _notify();
+    }
   }
 
   void setVoice(VoiceChannel c, VoiceProfile p) {
@@ -2005,11 +2068,25 @@ class MindState extends ChangeNotifier {
 
     final (:client, :model, :ours) = _networkBrain();
     try {
-      return await client.reply(
+      final answer = await client.reply(
         system: system,
         history: withRecall(history, recall),
         model: model,
       );
+      // หลอดเครดิตขยับตามจริงทุกข้อความ · หลังบ้านแนบยอดใหม่มากับคำตอบ
+      final billing = client.lastBilling;
+      final account = _proxyAccount;
+      if (_brain == BrainProvider.mindProxy && billing != null && account != null) {
+        _proxyAccount = account.withBilling(billing);
+        _notify();
+      }
+      return answer;
+    } on OpenAiFailure catch (e) {
+      // เครดิตหมด/ถึงเพดาน/ยังไม่ผูกบัญชี = ตัวเลขในหน้าตั้งค่าเก่าแล้ว ถามใหม่
+      if (_brain == BrainProvider.mindProxy && e.code != null) {
+        unawaited(refreshProxyAccount());
+      }
+      rethrow;
     } finally {
       if (!ours) client.close();
     }
@@ -2052,7 +2129,11 @@ class MindState extends ChangeNotifier {
             strings: () => s,
             upstream: Upstream.proxy,
           ),
-          model: _brainModel,
+          // 🔴 รุ่นของบริการเรา ไม่ใช่รุ่น OpenAI ที่ตั้งไว้ใช้กับคีย์ตัวเอง · ว่าง =
+          // ให้หลังบ้านเลือกรุ่นแรกที่เปิดไว้ · รุ่นที่ปิดไปแล้วหลังบ้านใช้รุ่นแรกแทน
+          model: _proxyModel.isNotEmpty
+              ? _proxyModel
+              : (_proxyAccount?.defaultModel ?? ''),
           ours: false,
         );
 

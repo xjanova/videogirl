@@ -41,6 +41,7 @@ import '../studio/mind_studio.dart';
 import '../system/app_life.dart';
 import '../i18n/strings_voice.dart';
 import '../ai/local_server_scan.dart';
+import '../ai/proxy_account.dart';
 import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
 import '../widgets/update_card.dart';
@@ -116,6 +117,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     // ทั้งที่ผู้ใช้เพิ่งไปกดให้มาหมาด ๆ ในหน้าตั้งค่าของระบบ
     unawaited(perms.refresh().then((_) => vault.check()));
     context.read<MindWatch>().refresh();
+    // กลับมาจากหน้าเติมเงิน/ผูกบัญชีบนเว็บ = ยอดในการ์ดเก่าแล้ว
+    final mind = context.read<MindState>();
+    if (mind.brain == BrainProvider.mindProxy && mind.licenseKey.isNotEmpty) {
+      unawaited(mind.refreshProxyAccount());
+    }
   }
 
   /// ช่องทางเสียงที่กำลังตั้งค่าอยู่ในการ์ด "เสียงพูด"
@@ -1505,7 +1511,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
           // บริการของเรา — ต้องมีรหัสสิทธิ์ ไม่งั้นหลังบ้านตอบ 401
           //
-          // รุ่นที่ใช้ตอบเลือกที่เซิร์ฟเวอร์ ไม่ใช่ที่นี่ จึงไม่มีรายการรุ่นให้กด
+          // รุ่นและราคามาจากหลังบ้าน (แอดมินตั้ง) · โชว์เฉพาะรุ่นที่เปิดให้บริการ
           if (state.brain == BrainProvider.mindProxy) ...[
             const SizedBox(height: 12),
             _linkRow(
@@ -1533,38 +1539,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00)),
               ),
             ],
-            const SizedBox(height: 12),
-            Text(S.of(context).sectionBrain,
-                style: mindMono(
-                    size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
-            const SizedBox(height: 7),
-            for (final m in OpenAiConfig.brainChoices)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: _choiceRow(
-                  title: m.label,
-                  subtitle: S.of(context).brainModelHint(m.id),
-                  trailing: m.id,
-                  selected: state.brainModel == m.id,
-                  mode: mode,
-                  onTap: () => state.setBrainModel(m.id),
-                ),
-              ),
-            _customModelRow(
-              current: state.brainModel,
-              presets: OpenAiConfig.brainChoices.map((m) => m.id).toList(),
-              mode: mode,
-              title: S.of(context).sectionBrain,
-              hint: S.of(context).modelCustomEditor,
-              onSave: state.setBrainModel,
-            ),
-            // บอกตรง ๆ ว่าฝั่งบริการมีสิทธิ์เปลี่ยน — เงินที่จ่ายค่ารุ่นเป็นของเรา
-            // ถ้าปล่อยให้เลือกอะไรก็ได้แล้วเงียบ ผู้ใช้จะคิดว่าได้รุ่นที่เลือกจริง
-            Text(
-              S.of(context).proxyModelNote,
-              style: const TextStyle(
-                  fontSize: 10.5, height: 1.5, color: MindColors.ink55),
-            ),
+            ..._proxyAccountTools(state, mode),
           ],
           if (state.brain == BrainProvider.openai) ...[
             const SizedBox(height: 12),
@@ -1981,6 +1956,150 @@ class _SettingsScreenState extends State<SettingsScreen>
         _toggle(on: on, mode: mode, onTap: () => lb.setUseGpu(!on)),
       ],
     );
+  }
+
+  // ── ผ่านบริการเรา: เครดิต · หลอดโควต้า · เติม · รุ่นที่เปิดให้บริการ ─────
+
+  /// ถามเครดิตครั้งแรกที่การ์ดนี้โผล่ · ไม่ถามทุกครั้งที่วาด
+  bool _proxyAsked = false;
+
+  Future<void> _openTopup(MindState state, S t) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final fromServer = state.proxyAccount?.topupUrl ?? '';
+    final base = state.storeBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final uri = Uri.tryParse(fromServer.isNotEmpty ? fromServer : '$base/wallet/topup');
+    var opened = false;
+    try {
+      if (uri != null) opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } on Object catch (e) {
+      debugPrint('credit: เปิดหน้าเติมเงินไม่ได้ — ${e.runtimeType}');
+    }
+    if (!opened) messenger?.showSnackBar(SnackBar(content: Text(t.shopBuyFailed)));
+  }
+
+  List<Widget> _proxyAccountTools(MindState state, MindMode mode) {
+    final t = S.of(context);
+    if (!_proxyAsked && state.licenseKey.isNotEmpty) {
+      _proxyAsked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(state.refreshProxyAccount());
+      });
+    }
+    final a = state.proxyAccount;
+    final busy = state.proxyAccountBusy;
+    final err = state.proxyAccountError;
+    final inUse = state.proxyModelInUse;
+    String money(double v) => v.toStringAsFixed(2);
+    const warn = Color(0xFFB46A00);
+    const note = TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55);
+
+    return [
+      const SizedBox(height: 12),
+      Container(
+        padding: const EdgeInsets.fromLTRB(13, 11, 8, 12),
+        decoration: BoxDecoration(
+          color: MindColors.glass80,
+          borderRadius: BorderRadius.circular(MindRadius.control),
+          border: Border.all(color: MindColors.glassBorder, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(t.proxyCreditTitle,
+                      style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+                ),
+                IconButton(
+                  tooltip: t.proxyRefresh,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: busy ? null : () => state.refreshProxyAccount(),
+                  icon: busy
+                      ? const SizedBox(
+                          width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.refresh_rounded, size: 18, color: MindColors.ink55),
+                ),
+              ],
+            ),
+            if (a == null)
+              Text(busy || err == null ? t.proxyLoading : err,
+                  style: TextStyle(
+                      fontSize: 11.5, height: 1.5, color: err == null ? MindColors.ink55 : warn))
+            else ...[
+              if (!a.enabled)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(t.proxyClosed, style: const TextStyle(fontSize: 11.5, color: warn)),
+                ),
+              Text(t.proxyMoney(money(a.balance)),
+                  style: TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.w700, color: mode.accent, height: 1.2)),
+              if (inUse != null)
+                Text(
+                  inUse.price <= 0
+                      ? t.proxyModelFree(inUse.label)
+                      : t.proxyMessagesLeft(a.messagesLeft(inUse) ?? 0, inUse.label, money(inUse.price)),
+                  style: const TextStyle(fontSize: 11, height: 1.5, color: MindColors.ink75),
+                ),
+              const SizedBox(height: 9),
+              if (a.todayShare != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(MindRadius.pill),
+                  child: LinearProgressIndicator(
+                    value: a.todayShare,
+                    minHeight: 6,
+                    backgroundColor: MindColors.ink10,
+                    valueColor: AlwaysStoppedAnimation(
+                        a.todayShare! >= .9 ? warn : mode.accent),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(t.proxyToday(money(a.spentToday), money(a.dailyCap)), style: note),
+              ] else
+                Text(t.proxyTodayNoCap(money(a.spentToday), a.messagesToday), style: note),
+              if (err != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Text(err, style: const TextStyle(fontSize: 10.5, color: warn)),
+                ),
+            ],
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.only(right: 5),
+              child: a != null && !a.linked
+                  ? _plainButton(
+                      label: t.proxyLink, mode: mode, onTap: () => _linkAccount(state, t))
+                  : _plainButton(
+                      label: t.proxyTopup, mode: mode, onTap: () => _openTopup(state, t)),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 7),
+      Text(a != null && !a.linked ? t.proxyLinkNote : t.proxyTopupNote, style: note),
+      const SizedBox(height: 12),
+      Text(t.proxyModelsTitle,
+          style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+      const SizedBox(height: 7),
+      if (a != null && a.models.isEmpty)
+        Text(t.proxyNoModels, style: const TextStyle(fontSize: 11, color: warn)),
+      for (final m in a?.models ?? const <ProxyModel>[])
+        Padding(
+          padding: const EdgeInsets.only(bottom: 7),
+          child: _choiceRow(
+            title: m.label,
+            subtitle: m.price <= 0 ? t.proxyPriceFree : t.proxyPrice(money(m.price)),
+            trailing: m.id,
+            selected: inUse?.id == m.id,
+            mode: mode,
+            onTap: () => state.setProxyModel(m.id),
+          ),
+        ),
+      Text(t.proxyModelNote, style: note),
+      const SizedBox(height: 4),
+      Text(t.proxyBillingNote, style: note),
+    ];
   }
 
   // ── เซิร์ฟเวอร์ในบ้าน: ค้นหาในวงไวไฟ · เลือกรุ่น · ทดสอบ ─────

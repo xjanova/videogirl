@@ -65,8 +65,48 @@ extension AiStrings on S {
         "This phone's code is copied — paste it into the box on the page that opened",
       );
   String get proxyModelNote => pick(
-        'ถ้าบริการยังไม่เปิดรุ่นที่เลือกไว้ จะใช้รุ่นที่เราตั้งไว้ให้แทน',
-        'If the service does not offer the model you picked, ours is used instead',
+        'ถ้าบริการปิดรุ่นที่เลือกไว้ จะใช้รุ่นแรกที่เปิดอยู่แทน (ราคาตามรุ่นนั้น)',
+        'If the service turns off the model you picked, its first open model is used (at that price)',
+      );
+
+  // ── เครดิตของ "ผ่านบริการเรา" ──
+  String get proxyCreditTitle => pick('เครดิตคงเหลือ', 'Credit left');
+  String proxyMoney(String amount) => pick('฿$amount', 'THB $amount');
+  String proxyMessagesLeft(int n, String model, String price) => pick(
+        'ส่งได้อีกราว $n ข้อความด้วย $model (ข้อความละ ฿$price)',
+        'About $n more messages with $model (THB $price each)',
+      );
+  String proxyModelFree(String model) =>
+      pick('$model ไม่คิดเงิน', '$model is free to use');
+  String proxyToday(String spent, String cap) => pick(
+        'ใช้วันนี้ ฿$spent จากเพดาน ฿$cap ต่อวัน',
+        'Used today THB $spent of the THB $cap daily limit',
+      );
+  String proxyTodayNoCap(String spent, int n) => pick(
+        'วันนี้ใช้ไป ฿$spent · $n ข้อความ',
+        'Today: THB $spent · $n messages',
+      );
+  String get proxyTopup => pick('เติมเครดิต', 'Top up');
+  String get proxyTopupNote => pick(
+        'เปิดหน้าเติมเงินของ xman studio · ช่องทางชำระเงินและโบนัสดูได้ที่หน้านั้น · เติมเสร็จกลับมากดรีเฟรช',
+        'Opens the xman studio top-up page · payment options and bonuses are listed there · tap refresh when done',
+      );
+  String get proxyLink => pick('ผูกบัญชี', 'Link account');
+  String get proxyLinkNote => pick(
+        'เครื่องนี้ยังไม่ได้ผูกกับบัญชี xman studio · เครดิตหักจากกระเป๋าเงินของบัญชีที่ผูก · กดผูกบัญชีแล้ววางรหัสที่คัดลอกให้ในหน้าเว็บ',
+        'This phone is not linked to an xman studio account yet · credit comes from that account\'s wallet · tap Link account and paste the copied code on the page',
+      );
+  String get proxyRefresh => pick('รีเฟรช', 'Refresh');
+  String get proxyLoading => pick('กำลังดูเครดิต…', 'Checking credit…');
+  String get proxyClosed => pick('บริการปิดชั่วคราว', 'The service is closed for now');
+  String get proxyNoModels =>
+      pick('ตอนนี้ยังไม่มีรุ่นที่เปิดให้บริการ', 'No models are offered right now');
+  String get proxyModelsTitle => pick('รุ่นที่เปิดให้บริการ', 'Models we offer');
+  String proxyPrice(String price) => pick('฿$price/ข้อความ', 'THB $price/message');
+  String get proxyPriceFree => pick('ฟรี', 'Free');
+  String get proxyBillingNote => pick(
+        'ทุกข้อความหักจากกระเป๋าเงิน (ไม่มีโควต้าฟรี) · การจดจำเรื่องสำคัญ (ทุก 6 ตา) และสรุปสายที่เธอรับแทนนับเป็นข้อความด้วย · ตอบไม่สำเร็จไม่หักเงิน',
+        'Every message is paid from the wallet (no free quota) · remembering important things (every 6 turns) and summarising calls she took count as messages too · failed answers are not charged',
       );
 
   // ── คีย์ของผู้ใช้เอง ──
@@ -335,6 +375,22 @@ extension AiStrings on S {
   String get errLicenseRejected => pick(
         'รหัสสิทธิ์ใช้ไม่ได้หรือหมดอายุ — เช็คในหน้าตั้งค่า',
         'The licence key was not accepted or has expired — check it in Settings',
+      );
+  String get errProxyNoCredit => pick(
+        'เครดิตไม่พอสำหรับข้อความนี้ · เติมได้ที่หน้าตั้งค่า > สมอง > เติมเครดิต',
+        'Not enough credit for this message · top up in Settings > Brain > Top up',
+      );
+  String get errProxyNotLinked => pick(
+        'เครื่องนี้ยังไม่ได้ผูกกับบัญชี xman studio · ผูกได้ที่หน้าตั้งค่า > สมอง > ผูกบัญชี',
+        'This phone is not linked to an xman studio account yet · link it in Settings > Brain',
+      );
+  String get errProxyDailyCap => pick(
+        'วันนี้ใช้ครบเพดานต่อวันแล้ว · เริ่มใหม่หลังเที่ยงคืน',
+        "You've reached today's spending limit · it resets at midnight",
+      );
+  String get errProxyWalletInactive => pick(
+        'กระเป๋าเงินของบัญชีนี้ถูกระงับ · ติดต่อ xman studio',
+        "This account's wallet is suspended · please contact xman studio",
       );
   String get errProxyDown => pick(
         'ระบบหลังบ้านขัดข้อง ลองใหม่อีกครั้งนะคะ',
