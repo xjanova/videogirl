@@ -38,8 +38,8 @@ class ChatRecall {
   static const _minChars = 6;
 
   /// อ่านบทสนทนาเก่าจากฐานมาทำดัชนี · แบ่งเป็นช่วงให้จอไม่กระตุก
-  Future<void> load(MindDb db) async {
-    if (_loaded) return;
+  Future<void> load(MindDb db, {bool force = false}) async {
+    if (_loaded && !force) return;
     try {
       final rows = await db.messagesForRecall(maxLines);
       var i = 0;
@@ -69,6 +69,16 @@ class ChatRecall {
   void clear() {
     _lines.clear();
     _index.clear();
+  }
+
+  /// ทุกบรรทัดของวันนั้น เรียงตามลำดับ · ใช้เขียนบันทึกรายวันขึ้นสมอง BrainX
+  List<PastLine> linesOn(DateTime day) {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    return [
+      for (final id in (_lines.keys.toList()..sort()))
+        if (!_lines[id]!.at.isBefore(start) && _lines[id]!.at.isBefore(end)) _lines[id]!,
+    ];
   }
 
   void _put(PastLine l) {

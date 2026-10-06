@@ -323,11 +323,13 @@ class MindDb {
   // ═══ บทสนทนา ═══════════════════════════════════════════
 
   /// เก็บข้อความหนึ่งบรรทัด · คืน id ที่ได้
-  Future<int> addMessage({required bool fromHer, required String text}) =>
+  ///
+  /// [at] ใส่เมื่อกู้บทสนทนาเก่ากลับมา (เวลาเดิมของมัน) · ปกติคือตอนนี้
+  Future<int> addMessage({required bool fromHer, required String text, DateTime? at}) =>
       _db.insert('messages', {
         'from_her': fromHer ? 1 : 0,
         'text': text,
-        'at': DateTime.now().millisecondsSinceEpoch,
+        'at': (at ?? DateTime.now()).millisecondsSinceEpoch,
       });
 
   /// [limit] ตาล่าสุด เรียงเก่า→ใหม่ (ลำดับที่โมเดลกับหน้าจอต้องการ)

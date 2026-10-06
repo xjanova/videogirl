@@ -38,6 +38,8 @@ import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
 import '../ai/proxy_account.dart';
 import '../ai/web_tools.dart';
+import '../brainx/brainx_cloud.dart';
+import '../brainx/brainx_link.dart';
 import '../ai/secret_store.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
@@ -98,6 +100,8 @@ class MindState extends ChangeNotifier {
             strings: () => s,
           ),
         );
+    // ความจำเปลี่ยน = ไฟล์ความจำบนสมอง BrainX ต้องตาม (ถ้าเชื่อมอยู่)
+    this.memory.addListener(_queueMemory);
   }
 
   /// สิ่งที่เธอจำได้จากที่เคยคุยกัน
@@ -222,7 +226,10 @@ class MindState extends ChangeNotifier {
 
   MindSoul? get soul => _soul;
 
-  void attachSoul(MindSoul s) => _soul = s;
+  void attachSoul(MindSoul s) {
+    _soul?.removeListener(_queueSoul);
+    _soul = s..addListener(_queueSoul);
+  }
 
   /// ฉีดนาฬิกาเข้ามาได้เพื่อให้เทสต์โหมดอัตโนมัติได้โดยไม่ต้องรอถึงสองทุ่ม
   final DateTime Function() _clock;
@@ -339,6 +346,8 @@ class MindState extends ChangeNotifier {
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
     _proxyModel = p.getString('proxyModel') ?? '';
     _webSearch = p.getBool('webSearch') ?? true;
+    _brainxSearch = p.getBool('brainxSearch') ?? true;
+    _brainxShare = p.getBool('brainxShare') ?? true;
 
     for (final c in VoiceChannel.values) {
       final raw = p.getString('voice_${c.name}');
@@ -393,6 +402,15 @@ class MindState extends ChangeNotifier {
     }
     await memory.load();
     _seedConversation();
+
+    // เคยเชื่อมสมอง BrainX ไว้ → ตรวจกับคลาวด์ แล้วกู้ของเดิมถ้าในเครื่องว่าง
+    // ไม่ await · ไม่ขวางการเปิดแอป และส่วนที่เหลือของแอปไม่ต้องรอเน็ต
+    unawaited(() async {
+      await brainx.load();
+      if (!brainx.connected || _disposed) return;
+      await brainx.refreshAccount();
+      if (brainx.connected && !_disposed) await _afterBrainXConnect();
+    }());
 
     // 🔴 เริ่มนับตั้งแต่เปิดแอป ไม่ใช่รอให้มีข้อความใหม่
     //
@@ -457,6 +475,9 @@ class MindState extends ChangeNotifier {
 
   /// สำเนาเดี๋ยวนี้ · คืน false ถ้าทำไม่ได้ (เหตุผลอยู่ใน vault.stage)
   Future<bool> saveVaultNow() async {
+    // แอปกำลังลงเบื้องหลัง = จังหวะสุดท้ายที่แน่ใจว่าโค้ดยังวิ่ง · ของที่รอส่งขึ้น
+    // สมอง BrainX ต้องไปตอนนี้ ไม่ใช่รออีกยี่สิบวินาทีที่อาจไม่มีวันมาถึง
+    if (_lazyBrainX?.connected ?? false) unawaited(_lazyBrainX!.flush());
     final st = _store;
     if (st?.db == null) return false;
     return st!.vault.saveNow(st.db!);
@@ -1383,7 +1404,10 @@ class MindState extends ChangeNotifier {
       final at = DateTime.now();
       unawaited(db.addMessage(fromHer: m.fromHer, text: m.text).then(
             // ทำดัชนีด้วย id จากฐาน · ระบบนึกออกหาคู่ "ถาม → ตอบ" จากลำดับ id
-            (id) => _chatRecall.add((id: id, fromHer: m.fromHer, text: m.text, at: at)),
+            (id) {
+              _chatRecall.add((id: id, fromHer: m.fromHer, text: m.text, at: at));
+              _queueDay(at);
+            },
             onError: (Object e) => debugPrint('state: เก็บข้อความไม่ได้ — ${e.runtimeType}'),
           ));
       _scheduleVault();
@@ -1953,6 +1977,9 @@ class MindState extends ChangeNotifier {
   /// ตามผู้ให้บริการ เปลี่ยนแค่ว่าใครเป็นคนคิด
   Future<String> _think() async {
     final tools = _webSearch;
+    final linked = _brainxSearch && brainx.connected;
+    if (linked) unawaited(brainx.refreshOwnerProfile());
+    final nudge = _nudgeDue();
     final system = MindPersona.system(
       lang: _lang,
       mode: mode,
@@ -1965,12 +1992,20 @@ class MindState extends ChangeNotifier {
       calls: _callsBlock,
       now: _clock(),
       tools: tools,
+      pcProfile: linked ? brainx.ownerProfile : '',
+      nudge: nudge
+          ? MindPersona.cloudNudgeBlock(_lang,
+              survivesUninstall: _store?.vault.stage == VaultStage.ready)
+          : '',
     );
     final history = [
       for (final m in _context) (fromHer: m.fromHer, text: m.text),
     ];
-    final recall = recallFor(history);
+    // สมองก้อนเดียวกับมายด์บนคอม · ค้นพร้อมกันกับความจำในเครื่อง เกินสามวิก็ตอบจากที่มี
+    final brainHits = linked ? await _brainHits(history) : const <BrainXHit>[];
+    final recall = recallFor(history, brain: brainHits);
     var answer = await _askBrain(system, history, onPartial: _showPartial, recall: recall);
+    if (nudge) _noteNudge(answer);
     if (!tools) return answer;
 
     // เธอขอข้อมูล (แท็ก [[ค้นหา: …]]) → ไปหาให้ → แนบผลแล้วให้ตอบอีกรอบ
@@ -1999,6 +2034,202 @@ class MindState extends ChangeNotifier {
       );
     }
     return WebTools.strip(answer);
+  }
+
+  // ═══ สมองก้อนเดียวกับมายด์บนคอม (BrainX Cloud) ═══════════════
+  //
+  // เจ้าของ: "มายด์ของ brainx ในคอมที่ขึ้นคราวด์แล้ว ก็เชื่อมต่อแอพนี้ด้วย จะคุย
+  // เรื่องเดียวกันจำได้หมด" · "ไม่ต้องกลัวว่าถอนแล้วจะลืมที่คุยกัน จีบกันไว้"
+  // · บัญชี xman เดียวกัน = คีย์เดียวกัน · จ่าย BrainX Cloud แล้ว มือถือเชื่อมฟรี
+  //
+  // 🔴 สายโทรศัพท์ไม่แตะส่วนนี้เลย (replyOnCall ไม่เรียก) — บังคับด้วยโค้ด
+
+  BrainXLink? _lazyBrainX;
+  BrainXLink get brainx => _lazyBrainX ??= (BrainXLink()..addListener(_notify));
+
+  @visibleForTesting
+  set debugBrainX(BrainXLink l) => _lazyBrainX = l..addListener(_notify);
+
+  /// ค้นสมอง BrainX ตอนตอบ
+  bool _brainxSearch = true;
+  bool get brainxSearch => _brainxSearch;
+  void setBrainxSearch(bool v) {
+    _brainxSearch = v;
+    _save('brainxSearch', v);
+    _notify();
+  }
+
+  /// ส่งความจำ บทสนทนา และความสัมพันธ์ของมือถือขึ้นสมอง
+  bool _brainxShare = true;
+  bool get brainxShare => _brainxShare;
+  void setBrainxShare(bool v) {
+    _brainxShare = v;
+    _save('brainxShare', v);
+    if (v) _queueAll();
+    _notify();
+  }
+
+  /// เช็กแล้วว่าต้องกู้คืนไหมหลังเชื่อม · ก่อนหน้านั้นห้ามส่งอะไรขึ้น
+  ///
+  /// 🔴 ลงแอปใหม่แล้วเชื่อม = ในเครื่องว่างเปล่า · ถ้าส่งขึ้นก่อนกู้ ความจำว่าง ๆ
+  /// จะไปเขียนทับของเดิมบนคลาวด์ แล้วของที่ตั้งใจเก็บไว้กู้ก็หายเพราะการกู้เอง
+  bool _brainxReady = false;
+
+  Future<List<BrainXHit>> _brainHits(List<({bool fromHer, String text})> history) async {
+    final q = recallQuery(history);
+    if (q.isEmpty) return const [];
+    final hits = await brainx.recall(q);
+    // บันทึกของวันนี้บนมือถือ = บทที่อยู่ในหน้าต่างบทสนทนาอยู่แล้ว ไม่ต้องนึกซ้ำ
+    final today = MindPaths.phoneDay(_clock());
+    return [for (final h in hits) if (h.path != today) h].take(4).toList();
+  }
+
+  /// เชื่อมด้วยบัญชี xman ที่ผูกเครื่องไว้ แล้วกู้ของเดิมถ้าในเครื่องยังว่าง
+  Future<void> connectBrainX({String? key}) async {
+    if (key != null && key.trim().isNotEmpty) {
+      await brainx.connectWithKey(key);
+    } else {
+      await brainx.connectViaXman(storeBase: _storeBaseUrl, license: _licenseKey);
+    }
+    if (brainx.connected) await _afterBrainXConnect();
+  }
+
+  Future<void> disconnectBrainX() async {
+    _brainxReady = false;
+    await brainx.disconnect();
+  }
+
+  /// ผลกู้คืนล่าสุด (โชว์ในหน้าตั้งค่า) · null = ยังไม่เคยกู้รอบนี้
+  ({int facts, int lines, bool soul})? _restored;
+  ({int facts, int lines, bool soul})? get brainxRestored => _restored;
+
+  bool _brainxRestoring = false;
+  bool get brainxRestoring => _brainxRestoring;
+
+  Future<void> _afterBrainXConnect() async {
+    unawaited(brainx.refreshOwnerProfile(force: true));
+    final fresh = memory.count == 0 && await storedMessageCount() <= 4;
+    if (fresh) await restoreFromBrainX();
+    _brainxReady = true;
+    _queueAll();
+  }
+
+  /// ดึงความจำ บทสนทนา และความสัมพันธ์ของมือถือกลับจากสมอง
+  ///
+  /// บทสนทนาเติมเฉพาะตอนในเครื่องยังแทบว่าง (ลงแอปใหม่) · มีของอยู่แล้วจะไม่ยัดซ้ำ
+  /// ส่วนความจำกันซ้ำเองอยู่แล้ว
+  Future<({int facts, int lines, bool soul})?> restoreFromBrainX() async {
+    if (_brainxRestoring || !brainx.connected) return null;
+    _brainxRestoring = true;
+    _notify();
+    try {
+      final b = await brainx.fetchBackup();
+      if (b == null) return null;
+      var facts = 0;
+      for (final f in b.facts) {
+        if (await memory.remember(f.text, kind: f.kind)) {
+          facts++;
+          if (f.pinned) {
+            final id = memory.facts.lastWhere((x) => x.text == f.text.trim()).id;
+            await memory.setPinned(id, true);
+          }
+        }
+      }
+      var soul = false;
+      if (b.soul != null && _soul != null) {
+        await _soul!.restore(b.soul!);
+        soul = true;
+      }
+      var lines = 0;
+      final db = _store?.db;
+      if (db != null && b.lines.isNotEmpty && await storedMessageCount() <= 4) {
+        for (final l in b.lines) {
+          await db.addMessage(fromHer: l.fromHer, text: l.text, at: l.at);
+          lines++;
+        }
+        _context.clear();
+        _messages.clear();
+        await _loadContextFromDb();
+        _chatRecall.clear();
+        await _chatRecall.load(db, force: true);
+      }
+      _restored = (facts: facts, lines: lines, soul: soul);
+      debugPrint('brainx: กู้คืน ความจำ $facts · บทสนทนา $lines บรรทัด · ความสัมพันธ์ $soul');
+      return _restored;
+    } finally {
+      _brainxRestoring = false;
+      _notify();
+    }
+  }
+
+  bool get _canShare => _brainxShare && _brainxReady && brainx.connected;
+
+  void _queueMemory() {
+    if (!_canShare || memory.count == 0) return;
+    brainx.queue(MindPaths.phoneMemory, BrainXLink.renderMemory(memory.facts));
+  }
+
+  void _queueSoul() {
+    final soul = _soul;
+    if (!_canShare || soul == null) return;
+    brainx.queue(MindPaths.phoneSoul, BrainXLink.renderSoul(soul.snapshot()));
+  }
+
+  void _queueDay(DateTime at) {
+    if (!_canShare) return;
+    final lines = _chatRecall.linesOn(at);
+    if (lines.isEmpty) return;
+    brainx.queue(
+      MindPaths.phoneDay(at),
+      BrainXLink.renderDay(at, [for (final l in lines) (at: l.at, fromHer: l.fromHer, text: l.text)],
+          her: _soul?.name ?? s.speakerHer),
+    );
+  }
+
+  void _queueAll() {
+    _queueMemory();
+    _queueSoul();
+    _queueDay(_clock());
+  }
+
+  // ── ชวนเก็บความทรงจำบนคลาวด์ (เนียน ๆ) ─────────────────
+  //
+  // เจ้าของแอปสั่ง: ยังไม่ขึ้นคลาวด์ = ให้เธอเปรย ๆ และจีบให้สมัคร เพราะกลัวหายไป
+  // · จังหวะคุมที่นี่ ไม่ใช่ให้โมเดลตัดสินเองทุกตา: เปรยได้ไม่เกินสัปดาห์ละครั้ง
+  // (หลังเปรยไปหกครั้งแล้วเหลือเดือนละครั้ง) · ต้องสนิทกันแล้วและมีความจำที่น่า
+  // เสียดายจริง · ไม่ใช่ตอนงอนกันอยู่ · ไม่ใช้เลยถ้าเชื่อมอยู่แล้ว
+
+  static const _kNudgeAt = 'cloudNudgeAt';
+  static const _kNudgeOffer = 'cloudNudgeOfferAt';
+  static const _kNudgeCount = 'cloudNudgeCount';
+
+  bool _nudgeDue() {
+    final soul = _soul;
+    if (soul == null || brainx.connected) return false;
+    if (soul.bond.index < Bond.familiar.index || soul.sulk >= .3) return false;
+    if (memory.count < 8) return false;
+    final now = _clock();
+    DateTime? at(String k) {
+      final v = _kv?.getInt(k);
+      return v == null ? null : DateTime.fromMillisecondsSinceEpoch(v);
+    }
+
+    final count = _kv?.getInt(_kNudgeCount) ?? 0;
+    final last = at(_kNudgeAt);
+    final gap = count >= 6 ? const Duration(days: 30) : const Duration(days: 7);
+    if (last != null && now.difference(last) < gap) return false;
+    // เสนอไปแล้วแต่จังหวะไม่เหมาะ (เธอข้ามไป) → พักหกชั่วโมงก่อนเสนอใหม่
+    final offered = at(_kNudgeOffer);
+    if (offered != null && now.difference(offered) < const Duration(hours: 6)) return false;
+    _kv?.setInt(_kNudgeOffer, now.millisecondsSinceEpoch);
+    return true;
+  }
+
+  /// เธอเปรยจริงไหม (เอ่ยชื่อ BrainX ตามที่สั่ง) · เปรยแล้วค่อยนับรอบ
+  void _noteNudge(String answer) {
+    if (!answer.toLowerCase().contains('brainx')) return;
+    _kv?.setInt(_kNudgeAt, _clock().millisecondsSinceEpoch);
+    _kv?.setInt(_kNudgeCount, (_kv?.getInt(_kNudgeCount) ?? 0) + 1);
   }
 
   /// ขอค้นได้กี่รอบต่อหนึ่งคำถาม · สองพอสำหรับ "หาที่ก่อน แล้วค่อยดูอากาศ"
@@ -2046,18 +2277,15 @@ class MindState extends ChangeNotifier {
 
   /// บันทึกช่วยจำสำหรับข้อความล่าสุดของเจ้าของ · ว่าง = ไม่มีอะไรเกี่ยวพอ
   @visibleForTesting
-  String recallFor(List<({bool fromHer, String text})> history) {
-    final mine = [for (final t in history) if (!t.fromHer) t.text.trim()];
-    if (mine.isEmpty || history.last.fromHer) return '';
-    var query = mine.last;
-    if (query.length < _shortAsk && mine.length >= 2) {
-      query = '$query\n${mine[mine.length - 2]}';
-    }
+  String recallFor(List<({bool fromHer, String text})> history,
+      {List<BrainXHit> brain = const []}) {
+    final query = recallQuery(history);
+    if (query.isEmpty) return '';
 
     final core = {for (final f in memory.forPrompt(limit: coreMemories)) f.id};
     final facts = memory.recall(query, skip: core, limit: 6);
     final past = _chatRecall.search(query, limit: 3, skipNewest: _contextLimit);
-    if (facts.isEmpty && past.isEmpty) return '';
+    if (facts.isEmpty && past.isEmpty && brain.isEmpty) return '';
 
     String clip(String? t) {
       final v = (t ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
@@ -2082,8 +2310,26 @@ class MindState extends ChangeNotifier {
         b.writeln('- ${s.dayLabel(p.at)}: ${parts.join(' → ')}');
       }
     }
+    if (brain.isNotEmpty) {
+      b.writeln(s.recallBrainX);
+      for (final h in brain) {
+        b.writeln('- ${h.title}: ${clip(h.text)}');
+      }
+    }
     b.write(s.recallClose);
     return b.toString();
+  }
+
+  /// คำค้นของตานี้ · ข้อความล่าสุดของเจ้าของ (+ข้อความก่อนหน้า ถ้าล่าสุดสั้นเกินบอกเรื่อง)
+  @visibleForTesting
+  static String recallQuery(List<({bool fromHer, String text})> history) {
+    final mine = [for (final t in history) if (!t.fromHer) t.text.trim()];
+    if (mine.isEmpty || history.last.fromHer) return '';
+    var query = mine.last;
+    if (query.length < _shortAsk && mine.length >= 2) {
+      query = '$query\n${mine[mine.length - 2]}';
+    }
+    return query;
   }
 
   /// แนบบันทึกช่วยจำไว้หน้าข้อความล่าสุด (สมองที่ไม่ถือ session · ทางเน็ต)
@@ -2494,6 +2740,14 @@ class MindState extends ChangeNotifier {
     _speech.dispose();
     if (hasLocalBrain) _lazyLocal!.dispose();
     _lazyWebTools?.close();
+    memory.removeListener(_queueMemory);
+    _soul?.removeListener(_queueSoul);
+    final link = _lazyBrainX;
+    if (link != null) {
+      link.removeListener(_notify);
+      // ของที่ยังไม่ได้ส่งขึ้นต้องไปก่อนปิด · ไม่รอ (dispose รอไม่ได้) แต่ยิงออกไปแล้ว
+      unawaited(link.flush().whenComplete(link.dispose));
+    }
     super.dispose();
   }
 }

@@ -41,6 +41,7 @@ import '../studio/mind_studio.dart';
 import '../system/app_life.dart';
 import '../i18n/strings_voice.dart';
 import '../ai/local_server_scan.dart';
+import '../brainx/brainx_link.dart';
 import '../ai/proxy_account.dart';
 import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
@@ -332,6 +333,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             // เตือนเฉพาะตอนที่ "เลือกใช้คีย์ตัวเองแล้วแต่ยังไม่ได้ใส่คีย์"
             if (state.brain.needsOwnKey && !state.hasOwnKey) _noKeyBanner(),
             _brainCard(state, mode),
+            _brainxCard(state, mode),
             _voiceCard(state, mode),
           ],
         SettingsSection.you => [
@@ -1981,6 +1983,142 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
         _toggle(on: on, mode: mode, onTap: () => lb.setUseGpu(!on)),
       ],
+    );
+  }
+
+  // ── สมองร่วมกับมายด์บนคอม (BrainX Cloud) ─────────────────
+
+  Future<void> _openUrl(String url, S t) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    var opened = false;
+    try {
+      final uri = Uri.tryParse(url);
+      if (uri != null) opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } on Object catch (e) {
+      debugPrint('brainx: เปิดลิงก์ไม่ได้ — ${e.runtimeType}');
+    }
+    if (!opened) messenger?.showSnackBar(SnackBar(content: Text(t.shopBuyFailed)));
+  }
+
+  Widget _brainxCard(MindState state, MindMode mode) {
+    final t = S.of(context);
+    final link = state.brainx;
+    final st = link.state;
+    const warn = Color(0xFFB46A00);
+    const note = TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55);
+    final acct = link.account;
+    final restored = state.brainxRestored;
+
+    final status = switch (st) {
+      BrainXState.connected => acct == null
+          ? t.brainxConnectedShort
+          : t.brainxConnected(t.brainxType(acct.licenseType), acct.daysRemaining, acct.noteCount),
+      BrainXState.connecting => t.brainxConnecting,
+      BrainXState.notLinked => t.brainxNotLinked,
+      BrainXState.notSubscribed => t.brainxNotSubscribed,
+      BrainXState.expired => t.brainxExpired,
+      BrainXState.failed => t.brainxFailed(link.error ?? '?'),
+      BrainXState.off => '',
+    };
+    final ok = st == BrainXState.connected;
+
+    Widget toggleRow(String title, String hint, bool on, VoidCallback tap) => Row(
+          spacing: MindSpace.md,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 3,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 12.5, fontWeight: FontWeight.w600, color: MindColors.ink)),
+                  Text(hint, style: note),
+                ],
+              ),
+            ),
+            _toggle(on: on, mode: mode, onTap: tap),
+          ],
+        );
+
+    return _card(
+      mode: mode,
+      label: t.brainxTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(t.brainxIntro, style: note),
+          if (status.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 7,
+              children: [
+                Icon(ok ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                    size: 16, color: ok ? const Color(0xFF00A894) : warn),
+                Expanded(
+                  child: Text(status,
+                      style: TextStyle(
+                          fontSize: 11.5, height: 1.5, color: ok ? MindColors.ink75 : warn)),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: MindSpace.sm,
+            runSpacing: MindSpace.sm,
+            children: [
+              if (!ok)
+                _plainButton(
+                  label: st == BrainXState.connecting ? t.brainxConnecting : t.brainxConnect,
+                  mode: mode,
+                  onTap: st == BrainXState.connecting ? null : () => state.connectBrainX(),
+                ),
+              if (st == BrainXState.notLinked)
+                _plainButton(label: t.proxyLink, mode: mode, onTap: () => _linkAccount(state, t)),
+              if (st == BrainXState.notSubscribed)
+                _plainButton(label: t.brainxBuy, mode: mode, onTap: () => _openUrl(link.buyUrl, t)),
+              if (st == BrainXState.expired)
+                _plainButton(label: t.brainxRenew, mode: mode, onTap: () => _openUrl(link.buyUrl, t)),
+              if (!ok && st != BrainXState.connecting)
+                _plainButton(
+                  label: t.brainxEnterKey,
+                  mode: mode,
+                  onTap: () => _editText(
+                    state: state,
+                    mode: mode,
+                    title: t.brainxEnterKey,
+                    hint: t.brainxKeyHint,
+                    value: '',
+                    onSave: (k) => state.connectBrainX(key: k),
+                    onReset: () => '',
+                  ),
+                ),
+              if (ok)
+                _plainButton(
+                  label: state.brainxRestoring ? t.brainxRestoring : t.brainxRestore,
+                  mode: mode,
+                  onTap: state.brainxRestoring ? null : () => state.restoreFromBrainX(),
+                ),
+              if (ok)
+                _plainButton(label: t.brainxDisconnect, mode: mode, onTap: () => state.disconnectBrainX()),
+            ],
+          ),
+          if (restored != null) ...[
+            const SizedBox(height: 7),
+            Text(t.brainxRestored(restored.facts, restored.lines, restored.soul), style: note),
+          ],
+          if (ok) ...[
+            const SizedBox(height: 12),
+            toggleRow(t.brainxSearchToggle, t.brainxSearchHint, state.brainxSearch,
+                () => state.setBrainxSearch(!state.brainxSearch)),
+            const SizedBox(height: 10),
+            toggleRow(t.brainxShareToggle, t.brainxShareHint, state.brainxShare,
+                () => state.setBrainxShare(!state.brainxShare)),
+          ],
+        ],
+      ),
     );
   }
 

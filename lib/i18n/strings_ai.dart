@@ -69,6 +69,67 @@ extension AiStrings on S {
         'If the service turns off the model you picked, its first open model is used (at that price)',
       );
 
+  // ── สมองร่วมกับมายด์บนคอม (BrainX Cloud · ดู brainx/) ──
+  String get brainxTitle => pick('สมองร่วมกับมายด์บนคอม (BrainX)', 'One brain with Mind on the PC (BrainX)');
+  String get brainxIntro => pick(
+        'ใช้สมองก้อนเดียวกับมายด์ในโปรแกรม BrainX บนคอม (บัญชี xman เดียวกัน) · คุยที่ไหนก็จำเรื่องเดียวกัน · '
+            'ลงแอปใหม่ก็ดึงความจำ บทสนทนา และความสัมพันธ์กลับมาได้ · ใช้ BrainX Cloud อยู่แล้ว = มือถือเชื่อมฟรี',
+        'Share one brain with Mind in the BrainX app on your PC (same xman account) · wherever you talk, '
+            'she remembers the same things · reinstalling brings her memories, talks and your relationship back · '
+            'already on BrainX Cloud = the phone connects free',
+      );
+  String get brainxConnect => pick('เชื่อมด้วยบัญชี xman', 'Connect with my xman account');
+  String get brainxConnecting => pick('กำลังเชื่อม…', 'Connecting…');
+  String brainxType(String type) => switch (type) {
+        'monthly' => pick('รายเดือน', 'monthly'),
+        'yearly' => pick('รายปี', 'yearly'),
+        'lifetime' => pick('ตลอดชีพ', 'lifetime'),
+        _ => type,
+      };
+  String brainxConnected(String type, int? days, int notes) => pick(
+        'เชื่อมแล้ว · BrainX Cloud $type${days == null ? '' : ' · เหลือ $days วัน'} · $notes โน้ตในสมอง',
+        'Connected · BrainX Cloud $type${days == null ? '' : ' · $days days left'} · $notes notes in the brain',
+      );
+  String get brainxConnectedShort => pick('เชื่อมแล้ว', 'Connected');
+  String get brainxNotLinked => pick(
+        'เครื่องนี้ยังไม่ได้ผูกบัญชี xman · ผูกบัญชีก่อน แล้วกดเชื่อมอีกครั้ง',
+        'This phone is not linked to an xman account yet · link it first, then connect again',
+      );
+  String get brainxNotSubscribed => pick(
+        'บัญชีนี้ยังไม่มี BrainX Cloud · สมัครครั้งเดียว ใช้ได้ทั้งคอมและมือถือ (มือถือไม่ต้องจ่ายเพิ่ม)',
+        'This account has no BrainX Cloud yet · one subscription covers the PC and the phone (no extra charge for the phone)',
+      );
+  String get brainxBuy => pick('สมัคร BrainX Cloud', 'Get BrainX Cloud');
+  String get brainxExpired => pick(
+        'BrainX Cloud หมดอายุ · โน้ตยังอยู่ครบ ต่ออายุแล้วกลับมาเหมือนเดิม',
+        'BrainX Cloud has expired · your notes are safe; renew and everything comes back',
+      );
+  String get brainxRenew => pick('ต่ออายุ BrainX Cloud', 'Renew BrainX Cloud');
+  String brainxFailed(String code) => code == 'OFFLINE'
+      ? pick('ต่อเน็ตไม่ได้ · ลองอีกครั้ง', 'No connection · try again')
+      : pick('เชื่อมไม่สำเร็จ ($code) · ลองอีกครั้ง', 'Could not connect ($code) · try again');
+  String get brainxEnterKey => pick('ใส่คีย์ BrainX เอง', 'Enter a BrainX key');
+  String get brainxKeyHint =>
+      pick('คีย์จากหน้า "คีย์ของฉัน" บน xman4289.com', 'The key from "My keys" on xman4289.com');
+  String get brainxSearchToggle => pick('ค้นสมอง BrainX ตอนตอบ', 'Search the BrainX brain when answering');
+  String get brainxSearchHint => pick(
+        'โน้ตของคุณ และที่คุยกับมายด์บนคอม · ส่งออกไปแค่คำค้นของตานั้น',
+        'Your notes and talks with Mind on the PC · only that turn\'s search words leave the phone',
+      );
+  String get brainxShareToggle =>
+      pick('เก็บความจำ บทสนทนา และความสัมพันธ์ไว้ในสมอง', 'Keep memories, talks and our relationship in the brain');
+  String get brainxShareHint => pick(
+        'เก็บในโฟลเดอร์ Mind ของสมองคุณ (เปิดอ่านใน BrainX หรือ Obsidian ได้) · ใช้พื้นที่ BrainX Cloud ของคุณ',
+        'Kept in the Mind folder of your brain (readable in BrainX or Obsidian) · uses your BrainX Cloud space',
+      );
+  String get brainxRestore => pick('ดึงความจำกลับจากสมอง', 'Bring memories back from the brain');
+  String get brainxRestoring => pick('กำลังดึง…', 'Bringing them back…');
+  String brainxRestored(int facts, int lines, bool soul) => pick(
+        'ดึงกลับมาแล้ว: ความจำ $facts เรื่อง · บทสนทนา $lines บรรทัด${soul ? ' · ความสัมพันธ์เดิม' : ''}',
+        'Brought back: $facts memories · $lines lines of talk${soul ? ' · your relationship' : ''}',
+      );
+  String get brainxDisconnect => pick('เลิกเชื่อม', 'Disconnect');
+
   // ── ค้นข้อมูลจากอินเทอร์เน็ต (ดู ai/web_tools.dart) ──
   String get webSearchTitle => pick('ให้เธอหาข้อมูลจากอินเทอร์เน็ต', 'Let her look things up online');
   String get webSearchHint => pick(
@@ -262,6 +323,10 @@ extension AiStrings on S {
   String get recallFacts =>
       pick('เรื่องที่จำได้ซึ่งอาจเกี่ยวข้อง:', 'Things remembered that may be relevant:');
   String get recallPast => pick('เคยคุยกันไว้:', 'Talked about before:');
+  String get recallBrainX => pick(
+        'จากสมอง BrainX (โน้ตของเจ้าของ และที่คุยกับมายด์บนคอม):',
+        "From the BrainX brain (the owner's notes, and talks with Mind on the PC):",
+      );
   String get recallClose => pick(
         '(จบบันทึกช่วยจำ · ข้อความของเจ้าของอยู่ถัดจากนี้)',
         "(end of notes · the owner's message follows)",

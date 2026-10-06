@@ -710,6 +710,52 @@ class MindSoul extends ChangeNotifier {
     }
   }
 
+  // ── ความสัมพันธ์ทั้งก้อน — ส่งขึ้นสมอง BrainX แล้วกู้กลับตอนลงแอปใหม่ ──
+  //
+  // เจ้าของ: "ไม่ต้องกลัวว่าถอนแล้วจะลืมที่คุยกัน จีบกันไว้" · วันเกิดไปด้วย
+  // ราศีกับนิสัยของเธอจึงเหมือนเดิม — คนเดิม ไม่ใช่คนใหม่ที่ได้ความจำของคนเก่า
+
+  static int? _ms(DateTime? t) => t?.millisecondsSinceEpoch;
+  static DateTime? _at(Object? v) => v is num ? DateTime.fromMillisecondsSinceEpoch(v.toInt()) : null;
+
+  Map<String, Object?> snapshot() => {
+        'v': 1,
+        'born': _ms(_bornAt),
+        'affection': _affection,
+        'together': _together,
+        'since': _ms(_togetherSince),
+        'sulk': sulk,
+        'sulkWhy': _sulkWhy,
+        'lastSeen': _ms(_lastSeen),
+        'lastWooed': _ms(_lastWooed),
+        'name': _name,
+        'nameAsked': _nameAsked,
+        'savedAt': _ms(_now()),
+      };
+
+  /// เอาความสัมพันธ์ที่กู้มาใส่กลับ · ค่าที่อ่านไม่ออกถูกข้าม ไม่ล้มทั้งก้อน
+  Future<void> restore(Map<String, Object?> j) async {
+    final born = _at(j['born']);
+    if (born != null) {
+      _bornAt = born;
+      await _prefs?.setInt(_kBorn, born.millisecondsSinceEpoch);
+    }
+    if (j['affection'] is num) _affection = (j['affection'] as num).toDouble().clamp(0.0, 1.0);
+    if (j['together'] is bool) _together = j['together'] as bool;
+    _togetherSince = _at(j['since']) ?? _togetherSince;
+    if (j['sulk'] is num) {
+      _sulk = (j['sulk'] as num).toDouble().clamp(0.0, 1.0);
+      _sulkAt = _sulk > 0 ? _now() : null;
+    }
+    if (j['sulkWhy'] is String) _sulkWhy = j['sulkWhy'] as String;
+    _lastSeen = _at(j['lastSeen']) ?? _lastSeen;
+    _lastWooed = _at(j['lastWooed']) ?? _lastWooed;
+    if (j['name'] is String && (j['name'] as String).trim().isNotEmpty) _name = (j['name'] as String).trim();
+    if (j['nameAsked'] is bool) _nameAsked = j['nameAsked'] as bool;
+    await _save();
+    notifyListeners();
+  }
+
   static Future<void> _writeTime(
       MindKv p, String key, DateTime? v) async {
     if (v == null) {

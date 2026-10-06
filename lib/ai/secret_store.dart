@@ -28,6 +28,13 @@ abstract final class SecretStore {
   static const kElevenLabsKey = 'elevenlabs_api_key';
   static const kAzureSpeechKey = 'azure_speech_key';
 
+  /// คีย์ BrainX Cloud ของบัญชี (มาจากหลังบ้านหรือผู้ใช้กรอก) · เก็บไว้ล็อกอินใหม่
+  /// เองเมื่อ token ถูกเพิกถอน ไม่ต้องให้ผู้ใช้ทำอะไร
+  static const kBrainXKey = 'brainx_cloud_key';
+
+  /// token `bxc_…` ของเครื่องนี้ที่คลาวด์ออกให้
+  static const kBrainXToken = 'brainx_cloud_token';
+
   /// อ่านค่า — คืนค่าว่างถ้าไม่มีหรืออ่านไม่ได้
   ///
   /// อ่านไม่ได้ไม่ควรทำให้แอปพัง · เครื่องบางรุ่นมี Keystore ที่มีปัญหาจริง

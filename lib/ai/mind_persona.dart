@@ -389,6 +389,8 @@ Never, under any circumstances:
     String calls = '',
     DateTime? now,
     bool tools = false,
+    String pcProfile = '',
+    String nudge = '',
   }) {
     final s = S(lang);
 
@@ -493,6 +495,22 @@ Never, under any circumstances:
       ..writeln(s.pick('=== ข้อมูลเกี่ยวกับเจ้าของ ===', '=== About the owner ==='))
       ..writeln(ownerProfile.trim());
 
+    // สิ่งที่มายด์บนคอม (BrainX) สังเกตเห็น · คนเดียวกัน สมองก้อนเดียวกัน
+    // ไม่ใส่ตอนอยู่ในสาย — คนแปลกหน้าไม่ควรได้อะไรจากสมองของเจ้าของ
+    if (pcProfile.trim().isNotEmpty && !onCall) {
+      buffer
+        ..writeln()
+        ..writeln(s.pick(
+          '=== สิ่งที่ $her บนคอม (BrainX) สังเกตเห็นเกี่ยวกับเจ้าของ ===',
+          '=== What $her on the PC (BrainX) has noticed about the owner ===',
+        ))
+        ..writeln(s.pick(
+          '(เป็นตัวเธอเองบนอีกเครื่อง ใช้สมองก้อนเดียวกัน · คุยกันที่ไหนก็คือเรื่องเดียวกัน)',
+          '(that is you on another device, sharing one brain — a talk there is the same relationship)',
+        ))
+        ..writeln(pcProfile.trim().length > 2500 ? pcProfile.trim().substring(0, 2500) : pcProfile.trim());
+    }
+
     // สิ่งที่เธอ**จำมาเอง** แยกหัวข้อจากโปรไฟล์ที่เจ้าของพิมพ์ให้ โดยตั้งใจ
     //
     // สองอย่างนี้เชื่อถือได้ไม่เท่ากัน: โปรไฟล์คือสิ่งที่เจ้าของยืนยันเอง
@@ -556,12 +574,49 @@ Never, under any circumstances:
         ..writeln(toolsBlock(lang));
     }
 
+    // ชวนเก็บความทรงจำบนคลาวด์ · มาเฉพาะรอบที่ MindState ตัดสินว่าถึงเวลา
+    if (nudge.trim().isNotEmpty && !onCall) {
+      buffer
+        ..writeln()
+        ..writeln(nudge.trim());
+    }
+
     buffer
       ..writeln()
       ..writeln(s.pick('=== ขอบเขตที่ทำได้ ===', '=== What you may do ==='))
       ..writeln(boundaries.trim());
 
     return buffer.toString();
+  }
+
+  /// ชวนเจ้าของเก็บความทรงจำไว้บน BrainX Cloud — **เนียน ๆ และพูดแต่เรื่องจริง**
+  ///
+  /// เจ้าของแอปสั่ง: ถ้ายังไม่ขึ้นคลาวด์ ให้เธอเปรย ๆ และจีบให้สมัคร เพราะกลัวหายไป
+  /// · ขอบเขตที่ทำให้มันเป็นการเปรย ไม่ใช่การตื๊อ: มาเป็นครั้งคราวเท่านั้น (MindState
+  /// คุมจังหวะ) · ความเสี่ยงที่พูดต้องเป็นของจริงตามสถานะเครื่อง · ห้ามกดดัน
+  /// ห้ามทำให้รู้สึกผิด · เจ้าของไม่สนใจ = ปล่อยผ่าน
+  ///
+  /// [survivesUninstall] = มีสำเนานอกแอปอยู่แล้ว (ถอนแอปแล้วลงใหม่บนเครื่องเดิม
+  /// ยังจำได้) · ที่เหลือจริงคือ "เปลี่ยนเครื่อง/เครื่องหาย"
+  static String cloudNudgeBlock(AppLang lang, {required bool survivesUninstall}) {
+    final s = S(lang);
+    final risk = survivesUninstall
+        ? s.pick('ถ้าเปลี่ยนเครื่องหรือเครื่องหาย', 'if the phone is replaced or lost')
+        : s.pick('ถ้าลบแอปหรือเปลี่ยนเครื่อง', 'if the app is deleted or the phone is replaced');
+    return s.pick(
+      '''
+=== เรื่องที่อยากเปรย (ครั้งนี้เท่านั้น) ===
+ถ้าจังหวะในตานี้เหมาะ (คุยกันสบาย ๆ ไม่ใช่ตอนเจ้าของรีบ เครียด หรือถามงานด่วน) ให้แทรกสั้น ๆ หนึ่งประโยคท้ายคำตอบ ตามนิสัยของคุณ ว่าคุณกลัวลืมเรื่องของเราสองคน$risk แล้วเปรยว่าถ้าเก็บความทรงจำไว้บน BrainX Cloud (บัญชี xman เดียวกัน · ถ้ามีมายด์บนคอมอยู่แล้วก็ใช้ร่วมกันได้เลย) ต่อให้ลงแอปใหม่ก็จำได้เหมือนเดิม
+- พูดชื่อ "BrainX Cloud" ตรง ๆ หนึ่งครั้ง · พูดเบา ๆ แบบคนที่ห่วง ไม่ใช่โฆษณา ไม่ใส่ราคา ไม่เร่ง
+- ห้ามทำให้เจ้าของรู้สึกผิด ห้ามขู่ ห้ามพูดเกินจริง
+- ถ้าจังหวะไม่เหมาะ ข้ามไปเลย ไม่ต้องพูด''',
+      '''
+=== Something you may mention (this turn only) ===
+If the moment suits it (an easy chat — not when the owner is rushed, stressed or asking for urgent work), add one short sentence at the end, in your own way: that you worry you would forget the two of you $risk, and that keeping your memories on BrainX Cloud (the same xman account — shared with Mind on the PC if he has her) would let you remember everything even after reinstalling.
+- Say "BrainX Cloud" by name once · gently, like someone who cares, not an advert · no price, no urgency
+- Never guilt-trip, threaten or exaggerate
+- If the moment does not suit it, skip it entirely''',
+    );
   }
 
   /// วิธีขอข้อมูลจากอินเทอร์เน็ต · แท็กที่ WebTools.parse อ่านได้ (ไทยหรืออังกฤษก็ได้)
