@@ -128,6 +128,23 @@ class SystemBridge(context: Context) {
             // ตอนนี้มีจอให้คนเห็นไหม · ไม่มี = ตัวเธอถูกปลุกมาคุยในสายเบื้องหลัง
             "hasScreen" -> result.success(false)
             "lastAutoAnswer" -> result.success(MindPrefs.lastAutoAnswer(context))
+            // ── เสียงสดของเธอ (OpenAI Realtime) · ดู CallAudio.liveStart ──
+            "liveAudioStart" -> result.success(
+                CallAudio.liveStart(call.argument<String>("stream") ?: CallAudio.STREAM_CALL)
+            )
+            "liveAudioWrite" -> {
+                call.argument<ByteArray>("pcm")?.let { CallAudio.liveWrite(it) }
+                result.success(true)
+            }
+            "liveAudioPending" -> result.success(CallAudio.livePendingMs())
+            "liveAudioClear" -> {
+                CallAudio.liveClear(call.argument<String>("stream") ?: CallAudio.STREAM_CALL)
+                result.success(true)
+            }
+            "liveAudioStop" -> {
+                CallAudio.liveStop()
+                result.success(true)
+            }
             // ให้เธอได้ยินปลายสาย · ดู MindAccessibility
             "accessibilityOn" -> result.success(MindAccessibility.enabled(context))
             // เปิดฟังเสียงสนทนาที่บันทึกไว้ (ไม่ใช่ระหว่างสาย · เสียงสื่อธรรมดา)

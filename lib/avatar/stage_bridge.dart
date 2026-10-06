@@ -24,6 +24,10 @@ abstract interface class MindLips {
   Future<void> startLips({Duration lead});
 
   Future<void> restLips();
+
+  /// ปากขยับแบบประมาณ — เสียงสด (Realtime) มาเป็นชิ้น ไม่มีไฟล์ทั้งประโยคให้อ่านคลื่น
+  /// · ขยับตอนเสียงเธอยังออกลำโพง หยุดตอนเงียบ
+  Future<void> setBabble(bool on);
 }
 
 /// สิ่งที่สตูดิโอสั่งเวที — แยกเป็น interface ให้ [MindStudio] เทสต์ได้โดยไม่มี WebView

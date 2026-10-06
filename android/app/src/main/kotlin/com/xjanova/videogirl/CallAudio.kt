@@ -88,6 +88,7 @@ object CallAudio {
      */
     fun handOver(context: Context) {
         stop()
+        liveStop()
         restore(context)
         MindInCallService.service?.setAudioRoute(CallAudioState.ROUTE_EARPIECE)
         open = false
@@ -96,6 +97,7 @@ object CallAudio {
     /** จบสาย หรือเลิกให้เธอพูด — คืนระดับเสียงเดิมทุกครั้ง */
     fun close(context: Context) {
         stop()
+        liveStop()
         restore(context)
         open = false
     }
@@ -236,4 +238,117 @@ object CallAudio {
 
     private fun streamType(stream: String) =
         if (stream == STREAM_MEDIA) AudioManager.STREAM_MUSIC else AudioManager.STREAM_VOICE_CALL
+
+    // ── เสียงสด (OpenAI Realtime) ─────────────────────────────────────
+    //
+    // เจ้าของ: "ต้องทำ real time พูดคุยเลย ถ้าตั้งค่าเป็น open ai" · เสียงเธอมาเป็นชิ้น
+    // PCM 16 บิต 24 kHz ทีละไม่กี่สิบมิลลิวินาที ต้องเล่นทันทีที่มาถึง ไม่ใช่รอทั้งประโยค
+    // แล้วเขียนไฟล์ (ทางเดิม [play]) · ออกลำโพงทางเดียวกับ [play] (ดูหัวไฟล์)
+
+    /** หนึ่งรอบการเล่น · เปลี่ยนก้อนใหม่ทั้งก้อนตอนล้าง ไม่ใช้ของเก่าต่อ */
+    private class Live(val track: android.media.AudioTrack, val rate: Int) {
+        val queue = java.util.concurrent.LinkedBlockingQueue<ByteArray>()
+        val written = java.util.concurrent.atomic.AtomicLong(0)   // เฟรมที่ส่งให้ลำโพงแล้ว
+        val queued = java.util.concurrent.atomic.AtomicLong(0)    // ไบต์ที่ยังรอคิว
+        @Volatile var alive = true
+        val writer = Thread {
+            try {
+                while (alive) {
+                    val b = queue.take()
+                    queued.addAndGet(-b.size.toLong())
+                    if (!alive) break
+                    var off = 0
+                    while (off < b.size && alive) {
+                        val n = track.write(b, off, b.size - off)
+                        if (n <= 0) break
+                        off += n
+                    }
+                    written.addAndGet((off / 2).toLong())
+                }
+            } catch (e: InterruptedException) {
+                // หยุดตามสั่ง
+            }
+        }.apply { isDaemon = true; name = "mind-live-audio" }
+    }
+
+    @Volatile
+    private var live: Live? = null
+
+    /** เริ่มช่องเสียงสด · ทุกครั้งที่เรียกได้ช่องใหม่สะอาด (ทิ้งเสียงที่ค้างอยู่) */
+    fun liveStart(stream: String, rate: Int = 24000): Boolean {
+        liveStop()
+        return try {
+            val usage = if (stream == STREAM_MEDIA) {
+                AudioAttributes.USAGE_MEDIA
+            } else {
+                AudioAttributes.USAGE_VOICE_COMMUNICATION
+            }
+            val min = android.media.AudioTrack.getMinBufferSize(
+                rate,
+                android.media.AudioFormat.CHANNEL_OUT_MONO,
+                android.media.AudioFormat.ENCODING_PCM_16BIT
+            )
+            val track = android.media.AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(usage)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAudioFormat(
+                    android.media.AudioFormat.Builder()
+                        .setSampleRate(rate)
+                        .setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                // บัฟเฟอร์เล็ก = ตัดเสียงได้ไว ตอบไว · ไม่ต่ำกว่าที่เครื่องต้องการ
+                .setBufferSizeInBytes(maxOf(min, rate * 2 / 5))
+                .setTransferMode(android.media.AudioTrack.MODE_STREAM)
+                .build()
+            track.play()
+            val l = Live(track, rate)
+            live = l
+            l.writer.start()
+            true
+        } catch (e: Exception) {
+            live = null
+            false
+        }
+    }
+
+    fun liveWrite(pcm: ByteArray) {
+        val l = live ?: return
+        l.queued.addAndGet(pcm.size.toLong())
+        l.queue.offer(pcm)
+    }
+
+    /** ยังเหลือเสียงเธอที่ยังไม่ออกลำโพงกี่มิลลิวินาที · 0 = เงียบแล้ว */
+    fun livePendingMs(): Int {
+        val l = live ?: return 0
+        val head = l.track.playbackHeadPosition.toLong() and 0xffffffffL
+        val frames = (l.written.get() - head).coerceAtLeast(0) + l.queued.get() / 2
+        return (frames * 1000 / l.rate).toInt()
+    }
+
+    /** ทิ้งเสียงที่ค้างอยู่ทันที (เจ้าของแทรกสาย / ยกเลิกคำตอบ) แล้วพร้อมเล่นต่อ */
+    fun liveClear(stream: String) {
+        val rate = live?.rate ?: return
+        liveStart(stream, rate)
+    }
+
+    fun liveStop() {
+        val l = live ?: return
+        live = null
+        l.alive = false
+        l.queue.clear()
+        l.writer.interrupt()
+        try {
+            l.track.pause()
+            l.track.flush()
+            l.track.release()
+        } catch (e: Exception) {
+            // ปล่อยซ้ำ/ยังไม่เริ่ม — ไม่ใช่เรื่องที่ต้องพัง
+        }
+    }
 }

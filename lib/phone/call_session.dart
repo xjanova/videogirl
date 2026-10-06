@@ -40,6 +40,7 @@ import '../state/mind_state.dart';
 import '../system/permissions.dart';
 import 'call_notes.dart';
 import 'call_watch.dart';
+import 'realtime_call.dart';
 
 /// บรรทัดหนึ่งของบทสนทนาในสาย
 @immutable
@@ -50,6 +51,9 @@ class CallLine {
   final String text;
   final bool fromHer;
 }
+
+/// ผลของเซสชันคุยสด · ต่อไม่ได้ (ใช้ทางเดิมตั้งแต่ทัก) · จบตามสาย · หลุดกลางสาย (ใช้ทางเดิมต่อ)
+enum _RtResult { couldNotStart, ended, dropped }
 
 /// เธอกำลังทำอะไรอยู่ในสายตอนนี้
 enum CallTurn {
@@ -218,6 +222,7 @@ class CallSession extends ChangeNotifier {
     if (!mind && was && _turn != CallTurn.handedOver) {
       // เจ้าของแทรกสายจากจอเนทีฟ — หยุดเธอฝั่งนี้ให้ตรงกัน (ปิดไมค์จริงด้วย)
       _turn = CallTurn.handedOver;
+      _endRealtime();
       unawaited(_closeMic());
     }
     _notify();
@@ -273,6 +278,7 @@ class CallSession extends ChangeNotifier {
     _micLevel = 0;
     if (!wasLive) return;
 
+    _endRealtime();
     unawaited(_closeMic());
     unawaited(_invoke('callEndAudio'));
     if (_handled) _reportCall();
@@ -328,6 +334,8 @@ class CallSession extends ChangeNotifier {
     _mind = false;
     _notify();
     // ปิดไมค์จริง ไม่ใช่แค่เลิกฟัง · เจ้าของคุยเองแล้ว ไม่ใช่สิ่งที่เธอควรอัดต่อ
+    _endRealtime();
+    await _invoke('liveAudioStop');
     await _closeMic();
     await _invoke('callStopSpeak');
     await _invoke('mindHandOver');
@@ -348,6 +356,14 @@ class CallSession extends ChangeNotifier {
     // เจ้าของแทรกสายไปแล้ว = เสียงกลับเข้าหูฟัง · พูดตอนนี้ปลายสายไม่ได้ยิน
     // มีแต่เจ้าของที่โดนเสียงเธอดังใส่หู
     if (clean.isEmpty || !_live || !_mind) return Future<void>.value();
+
+    // คุยสดอยู่ = ให้เซสชันเดียวกันพูด (เสียงเดียวกัน ช่องเดียวกัน ไม่ชนกัน) ·
+    // คำที่พูดจริงกลับมาเป็นบทของเธอเอง ([RealtimeCall.onHerText]) ไม่ต้องจดซ้ำ
+    final rt = _rt;
+    if (rt != null && rt.connected) {
+      rt.say(clean);
+      return Future<void>.value();
+    }
 
     // กันกดส่งซ้อน — คืน Future เดิมให้คนกดซ้ำ ไม่ใช่พูดซ้ำสองรอบทับกัน
     final running = _saying;
@@ -395,7 +411,16 @@ class CallSession extends ChangeNotifier {
   /// (เน็ตหลุดตอนขับรถ) และตอนนั้นเจ้าของต้องเห็นว่าเกิดอะไรขึ้น
   Future<void> _converse() async {
     try {
-      await _talk();
+      // คุยสด (OpenAI Realtime) ก่อน ถ้าตั้งไว้ · ต่อไม่ได้ = ทางเดิม · หลุดกลางสาย =
+      // ทางเดิมต่อจากที่ค้าง (ไม่ทักซ้ำ)
+      var greeted = false;
+      var done = false;
+      if (_state.realtimeCallsReady) {
+        final r = await _talkRealtime();
+        greeted = r != _RtResult.couldNotStart;
+        done = r == _RtResult.ended;
+      }
+      if (!done && _live && _mind && !_disposed) await _talk(greet: !greeted);
     } on OpenAiFailure catch (e) {
       _error = e.message;
     } on Object catch (e) {
@@ -411,8 +436,136 @@ class CallSession extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> _talk() async {
-    await _speak(_state.callGreeting(), remember: true);
+  // ── คุยสด (OpenAI Realtime) ─────────────────────────────
+  //
+  // ดู realtime_call.dart · ไมค์เปิดค้างทั้งสายอยู่แล้ว ([_mic]) → ส่งเข้าเซสชัน
+  // **ยกเว้นตอนเสียงเธอยังออกลำโพง** (ลำโพง/ไมค์เดียวกัน ส่งไปเธอจะได้ยินตัวเองแล้ว
+  // ตอบตัวเอง) · เสียงเธอเป็นชิ้น PCM ส่งเข้าช่องเสียงสดของเนทีฟทันทีที่มาถึง
+
+  RealtimeCall? _rt;
+  Completer<void>? _rtEnded;
+
+  /// เธอกำลังตอบอยู่ (ตั้งแต่เซิร์ฟเวอร์เริ่มคำตอบจนจบ) — เสียงอาจยังค้างในลำโพงหลังนี้
+  bool _rtResponding = false;
+
+  /// กั้นไมค์ไม่ให้เข้าเซสชัน · เริ่มที่กั้น (เธอกำลังจะทัก)
+  bool _rtGated = true;
+  bool _rtLips = false;
+  DateTime _rtOpenAt = DateTime(0);
+
+  /// จบเซสชันคุยสด (สายจบ / เจ้าของแทรกสาย / ทิ้งตัวนี้)
+  void _endRealtime() {
+    final e = _rtEnded;
+    if (e != null && !e.isCompleted) e.complete();
+  }
+
+  Future<_RtResult> _talkRealtime() async {
+    final rt = _state.openRealtimeCall();
+    final ended = Completer<void>();
+    var dropped = false;
+    _rt = rt;
+    _rtEnded = ended;
+    _rtResponding = false;
+    _rtGated = true;
+
+    rt.onAudio = (pcm) {
+      unawaited(_invoke('liveAudioWrite', {'pcm': pcm}));
+    };
+    rt.onResponseStart = () {
+      _rtResponding = true;
+      _rtGated = true;
+    };
+    rt.onResponseDone = () {
+      _rtResponding = false;
+    };
+    rt.onHerText = (t) {
+      _lines.add(CallLine.her(t));
+      _notify();
+    };
+    rt.onCallerText = (t) {
+      _lines.add(CallLine.them(t));
+      _heardRounds++;
+      _turn = CallTurn.thinking;
+      _notify();
+    };
+    rt.onError = (m) {
+      if (!rt.connected && !ended.isCompleted) {
+        dropped = true;
+        ended.complete();
+      }
+    };
+
+    if (await _invoke<bool>('liveAudioStart', {'stream': _state.callStream}) != true) {
+      _rt = null;
+      return _RtResult.couldNotStart;
+    }
+    try {
+      await rt.start();
+    } on Object catch (e) {
+      debugPrint('สาย: คุยสดต่อไม่ได้ ใช้ทางเดิม — ${e.runtimeType}');
+      await _invoke('liveAudioStop');
+      await rt.close();
+      _rt = null;
+      return _RtResult.couldNotStart;
+    }
+
+    _rounds = 1;
+    final started = DateTime.now();
+    if (!await _openMic()) _markDeaf();
+    _onChunk = (chunk, level) {
+      _micLevel = level;
+      if (!_rtGated) rt.sendMic(chunk);
+    };
+    _turn = CallTurn.talking;
+    _notify();
+
+    // ฟังลำโพงเนทีฟว่าเสียงเธอหมดหรือยัง → เปิด/ปิดไมค์ · ปาก · สถานะบนจอ
+    var busy = false;
+    final tick = Timer.periodic(const Duration(milliseconds: 150), (_) async {
+      if (busy || ended.isCompleted) return;
+      busy = true;
+      try {
+        final pending = await _invoke<int>('liveAudioPending') ?? 0;
+        final now = DateTime.now();
+        final speaking = _rtResponding || pending > 0;
+        if (speaking) _rtOpenAt = now.add(_echoTail);
+        _rtGated = speaking || now.isBefore(_rtOpenAt);
+
+        if (speaking != _rtLips) {
+          _rtLips = speaking;
+          unawaited(_lips?.setBabble(speaking));
+        }
+        final turn = speaking
+            ? CallTurn.talking
+            : (_turn == CallTurn.thinking ? CallTurn.thinking : CallTurn.listening);
+        if (turn != _turn && _turn != CallTurn.handedOver) {
+          _turn = turn;
+          _notify();
+        }
+        // เงียบสนิทระดับสัญญาณนานเกิน = เครื่องไม่ให้ฟัง (ส่วนใหญ่: ยังไม่เปิดการช่วยเหลือพิเศษ)
+        if (!_deaf && _peakEver < _floorMin && now.difference(started) > const Duration(seconds: 25)) {
+          _markDeaf();
+        }
+      } finally {
+        busy = false;
+      }
+    });
+
+    await ended.future;
+    tick.cancel();
+    _onChunk = null;
+    if (_rtLips) {
+      _rtLips = false;
+      unawaited(_lips?.setBabble(false));
+    }
+    await rt.close();
+    if (identical(_rt, rt)) _rt = null;
+    await _invoke('liveAudioStop');
+    return dropped && _live && _mind && !_disposed ? _RtResult.dropped : _RtResult.ended;
+  }
+
+  Future<void> _talk({bool greet = true}) async {
+    if (greet) await _speak(_state.callGreeting(), remember: true);
 
     while (_live && _mind && !_disposed) {
       // 🔴 เจ้าของพิมพ์ให้เธอพูดอยู่ ([say]) = รอให้พูดจบก่อนค่อยเปิดไมค์
@@ -566,8 +719,16 @@ class CallSession extends ChangeNotifier {
   static const _floorMin = .012;
 
   /// เปิดไมค์ของทั้งสาย (ถ้ายังไม่เปิด) · false = เปิดไม่ได้ / ไม่มีสิทธิ์
-  Future<bool> _openMic() async {
-    if (_mic != null) return true;
+  Future<bool> _openMic() {
+    if (_mic != null) return Future.value(true);
+    // 🔴 เปิดพร้อมกันสองทาง (ตอนเริ่มสาย + ตอนเริ่มคุย) = ปลั๊กอินอัดสองสตรีมซ้อน ·
+    // คนมาทีหลังรอคำตอบของคนแรก
+    return _opening ??= _doOpenMic().whenComplete(() => _opening = null);
+  }
+
+  Future<bool>? _opening;
+
+  Future<bool> _doOpenMic() async {
     if (!await _canListen()) return false;
     try {
       final stream = await _recorder.startStream(
@@ -951,6 +1112,7 @@ class CallSession extends ChangeNotifier {
     _disposed = true;
     _poll?.cancel();
     _watch.removeListener(_onWatch);
+    _endRealtime();
     unawaited(_closeMic());
     unawaited(_finishRecording());
     _lazyRecorder?.dispose();

@@ -283,6 +283,8 @@ class MindAvatarController extends ChangeNotifier
       _stageQuietUntil == null || DateTime.now().isAfter(_stageQuietUntil!);
 
   /// ขยับปากแบบประมาณ ตอนเสียงเล่นทางเครื่องเล่นของ Android แทนเวที
+  /// (และเสียงสดในสาย — ดู [MindLips.setBabble])
+  @override
   Future<void> setBabble(bool on) => _call('window.minde.babble($on)');
 
   /// renderer ของ WebView ตาย (ส่วนใหญ่ระบบฆ่าทิ้งตอนหน่วยความจำไม่พอ ·

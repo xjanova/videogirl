@@ -880,6 +880,17 @@ class S {
         'เครื่องนี้ไม่ให้เธอได้ยินปลายสาย · เปิด "ให้มายด์ได้ยินสาย" ที่ ตั้งค่าเครื่อง → การช่วยเหลือพิเศษ → GigGok',
         'This phone gives her only silence during calls · turn on "Let Mind hear calls" in Settings → Accessibility → GigGok',
       );
+  String get realtimeCalls => _('คุยสดแบบ Realtime (OpenAI)', 'Live talk with Realtime (OpenAI)');
+  String get realtimeCallsHint => _(
+        'ตอบไวแบบแอป ChatGPT · ใช้เมื่อสมองเป็น OpenAI ด้วยคีย์ของคุณ · คิดเงินตามเสียงจากคีย์คุณ แพงกว่าแบบเดิม · '
+            'ต่อไม่ได้จะใช้แบบเดิมให้เอง · พูดทีละฝั่ง: แทรกกลางประโยคเธอไม่ได้',
+        'Answers as fast as the ChatGPT app · used when the brain is OpenAI with your own key · billed per audio on your key, '
+            'more than the classic way · falls back to it if it cannot connect · one side at a time: the caller cannot cut in mid-sentence',
+      );
+  String get realtimeNeedsOpenAi => _(
+        'ตอนนี้ไม่ได้ใช้ เพราะสมองไม่ใช่ OpenAI ด้วยคีย์ของคุณ',
+        'Not in use: the brain is not OpenAI with your own key',
+      );
   String get recordCalls => _('บันทึกเสียงสนทนาในสาย', 'Record her calls');
   String get recordCallsHint => _(
         'เก็บในเครื่องเท่านั้น ฟังย้อนหลังได้ที่บันทึกสายในไทม์ไลน์ ลบพร้อมบันทึกสาย · เธอบอกคู่สายตอนทักว่ามีการบันทึก',

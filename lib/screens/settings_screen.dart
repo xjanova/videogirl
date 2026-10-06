@@ -3264,6 +3264,34 @@ class _SettingsScreenState extends State<SettingsScreen>
               ],
             ),
             const SizedBox(height: 10),
+            // คุยสด (OpenAI Realtime) · เจ้าของ: "ต้องทำ real time พูดคุยเลย ถ้าตั้งค่าเป็น open ai"
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 3,
+                    children: [
+                      Text(S.of(context).realtimeCalls,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text(S.of(context).realtimeCallsHint,
+                          style: const TextStyle(
+                              fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                      if (state.realtimeCalls && !state.realtimeCallsReady)
+                        Text(S.of(context).realtimeNeedsOpenAi,
+                            style: const TextStyle(
+                                fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
+                    ],
+                  ),
+                ),
+                _toggle(
+                  on: state.realtimeCalls,
+                  mode: mode,
+                  onTap: () => state.setRealtimeCalls(!state.realtimeCalls),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(

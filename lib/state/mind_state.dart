@@ -38,6 +38,7 @@ import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
 import '../ai/proxy_account.dart';
 import '../ai/web_tools.dart';
+import '../phone/realtime_call.dart';
 import '../brainx/brainx_cloud.dart';
 import '../brainx/brainx_link.dart';
 import '../ai/secret_store.dart';
@@ -394,6 +395,7 @@ class MindState extends ChangeNotifier {
     _contactsOnly = p.getBool('autoAnswerContactsOnly') ?? false;
     _showOnCall = p.getBool('showMindOnCall') ?? true;
     _recordCalls = p.getBool('recordCalls') ?? true;
+    _realtimeCalls = p.getBool('realtimeCalls') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
     _callStream = p.getString('callStream') ?? callStreamCall;
 
@@ -1427,6 +1429,43 @@ class MindState extends ChangeNotifier {
   /// ปากบนเวทีอ่านคลื่นจากไบต์ชุดเดียวกันนี้แบบปิดเสียง (ดู [MindLips])
   Future<Utterance> speakForCall(String text) =>
       synthesizeWithFallback(text, voiceFor(VoiceChannel.answer));
+
+  // ═══ คุยสดในสาย (OpenAI Realtime) ═════════════════════════
+  //
+  // เจ้าของ: "ต้องทำ real time พูดคุยเลย ถ้าตั้งค่าเป็น open ai" · ใช้เมื่อสมองเป็น
+  // OpenAI ด้วยคีย์ของเจ้าของ · ต่อไม่ได้ = ตกไปทางเดิม (ฟัง → ถอด → คิด → พูด)
+
+  /// เปิดเป็นค่าตั้งต้น · ปิดได้ (Realtime คิดเงินตามเสียง แพงกว่าทางเดิม)
+  bool _realtimeCalls = true;
+  bool get realtimeCalls => _realtimeCalls;
+
+  void setRealtimeCalls(bool v) {
+    if (_realtimeCalls == v) return;
+    _realtimeCalls = v;
+    _save('realtimeCalls', v);
+    _notify();
+  }
+
+  /// สายนี้คุยสดได้ไหม · ไม่ใช่ OpenAI ด้วยคีย์ตัวเอง = ไม่ได้ (ไม่ยืมคีย์ข้ามสมอง)
+  bool get realtimeCallsReady =>
+      _realtimeCalls && _brain == BrainProvider.openai && hasOwnKey;
+
+  /// ทางต่อ WebSocket · เทสต์ฉีดของปลอม
+  @visibleForTesting
+  RtConnect? debugRealtimeConnect;
+
+  /// เซสชันคุยสดของสายนี้ · prompt เดียวกับทางเดิม (ไม่มีข้อมูลส่วนตัว — [callPrompt])
+  RealtimeCall openRealtimeCall() {
+    return RealtimeCall(
+      apiKey: effectiveOpenAiKey,
+      instructions: callPrompt(),
+      greeting: callGreeting(),
+      // เสียงที่ตั้งไว้ให้ "ตอบรับสาย" · ไม่ใช่เสียงที่ Realtime รู้จัก = marin
+      voice: voiceFor(VoiceChannel.answer).voice,
+      language: _sttLang,
+      connect: debugRealtimeConnect,
+    );
+  }
 
   /// ถอดเสียงปลายสายเป็นข้อความ
   ///
