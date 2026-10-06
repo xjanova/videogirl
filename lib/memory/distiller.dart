@@ -23,9 +23,12 @@ const kDistillEvery = 6;
 /// สิ่งที่สกัดได้หนึ่งข้อ ก่อนจะถูกกลั่นเข้าความจำจริง
 @immutable
 class DistilledFact {
-  const DistilledFact(this.kind, this.text);
+  const DistilledFact(this.kind, this.text, {this.replaces});
   final MemoryKind kind;
   final String text;
+
+  /// ข้อความเดิมที่เรื่องนี้มาแทน (ย้ายบ้าน เปลี่ยนงาน) · null = เรื่องใหม่ล้วน
+  final String? replaces;
 }
 
 /// คำสั่งที่ส่งให้โมเดล
@@ -49,6 +52,8 @@ String distillPrompt(bool thai) => thai
 - เขียนสั้น หนึ่งบรรทัดหนึ่งเรื่อง ไม่เกิน 200 ตัวอักษร
 - เอาเฉพาะเรื่องที่จะยังจริงในอีกเดือนหนึ่ง ไม่เอานัดหมายเฉพาะวัน
 - **ห้ามใส่รหัสผ่าน เลขบัตร OTP เลขบัญชี หรือความลับใด ๆ เด็ดขาด**
+- ถ้าเรื่องใหม่**แทน**เรื่องที่รู้อยู่แล้ว (ย้ายบ้าน เปลี่ยนงาน เลิกชอบอะไร)
+  ให้เขียนแบบนี้แทน  replace|ข้อความเดิมตามที่อยู่ในรายการ|ข้อความใหม่
 - ถ้าไม่มีอะไรใหม่ที่ควรจำ ตอบคำเดียวว่า NONE
 
 จากนั้นขึ้นบรรทัดใหม่อีกหนึ่งบรรทัดเสมอ รูปแบบ  TREAT|ตัวเลข
@@ -92,6 +97,9 @@ Rules:
 - Keep each line short, one thing per line, under 200 characters
 - Only things still true in a month — not one-off appointments
 - **Never include passwords, card numbers, OTPs, account numbers or any secret**
+- If something new **replaces** a fact already known (moved house, changed job,
+  stopped liking something), write it this way instead:
+  replace|the old text exactly as listed|the new text
 - If there is nothing new worth remembering, answer with the single word NONE
 
 Then always add one more line, in the form  TREAT|number
@@ -172,6 +180,21 @@ List<DistilledFact> parseDistilled(String raw) {
     if (line.isEmpty) continue;
 
     if (line.toUpperCase() == 'NONE') continue;
+
+    // replace|ข้อความเดิม|ข้อความใหม่ — เรื่องที่มาแทนเรื่องเดิม
+    if (line.toLowerCase().startsWith('replace|')) {
+      final parts = line.split('|');
+      if (parts.length < 3) continue;
+      final old = parts[1].trim();
+      final now = parts.sublist(2).join('|').trim();
+      if (old.isEmpty || now.isEmpty || now.length > kMemoryMaxChars) continue;
+      if (looksLikeSecret(now)) {
+        debugPrint('distill: ทิ้งบรรทัดที่เข้าข่ายความลับ');
+        continue;
+      }
+      out.add(DistilledFact(MemoryKind.fact, now, replaces: old));
+      continue;
+    }
 
     final bar = line.indexOf('|');
     // ไม่มีขีดคั่น = โมเดลลืมใส่ชนิด · ยังเอาข้อความไว้ ถือเป็น fact

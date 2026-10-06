@@ -761,6 +761,7 @@ class LocalBrain extends ChangeNotifier {
     required List<Turn> history,
     void Function(String partial)? onPartial,
     ReplyCap cap = ReplyCap.chat,
+    String recall = '',
   }) {
     final done = Completer<String>();
     final ticket = _abortTicket;
@@ -769,7 +770,11 @@ class LocalBrain extends ChangeNotifier {
         // ถูกสั่งเลิกระหว่างรอคิว (ปุ่มออกจากแอป) = ไม่ต้องเริ่มคิดเลย
         if (ticket != _abortTicket) throw OpenAiFailure(_s().errLocalStopped);
         done.complete(await _reply(
-            system: system, history: history, onPartial: onPartial, cap: cap));
+            system: system,
+            history: history,
+            onPartial: onPartial,
+            cap: cap,
+            recall: recall));
       } on Object catch (e, st) {
         // คิวต้องไม่พังตามงานที่ล้ม ไม่งั้นทุกคำถามหลังจากนี้จะล้มตามกันหมด
         done.completeError(e, st);
@@ -783,6 +788,7 @@ class LocalBrain extends ChangeNotifier {
     required List<Turn> history,
     void Function(String partial)? onPartial,
     required ReplyCap cap,
+    String recall = '',
   }) async {
     // 🔴 `unknown` ไม่ใช่ "ยังไม่ได้โหลด" แต่คือ "ยังไม่ได้ดู"
     //
@@ -824,8 +830,12 @@ class LocalBrain extends ChangeNotifier {
 
       // ต่อจากของเดิมได้ = เนทีฟถือประวัติไว้ครบแล้ว ส่งแค่คำล่าสุดพอ
       // ต่อไม่ได้ = session เพิ่งเกิดใหม่และว่างเปล่า ต้องเล่าย้อนให้ฟังก่อน
+      // บันทึกช่วยจำ (สิ่งที่นึกออก) แนบหน้าข้อความ **ตอนส่งเท่านั้น**
+      // · ไม่ลง [_fed] ซึ่งจำตามบทสนทนาจริง ไม่งั้นตาถัดไปเทียบไม่ตรง แล้ว
+      // ต้องเปิด session ใหม่ทุกตา (ดู MindState.recallFor)
+      final said = continued ? last : _withTranscript(history);
       await chat.addQuery(Message.text(
-        text: continued ? last : _withTranscript(history),
+        text: recall.isEmpty ? said : '$recall\n\n$said',
         isUser: true,
       ));
 

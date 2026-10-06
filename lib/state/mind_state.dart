@@ -12,6 +12,7 @@ import '../store/mind_vault.dart';
 import '../license/mind_license.dart';
 import '../store/mind_store.dart';
 
+import '../memory/chat_recall.dart';
 import '../memory/distiller.dart';
 import '../calendar/device_calendar.dart';
 import '../journal/mind_journal.dart';
@@ -377,6 +378,8 @@ class MindState extends ChangeNotifier {
     // การเอาบทตัวอย่างมาทับคือการลบสิ่งที่ผู้ใช้พิมพ์เองทิ้ง
     if (_store?.db != null) {
       await _loadContextFromDb();
+      // ดัชนีบทสนทนาเก่าทำทีหลังได้ · ไม่ขวางการเปิดแอป (แบ่งเป็นช่วงอยู่แล้ว)
+      unawaited(_chatRecall.load(_store!.db!));
       // ครั้งแรกหลังอัปเดตแอป ฐานยังว่างแต่ของเก่ายังอยู่ใน prefs
       // ดูดเข้ามาให้ครบก่อน ไม่งั้นเจ้าของจะเปิดแอปมาเจอว่าเธอลืมทุกอย่าง
       // ทั้งที่เพิ่งกดอัปเดตแอปเฉย ๆ
@@ -1213,7 +1216,7 @@ class MindState extends ChangeNotifier {
       boundaries: _boundaries,
       onCall: true,
       soul: _soul,
-      memories: memory.promptBlock(),
+      memories: memory.promptBlock(limit: coreMemories),
       schedule: _calendar?.promptBlock() ?? '',
       // 🔴 ไม่ใส่เรื่องที่คนอื่นฝากไว้ · คู่สายคนนี้คือคนแปลกหน้า และเป็นช่องทาง
       // เดียวที่คนนอกพิมพ์เข้า prompt ได้ ("คนก่อนหน้าโทรมาเรื่องอะไรคะ")
@@ -1312,7 +1315,12 @@ class MindState extends ChangeNotifier {
   void _remember(ChatMessage m) {
     final db = _store?.db;
     if (db != null) {
-      unawaited(db.addMessage(fromHer: m.fromHer, text: m.text));
+      final at = DateTime.now();
+      unawaited(db.addMessage(fromHer: m.fromHer, text: m.text).then(
+            // ทำดัชนีด้วย id จากฐาน · ระบบนึกออกหาคู่ "ถาม → ตอบ" จากลำดับ id
+            (id) => _chatRecall.add((id: id, fromHer: m.fromHer, text: m.text, at: at)),
+            onError: (Object e) => debugPrint('state: เก็บข้อความไม่ได้ — ${e.runtimeType}'),
+          ));
       _scheduleVault();
       return;
     }
@@ -1885,7 +1893,7 @@ class MindState extends ChangeNotifier {
       ownerProfile: _ownerProfile,
       boundaries: _boundaries,
       soul: _soul,
-      memories: memory.promptBlock(),
+      memories: memory.promptBlock(limit: coreMemories),
       schedule: _calendar?.promptBlock() ?? '',
       calls: _callsBlock,
       now: _clock(),
@@ -1893,7 +1901,84 @@ class MindState extends ChangeNotifier {
     final history = [
       for (final m in _context) (fromHer: m.fromHer, text: m.text),
     ];
-    return _askBrain(system, history, onPartial: _showPartial);
+    return _askBrain(system, history,
+        onPartial: _showPartial, recall: recallFor(history));
+  }
+
+  // ═══ นึกออก — ความจำและบทสนทนาเก่าตามเรื่องที่คุย ═══════════
+  //
+  // 🔴 ของเดิมยัด "ปักหมุด + ใหม่สุด 60 ข้อ" เข้าทุกครั้ง · จำเกิน 60 ข้อแล้ว
+  // เรื่องเก่าหลุดถาวร และบทสนทนาที่เก่ากว่า 16 บรรทัดค้นไม่ได้เลย
+  //
+  // ตอนนี้: system prompt ถือแค่แกน (ปักหมุด + ใหม่สุด) · ที่เหลือ "นึกเอา"
+  // ตามข้อความล่าสุด แล้วแนบไว้หน้าข้อความนั้นเป็นบันทึกช่วยจำ
+  //
+  // 🔴 **ไม่ใส่ใน system prompt** โดยตั้งใจ · สมองในเครื่องใช้ session เดิมต่อ
+  // เมื่อ system prompt ไม่เปลี่ยน (ดู LocalBrain.sessionKeyOf) · ถ้าสิ่งที่นึก
+  // ออกอยู่ในนั้น system prompt จะเปลี่ยนทุกตา = อ่านบทสนทนาใหม่ทั้งหมดทุกตา
+  // ซึ่งคือส่วนที่ช้าที่สุดบนมือถือ
+
+  /// ความจำที่อยู่ใน system prompt ทุกครั้ง (ปักหมุดก่อน แล้วใหม่สุด)
+  static const coreMemories = 24;
+
+  final ChatRecall _chatRecall = ChatRecall();
+
+  /// ข้อความที่ยาวกว่านี้บอกเรื่องในตัวเอง · สั้นกว่า ("แล้วอันนั้นล่ะ") ต้องอาศัย
+  /// ข้อความก่อนหน้าช่วยบอกว่าคุยเรื่องอะไรอยู่
+  static const _shortAsk = 15;
+
+  /// บันทึกช่วยจำสำหรับข้อความล่าสุดของเจ้าของ · ว่าง = ไม่มีอะไรเกี่ยวพอ
+  @visibleForTesting
+  String recallFor(List<({bool fromHer, String text})> history) {
+    final mine = [for (final t in history) if (!t.fromHer) t.text.trim()];
+    if (mine.isEmpty || history.last.fromHer) return '';
+    var query = mine.last;
+    if (query.length < _shortAsk && mine.length >= 2) {
+      query = '$query\n${mine[mine.length - 2]}';
+    }
+
+    final core = {for (final f in memory.forPrompt(limit: coreMemories)) f.id};
+    final facts = memory.recall(query, skip: core, limit: 6);
+    final past = _chatRecall.search(query, limit: 3, skipNewest: _contextLimit);
+    if (facts.isEmpty && past.isEmpty) return '';
+
+    String clip(String? t) {
+      final v = (t ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+      return v.length <= 140 ? v : '${v.substring(0, 139)}…';
+    }
+
+    final her = _soul?.name ?? s.speakerHer;
+    final b = StringBuffer()..writeln(s.recallOpen);
+    if (facts.isNotEmpty) {
+      b.writeln(s.recallFacts);
+      for (final f in facts) {
+        b.writeln('- ${f.text}');
+      }
+    }
+    if (past.isNotEmpty) {
+      b.writeln(s.recallPast);
+      for (final p in past) {
+        final parts = [
+          if (p.ask != null) '${s.speakerMe}: ${clip(p.ask)}',
+          if (p.answer != null) '$her: ${clip(p.answer)}',
+        ];
+        b.writeln('- ${s.dayLabel(p.at)}: ${parts.join(' → ')}');
+      }
+    }
+    b.write(s.recallClose);
+    return b.toString();
+  }
+
+  /// แนบบันทึกช่วยจำไว้หน้าข้อความล่าสุด (สมองที่ไม่ถือ session · ทางเน็ต)
+  static List<({bool fromHer, String text})> withRecall(
+    List<({bool fromHer, String text})> history,
+    String recall,
+  ) {
+    if (recall.isEmpty || history.isEmpty || history.last.fromHer) return history;
+    return [
+      ...history.sublist(0, history.length - 1),
+      (fromHer: false, text: '$recall\n\n${history.last.text}'),
+    ];
   }
 
   /// ยิงคำถามไปที่สมองที่เลือกไว้
@@ -1906,18 +1991,23 @@ class MindState extends ChangeNotifier {
     List<({bool fromHer, String text})> history, {
     void Function(String partial)? onPartial,
     ReplyCap cap = ReplyCap.chat,
+    String recall = '',
   }) async {
     if (_brain == BrainProvider.onDevice) {
       debugPrint('สมอง: ในเครื่อง ${localBrain.variant.label}');
       return localBrain.reply(
-          system: system, history: history, onPartial: onPartial, cap: cap);
+          system: system,
+          history: history,
+          onPartial: onPartial,
+          cap: cap,
+          recall: recall);
     }
 
     final (:client, :model, :ours) = _networkBrain();
     try {
       return await client.reply(
         system: system,
-        history: history,
+        history: withRecall(history, recall),
         model: model,
       );
     } finally {
@@ -2191,7 +2281,17 @@ class MindState extends ChangeNotifier {
       );
       // บอกสิ่งที่รู้อยู่แล้วไปด้วย · prompt สั่งว่า "เอาแค่เรื่องใหม่" แต่ของเดิม
       // ไม่เคยบอกว่ารู้อะไรอยู่แล้ว เรื่องเดิมที่เขียนต่างไปนิดเดียวจึงพอกจนเต็มเพดาน
-      final known = memory.promptBlock(limit: 40);
+      //
+      // 🔴 ข้อที่**เกี่ยวกับบทสนทนานี้**ก่อน แล้วค่อยใหม่สุด · ของเดิมให้แค่ใหม่สุด
+      // 40 ข้อ เรื่องเก่าที่กำลังถูกพูดถึงอีกครั้งจึงไม่อยู่ในรายการ แล้วถูกจำซ้ำ
+      // (และโมเดลเขียน replace| ทับเรื่องเดิมไม่ได้ถ้ามองไม่เห็นเรื่องเดิม)
+      final related = memory.recall(block, limit: 20);
+      final relatedIds = {for (final f in related) f.id};
+      final known = [
+        for (final f in related) '- ${f.text}',
+        for (final f in memory.forPrompt(limit: 30))
+          if (!relatedIds.contains(f.id)) '- ${f.text}',
+      ].take(40).join('\n');
       final raw = await _askBrain(
         distillPrompt(_lang == AppLang.th),
         [
@@ -2208,7 +2308,10 @@ class MindState extends ChangeNotifier {
 
       var kept = 0;
       for (final f in parseDistilled(raw)) {
-        if (await memory.remember(f.text, kind: f.kind)) {
+        final ok = f.replaces == null
+            ? await memory.remember(f.text, kind: f.kind)
+            : await memory.replace(f.replaces!, f.text, kind: f.kind);
+        if (ok) {
           kept++;
           // ลงบันทึกทีละเรื่อง ไม่ใช่ "จำเพิ่ม 3 เรื่อง" — เจ้าของต้องเห็นว่า
           // เธอจำ**อะไร** ไป ไม่ใช่แค่ว่าจำไปกี่เรื่อง ไม่งั้นจะตรวจไม่ได้เลย

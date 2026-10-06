@@ -25,6 +25,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../store/mind_db.dart';
+import 'recall.dart';
 
 /// ชนิดของสิ่งที่จำ — มีผลกับการเรียงและการตัดทิ้ง
 enum MemoryKind {
@@ -104,6 +105,15 @@ class MemoryFact {
 /// ยิ่งเยอะยิ่งแพงและยิ่งกลบสิ่งที่สำคัญจริง · เกินแล้วตัดตัวเก่าสุดที่ไม่ได้ปักหมุด
 const kMemoryLimit = 200;
 
+/// ใกล้กันเท่านี้ขึ้นไป = เรื่องเดียวกัน ไม่จำซ้ำ (ดู [MindMemory.sameFact])
+/// · สูงโดยตั้งใจ: ประโยคยาวที่ต่างกันคำเดียวมีสัดส่วนตรงกันสูงได้ทั้งที่เป็นคนละเรื่อง
+/// · ตัวเลขต่างกัน ("ห้อง 5" / "ห้อง 7") ไม่นับว่าเรื่องเดียวกันเลย ไม่ว่าจะใกล้แค่ไหน
+const kSameThreshold = 0.9;
+
+/// เรื่องใหม่ที่แทนเรื่องเดิม ต้องใกล้ข้อเดิมอย่างน้อยเท่านี้ถึงจะแก้ข้อนั้น
+/// · โมเดลมักลอกข้อเดิมมาไม่ตรงทุกตัว จึงต่ำกว่าเกณฑ์จำซ้ำ
+const kReplaceThreshold = 0.45;
+
 /// อย่าจำอะไรที่ยาวเกินนี้ — ความจำคือ "ข้อเท็จจริงหนึ่งบรรทัด"
 /// ไม่ใช่ที่เก็บบทสนทนาทั้งท่อน ถ้ายาวกว่านี้แปลว่าสกัดมาไม่ดี
 const kMemoryMaxChars = 240;
@@ -157,6 +167,7 @@ class MindMemory extends ChangeNotifier {
   Future<void> load() async {
     if (_loaded) return;
     _loaded = true;
+    _index = null;
 
     final db = _db;
     if (db != null) {
@@ -242,6 +253,9 @@ class MindMemory extends ChangeNotifier {
       return false;
     }
     if (_facts.any((f) => _same(f.text, t))) return false;
+    // 🔴 เรื่องเดิมที่เขียนต่างนิดเดียว ("แพ้กุ้ง" / "แพ้กุ้งค่ะ") = ไม่จำซ้ำ
+    // ของเดิมเทียบตัวอักษรตรงเป๊ะอย่างเดียว ความจำจึงพอกด้วยเรื่องเดิมหลายถ้อยคำ
+    if (_facts.any((f) => sameFact(f.text, t))) return false;
 
     _facts.add(MemoryFact(
       id: '${DateTime.now().microsecondsSinceEpoch}',
@@ -253,6 +267,56 @@ class MindMemory extends ChangeNotifier {
     await _save();
     notifyListeners();
     return true;
+  }
+
+  /// เรื่องใหม่ที่**แทน**เรื่องเดิม (ย้ายบ้าน เปลี่ยนงาน เลิกกาแฟ)
+  ///
+  /// 🔴 ของเดิมเก็บทั้งเก่าและใหม่ไว้คู่กัน "อยู่กรุงเทพ" กับ "ย้ายไปเชียงใหม่"
+  /// · เธอได้ทั้งสองข้อแล้วเลือกผิดข้อได้ทุกเมื่อ · แก้ข้อเดิม (คงปักหมุดไว้)
+  /// แทนการเพิ่มข้อใหม่ · หาข้อเดิมไม่เจอ = จำเป็นเรื่องใหม่ธรรมดา
+  Future<bool> replace(String oldText, String newText,
+      {MemoryKind kind = MemoryKind.fact}) async {
+    final t = newText.trim();
+    if (t.isEmpty || t.length > kMemoryMaxChars || looksLikeSecret(t)) return false;
+    MemoryFact? best;
+    var score = 0.0;
+    for (final f in _facts) {
+      final s = RecallIndex.similarity(f.text, oldText);
+      if (s > score) {
+        score = s;
+        best = f;
+      }
+    }
+    if (best == null || score < kReplaceThreshold) return remember(t, kind: kind);
+    final i = _facts.indexWhere((f) => f.id == best!.id);
+    _facts[i] = _facts[i].copyWith(text: t);
+    await _save();
+    notifyListeners();
+    return true;
+  }
+
+  // ═══ นึกออก — ดู recall.dart ════════════════════════════
+
+  /// ดัชนีของความจำ · สร้างใหม่เมื่อความจำเปลี่ยน (ไม่เกิน 200 ข้อ สร้างใหม่ถูกกว่าตามแก้)
+  RecallIndex? _index;
+
+  RecallIndex get _recall {
+    final have = _index;
+    if (have != null) return have;
+    final idx = RecallIndex();
+    for (final f in _facts) {
+      idx.put(f.id, f.text);
+    }
+    return _index = idx;
+  }
+
+  /// ข้อที่เกี่ยวกับ [query] ที่ยังไม่อยู่ใน [skip] (ส่วนใหญ่คือข้อที่อยู่ใน
+  /// system prompt แล้ว) · ว่าง = ไม่มีอะไรเกี่ยวพอ ไม่ต้องยัดอะไรเพิ่ม
+  List<MemoryFact> recall(String query, {Set<String> skip = const {}, int limit = 6}) {
+    if (_facts.isEmpty || query.trim().isEmpty) return const [];
+    final hits = _recall.search(query, limit: limit, exclude: skip);
+    final byId = {for (final f in _facts) f.id: f};
+    return [for (final h in hits) ?byId[h.id]];
   }
 
   Future<void> forget(String id) async {
@@ -317,6 +381,24 @@ class MindMemory extends ChangeNotifier {
     }
   }
 
+  /// เรื่องเดียวกันที่เขียนต่างกันนิดหน่อยไหม
+  ///
+  /// 🔴 ตัวเลขต้องตรงกันทุกตัว · "ลูกอายุ 5 ขวบ" กับ "ลูกอายุ 7 ขวบ" ใกล้กันมาก
+  /// ถ้าดูแค่ตัวอักษร แต่เป็นคนละเรื่อง (หรือเรื่องที่อัปเดต) · ทิ้งข้อใหม่ = เธอ
+  /// จำตัวเลขเก่าผิดไปตลอด
+  @visibleForTesting
+  static bool sameFact(String a, String b) {
+    if (_same(a, b)) return true;
+    final na = _digits.allMatches(a).map((m) => m[0]).toList();
+    final nb = _digits.allMatches(b).map((m) => m[0]).toList();
+    if (!listEquals(na, nb)) return false;
+    final c = RecallIndex.compare(a, b);
+    // ต่างแค่คำลงท้าย ("ค่ะ" "นะ") = ไม่กี่ชิ้น · ต่างที่เนื้อ (สยาม/สีลม) = หลายชิ้น
+    return c.diff <= 4 || c.jaccard >= kSameThreshold;
+  }
+
+  static final _digits = RegExp(r'[0-9๐-๙]+');
+
   /// เทียบว่าเป็นเรื่องเดียวกันไหม — ตัดช่องว่างและตัวพิมพ์ออกก่อน
   /// ไม่งั้นจะจำ "ชอบกาแฟดำ" กับ "ชอบกาแฟดำ " เป็นคนละเรื่อง
   static bool _same(String a, String b) =>
@@ -324,6 +406,7 @@ class MindMemory extends ChangeNotifier {
       b.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
   Future<void> _save() async {
+    _index = null; // ทุกทางที่แก้ความจำผ่านตรงนี้ · ดัชนีเก่าใช้ไม่ได้แล้ว
     final db = _db;
     if (db != null) {
       try {

@@ -196,6 +196,23 @@ extension AiStrings on S {
         'Already known (do not repeat these, even reworded):',
       );
 
+  // ── นึกออก (ดู memory/recall.dart) ──
+  // ห่อเป็นบันทึกช่วยจำที่แยกชัดจากคำพูดของเจ้าของ · ไม่แยก = โมเดลอ่านว่า
+  // เจ้าของเพิ่งพูดเรื่องเหล่านี้ แล้วตอบรับเรื่องที่เขาไม่ได้พูด
+  String get recallOpen => pick(
+        '(บันทึกช่วยจำของมายด์ ไม่ใช่คำพูดของเจ้าของ · ใช้เฉพาะที่เกี่ยวกับเรื่องตอนนี้จริง ๆ '
+            'ไม่ต้องบอกว่านึกมาจากไหน)',
+        "(Mind's own memory notes, not something the owner said · use only what truly "
+            'bears on this message, and do not say where it came from)',
+      );
+  String get recallFacts =>
+      pick('เรื่องที่จำได้ซึ่งอาจเกี่ยวข้อง:', 'Things remembered that may be relevant:');
+  String get recallPast => pick('เคยคุยกันไว้:', 'Talked about before:');
+  String get recallClose => pick(
+        '(จบบันทึกช่วยจำ · ข้อความของเจ้าของอยู่ถัดจากนี้)',
+        "(end of notes · the owner's message follows)",
+      );
+
   String get errKeyNotSaved => pick(
         'บันทึกคีย์ลงที่เก็บที่ปลอดภัยของเครื่องไม่ได้ — ใช้ได้รอบนี้ แต่ปิดแอปแล้วต้องใส่ใหม่',
         "Couldn't store the key in the phone's secure storage — it works for now, "

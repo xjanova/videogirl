@@ -343,6 +343,21 @@ class MindDb {
     ];
   }
 
+  /// บทสนทนาเก่าสำหรับระบบนึกออก ([ChatRecall]) · [limit] แถวล่าสุด เก่า→ใหม่
+  Future<List<({int id, bool fromHer, String text, DateTime at})>> messagesForRecall(
+      int limit) async {
+    final rows = await _db.query('messages', orderBy: 'id DESC', limit: limit);
+    return [
+      for (final r in rows.reversed)
+        (
+          id: r['id']! as int,
+          fromHer: r['from_her'] == 1,
+          text: r['text']! as String,
+          at: DateTime.fromMillisecondsSinceEpoch((r['at'] as int?) ?? 0),
+        ),
+    ];
+  }
+
   Future<int> countMessages() async =>
       Sqflite.firstIntValue(
           await _db.rawQuery('SELECT COUNT(*) FROM messages')) ??
