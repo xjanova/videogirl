@@ -388,6 +388,7 @@ Never, under any circumstances:
     String schedule = '',
     String calls = '',
     DateTime? now,
+    bool tools = false,
   }) {
     final s = S(lang);
 
@@ -544,6 +545,17 @@ Never, under any circumstances:
         ..writeln(calls.trim());
     }
 
+    // หาข้อมูลจากอินเทอร์เน็ต (ดู WebTools) · ไม่ใส่ตอนอยู่ในสาย — คนแปลกหน้า
+    // สั่งให้เธอยิงคำค้นออกไปข้างนอกไม่ได้
+    //
+    // 🔴 รูปแบบเป็นแท็กบรรทัดเดียวโดยตั้งใจ ไม่ใช่ function calling ของผู้ให้บริการ
+    // · ต้องใช้ได้กับทุกสมอง รวมทั้งสมองในเครื่องและ Ollama ที่ไม่มีระบบนั้น
+    if (tools && !onCall) {
+      buffer
+        ..writeln()
+        ..writeln(toolsBlock(lang));
+    }
+
     buffer
       ..writeln()
       ..writeln(s.pick('=== ขอบเขตที่ทำได้ ===', '=== What you may do ==='))
@@ -551,6 +563,28 @@ Never, under any circumstances:
 
     return buffer.toString();
   }
+
+  /// วิธีขอข้อมูลจากอินเทอร์เน็ต · แท็กที่ WebTools.parse อ่านได้ (ไทยหรืออังกฤษก็ได้)
+  static String toolsBlock(AppLang lang) => S(lang).pick(
+        '''
+=== หาข้อมูลจากอินเทอร์เน็ต ===
+ถ้าคำถามต้องใช้ข้อมูลที่คุณไม่รู้แน่ หรืออาจเปลี่ยนไปแล้ว ให้ตอบ**บรรทัดเดียว**ตามรูปแบบนี้ แล้วรอผล:
+[[ค้นหา: คำค้นสั้น ๆ]]  — ข้อเท็จจริงทั่วไป บุคคล สถานที่ ประวัติ ความหมาย (จากวิกิพีเดีย)
+[[อากาศ: ชื่อเมืองหรือจังหวัด]]  — พยากรณ์อากาศวันนี้ถึงพรุ่งนี้
+[[ค่าเงิน: USD THB]]  — อัตราแลกเปลี่ยน (รหัสสกุลเงินสามตัว)
+- ถ้ารู้คำตอบแน่อยู่แล้ว หรือเป็นเรื่องของเจ้าของ (ตาราง ความจำ สาย) ให้ตอบเลย ไม่ต้องค้น
+- ห้ามเดาข้อมูลที่เปลี่ยนตามเวลา (อากาศ ราคา อัตราแลกเปลี่ยน) เอง
+- ข่าวล่าสุดยังค้นไม่ได้ ให้บอกเจ้าของตรง ๆ''',
+        '''
+=== Looking things up on the internet ===
+If a question needs information you are not sure of, or that may have changed, reply with **one line only** in this form and wait for the result:
+[[search: short query]]  — general facts, people, places, history, meanings (from Wikipedia)
+[[weather: city or province]]  — weather forecast for today and tomorrow
+[[fx: USD THB]]  — exchange rate (three-letter currency codes)
+- If you already know the answer, or it is about the owner (schedule, memories, calls), just answer
+- Never guess things that change over time (weather, prices, exchange rates)
+- Latest news cannot be looked up yet — say so plainly''',
+      );
 
   static String _flirtWord(double f, AppLang lang) {
     final s = S(lang);

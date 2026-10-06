@@ -1509,6 +1509,32 @@ class _SettingsScreenState extends State<SettingsScreen>
               ],
             ),
           ),
+          // หาข้อมูลจากอินเทอร์เน็ต · ใช้ได้กับทุกสมอง จึงอยู่เหนือส่วนของแต่ละสมอง
+          const SizedBox(height: 10),
+          Row(
+            spacing: MindSpace.md,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 3,
+                  children: [
+                    Text(S.of(context).webSearchTitle,
+                        style: const TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w600, color: MindColors.ink)),
+                    Text(S.of(context).webSearchHint,
+                        style: const TextStyle(
+                            fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                  ],
+                ),
+              ),
+              _toggle(
+                on: state.webSearch,
+                mode: mode,
+                onTap: () => state.setWebSearch(!state.webSearch),
+              ),
+            ],
+          ),
           // บริการของเรา — ต้องมีรหัสสิทธิ์ ไม่งั้นหลังบ้านตอบ 401
           //
           // รุ่นและราคามาจากหลังบ้าน (แอดมินตั้ง) · โชว์เฉพาะรุ่นที่เปิดให้บริการ

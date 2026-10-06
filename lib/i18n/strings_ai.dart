@@ -69,6 +69,20 @@ extension AiStrings on S {
         'If the service turns off the model you picked, its first open model is used (at that price)',
       );
 
+  // ── ค้นข้อมูลจากอินเทอร์เน็ต (ดู ai/web_tools.dart) ──
+  String get webSearchTitle => pick('ให้เธอหาข้อมูลจากอินเทอร์เน็ต', 'Let her look things up online');
+  String get webSearchHint => pick(
+        'ถามเรื่องที่เธอไม่รู้ อากาศ หรือค่าเงิน เธอจะไปหามาตอบ · ส่งออกไปแค่คำค้น '
+            '(ไม่ใช่บทสนทนา) ที่วิกิพีเดีย · MET Norway (อากาศ) · Frankfurter (ค่าเงิน) · '
+            'ข่าวล่าสุดยังค้นไม่ได้ · ใช้สมองผ่านบริการเรา การค้นนับเป็นอีกหนึ่งข้อความ',
+        'Ask about something she does not know, the weather or exchange rates and she looks it up · '
+            'only the search words leave the phone (not the conversation), to Wikipedia · '
+            'MET Norway (weather) · Frankfurter (currencies) · latest news is not available yet · '
+            'with our service, a lookup counts as one more message',
+      );
+  String get lookingUpGeneric => pick('กำลังหาข้อมูล…', 'Looking it up…');
+  String lookingUp(String what) => pick('กำลังหาข้อมูล: $what…', 'Looking up: $what…');
+
   // ── เครดิตของ "ผ่านบริการเรา" ──
   String get proxyCreditTitle => pick('เครดิตคงเหลือ', 'Credit left');
   String proxyMoney(String amount) => pick('฿$amount', 'THB $amount');

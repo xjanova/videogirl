@@ -37,6 +37,7 @@ import '../ai/openai_config.dart';
 import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
 import '../ai/proxy_account.dart';
+import '../ai/web_tools.dart';
 import '../ai/secret_store.dart';
 import '../ai/speech_service.dart';
 import '../ai/voice_profile.dart';
@@ -337,6 +338,7 @@ class MindState extends ChangeNotifier {
     _licenseType = p.getString('licenseType') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
     _proxyModel = p.getString('proxyModel') ?? '';
+    _webSearch = p.getBool('webSearch') ?? true;
 
     for (final c in VoiceChannel.values) {
       final raw = p.getString('voice_${c.name}');
@@ -1502,7 +1504,8 @@ class MindState extends ChangeNotifier {
   /// แย่งเครื่องกับสมองที่กำลังคิด · วาดไม่เกินราว 10 ครั้งต่อวินาทีพอให้ตาเห็นว่าไหล
   void _showPartial(String text) {
     if (!_sending || _disposed) return;
-    _partial = text.trim();
+    // เธอกำลังพิมพ์แท็กขอค้น · ไม่โชว์ "[[ค้นหา: …" ให้เห็น บอกว่ากำลังหาแทน
+    _partial = WebTools.looksLikeTag(text) ? s.lookingUpGeneric : text.trim();
     final now = DateTime.now();
     if (now.difference(_partialAt) < const Duration(milliseconds: 100)) return;
     _partialAt = now;
@@ -1949,6 +1952,7 @@ class MindState extends ChangeNotifier {
   /// ทั้งสามทางรับ system prompt ตัวเดียวกัน บุคลิกของเธอจึงไม่เปลี่ยน
   /// ตามผู้ให้บริการ เปลี่ยนแค่ว่าใครเป็นคนคิด
   Future<String> _think() async {
+    final tools = _webSearch;
     final system = MindPersona.system(
       lang: _lang,
       mode: mode,
@@ -1960,13 +1964,63 @@ class MindState extends ChangeNotifier {
       schedule: _calendar?.promptBlock() ?? '',
       calls: _callsBlock,
       now: _clock(),
+      tools: tools,
     );
     final history = [
       for (final m in _context) (fromHer: m.fromHer, text: m.text),
     ];
-    return _askBrain(system, history,
-        onPartial: _showPartial, recall: recallFor(history));
+    final recall = recallFor(history);
+    var answer = await _askBrain(system, history, onPartial: _showPartial, recall: recall);
+    if (!tools) return answer;
+
+    // เธอขอข้อมูล (แท็ก [[ค้นหา: …]]) → ไปหาให้ → แนบผลแล้วให้ตอบอีกรอบ
+    //
+    // 🔴 ตาของเธอที่ขอค้นใส่เป็น**คำตอบดิบทั้งก้อน** ไม่ใช่แท็กที่สร้างใหม่ ·
+    // สมองในเครื่องจำสิ่งที่มันพูดไว้ตรงตัวอักษร ถ้าไม่ตรง session ต่อไม่ได้
+    // ต้องอ่านทั้งบทใหม่ (ช้า) · บทที่ขอค้นกับผลไม่ลงความจำ/หน้าจอ เห็นแค่คำตอบสุดท้าย
+    var turns = history;
+    for (var round = 1; round <= maxLookups; round++) {
+      final call = WebTools.parse(answer);
+      if (call == null || _disposed) break;
+      _partial = s.lookingUp(call.arg);
+      _notify();
+      final result = await webTools.run(call, last: round == maxLookups);
+      turns = [
+        ...turns,
+        (fromHer: true, text: answer.trim()),
+        (fromHer: false, text: result),
+      ];
+      answer = await _askBrain(
+        system,
+        turns,
+        onPartial: _showPartial,
+        // สมองทางเน็ตไม่จำอะไร ต้องแนบบันทึกช่วยจำซ้ำ · สมองในเครื่องจำไว้แล้วใน session
+        recall: _brain == BrainProvider.onDevice ? '' : recall,
+      );
+    }
+    return WebTools.strip(answer);
   }
+
+  /// ขอค้นได้กี่รอบต่อหนึ่งคำถาม · สองพอสำหรับ "หาที่ก่อน แล้วค่อยดูอากาศ"
+  /// · มากกว่านั้นคือรอนานและจ่ายแพงขึ้นโดยแทบไม่ได้อะไรเพิ่ม
+  static const maxLookups = 2;
+
+  /// ให้เธอหาข้อมูลจากอินเทอร์เน็ตได้ไหม (ดู WebTools) · ค่าตั้งต้นเปิด ตามที่เจ้าของสั่ง
+  bool _webSearch = true;
+  bool get webSearch => _webSearch;
+
+  void setWebSearch(bool v) {
+    if (_webSearch == v) return;
+    _webSearch = v;
+    _save('webSearch', v);
+    _notify();
+  }
+
+  WebTools? _lazyWebTools;
+  WebTools get webTools => _lazyWebTools ??= WebTools();
+
+  @visibleForTesting
+  set debugWebTools(WebTools t) => _lazyWebTools = t;
 
   // ═══ นึกออก — ความจำและบทสนทนาเก่าตามเรื่องที่คุย ═══════════
   //
@@ -2439,6 +2493,7 @@ class MindState extends ChangeNotifier {
     _openai.close();
     _speech.dispose();
     if (hasLocalBrain) _lazyLocal!.dispose();
+    _lazyWebTools?.close();
     super.dispose();
   }
 }
