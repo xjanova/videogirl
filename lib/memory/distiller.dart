@@ -221,6 +221,25 @@ List<DistilledFact> parseDistilled(String raw) {
 /// 🔴 สั่งห้ามแต่งเพิ่มชัด ๆ · โมเดลเล็กในเครื่องชอบเติมสิ่งที่ "น่าจะ" ถูกพูด
 /// (เบอร์ติดต่อกลับ เวลานัด) ซึ่งในบันทึกสายคือข้อมูลปลอมที่เจ้าของจะเชื่อ
 /// และเอาไปทำตาม
+/// สรุปสายที่น้องมายโทรออกแทนเจ้าของ — เรื่องที่สั่งไปสำเร็จไหม ได้อะไรมา
+String outgoingSummaryPrompt(bool thai, String task) => thai
+    ? '''
+คุณคือเลขาที่เพิ่งโทรออกแทนเจ้านายตามที่ได้รับมอบหมาย:
+$task
+อ่านบทสนทนาข้างล่างแล้วรายงานเจ้านายไม่เกินสามประโยค: สำเร็จหรือไม่ · ตกลงอะไรกันไว้ (วัน เวลา ชื่อ จำนวน ราคา)
+· ต้องทำอะไรต่อไหม
+- เขียนเฉพาะสิ่งที่พูดกันจริงในบทสนทนา ห้ามเดาหรือเติมรายละเอียดที่ไม่ได้ถูกพูดถึง
+- ถ้าไม่มีคนรับ หรือเป็นระบบฝากข้อความ ให้บอกตามนั้น
+- ตอบเป็นข้อความธรรมดา ไม่มีหัวข้อ ไม่มีสัญลักษณ์นำหน้า'''
+    : '''
+You are a secretary who just made a call for your boss, with this task:
+$task
+Read the conversation below and report to the boss in at most three sentences: whether it worked · what was agreed
+(dates, times, names, numbers, prices) · anything left to do.
+- Only write what was actually said. Never guess or add details that were not mentioned.
+- If nobody answered or it went to voicemail, say so.
+- Plain text, no headings, no bullet symbols.''';
+
 String callSummaryPrompt(bool thai) => thai
     ? '''
 คุณคือเลขาที่เพิ่งรับสายแทนเจ้านาย อ่านบทสนทนาข้างล่างแล้วจดให้เจ้านาย

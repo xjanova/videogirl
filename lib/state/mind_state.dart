@@ -38,6 +38,8 @@ import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
 import '../ai/proxy_account.dart';
 import '../ai/web_tools.dart';
+import '../phone/call_tags.dart';
+import '../phone/outgoing_call.dart';
 import '../phone/realtime_call.dart';
 import '../brainx/brainx_cloud.dart';
 import '../brainx/brainx_link.dart';
@@ -130,12 +132,117 @@ class MindState extends ChangeNotifier {
 
   void attachCalls(CallWatch c) {
     _calls = c;
+    var was = c.state;
     // สายจบ = จอสายเพิ่งจดว่าเธอรับเองไหม · อ่านเก็บไว้ (รายงานอ่านแบบไม่ต้องรอช่อง)
     c.addListener(() {
       if (c.state == CallState.idle) unawaited(lastAutoAnswer());
+      if (was != CallState.idle && c.state == CallState.idle) _outgoingEnded();
+      was = c.state;
     });
     unawaited(lastAutoAnswer());
   }
+
+  // ═══ น้องมายโทรออกแทนเจ้าของ ═══════════════════════════════
+  //
+  // เจ้าของ: "ทำส่วน โทรออกต่อ" · ดู lib/phone/outgoing_call.dart · ทุกสายผ่านกล่องยืนยัน
+
+  PendingCall? _pendingCall;
+  PendingCall? get pendingCall => _pendingCall;
+  int _callSeq = 0;
+
+  /// สายที่น้องมายกำลังโทรออกอยู่ (หลังยืนยัน) · null = ไม่มี
+  OutgoingTask? _outgoing;
+  OutgoingTask? get outgoing => _outgoing;
+  bool _outgoingAnswered = false;
+
+  /// ชื่อที่น้องมายใช้เรียกเจ้าของตอนโทรแทน ("เลขาของคุณต้น") · ว่าง = "เจ้าของเบอร์นี้"
+  String _callerName = '';
+  String get callerName => _callerName;
+
+  void setCallerName(String v) {
+    _callerName = v.trim();
+    _save('callerName', _callerName);
+    _notify();
+  }
+
+  /// เธอเขียน `[[โทร: … | …]]` → หาเบอร์ (ชื่อ → สมุดโทรศัพท์) → ขึ้นกล่องยืนยัน
+  Future<void> _proposeCall(String target, String task) async {
+    // ให้คำตอบของเธอขึ้นจอก่อน แล้วค่อยกล่อง/ข้อความเรื่องโทร · ไม่งั้นลำดับกลับหัว
+    await Future<void>.delayed(Duration.zero);
+    String number;
+    String? name;
+    if (OutgoingRules.looksLikeNumber(target)) {
+      number = target.trim();
+    } else {
+      List<Object?>? found;
+      try {
+        found = await kSystemChannel.invokeMethod<List<Object?>>('findContacts', {'name': target});
+      } on Object {
+        found = null;
+      }
+      final first = found?.whereType<Map>().firstOrNull;
+      if (first == null || first['number'] is! String) {
+        _say(found == null ? s.callOutNeedContacts(target) : s.callOutNoContact(target));
+        return;
+      }
+      number = first['number'] as String;
+      name = '${first['name'] ?? target}';
+    }
+    if (OutgoingRules.blocked(number)) {
+      _say(s.callOutBlocked);
+      return;
+    }
+    _pendingCall = PendingCall(number: number, name: name, task: task, id: ++_callSeq);
+    _notify();
+  }
+
+  /// ข้อความจากเธอที่ไม่ได้มาจากสมอง (บอกผลการโทร) · ขึ้นจอ ลงบทสนทนา
+  void _say(String text) {
+    if (_disposed) return;
+    _push(ChatMessage.her(text));
+    _notify();
+  }
+
+  void cancelPendingCall() {
+    if (_pendingCall == null) return;
+    _pendingCall = null;
+    _notify();
+  }
+
+  /// เจ้าของกด "โทรเลย"
+  Future<void> confirmPendingCall() async {
+    final p = _pendingCall;
+    if (p == null) return;
+    _pendingCall = null;
+    _notify();
+    String? why;
+    try {
+      why = await kSystemChannel.invokeMethod<String>('mindPlaceCall', {'number': p.number});
+    } on Object {
+      why = 'no_telecom';
+    }
+    if (why != null) {
+      _say(s.callOutFailed(why));
+      return;
+    }
+    _outgoing = (who: p.who, number: p.number, task: p.task);
+    _outgoingAnswered = false;
+    _say(s.callOutDialing(p.who));
+  }
+
+  /// [CallSession] บอกว่าปลายสายรับแล้ว น้องมายเริ่มคุย
+  void noteOutgoingAnswered() => _outgoingAnswered = true;
+
+  /// สายจบ · ยังไม่ได้คุยเลย (ไม่รับ/สายไม่ว่าง/วางก่อน) = บอกเจ้าของ · คุยแล้วรายงานผ่าน [takeCallNote]
+  void _outgoingEnded() {
+    final o = _outgoing;
+    if (o == null || _outgoingAnswered) return;
+    _outgoing = null;
+    _say(s.callOutNoAnswer(o.who));
+  }
+
+  @visibleForTesting
+  void debugSetOutgoing(OutgoingTask? t) => _outgoing = t;
 
   /// บันทึกสายที่เธอรับแทน — ฝากเรื่องอะไรไว้
   CallNotes? _callNotes;
@@ -162,7 +269,11 @@ class MindState extends ChangeNotifier {
     DateTime? at,
     CallSim? sim,
     File? audio,
+    bool outgoing = false,
   }) async {
+    // สายที่น้องมายโทรออกเอง · จบตรงนี้ไม่ว่าจะสรุปได้หรือไม่ (ไม่ค้างเป็นสายที่ยังไม่รายงาน)
+    final task = outgoing ? _outgoing : null;
+    if (outgoing) _outgoing = null;
     if (lines.isEmpty) {
       await audio?.delete().catchError((Object _) => audio);
       return null;
@@ -171,7 +282,7 @@ class MindState extends ChangeNotifier {
     final callerSpoke =
         lines.any((l) => !l.fromHer && l.text.trim().isNotEmpty);
 
-    var summary = callerSpoke ? '' : s.callNoteSilent;
+    var summary = callerSpoke ? '' : (task != null ? s.callOutSilent : s.callNoteSilent);
     if (callerSpoke) {
       try {
         final block = conversationBlock(
@@ -180,7 +291,7 @@ class MindState extends ChangeNotifier {
           her: _soul?.name ?? s.speakerHer,
         );
         summary = (await _askBrain(
-          callSummaryPrompt(_lang == AppLang.th),
+          task != null ? outgoingSummaryPrompt(_lang == AppLang.th, task.task) : callSummaryPrompt(_lang == AppLang.th),
           [(fromHer: false, text: block)],
           cap: ReplyCap.background,
         ))
@@ -214,9 +325,10 @@ class MindState extends ChangeNotifier {
     }
     await _callNotes?.add(note);
     // เครื่องสองซิม = หัวข้อบอกด้วยว่าโทรเข้าเบอร์ไหน (งาน/ส่วนตัว)
-    final title = sim == null
-        ? s.callNoteTitle(who)
-        : '${s.callNoteTitle(who)} · ${s.viaSim(sim.slot, sim.label)}';
+    final base = task != null ? s.callOutNoteTitle(task.who) : s.callNoteTitle(who);
+    final title = sim == null ? base : '$base · ${s.viaSim(sim.slot, sim.label)}';
+    // โทรออกให้ = เล่าผลกลับในแชทเหมือนเลขามารายงาน
+    if (task != null) _say(s.callOutReport(task.who, summary));
     unawaited(_journal?.record(
           JournalKind.call,
           title,
@@ -395,6 +507,7 @@ class MindState extends ChangeNotifier {
     _contactsOnly = p.getBool('autoAnswerContactsOnly') ?? false;
     _showOnCall = p.getBool('showMindOnCall') ?? true;
     _recordCalls = p.getBool('recordCalls') ?? true;
+    _callerName = p.getString('callerName') ?? '';
     _realtimeCalls = p.getBool('realtimeCalls') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
     _callStream = p.getString('callStream') ?? callStreamCall;
@@ -1406,13 +1519,15 @@ class MindState extends ChangeNotifier {
   /// สิ่งที่เธอได้ในสายจึงมีแค่: บุคลิก (ไม่รวมความสัมพันธ์) · ขอบเขตที่เจ้าของตั้ง ·
   /// ช่วงที่ไม่ว่างแบบไม่มีรายละเอียด · บทสนทนาของสายนี้ · และไม่แตะสมอง BrainX
   /// ไม่ค้นเว็บ ไม่มีบันทึกช่วยจำ (ดู [callPrompt] ที่เทสต์ยืนยันทั้งหมดนี้)
-  Future<String> replyOnCall(List<({bool fromHer, String text})> history) =>
-      _askBrain(callPrompt(), history, cap: ReplyCap.call);
+  Future<String> replyOnCall(List<({bool fromHer, String text})> history, {bool outgoing = false}) =>
+      _askBrain(callPrompt(outgoing: outgoing), history, cap: ReplyCap.call);
 
   ///
   /// [live] = คุยสด (Realtime) · วางสาย/แจ้งด่วนด้วยเครื่องมือแทนแท็ก (ดู [MindPersona.phoneStyle])
   @visibleForTesting
-  String callPrompt({bool live = false}) => MindPersona.system(
+  ///
+  /// [outgoing] = สายที่น้องมายโทรออกเอง · ได้เรื่องที่เจ้าของสั่ง ([outgoing]) เพิ่มอย่างเดียว
+  String callPrompt({bool live = false, bool outgoing = false}) => MindPersona.system(
         lang: _lang,
         mode: mode,
         flirt: effectiveFlirt,
@@ -1420,6 +1535,8 @@ class MindState extends ChangeNotifier {
         boundaries: _boundaries,
         onCall: true,
         liveCall: live,
+        outgoing: outgoing ? _outgoing : null,
+        callerName: _callerName,
         soul: _soul,
         schedule: _calendar?.busyBlock(now: _clock()) ?? '',
         now: _clock(),
@@ -1472,11 +1589,13 @@ class MindState extends ChangeNotifier {
   RtConnect? debugRealtimeConnect;
 
   /// เซสชันคุยสดของสายนี้ · prompt เดียวกับทางเดิม (ไม่มีข้อมูลส่วนตัว — [callPrompt])
-  RealtimeCall openRealtimeCall() {
+  ///
+  /// [outgoing] = สายที่น้องมายโทรออก · ไม่มีคำทักตายตัว (รอปลายสายพูด "ฮัลโหล" ก่อน)
+  RealtimeCall openRealtimeCall({bool outgoing = false}) {
     return RealtimeCall(
       apiKey: effectiveOpenAiKey,
-      instructions: callPrompt(live: true),
-      greeting: callGreeting(),
+      instructions: callPrompt(live: true, outgoing: outgoing),
+      greeting: outgoing ? '' : callGreeting(),
       // เสียงที่ตั้งไว้ให้ "ตอบรับสาย" · ไม่ใช่เสียงที่ Realtime รู้จัก = marin
       voice: voiceFor(VoiceChannel.answer).voice,
       language: _sttLang,
@@ -2158,6 +2277,7 @@ class MindState extends ChangeNotifier {
       now: _clock(),
       tools: tools,
       webSearch: web != null,
+      callOut: true,
       pcProfile: linked ? brainx.ownerProfile : '',
       nudge: nudge
           ? MindPersona.cloudNudgeBlock(_lang,
@@ -2199,7 +2319,14 @@ class MindState extends ChangeNotifier {
         recall: _brain == BrainProvider.onDevice ? '' : recall,
       );
     }
-    return WebTools.strip(answer);
+    // สั่งให้โทรออก → ขอเจ้าของยืนยันก่อน (ไม่โทรเอง) · แท็กไม่ขึ้นจอ ไม่อ่านออกเสียง
+    final out = CallOutTag.parse(WebTools.strip(answer));
+    if (out.target != null) {
+      unawaited(_proposeCall(out.target!, out.task!));
+      // เขียนแต่แท็กมา = อย่าให้เหลือฟองเปล่า
+      if (out.text.isEmpty) return s.callOutAck;
+    }
+    return out.text;
   }
 
   // ═══ สมองก้อนเดียวกับมายด์บนคอม (BrainX Cloud) ═══════════════

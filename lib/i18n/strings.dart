@@ -876,6 +876,61 @@ class S {
         'Hi, this is Mai, the secretary for this number. '
             'They can\'t take the call right now — you can talk to me or leave a message.',
       );
+  // ═══ น้องมายโทรออกแทน ═════════════════════════════════
+  String get callOutConfirmTitle => _('ให้น้องมายโทรออก?', 'Let Mai make this call?');
+  String callOutTo(String who, String number) =>
+      who == number ? _('ถึง $number', 'To $number') : _('ถึง $who · $number', 'To $who · $number');
+  String get callOutTaskLabel => _('เรื่องที่จะคุย', 'What she will say');
+  String get callOutConfirmNote => _(
+        'น้องมายจะบอกปลายสายว่าเป็นเลขา AI ที่โทรแทนคุณ · คิดค่าโทรตามปกติของซิม · คุยจบแล้วจะมารายงานในแชท',
+        'Mai will tell them she is your AI secretary calling for you · normal call charges apply · she reports back in chat',
+      );
+  String get callOutGo => _('โทรเลย', 'Call now');
+  String get callOutAck => _('ได้เลยค่ะ', 'Sure.');
+  String get callOutCancel => _('ยังไม่โทร', 'Not now');
+  String callOutDialing(String who) => _(
+        'กำลังโทรหา $who ค่ะ เดี๋ยวน้องมายคุยให้ แล้วจะมาเล่าให้ฟังนะคะ',
+        'Calling $who now — I will handle it and tell you how it went.',
+      );
+  String callOutNoAnswer(String who) => _(
+        'โทรหา $who แล้วไม่มีคนรับค่ะ (หรือสายไม่ว่าง) จะให้ลองใหม่ทีหลังไหมคะ',
+        'I called $who but nobody picked up (or the line was busy). Want me to try again later?',
+      );
+  String callOutReport(String who, String summary) =>
+      _('โทรหา $who แล้วค่ะ — $summary', 'I called $who — $summary');
+  String callOutNoteTitle(String who) => _('น้องมายโทรหา $who', 'Mai called $who');
+  String get callOutSilent => _('ปลายสายรับแต่ไม่ได้พูดอะไร', 'They picked up but did not say anything');
+  String callOutNoContact(String name) => _(
+        'หาชื่อ "$name" ในสมุดโทรศัพท์ไม่เจอค่ะ ขอเบอร์หน่อยได้ไหมคะ',
+        'I could not find "$name" in your contacts — what is the number?',
+      );
+  String callOutNeedContacts(String name) => _(
+        'น้องมายยังเปิดสมุดโทรศัพท์ไม่ได้ค่ะ ขอเบอร์ของ $name แทนได้ไหมคะ (หรือให้สิทธิ์สมุดโทรศัพท์ในหน้าตั้งค่า)',
+        'I cannot open your contacts yet — could you give me $name\'s number (or allow contacts in Settings)?',
+      );
+  String get callOutBlocked => _(
+        'เบอร์นี้เป็นเบอร์ฉุกเฉินหรือเบอร์เก็บเงินพิเศษค่ะ น้องมายโทรแทนไม่ได้ ถ้าฉุกเฉินโทรเองทันทีเลยนะคะ',
+        'That is an emergency or premium-rate number — I cannot call it for you. If it is an emergency, call right away yourself.',
+      );
+  String callOutFailed(String why) => switch (why) {
+        'not_dialer' => _('โทรแทนไม่ได้ค่ะ ต้องตั้ง GigGok เป็นแอปโทรศัพท์หลักก่อน (ตั้งค่า → รับสายแทน)',
+            'I cannot call yet — set GigGok as the phone app first (Settings → Answering calls)'),
+        'busy' => _('ตอนนี้มีสายอยู่ค่ะ วางสายก่อนแล้วสั่งใหม่นะคะ', 'There is a call in progress — try again after it ends'),
+        'no_permission' => _('ยังไม่ได้สิทธิ์โทรออกค่ะ ลองเปิดแป้นโทรของ GigGok แล้วกดโทรครั้งหนึ่งเพื่อให้สิทธิ์',
+            'I do not have permission to place calls yet — open the GigGok dialer and place one call to grant it'),
+        'blocked' => callOutBlocked,
+        _ => _('โทรออกไม่สำเร็จค่ะ เบอร์อาจไม่ถูกต้อง', 'The call could not be placed — the number may be wrong'),
+      };
+  String get callOutKickoff => _(
+        'ปลายสายรับสายแล้ว ทักทาย แนะนำตัว และบอกว่าโทรมาเรื่องอะไร',
+        'They have picked up. Greet them, introduce yourself, and say why you are calling.',
+      );
+  String get callerNameLabel => _('ชื่อที่น้องมายใช้เรียกคุณตอนโทรแทน', 'Name Mai uses for you on calls');
+  String get callerNameHint => _(
+        'เช่น "ต้น" → "น้องมาย เลขาของคุณต้นค่ะ" · ว่างไว้ = "เลขาของเจ้าของเบอร์นี้"',
+        'e.g. "Ton" → "Mai, Ton\'s secretary" · empty = "the secretary for this number"',
+      );
+
   String callUrgentTitle(String who) => _(
         'ด่วน — ${who.isEmpty ? 'มีสาย' : who} รอสายอยู่ · แตะเพื่อคุยเอง',
         'Urgent — ${who.isEmpty ? 'a caller' : who} is on the line · tap to take it',

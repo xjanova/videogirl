@@ -7,6 +7,7 @@ import 'ai/mind_audio.dart';
 import 'avatar/avatar_view.dart';
 import 'calendar/device_calendar.dart';
 import 'phone/call_session.dart';
+import 'phone/outgoing_call.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/mail_screen.dart';
@@ -110,6 +111,7 @@ class _MindShellState extends State<MindShell> {
 
   @override
   void dispose() {
+    _state?.removeListener(_onPendingCall);
     _studio?.removeListener(_onStudio);
     _settingsSection.dispose();
     super.dispose();
@@ -154,6 +156,76 @@ class _MindShellState extends State<MindShell> {
       await _avatar.stop();
       await MindAudio.stop();
     };
+    state.addListener(_onPendingCall);
+    _state = state;
+  }
+
+  MindState? _state;
+
+  /// คำขอโทรออกที่โชว์กล่องไปแล้ว · กันโชว์ซ้ำทุกครั้งที่ state ขยับ
+  int _shownCall = 0;
+
+  /// 🔴 น้องมายโทรออกได้ก็ต่อเมื่อเจ้าของกดยืนยันเท่านั้น · การโทรคือการกระทำต่อคนอื่น
+  /// ที่ย้อนกลับไม่ได้ (คนรับเสียเวลา มีค่าโทร) และคำสั่งในแชทอาจถูกตีความผิด
+  void _onPendingCall() {
+    final p = _state?.pendingCall;
+    if (p == null || p.id == _shownCall || !mounted) return;
+    _shownCall = p.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_confirmCall(p)));
+  }
+
+  Future<void> _confirmCall(PendingCall p) async {
+    final state = _state;
+    if (state == null || !mounted) return;
+    final t = S.of(context);
+    final go = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 8,
+            children: [
+              Text(t.callOutConfirmTitle, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              Text(t.callOutTo(p.who, p.number), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              Text(t.callOutTaskLabel, style: const TextStyle(fontSize: 11, color: MindColors.ink55)),
+              Text(p.task, style: const TextStyle(fontSize: 13.5, height: 1.5)),
+              Text(t.callOutConfirmNote,
+                  style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+              const SizedBox(height: 4),
+              Row(
+                spacing: 10,
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(c, false),
+                      child: Text(t.callOutCancel),
+                    ),
+                  ),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.pop(c, true),
+                      icon: const Icon(Icons.call_rounded, size: 18),
+                      label: Text(t.callOutGo),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    // ปิดกล่องเฉย ๆ (ปัดลง/ย้อนกลับ) = ไม่โทร
+    if (go == true) {
+      await state.confirmPendingCall();
+    } else {
+      state.cancelPendingCall();
+    }
   }
 
   void _select(int i) {

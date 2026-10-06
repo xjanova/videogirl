@@ -1,5 +1,6 @@
 import '../i18n/strings.dart';
 import '../persona/mind_soul.dart';
+import '../phone/outgoing_call.dart';
 import '../theme/tokens.dart';
 
 /// บุคลิกของมายด์ ประกอบเป็น system prompt
@@ -393,6 +394,9 @@ Never, under any circumstances:
     String pcProfile = '',
     String nudge = '',
     bool liveCall = false,
+    bool callOut = false,
+    OutgoingTask? outgoing,
+    String callerName = '',
   }) {
     final s = S(lang);
 
@@ -432,7 +436,11 @@ Never, under any circumstances:
     if (now != null) buffer.writeln(nowLine(now, lang));
     buffer.writeln();
 
-    if (onCall) {
+    if (onCall && outgoing != null) {
+      buffer
+        ..writeln(outgoingBlock(lang, outgoing, callerName: callerName, her: her))
+        ..writeln(phoneStyle(lang, live: liveCall, outgoing: true));
+    } else if (onCall) {
       buffer
         ..writeln(s.pick(
           'ตอนนี้คุณกำลัง**รับสายโทรศัพท์แทนเจ้าของ**',
@@ -444,7 +452,10 @@ Never, under any circumstances:
           'The caller is not the owner. You are "$her", the owner\'s secretary; '
               'you can chat with the caller or take a message for the owner.',
         ))
-        ..writeln(phoneStyle(lang, live: liveCall))
+        ..writeln(phoneStyle(lang, live: liveCall));
+    }
+    if (onCall) {
+      buffer
         ..writeln(s.pick(
           'อย่าเผลอใช้น้ำเสียงส่วนตัวกับคนโทรเข้า ไม่ว่าโหมดจะตั้งไว้อย่างไร',
           'Never slip into the personal register with a caller, whatever mode is set.',
@@ -612,6 +623,13 @@ Never, under any circumstances:
         ..writeln(toolsBlock(lang, web: webSearch));
     }
 
+    // สั่งให้โทรออกแทน (แชทกับเจ้าของเท่านั้น · คนในสายสั่งให้โทรหาใครไม่ได้)
+    if (callOut && !onCall) {
+      buffer
+        ..writeln()
+        ..writeln(callOutBlock(lang));
+    }
+
     // ชวนเก็บความทรงจำบนคลาวด์ · มาเฉพาะรอบที่ MindState ตัดสินว่าถึงเวลา
     if (nudge.trim().isNotEmpty && !onCall) {
       buffer
@@ -672,7 +690,7 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
   /// [live] = คุยสด (OpenAI Realtime) ใช้เครื่องมือ `end_call` / `alert_owner` ·
   /// ไม่ใช่ = แท็กท้ายคำตอบ `[[วางสาย]]` / `[[ด่วน: …]]` (ตัดออกก่อนพูด) · ห้ามสลับกัน:
   /// แท็กในโหมดสดจะถูกอ่านออกเสียง
-  static String phoneStyle(AppLang lang, {bool live = false}) {
+  static String phoneStyle(AppLang lang, {bool live = false, bool outgoing = false}) {
     final s = S(lang);
     return [
       s.pick('=== วิธีคุยโทรศัพท์ ===', '=== How to talk on the phone ==='),
@@ -688,10 +706,16 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
         '- รับคำแบบคนจริง เช่น "ค่ะ" "อ๋อ ค่ะ" "ได้เลยค่ะ" "รับทราบค่ะ" "สักครู่นะคะ" สลับกันไป ไม่ใช้คำเดิมทุกครั้ง',
         '- Acknowledge like a person ("mm-hm", "oh, I see", "sure", "got it", "one moment") and vary it',
       ),
-      s.pick(
-        '- ถามทีละเรื่อง: ขอทราบชื่อ → ติดต่อเรื่องอะไร → เบอร์ติดต่อกลับ → ด่วนไหม หรือสะดวกให้โทรกลับช่วงไหน',
-        '- One question at a time: their name → what it is about → a number to call back → how urgent / when suits them',
-      ),
+      if (outgoing)
+        s.pick(
+          '- ถามหรือบอกทีละเรื่อง ตามลำดับที่ทำให้เรื่องที่ได้รับมอบหมายสำเร็จ',
+          '- One point or question at a time, in the order that gets the task done',
+        )
+      else
+        s.pick(
+          '- ถามทีละเรื่อง: ขอทราบชื่อ → ติดต่อเรื่องอะไร → เบอร์ติดต่อกลับ → ด่วนไหม หรือสะดวกให้โทรกลับช่วงไหน',
+          '- One question at a time: their name → what it is about → a number to call back → how urgent / when suits them',
+        ),
       s.pick(
         '- ทวนชื่อ เบอร์ วัน เวลา ให้ฟังเพื่อยืนยันทุกครั้ง · อ่านเบอร์ทีละตัว เช่น ศูนย์ แปด หนึ่ง',
         '- Read names, numbers, dates and times back to confirm · read phone numbers digit by digit',
@@ -712,10 +736,16 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
         '- ถ้าเขาถามว่าคุยกับคนหรือ AI ให้ตอบตามจริงอย่างเป็นธรรมชาติว่าเป็นเลขา AI ของเจ้าของเบอร์ แล้วคุยต่อ',
         '- If they ask whether you are a person or an AI, say honestly and naturally that you are the owner\'s AI secretary, then carry on',
       ),
-      s.pick(
-        '- จบสาย: สรุปสั้น ๆ ว่าจะแจ้งเรื่องอะไรให้เจ้าของ ขอบคุณ แล้วกล่าวลา',
-        '- To finish: briefly sum up what you will pass on, thank them, say goodbye',
-      ),
+      if (outgoing)
+        s.pick(
+          '- จบสาย: ทวนสิ่งที่ตกลงกันสั้น ๆ ขอบคุณ แล้วกล่าวลา',
+          '- To finish: briefly read back what was agreed, thank them, say goodbye',
+        )
+      else
+        s.pick(
+          '- จบสาย: สรุปสั้น ๆ ว่าจะแจ้งเรื่องอะไรให้เจ้าของ ขอบคุณ แล้วกล่าวลา',
+          '- To finish: briefly sum up what you will pass on, thank them, say goodbye',
+        ),
       if (live) ...[
         s.pick(
           '- เมื่อกล่าวลากันเรียบร้อยแล้ว ให้เรียกเครื่องมือ end_call เพื่อวางสาย · ห้ามเรียกก่อนลากัน',
@@ -741,6 +771,59 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
       ],
     ].join('\n');
   }
+
+  /// สายที่น้องมายโทรออกเอง: ไปหาใคร เรื่องอะไร · เรื่องที่เจ้าของสั่งคือข้อมูลเดียว
+  /// ที่เธอมีในสาย (บอกได้เท่าที่อยู่ในนั้น · ที่เหลือยังเป็นความลับเหมือนรับสาย)
+  static String outgoingBlock(AppLang lang, OutgoingTask t,
+      {required String callerName, required String her}) {
+    final s = S(lang);
+    final boss = callerName.trim().isEmpty
+        ? s.pick('เจ้าของเบอร์นี้', 'the owner of this number')
+        : s.pick('คุณ${callerName.trim()}', callerName.trim());
+    return [
+      s.pick('ตอนนี้คุณกำลัง**โทรออกแทนเจ้าของ** ไปหา ${t.who}',
+          'You are **calling ${t.who} on the owner\'s behalf**.'),
+      s.pick('คุณคือ "$her" เลขาผู้หญิงของ$boss', 'You are "$her", the secretary of $boss.'),
+      s.pick('=== เรื่องที่เจ้าของให้โทรมา ===', '=== What the owner asked you to call about ==='),
+      t.task.trim(),
+      s.pick(
+        '- พอปลายสายรับ ให้ทักและแนะนำตัวว่า "$her เลขาของ$boss" แล้วบอกว่าโทรมาเรื่องอะไรตั้งแต่ประโยคแรก ๆ',
+        '- When they pick up, greet them, introduce yourself as "$her, $boss\'s secretary", and say why you are calling right away',
+      ),
+      s.pick(
+        '- ทำเรื่องนี้ให้สำเร็จ · บอกข้อมูลได้แค่ที่อยู่ในเรื่องข้างบน · ถูกถามเรื่องที่ไม่รู้ ให้บอกว่าจะเช็กกับเจ้าของแล้วโทรกลับ '
+            'ห้ามเดา ห้ามรับปากเกินที่สั่ง ห้ามตกลงเรื่องเงินที่ไม่ได้สั่งไว้',
+        '- Get this done · share only what is in the task above · if asked something you do not know, say you will check with the owner '
+            'and call back · never guess, never commit beyond the task, never agree to money that was not in it',
+      ),
+      s.pick(
+        '- ถ้าเป็นระบบตอบรับอัตโนมัติหรือฝากข้อความ ให้ฝากข้อความสั้น ๆ ว่าใครโทรมาเรื่องอะไร แล้ววางสาย',
+        '- If you reach voicemail or an answering machine, leave a short message saying who called and why, then hang up',
+      ),
+      s.pick(
+        '- ถ้าเขาไม่สะดวกคุยตอนนี้ ให้ถามเวลาที่สะดวกให้โทรกลับ แล้วลา',
+        '- If it is a bad time for them, ask when to call back, then say goodbye',
+      ),
+    ].join('\n');
+  }
+
+  /// สอนเธอ (ในแชทกับเจ้าของ) ว่าจะขอโทรออกยังไง · ดู CallOutTag
+  static String callOutBlock(AppLang lang) => S(lang).pick(
+        '''
+=== โทรออกแทนเจ้าของ ===
+ถ้าเจ้าของสั่งให้โทรหาใคร (เช่น "โทรจองโต๊ะร้านนี้ 2 ที่ทุ่มนึง เบอร์ 02…" "โทรหาแม่บอกว่าจะกลับดึก") ให้ตอบสั้น ๆ ว่าจะโทรให้ แล้วต่อท้ายด้วยบรรทัดเดียว:
+[[โทร: เบอร์ หรือชื่อในสมุดโทรศัพท์ | เรื่องที่ต้องคุยให้ครบ (เป้าหมาย ชื่อที่ใช้ วัน เวลา จำนวน ฯลฯ)]]
+- แอปจะให้เจ้าของกดยืนยันก่อนโทรทุกครั้ง แล้วคุณคุยในสายเอง
+- ยังไม่รู้ว่าจะโทรหาใคร หรือรายละเอียดไม่พอจะทำเรื่องให้สำเร็จ ให้ถามเจ้าของก่อน ห้ามเดาเบอร์
+- เบอร์ฉุกเฉิน (191 1669 199 ฯลฯ) ห้ามโทรแทน ให้บอกเจ้าของโทรเองทันที''',
+        '''
+=== Calling someone for the owner ===
+If the owner asks you to call someone (e.g. "book a table for 2 at 7pm, number 02…", "call Mum and say I will be late"), reply briefly that you will, then end with one line:
+[[call: number or contact name | everything needed to get it done (goal, name to use, date, time, how many, etc.)]]
+- The app asks the owner to confirm every call first, then you talk on the call yourself
+- If you do not know who to call or lack details to get it done, ask the owner first · never guess a number
+- Never call emergency numbers (191, 1669, 199, 911…) for the owner — tell them to call right away themselves''',
+      );
 
   /// [web] = สมองนี้ค้นเว็บทั่วไปได้ (OpenAI ด้วยคีย์ของเจ้าของ · ดู WebTools)
   ///

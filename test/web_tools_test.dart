@@ -237,7 +237,10 @@ void main() {
         ..debugWebTools = WebTools(client: MockClient((_) async => fail('ต้องไม่ยิง')));
       await s.send('สวัสดี');
       expect(brain.seen, hasLength(1));
-      expect(brain.systems.single, isNot(contains('[[')));
+      // แท็กสั่งโทร ([[โทร: …]]) ยังมี · แท็กค้นข้อมูลต้องไม่มี
+      for (final tag in ['[[ค้นหา', '[[เว็บ', '[[อากาศ', '[[ค่าเงิน']) {
+        expect(brain.systems.single, isNot(contains(tag)));
+      }
     });
 
     test('🔴 สายโทรศัพท์ (คนแปลกหน้า) ไม่ได้รับเครื่องมือค้น', () {

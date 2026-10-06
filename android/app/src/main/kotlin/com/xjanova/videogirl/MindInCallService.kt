@@ -36,6 +36,11 @@ class MindInCallService : InCallService() {
         super.onCallAdded(call)
         current = call
         service = this
+        // สายที่น้องมายเพิ่งโทรออกตามที่เจ้าของสั่ง (ไม่ใช่สายที่เจ้าของกดโทรเอง)
+        if (claimOutgoing(call)) {
+            mindOutgoing = true
+            mindHandling = true
+        }
         call.registerCallback(callback)
         InCallActivity.show(this, call)
     }
@@ -54,6 +59,7 @@ class MindInCallService : InCallService() {
             // โดยไม่รู้ว่าใครไปเร่งไว้ — เงียบสนิท ไม่มีอะไรบอก
             CallAudio.close(this)
             mindHandling = false
+            mindOutgoing = false
             service = null
             InCallActivity.dismiss(this)
             // จอเธอที่ขึ้นทับจอล็อกระหว่างสาย ต้องถอนตัวทันทีที่สายจบ
@@ -101,6 +107,54 @@ class MindInCallService : InCallService() {
          */
         @JvmStatic
         var mindHandling = false
+
+        /** สายนี้น้องมายเป็นคนโทรออก (เจ้าของสั่งจากแชท) · ล้างตอนสายจบ */
+        @JvmStatic
+        @Volatile
+        var mindOutgoing = false
+
+        /// เบอร์ที่เพิ่งสั่งให้น้องมายโทร (ตัวเลขล้วน) + เวลา · [onCallAdded] จับคู่กับสายที่เข้ามา
+        @Volatile
+        private var armed: Pair<String, Long>? = null
+
+        /**
+         * ให้น้องมายโทรออก · คืนเหตุผลถ้าโทรไม่ได้ (null = กดโทรแล้ว)
+         *
+         * 🔴 เจ้าของกดยืนยันในแอปก่อนทุกครั้ง (ฝั่ง Dart) · ที่นี่กันเพิ่มอีกชั้น: เบอร์ฉุกเฉิน
+         * และเบอร์เก็บเงินพิเศษ น้องมายไม่โทรเด็ดขาด · ต้องเป็นแอปโทรศัพท์หลัก ไม่งั้นสายไป
+         * ออกแอปโทรศัพท์อื่น เธอไม่มีทางคุยในสายนั้น
+         */
+        @JvmStatic
+        fun placeMindCall(context: android.content.Context, raw: String): String? {
+            val number = OutgoingRules.normalize(raw) ?: return "bad_number"
+            if (OutgoingRules.blocked(number)) return "blocked"
+            if (!SystemBridge.isDefaultDialer(context)) return "not_dialer"
+            if (service?.calls?.isNotEmpty() == true) return "busy"
+            if (androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.CALL_PHONE
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) return "no_permission"
+            val tm = context.getSystemService(android.content.Context.TELECOM_SERVICE)
+                as? android.telecom.TelecomManager ?: return "no_telecom"
+            armed = number to SystemClock.uptimeMillis()
+            return try {
+                tm.placeCall(android.net.Uri.fromParts("tel", number, null), android.os.Bundle())
+                null
+            } catch (e: SecurityException) {
+                armed = null
+                "no_permission"
+            }
+        }
+
+        /** สายที่เพิ่มเข้ามาคือสายที่น้องมายเพิ่งกดโทรไหม (เบอร์ตรง ภายในหนึ่งนาที) */
+        private fun claimOutgoing(call: Call): Boolean {
+            val (number, at) = armed ?: return false
+            armed = null
+            if (SystemClock.uptimeMillis() - at > 60_000) return false
+            val got = OutgoingRules.normalize(call.details.handle?.schemeSpecificPart ?: "") ?: return false
+            // +66812345678 กับ 0812345678 คือเบอร์เดียวกัน · เทียบท้ายเก้าหลัก
+            return got.takeLast(9) == number.takeLast(9)
+        }
 
         /** สายที่ควรเป็นตัวหลักจากหลายสาย: กำลังคุย > กำลังดัง > ตัวแรก */
         private fun pick(calls: List<Call>): Call? =
@@ -165,6 +219,7 @@ class MindInCallService : InCallService() {
                 "live" to (state == Call.STATE_ACTIVE),
                 "ringing" to (stateOf(current) == Call.STATE_RINGING),
                 "mind" to mindHandling,
+                "mindOutgoing" to mindOutgoing,
                 "speaker" to speakerOn(),
                 "number" to number,
                 "name" to CallBridge(context).nameFor(number),

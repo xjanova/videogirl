@@ -58,6 +58,40 @@ class CallBridge(private val context: Context) {
      * หลายรูป (+66818884444 / 0818884444 / 081-888-4444) การเทียบเองจะพลาด
      * เกือบทุกครั้งที่เบอร์ถูกบันทึกในรูปสากล
      */
+    /**
+     * หาเบอร์จากชื่อในสมุดโทรศัพท์ — "โทรหาแม่" · คืนไม่เกิน [limit] รายการ
+     *
+     * null = อ่านสมุดไม่ได้ (ยังไม่ให้สิทธิ์) · [] = ไม่เจอ · คนละเรื่องกัน
+     */
+    fun findContacts(name: String, limit: Int = 5): List<Map<String, String>>? {
+        if (!canReadContacts()) return null
+        val q = name.trim()
+        if (q.isEmpty()) return emptyList()
+        val out = ArrayList<Map<String, String>>()
+        return try {
+            context.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                ),
+                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
+                arrayOf("%$q%"),
+                "${ContactsContract.CommonDataKinds.Phone.TIMES_CONTACTED} DESC"
+            )?.use { c ->
+                val seen = HashSet<String>()
+                while (c.moveToNext() && out.size < limit) {
+                    val n = c.getString(0) ?: continue
+                    val num = c.getString(1) ?: continue
+                    if (seen.add(num.filter { it.isDigit() })) out.add(mapOf("name" to n, "number" to num))
+                }
+            }
+            out
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun nameFor(number: String?): String? {
         if (number.isNullOrBlank() || !canReadContacts()) return null
 

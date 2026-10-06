@@ -128,6 +128,12 @@ class SystemBridge(context: Context) {
             // ตอนนี้มีจอให้คนเห็นไหม · ไม่มี = ตัวเธอถูกปลุกมาคุยในสายเบื้องหลัง
             "hasScreen" -> result.success(false)
             "lastAutoAnswer" -> result.success(MindPrefs.lastAutoAnswer(context))
+            // ── น้องมายโทรออกแทนเจ้าของ · เจ้าของกดยืนยันในแอปแล้วเท่านั้น ──
+            // คืน null = กดโทรแล้ว · สตริง = เหตุผลที่โทรไม่ได้ (bad_number/blocked/not_dialer/busy/no_permission)
+            "mindPlaceCall" -> result.success(
+                MindInCallService.placeMindCall(context, call.argument<String>("number") ?: "")
+            )
+            "findContacts" -> result.success(calls.findContacts(call.argument<String>("name") ?: ""))
             // ── เสียงสดของเธอ (OpenAI Realtime) · ดู CallAudio.liveStart ──
             "liveAudioStart" -> result.success(
                 CallAudio.liveStart(call.argument<String>("stream") ?: CallAudio.STREAM_CALL)

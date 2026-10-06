@@ -1374,6 +1374,35 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  /// แก้ชื่อที่น้องมายใช้เรียกเจ้าของตอนโทรแทน · ว่าง = "เจ้าของเบอร์นี้"
+  Future<void> _editCallerName(MindState state) async {
+    final ctl = TextEditingController(text: state.callerName);
+    try {
+      final v = await showDialog<String>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text(S.of(c).callerNameLabel, style: const TextStyle(fontSize: 15)),
+          content: TextField(
+            controller: ctl,
+            autofocus: true,
+            maxLength: 40,
+            decoration: InputDecoration(helperText: S.of(c).callerNameHint, helperMaxLines: 3),
+            onSubmitted: (x) => Navigator.pop(c, x),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c), child: Text(S.of(c).cancel)),
+            TextButton(onPressed: () => Navigator.pop(c, ctl.text), child: Text(S.of(c).save)),
+          ],
+        ),
+      );
+      if (v != null && mounted) state.setCallerName(v);
+    } finally {
+      // ตัวควบคุมของกล่อง ต้องปล่อยหลังกล่องปิด ไม่งั้นค้างในหน่วยความจำ · รอแอนิเมชันปิดจบก่อน
+      // (ช่องพิมพ์ยังวาดอยู่ระหว่างกล่องหายไป · ปล่อยทันที = ใช้ของที่ปล่อยแล้ว)
+      unawaited(Future<void>.delayed(const Duration(milliseconds: 600), ctl.dispose));
+    }
+  }
+
   // ── ระยะกล้องบนเวที ─────────────────────────────────────
   //
   // 🔴 เจ้าของ: "ทำไมอวาต้าชอบเล็กลงตลอดเลยไม่คงที่ เวลาคุย" · เดิมกล้องซูมเข้า
@@ -3262,6 +3291,32 @@ class _SettingsScreenState extends State<SettingsScreen>
                   onTap: () => state.setShowOnCall(!state.showOnCall),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            // ชื่อที่น้องมายใช้ตอนโทรออกแทน ("เลขาของคุณต้นค่ะ")
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => unawaited(_editCallerName(state)),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 3,
+                      children: [
+                        Text(S.of(context).callerNameLabel,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text(
+                            state.callerName.isEmpty
+                                ? S.of(context).callerNameHint
+                                : state.callerName,
+                            style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.edit_rounded, size: 18, color: MindColors.ink45),
+                ],
+              ),
             ),
             const SizedBox(height: 10),
             // คุยสด (OpenAI Realtime) · เจ้าของ: "ต้องทำ real time พูดคุยเลย ถ้าตั้งค่าเป็น open ai"

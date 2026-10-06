@@ -207,6 +207,7 @@ class CallSession extends ChangeNotifier {
     final was = _live && _mind;
     _live = live;
     _mind = mind;
+    if (live && mind && info?['mindOutgoing'] == true) _outgoingCall = true;
     if (who.isNotEmpty) _who = who;
     _sim = CallSim.fromMap(info) ?? _sim;
 
@@ -244,11 +245,21 @@ class CallSession extends ChangeNotifier {
   bool _handled = false;
   DateTime? _startedAt;
 
+  /// สายนี้น้องมายเป็นคนโทรออก (เจ้าของสั่งจากแชท) · ไม่ทักแบบรับสาย รอปลายสายพูดก่อน
+  bool _outgoingCall = false;
+  bool get outgoingCall => _outgoingCall;
+
   /// เริ่มบทสนทนาของสายนี้
   void _begin() {
     // ส่งสายคืนให้เธอหลังเจ้าของแทรก = สายเดิม · บทสนทนาต่อจากเดิม ไม่ล้าง
+    final first = !_handled;
     if (!_handled) _lines.clear();
     _handled = true;
+    // สายที่เธอโทรออก: ปลายสายรับแล้ว → เปิดลำโพง (ฝั่งเนทีฟตั้งให้เธอถือสายไว้ตั้งแต่กดโทร)
+    if (_outgoingCall && first) {
+      _state.noteOutgoingAnswered();
+      unawaited(_invoke<bool>('mindAnswer', {'stream': _state.callStream}));
+    }
     _startedAt ??= DateTime.now();
     _deaf = false;
     _mute = false;
@@ -291,9 +302,10 @@ class CallSession extends ChangeNotifier {
       final lines = [for (final l in _lines) (fromHer: l.fromHer, text: l.text)];
       final at = _startedAt;
       final sim = _sim;
+      final outgoing = _outgoingCall;
       unawaited(() async {
         final audio = await _finishRecording();
-        await _state.takeCallNote(who: who, lines: lines, at: at, sim: sim, audio: audio);
+        await _state.takeCallNote(who: who, lines: lines, at: at, sim: sim, audio: audio, outgoing: outgoing);
       }()
           .catchError((Object e) {
         debugPrint('สาย: จดบันทึกไม่สำเร็จ — ${e.runtimeType}');
@@ -310,6 +322,7 @@ class CallSession extends ChangeNotifier {
     }
     _handled = false;
     _alertedOwner = false;
+    _outgoingCall = false;
     _startedAt = null;
     // สายถัดไปอาจเข้าอีกซิม · ไม่ล้าง = บันทึกสายหน้าติดซิมของสายนี้
     _sim = null;
@@ -462,13 +475,15 @@ class CallSession extends ChangeNotifier {
   }
 
   Future<_RtResult> _talkRealtime() async {
-    final rt = _state.openRealtimeCall();
+    final outgoing = _outgoingCall;
+    final rt = _state.openRealtimeCall(outgoing: outgoing);
     final ended = Completer<void>();
     var dropped = false;
     _rt = rt;
     _rtEnded = ended;
     _rtResponding = false;
-    _rtGated = true;
+    // รับสาย = เธอทักก่อน (กั้นไมค์ไว้) · โทรออก = ฟัง "ฮัลโหล" ของปลายสายก่อน
+    _rtGated = !outgoing;
 
     rt.onAudio = (pcm) {
       unawaited(_invoke('liveAudioWrite', {'pcm': pcm}));
@@ -518,6 +533,12 @@ class CallSession extends ChangeNotifier {
     _rounds = 1;
     final started = DateTime.now();
     if (!await _openMic()) _markDeaf();
+    // โทรออกแล้วปลายสายเงียบ (บางคนรอให้คนโทรพูดก่อน) → เธอเริ่มเองหลังสองวินาทีครึ่ง
+    if (outgoing) {
+      unawaited(Future<void>.delayed(const Duration(milliseconds: 2500), () {
+        if (!ended.isCompleted && _heardRounds == 0 && !_rtResponding) rt.nudge(_state.s.callOutKickoff);
+      }));
+    }
     _onChunk = (chunk, level) {
       _micLevel = level;
       if (!_rtGated) rt.sendMic(chunk);
@@ -578,7 +599,20 @@ class CallSession extends ChangeNotifier {
   }
 
   Future<void> _talk({bool greet = true}) async {
-    if (greet) await _speak(_state.callGreeting(), remember: true);
+    final outgoing = _outgoingCall;
+    if (greet && !outgoing) await _speak(_state.callGreeting(), remember: true);
+    // โทรออก (ทางเดิม): เปิดบทเอง · บรรทัดสั่งเริ่มไม่ลงบทสนทนา (ไม่ใช่คำของปลายสาย)
+    if (greet && outgoing) {
+      final open = CallTags.parse(await _state.replyOnCall(
+        [(fromHer: false, text: _state.s.callOutKickoff)],
+        outgoing: true,
+      ));
+      if (open.text.isNotEmpty && _live && _mind) {
+        _lines.add(CallLine.her(open.text));
+        _notify();
+        await _speak(open.text);
+      }
+    }
 
     while (_live && _mind && !_disposed) {
       // 🔴 เจ้าของพิมพ์ให้เธอพูดอยู่ ([say]) = รอให้พูดจบก่อนค่อยเปิดไมค์
@@ -608,7 +642,7 @@ class CallSession extends ChangeNotifier {
 
       final reply = await _state.replyOnCall([
         for (final l in _lines) (fromHer: l.fromHer, text: l.text),
-      ]);
+      ], outgoing: outgoing);
       if (!_live || !_mind || _disposed) break;
 
       // แท็กท้ายคำตอบ (ทางเดิมไม่มีเครื่องมือ) · ตัดออกก่อนพูด ไม่ให้อ่านวงเล็บออกเสียง

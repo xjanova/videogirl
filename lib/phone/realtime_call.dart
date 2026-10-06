@@ -171,13 +171,25 @@ class RealtimeCall {
         'tool_choice': 'auto',
       },
     });
-    // เธอทักก่อน · ประโยคทักกำหนดตายตัว (มีเรื่องบันทึกเสียงอยู่ในนั้น ต้องพูดครบ)
+    // รับสาย = เธอทักก่อน · ประโยคทักกำหนดตายตัว (มีเรื่องบันทึกเสียงอยู่ในนั้น ต้องพูดครบ)
+    // โทรออก (ไม่มีคำทัก) = รอปลายสาย "ฮัลโหล" ก่อน · เซิร์ฟเวอร์ตอบเองเมื่อเขาพูดจบ
+    if (greeting.trim().isNotEmpty) {
+      _send({
+        'type': 'response.create',
+        'response': {
+          'output_modalities': ['audio'],
+          'instructions': 'Greet the caller now, saying exactly this and nothing else: $greeting',
+        },
+      });
+    }
+  }
+
+  /// ให้เธอเริ่มพูดตามคำสั่งนี้ (เช่น ปลายสายรับแล้วเงียบ)
+  void nudge(String instructions) {
+    if (!connected) return;
     _send({
       'type': 'response.create',
-      'response': {
-        'output_modalities': ['audio'],
-        'instructions': 'Greet the caller now, saying exactly this and nothing else: $greeting',
-      },
+      'response': {'output_modalities': ['audio'], 'instructions': instructions},
     });
   }
 
