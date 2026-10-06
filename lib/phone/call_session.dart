@@ -39,6 +39,7 @@ import '../i18n/strings_ai.dart';
 import '../state/mind_state.dart';
 import '../system/permissions.dart';
 import 'call_notes.dart';
+import 'call_tags.dart';
 import 'call_watch.dart';
 import 'realtime_call.dart';
 
@@ -308,6 +309,7 @@ class CallSession extends ChangeNotifier {
       }());
     }
     _handled = false;
+    _alertedOwner = false;
     _startedAt = null;
     // สายถัดไปอาจเข้าอีกซิม · ไม่ล้าง = บันทึกสายหน้าติดซิมของสายนี้
     _sim = null;
@@ -494,6 +496,10 @@ class CallSession extends ChangeNotifier {
         ended.complete();
       }
     };
+    // ลากันแล้ว = วางสายเมื่อเสียงลาของเธอออกลำโพงหมด (ดูนาฬิกาข้างล่าง)
+    var hangWhenQuiet = false;
+    rt.onEndCall = () => hangWhenQuiet = true;
+    rt.onAlertOwner = (reason) => unawaited(_state.alertOwner(who: _who, reason: reason));
 
     if (await _invoke<bool>('liveAudioStart', {'stream': _state.callStream}) != true) {
       _rt = null;
@@ -530,6 +536,13 @@ class CallSession extends ChangeNotifier {
         final speaking = _rtResponding || pending > 0;
         if (speaking) _rtOpenAt = now.add(_echoTail);
         _rtGated = speaking || now.isBefore(_rtOpenAt);
+
+        // เธอขอวางสายแล้ว และประโยคลาพูดจบแล้ว · กันไว้ห้าวินาทีแรก (โมเดลเรียกพลาดตอนทัก)
+        if (hangWhenQuiet && !speaking && now.difference(started) > const Duration(seconds: 5)) {
+          hangWhenQuiet = false;
+          unawaited(hangUp());
+          return;
+        }
 
         if (speaking != _rtLips) {
           _rtLips = speaking;
@@ -598,11 +611,27 @@ class CallSession extends ChangeNotifier {
       ]);
       if (!_live || !_mind || _disposed) break;
 
-      _lines.add(CallLine.her(reply));
-      _notify();
-      await _speak(reply);
+      // แท็กท้ายคำตอบ (ทางเดิมไม่มีเครื่องมือ) · ตัดออกก่อนพูด ไม่ให้อ่านวงเล็บออกเสียง
+      final c = CallTags.parse(reply);
+      if (c.text.isNotEmpty) {
+        _lines.add(CallLine.her(c.text));
+        _notify();
+        await _speak(c.text);
+      }
+      if (c.urgent != null && !_alertedOwner) {
+        _alertedOwner = true;
+        unawaited(_state.alertOwner(who: _who, reason: c.urgent!));
+      }
+      final age = DateTime.now().difference(_startedAt ?? DateTime.now());
+      if (c.hangUp && age > const Duration(seconds: 5) && _live && _mind) {
+        await hangUp();
+        break;
+      }
     }
   }
+
+  /// แจ้งเจ้าของเรื่องด่วนไปแล้วในสายนี้ · ครั้งเดียวต่อสาย
+  bool _alertedOwner = false;
 
   /// พูดออกลำโพงให้ไมค์รับเข้าสาย · รอจนเล่นจบจริง
   ///

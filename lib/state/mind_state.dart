@@ -1409,18 +1409,35 @@ class MindState extends ChangeNotifier {
   Future<String> replyOnCall(List<({bool fromHer, String text})> history) =>
       _askBrain(callPrompt(), history, cap: ReplyCap.call);
 
+  ///
+  /// [live] = คุยสด (Realtime) · วางสาย/แจ้งด่วนด้วยเครื่องมือแทนแท็ก (ดู [MindPersona.phoneStyle])
   @visibleForTesting
-  String callPrompt() => MindPersona.system(
+  String callPrompt({bool live = false}) => MindPersona.system(
         lang: _lang,
         mode: mode,
         flirt: effectiveFlirt,
         ownerProfile: '',
         boundaries: _boundaries,
         onCall: true,
+        liveCall: live,
         soul: _soul,
         schedule: _calendar?.busyBlock(now: _clock()) ?? '',
         now: _clock(),
       );
+
+  /// เรื่องด่วนระหว่างสาย → แจ้งเตือนเจ้าของทันที (แตะแล้วไปจอสาย แทรกสายคุยเองได้)
+  ///
+  /// ใช้ช่องแจ้งเตือนเดียวกับบันทึกสาย (ดัง + เด้ง) · ไม่มีสิทธิ์แจ้งเตือน = เงียบ ๆ
+  Future<void> alertOwner({required String who, required String reason}) async {
+    try {
+      await kSystemChannel.invokeMethod<bool>('notifyCallNote', {
+        'title': s.callUrgentTitle(who),
+        'body': reason,
+      });
+    } on Object catch (e) {
+      debugPrint('สาย: แจ้งเรื่องด่วนไม่ได้ — ${e.runtimeType}');
+    }
+  }
 
   /// สังเคราะห์เสียงสำหรับพูดเข้าสาย · คืนไบต์ ไม่ได้เล่นเอง
   ///
@@ -1458,7 +1475,7 @@ class MindState extends ChangeNotifier {
   RealtimeCall openRealtimeCall() {
     return RealtimeCall(
       apiKey: effectiveOpenAiKey,
-      instructions: callPrompt(),
+      instructions: callPrompt(live: true),
       greeting: callGreeting(),
       // เสียงที่ตั้งไว้ให้ "ตอบรับสาย" · ไม่ใช่เสียงที่ Realtime รู้จัก = marin
       voice: voiceFor(VoiceChannel.answer).voice,

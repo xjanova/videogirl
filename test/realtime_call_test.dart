@@ -197,7 +197,7 @@ void main() {
       await s.setOpenAiKey('sk-test-key-for-unit-tests');
       s.setOwnerProfile('บ้านเลขที่ 99/12 ซอยลับ');
       final rt = s.openRealtimeCall();
-      expect(rt.instructions, s.callPrompt());
+      expect(rt.instructions, s.callPrompt(live: true));
       expect(rt.instructions, isNot(contains('99/12')));
       expect(rt.greeting, s.callGreeting());
       expect(rt.apiKey, 'sk-test-key-for-unit-tests');

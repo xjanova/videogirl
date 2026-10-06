@@ -249,8 +249,13 @@ void main() {
         lang: AppLang.th,
         onCall: true,
         tools: true,
+        webSearch: true,
       );
-      expect(sys, isNot(contains('[[')));
+      // มีได้แค่แท็กวางสาย/แจ้งด่วนของเลขา · แท็กค้นข้อมูลออกเน็ตต้องไม่มี
+      for (final tag in ['[[ค้นหา', '[[เว็บ', '[[อากาศ', '[[ค่าเงิน']) {
+        expect(sys, isNot(contains(tag)));
+      }
+      expect(sys, isNot(contains('หาข้อมูลจากอินเทอร์เน็ต')));
     });
   });
 }

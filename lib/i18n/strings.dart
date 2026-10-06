@@ -869,11 +869,16 @@ class S {
       );
 
   // ═══ สายที่เธอถือเอง ════════════════════════════════════
+  /// เจ้าของ: "บอกว่าตัวเองเป็นเลขา ชื่อน้องมาย ให้คุยหรือสั่งไว้ได้ค่ะ"
   String get callGreeting => _(
-        'สวัสดีค่ะ มายด์เป็นผู้ช่วยของเจ้าของเบอร์นี้นะคะ '
-            'ตอนนี้เขาไม่สะดวกรับสาย ไม่ทราบว่าติดต่อเรื่องอะไรคะ',
-        'Hello, this is Mind, assistant to the owner of this number. '
-            'They cannot take the call right now — may I ask what it is about?',
+        'สวัสดีค่ะ น้องมายค่ะ เลขาของเจ้าของเบอร์นี้ '
+            'ตอนนี้เขาไม่สะดวกรับสาย มีอะไรคุยหรือฝากเรื่องไว้กับน้องมายได้เลยนะคะ',
+        'Hi, this is Mai, the secretary for this number. '
+            'They can\'t take the call right now — you can talk to me or leave a message.',
+      );
+  String callUrgentTitle(String who) => _(
+        'ด่วน — ${who.isEmpty ? 'มีสาย' : who} รอสายอยู่ · แตะเพื่อคุยเอง',
+        'Urgent — ${who.isEmpty ? 'a caller' : who} is on the line · tap to take it',
       );
   String get callRecordingNotice => _('สายนี้มีการบันทึกเสียงไว้นะคะ', 'Please note this call is being recorded.');
   String get callNeedsA11y => _(

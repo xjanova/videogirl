@@ -92,6 +92,12 @@ class RealtimeCall {
   /// ท่อหลุด / เซิร์ฟเวอร์แจ้งข้อผิดพลาด
   void Function(String message)? onError;
 
+  /// เธอลากับคู่สายแล้ว ขอวางสาย · ผู้เรียกวางเมื่อเสียงลาออกลำโพงจบ
+  void Function()? onEndCall;
+
+  /// เรื่องด่วน · ผู้เรียกแจ้งเตือนเจ้าของ
+  void Function(String reason)? onAlertOwner;
+
   RtSocket? _socket;
   StreamSubscription<Object?>? _sub;
   bool _closed = false;
@@ -141,6 +147,28 @@ class RealtimeCall {
             'voice': voices.contains(voice) ? voice : 'marin',
           },
         },
+        // วางสายเอง / แจ้งเจ้าของเรื่องด่วน · prompt บอกว่าเรียกเมื่อไหร่ (MindPersona.phoneStyle)
+        'tools': [
+          {
+            'type': 'function',
+            'name': 'end_call',
+            'description': 'Hang up the phone call. Only after you and the caller have both said goodbye.',
+            'parameters': {'type': 'object', 'properties': <String, Object?>{}, 'required': <String>[]},
+          },
+          {
+            'type': 'function',
+            'name': 'alert_owner',
+            'description': 'Send the owner an urgent notification about this call right now.',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'reason': {'type': 'string', 'description': 'One short sentence: who is calling and why it is urgent.'},
+              },
+              'required': ['reason'],
+            },
+          },
+        ],
+        'tool_choice': 'auto',
       },
     });
     // เธอทักก่อน · ประโยคทักกำหนดตายตัว (มีเรื่องบันทึกเสียงอยู่ในนั้น ต้องพูดครบ)
@@ -220,6 +248,9 @@ class RealtimeCall {
       case 'conversation.item.input_audio_transcription.completed':
         final t = (e['transcript'] as String?)?.trim() ?? '';
         if (t.isNotEmpty) onCallerText?.call(t);
+      case 'response.output_item.done':
+        final item = e['item'];
+        if (item is Map && item['type'] == 'function_call') _onTool(item.cast<String, Object?>());
       case 'response.done':
         onResponseDone?.call();
       case 'error':
@@ -227,6 +258,37 @@ class RealtimeCall {
         final msg = err is Map ? '${err['code'] ?? err['type'] ?? ''}: ${err['message'] ?? ''}' : '$err';
         debugPrint('realtime: $msg');
         onError?.call(msg);
+    }
+  }
+
+  bool _alerted = false;
+
+  void _onTool(Map<String, Object?> item) {
+    final callId = item['call_id'];
+    switch (item['name']) {
+      case 'end_call':
+        onEndCall?.call();
+      case 'alert_owner':
+        var reason = '';
+        try {
+          final a = jsonDecode('${item['arguments'] ?? '{}'}');
+          if (a is Map) reason = '${a['reason'] ?? ''}'.trim();
+        } on FormatException {
+          // อาร์กิวเมนต์เสีย · ยังแจ้งได้ แค่ไม่มีเหตุผล
+        }
+        // 🔴 แจ้งครั้งเดียวต่อสาย · คู่สายพูดว่า "ด่วน" ซ้ำ ๆ ต้องไม่กลายเป็นแจ้งเตือนรัว
+        if (!_alerted) {
+          _alerted = true;
+          onAlertOwner?.call(reason);
+        }
+        // บอกโมเดลว่าแจ้งแล้ว ให้พูดต่อ ("แจ้งเจ้าของให้แล้วนะคะ")
+        if (callId is String) {
+          _send({
+            'type': 'conversation.item.create',
+            'item': {'type': 'function_call_output', 'call_id': callId, 'output': '{"notified":true}'},
+          });
+          _send({'type': 'response.create'});
+        }
     }
   }
 

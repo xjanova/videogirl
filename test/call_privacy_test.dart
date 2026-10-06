@@ -45,7 +45,10 @@ void main() {
       expect(sys, isNot(contains(secret)), reason: 'หลุดเข้า prompt ของสาย: $secret');
     }
     expect(sys, contains('13:00-14:00 busy'), reason: 'ยังบอกได้ว่าไม่ว่างช่วงไหน');
-    expect(sys, isNot(contains('[[')), reason: 'ไม่มีเครื่องมือค้นในสาย');
+    // แท็กวางสาย/แจ้งด่วนมีได้ (น้องมายวางสายเอง) · แท็กค้นข้อมูลออกเน็ตต้องไม่มี
+    for (final tag in ['[[ค้นหา', '[[เว็บ', '[[อากาศ', '[[ค่าเงิน', '[[search', '[[web']) {
+      expect(sys, isNot(contains(tag)), reason: 'ไม่มีเครื่องมือค้นในสาย: $tag');
+    }
     expect(sys, isNot(contains('BrainX')), reason: 'ไม่มีอะไรจากสมอง BrainX ในสาย');
   });
 
@@ -69,13 +72,14 @@ void main() {
 
   test('🔴 เส้นทางสายไม่เรียกสมอง BrainX / บันทึกช่วยจำ / เครื่องมือค้น (ตรวจที่ต้นทาง)', () {
     final src = File('lib/state/mind_state.dart').readAsStringSync();
-    final start = src.indexOf('String callPrompt()');
+    final start = src.indexOf('String callPrompt(');
+    expect(start, greaterThan(0), reason: 'หา callPrompt ไม่เจอ — รูปแบบเปลี่ยน ต้องแก้เทสต์นี้');
     final end = src.indexOf(');', src.indexOf('now: _clock(),', start));
     final body = src.substring(start, end);
     for (final banned in ['memory.', 'brainx', 'recall', 'tools:', 'pcProfile', '_calls', 'promptBlock()', '_ownerProfile']) {
       expect(body, isNot(contains(banned)), reason: 'callPrompt แตะ $banned');
     }
-    final reply = src.substring(src.indexOf('Future<String> replyOnCall('), src.indexOf('String callPrompt()'));
+    final reply = src.substring(src.indexOf('Future<String> replyOnCall('), start);
     expect(reply, isNot(contains('recall')));
     expect(reply, isNot(contains('brainx')));
   });
