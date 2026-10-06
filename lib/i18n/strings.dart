@@ -293,12 +293,24 @@ class S {
   /// และต้องบอกด้วยว่าสิ่งที่คนคาดหวังที่สุด (เธอคุยแทน) ยังทำไม่ได้
   String get permDialerWhy => _(
         'ทุกสายของเครื่องจะผ่านแอปนี้ — จอสายเป็นของมายด์ รับ วาง ปิดไมค์ '
-        'สลับลำโพงได้ · เธอยังพูดในสายไม่ได้ Android ไม่เปิดทางให้แอปไหนทำ '
+        'สลับลำโพงได้ · เธอพูดเข้าสายผ่านลำโพง (Android ไม่ให้แอปส่งเสียงเข้าสายตรง ๆ) '
         'ถอนคืนได้ตลอดจากหน้าตั้งค่าของเครื่อง',
         'Every call on this phone goes through this app — Mind owns the call '
-        'screen and can answer, hang up, mute and switch to speaker. She still '
-        'cannot talk on the line; Android allows no app to do that. '
+        'screen and can answer, hang up, mute and switch to speaker. She talks '
+        'into the call through the speaker (Android lets no app put audio into a call directly). '
         'Reversible any time from system settings.',
+      );
+  String get permA11y => _('ให้มายด์ได้ยินสาย (การช่วยเหลือพิเศษ)', 'Let Mind hear calls (Accessibility)');
+
+  /// 🔴 ต้องบอกให้ตรงว่าเปิดไปได้อะไร และ**ไม่ได้**อะไร · คำว่า "การช่วยเหลือพิเศษ"
+  /// ทำให้คนกลัวว่าแอปจะอ่านจอ ซึ่งตัวนี้ไม่ทำ
+  String get permA11yWhy => _(
+        'Android ให้แอปได้ยินแต่ความเงียบระหว่างมีสาย ยกเว้นแอปที่เปิดบริการนี้ · ไม่เปิด = เธอรับสายทักได้ '
+        'แต่ไม่ได้ยินคนโทรมาเลย · เปิดที่ การช่วยเหลือพิเศษ → แอปที่ดาวน์โหลด → GigGok · '
+        'ไม่อ่านหน้าจอ ไม่กดอะไรแทนคุณ',
+        'Android gives apps only silence during a call unless they run this service · without it she can greet '
+        'but never hears the caller · turn it on in Accessibility → Downloaded apps → GigGok · '
+        'it does not read your screen or act for you',
       );
   String get permCalendar => _('ปฏิทิน', 'Calendar');
   String get permCalendarWhy => _(
@@ -863,6 +875,18 @@ class S {
         'Hello, this is Mind, assistant to the owner of this number. '
             'They cannot take the call right now — may I ask what it is about?',
       );
+  String get callRecordingNotice => _('สายนี้มีการบันทึกเสียงไว้นะคะ', 'Please note this call is being recorded.');
+  String get callNeedsA11y => _(
+        'เครื่องนี้ไม่ให้เธอได้ยินปลายสาย · เปิด "ให้มายด์ได้ยินสาย" ที่ ตั้งค่าเครื่อง → การช่วยเหลือพิเศษ → GigGok',
+        'This phone gives her only silence during calls · turn on "Let Mind hear calls" in Settings → Accessibility → GigGok',
+      );
+  String get recordCalls => _('บันทึกเสียงสนทนาในสาย', 'Record her calls');
+  String get recordCallsHint => _(
+        'เก็บในเครื่องเท่านั้น ฟังย้อนหลังได้ที่บันทึกสายในไทม์ไลน์ ลบพร้อมบันทึกสาย · เธอบอกคู่สายตอนทักว่ามีการบันทึก',
+        'Kept on this phone only · play it back from the call note in Timeline · deleted with the note · she tells the caller in her greeting',
+      );
+  String get callNotePlay => _('ฟังเสียงสนทนา', 'Play the recording');
+  String get callNoteStop => _('หยุดเล่น', 'Stop');
   String get callOnAir => _('มายด์กำลังคุยสายนี้', 'Mind is on this call');
   String get callTalking => _('กำลังพูด', 'Speaking');
   String get callListening => _('กำลังฟัง', 'Listening');

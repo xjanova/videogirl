@@ -67,6 +67,14 @@ enum MindPermission {
   defaultDialer(
       check: 'isDefaultDialer', ask: 'requestDefaultDialer', inApp: false),
 
+  /// บริการการช่วยเหลือพิเศษ — **ให้เธอได้ยินปลายสาย**
+  ///
+  /// 🔴 Android 10+ ให้ความเงียบกับแอปทั่วไปที่อัดเสียงระหว่างมีสาย · ข้อยกเว้น
+  /// เดียวที่แอปไม่ใช่แอประบบใช้ได้คือบริการการช่วยเหลือพิเศษ · ไม่เปิด = เธอรับสาย
+  /// ทักได้ แต่หูหนวกทั้งสาย (ดู android MindAccessibility.kt)
+  accessibility(
+      check: 'accessibilityOn', ask: 'openAccessibility', inApp: false),
+
   /// ติดตั้งแอปที่ไม่รู้จัก — auto-update ถึงจะติดตั้งได้จริง
   install(check: 'canInstall', ask: 'requestInstall', inApp: false),
 

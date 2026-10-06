@@ -128,6 +128,14 @@ class SystemBridge(context: Context) {
             // ตอนนี้มีจอให้คนเห็นไหม · ไม่มี = ตัวเธอถูกปลุกมาคุยในสายเบื้องหลัง
             "hasScreen" -> result.success(false)
             "lastAutoAnswer" -> result.success(MindPrefs.lastAutoAnswer(context))
+            // ให้เธอได้ยินปลายสาย · ดู MindAccessibility
+            "accessibilityOn" -> result.success(MindAccessibility.enabled(context))
+            // เปิดฟังเสียงสนทนาที่บันทึกไว้ (ไม่ใช่ระหว่างสาย · เสียงสื่อธรรมดา)
+            "playAudioFile" -> playFile(call.argument<String>("path"), result)
+            "stopAudioFile" -> {
+                stopFile()
+                result.success(true)
+            }
             else -> return false
         }
         return true
@@ -152,6 +160,58 @@ class SystemBridge(context: Context) {
         CallAudio.play(context, path, stream ?: CallAudio.STREAM_CALL) { ok ->
             main.post { result.success(ok) }
         }
+    }
+
+    private var filePlayer: android.media.MediaPlayer? = null
+    private var fileDone: MethodChannel.Result? = null
+
+    /**
+     * เล่นไฟล์เสียงสนทนาที่บันทึกไว้ · ตอบกลับเมื่อเล่นจบ (true) หรือถูกหยุด/พัง (false)
+     *
+     * แยกจาก [CallAudio] โดยตั้งใจ · ตัวนั้นเป็นเสียงเธอ**ในสาย** (ช่องเสียงสาย
+     * เร่งเสียงสุด) ตัวนี้คือเจ้าของฟังย้อนหลังด้วยเสียงสื่อธรรมดา
+     */
+    private fun playFile(path: String?, result: MethodChannel.Result) {
+        stopFile()
+        if (path.isNullOrEmpty() || !java.io.File(path).exists()) {
+            result.success(false)
+            return
+        }
+        fileDone = result
+        try {
+            val mp = android.media.MediaPlayer()
+            filePlayer = mp
+            mp.setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            mp.setDataSource(path)
+            mp.setOnCompletionListener { finishFile(true) }
+            mp.setOnErrorListener { _, _, _ -> finishFile(false); true }
+            mp.setOnPreparedListener { it.start() }
+            mp.prepareAsync()
+        } catch (e: Exception) {
+            finishFile(false)
+        }
+    }
+
+    private fun stopFile() = finishFile(false)
+
+    /** ตอบครั้งเดียวเสมอ · Result ที่ตอบซ้ำโยนทิ้งทั้ง engine */
+    private fun finishFile(ok: Boolean) {
+        filePlayer?.let {
+            try {
+                it.release()
+            } catch (e: Exception) {
+                // ปล่อยซ้ำ — ไม่ใช่เรื่องที่ต้องพัง
+            }
+        }
+        filePlayer = null
+        val r = fileDone
+        fileDone = null
+        r?.success(ok)
     }
 
     /// ระดับเสียงสื่อตอนนี้ · {now, max} — เสียงเธอออกช่องนี้ทั้งจากเวทีและทางสำรอง

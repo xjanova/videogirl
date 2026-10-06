@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +11,7 @@ import '../journal/mind_journal.dart';
 import '../phone/call_notes.dart';
 import '../phone/call_watch.dart';
 import '../state/mind_state.dart';
+import '../system/permissions.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/buttons.dart';
@@ -321,6 +323,16 @@ class _TimelineScreenState extends State<TimelineScreen> {
             const SizedBox(height: 12),
             Text(note.summary,
                 style: const TextStyle(fontSize: 13.5, height: 1.6)),
+            // เสียงสนทนาที่บันทึกไว้ (ถ้ามี) · เล่นด้วยเสียงสื่อธรรมดา
+            FutureBuilder<File?>(
+              future: CallRecordings.forNote(note.id),
+              builder: (c, snap) => snap.data == null
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: _RecordingButton(path: snap.data!.path, mode: mode, t: t),
+                    ),
+            ),
             const SizedBox(height: 18),
             MindSectionLabel(t.callNoteConversation),
             const SizedBox(height: 8),
@@ -450,4 +462,61 @@ class _TimelineScreenState extends State<TimelineScreen> {
       ),
     );
   }
+}
+
+/// ปุ่มฟังเสียงสนทนาที่บันทึกไว้ · กดซ้ำ = หยุด · ปิดแผ่นแล้วหยุดเอง
+class _RecordingButton extends StatefulWidget {
+  const _RecordingButton({required this.path, required this.mode, required this.t});
+
+  final String path;
+  final MindMode mode;
+  final S t;
+
+  @override
+  State<_RecordingButton> createState() => _RecordingButtonState();
+}
+
+class _RecordingButtonState extends State<_RecordingButton> {
+  bool _playing = false;
+
+  Future<void> _toggle() async {
+    if (_playing) {
+      await _stop();
+      return;
+    }
+    setState(() => _playing = true);
+    try {
+      // ตอบกลับเมื่อเล่นจบ / ถูกหยุด
+      await kSystemChannel.invokeMethod<bool>('playAudioFile', {'path': widget.path});
+    } on Object catch (e) {
+      debugPrint('timeline: เล่นเสียงสนทนาไม่ได้ — ${e.runtimeType}');
+    }
+    if (mounted) setState(() => _playing = false);
+  }
+
+  Future<void> _stop() async {
+    try {
+      await kSystemChannel.invokeMethod<bool>('stopAudioFile');
+    } on Object {
+      // ไม่มีฝั่งเนทีฟ — ไม่มีอะไรให้หยุด
+    }
+  }
+
+  @override
+  void dispose() {
+    // ปิดแผ่นบันทึกแล้วเสียงยังเล่นต่อ = เสียงคนอื่นดังขึ้นมาเองโดยไม่มีปุ่มหยุด
+    if (_playing) unawaited(_stop());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: _toggle,
+          icon: Icon(_playing ? Icons.stop_rounded : Icons.play_arrow_rounded, color: widget.mode.accent),
+          label: Text(_playing ? widget.t.callNoteStop : widget.t.callNotePlay,
+              style: TextStyle(color: widget.mode.accent)),
+        ),
+      );
 }

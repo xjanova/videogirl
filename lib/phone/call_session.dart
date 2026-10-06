@@ -38,6 +38,7 @@ import '../avatar/stage_bridge.dart';
 import '../i18n/strings_ai.dart';
 import '../state/mind_state.dart';
 import '../system/permissions.dart';
+import 'call_notes.dart';
 import 'call_watch.dart';
 
 /// บรรทัดหนึ่งของบทสนทนาในสาย
@@ -215,9 +216,9 @@ class CallSession extends ChangeNotifier {
 
     if (mind && !was) _begin();
     if (!mind && was && _turn != CallTurn.handedOver) {
-      // เจ้าของแทรกสายจากจอเนทีฟ — หยุดเธอฝั่งนี้ให้ตรงกัน
+      // เจ้าของแทรกสายจากจอเนทีฟ — หยุดเธอฝั่งนี้ให้ตรงกัน (ปิดไมค์จริงด้วย)
       _turn = CallTurn.handedOver;
-      unawaited(_stopListening());
+      unawaited(_closeMic());
     }
     _notify();
   }
@@ -247,6 +248,11 @@ class CallSession extends ChangeNotifier {
     _mute = false;
     _error = null;
     _silentRounds = 0;
+    // ไมค์ (และไฟล์บันทึก) เปิดก่อนเธอทัก · คำทักกับคำแรกของคู่สายอยู่ในบันทึกด้วย
+    unawaited(() async {
+      await _startRecording();
+      await _openMic();
+    }());
     unawaited(_converse());
   }
 
@@ -267,23 +273,33 @@ class CallSession extends ChangeNotifier {
     _micLevel = 0;
     if (!wasLive) return;
 
-    unawaited(_stopListening());
+    unawaited(_closeMic());
     unawaited(_invoke('callEndAudio'));
+    if (_handled) _reportCall();
 
     // 🔴 จดเรื่องที่ฝากไว้ **ทุกสายที่เธอเป็นคนคุย** · ของเดิมพอวางสาย
     // บทสนทนาหายไปกับหน่วยความจำ เจ้าของไม่มีทางรู้ว่าใครฝากอะไรไว้
     if (_handled && _lines.isNotEmpty) {
-      unawaited(_state
-          .takeCallNote(
-            who: _who,
-            lines: [for (final l in _lines) (fromHer: l.fromHer, text: l.text)],
-            at: _startedAt,
-            sim: _sim,
-          )
+      final who = _who;
+      final lines = [for (final l in _lines) (fromHer: l.fromHer, text: l.text)];
+      final at = _startedAt;
+      final sim = _sim;
+      unawaited(() async {
+        final audio = await _finishRecording();
+        await _state.takeCallNote(who: who, lines: lines, at: at, sim: sim, audio: audio);
+      }()
           .catchError((Object e) {
         debugPrint('สาย: จดบันทึกไม่สำเร็จ — ${e.runtimeType}');
-        return null;
       }));
+    } else {
+      // ไม่มีบันทึกสายให้ผูก = ไม่เก็บเสียงไว้ลอย ๆ
+      unawaited(() async {
+        try {
+          await (await _finishRecording())?.delete();
+        } on Object {
+          // ลบไม่ได้ก็ไม่ต้องล้มอะไร · ไฟล์อยู่ในพื้นที่ของแอปเอง
+        }
+      }());
     }
     _handled = false;
     _startedAt = null;
@@ -311,7 +327,8 @@ class CallSession extends ChangeNotifier {
     _turn = CallTurn.handedOver;
     _mind = false;
     _notify();
-    await _stopListening();
+    // ปิดไมค์จริง ไม่ใช่แค่เลิกฟัง · เจ้าของคุยเองแล้ว ไม่ใช่สิ่งที่เธอควรอัดต่อ
+    await _closeMic();
     await _invoke('callStopSpeak');
     await _invoke('mindHandOver');
   }
@@ -511,7 +528,15 @@ class CallSession extends ChangeNotifier {
 
   // ── ฟังปลายสาย ──────────────────────────────────────────
 
+  /// ไมค์ของทั้งสาย · เปิดครั้งเดียวตอนเธอเริ่มคุย ปิดตอนสายจบ/เจ้าของแทรกสาย
+  ///
+  /// 🔴 เดิมเปิด-ปิดไมค์ทุกเทิร์น (ปิดตอนเธอพูด) · เปิดใหม่แต่ละครั้งกินเวลา
+  /// และคำแรกของคู่สายหายไปกับช่วงนั้น · ตอนนี้ไมค์เปิดค้าง ตอนเธอพูดแค่
+  /// **ไม่ฟัง** (ไม่ส่งให้ตัวจับประโยค) · ได้เสียงทั้งสายต่อเนื่องสำหรับบันทึกด้วย
   StreamSubscription<Uint8List>? _mic;
+
+  /// ผู้รับก้อนเสียงของเทิร์นที่กำลังฟังอยู่ · null = ตอนนี้ไม่ฟัง (เธอพูด/คิด)
+  void Function(Uint8List chunk, double level)? _onChunk;
 
   /// อัดเสียง 16 บิต ช่องเดียว 16 kHz = 32,000 ไบต์ต่อวินาที
   static const _rate = 16000;
@@ -521,7 +546,14 @@ class CallSession extends ChangeNotifier {
   static const _maxTurn = Duration(seconds: 20);
 
   /// เงียบนานเท่านี้หลังเริ่มพูดแล้ว = จบประโยค
-  static const _endOfSpeech = Duration(milliseconds: 1100);
+  ///
+  /// สั้นลงจาก 1.1 วิ · เจ้าของ: "ควรฟังแล้วโต้ตอบได้เหมือนแอป ChatGPT โต้ตอบสดๆ"
+  /// ทุกส่วนที่รอได้ต้องสั้น · ต่ำกว่านี้เริ่มตัดคนที่หยุดหายใจกลางประโยค
+  static const _endOfSpeech = Duration(milliseconds: 800);
+
+  /// หลังเธอพูดจบ ไม่ฟังช่วงสั้น ๆ นี้ · เสียงเธอยังก้องในห้อง/ลำโพงยังปล่อยหาง
+  /// ถ้าฟังทันที เธอจะได้ยินหางเสียงตัวเองเป็นคำพูดของคู่สาย
+  static const _echoTail = Duration(milliseconds: 250);
 
   /// ไม่มีใครพูดเลยนานเท่านี้ = รอบนี้ไม่ได้อะไร
   static const _patience = Duration(seconds: 10);
@@ -533,33 +565,10 @@ class CallSession extends ChangeNotifier {
   /// สัญญาณรบกวนระดับบิตสุดท้ายจะถูกนับเป็นคำพูด
   static const _floorMin = .012;
 
-  Future<String?> _listen() async {
-    if (!await _canListen()) {
-      _markDeaf();
-      return null;
-    }
-
-    _turn = CallTurn.listening;
-    _notify();
-
-    final pcm = BytesBuilder(copy: false);
-    final done = Completer<void>();
-    var quiet = 0.0;
-    var loud = 0.0;
-    var speechStarted = false;
-    var peak = 0.0;
-    DateTime? lastLoud;
-    final startedAt = DateTime.now();
-
-    void finish() {
-      if (!done.isCompleted) done.complete();
-    }
-
-    // ให้ [_stopListening] ปิดเทิร์นนี้ได้ · ยกเลิก subscription แล้ว onDone
-    // ไม่ยิง ถ้าไม่มีทางนี้ เทิร์นจะค้างรอจนหมดเวลา 22 วิ ระหว่างนั้นไมค์ปิด
-    // แต่จอบอก "กำลังฟัง" และทุกอย่างที่คู่สายพูดหายไปหมด
-    _endTurn = finish;
-
+  /// เปิดไมค์ของทั้งสาย (ถ้ายังไม่เปิด) · false = เปิดไม่ได้ / ไม่มีสิทธิ์
+  Future<bool> _openMic() async {
+    if (_mic != null) return true;
+    if (!await _canListen()) return false;
     try {
       final stream = await _recorder.startStream(
         const RecordConfig(
@@ -585,56 +594,101 @@ class CallSession extends ChangeNotifier {
           ),
         ),
       );
-
       _mic = stream.listen(
         (chunk) {
-          if (pcm.length < _bytesPerSecond * _maxTurn.inSeconds) pcm.add(chunk);
-
+          _recSink?.add(chunk);
+          _recBytes += chunk.length;
           final level = levelOf(chunk);
-          _micLevel = level;
-          if (level > peak) peak = level;
-
-          // พื้นเสียง = ค่าต่ำสุดที่เคยเห็น · ไต่ขึ้นช้า ๆ กันการล็อกค่าไว้
-          // ที่ศูนย์ตลอดกาลเมื่อชิ้นแรกบังเอิญเป็นความเงียบสนิท
-          quiet = quiet == 0 ? level : math.min(quiet * 1.02, level);
-          loud = math.max(_floorMin, quiet * 3.5);
-
-          final now = DateTime.now();
-          if (level > loud) {
-            speechStarted = true;
-            lastLoud = now;
+          if (level > _peakEver) _peakEver = level;
+          final turn = _onChunk;
+          if (turn != null) {
+            turn(chunk, level);
+          } else {
+            _micLevel = 0; // ไม่ได้ฟังอยู่ · แถบบนจอไม่ควรเต้น
           }
-
-          if (speechStarted &&
-              lastLoud != null &&
-              now.difference(lastLoud!) > _endOfSpeech) {
-            finish();
-          } else if (!speechStarted &&
-              now.difference(startedAt) > _patience) {
-            finish();
-          } else if (now.difference(startedAt) > _maxTurn) {
-            finish();
-          }
-
-          _notify();
         },
         onError: (Object e) {
           debugPrint('สาย: ไมค์ขัดข้อง — $e');
-          finish();
+          _mic = null;
+          _endTurn?.call();
         },
-        onDone: finish,
+        onDone: () {
+          _mic = null;
+          _endTurn?.call();
+        },
         cancelOnError: true,
       );
-
-      await done.future.timeout(_maxTurn + const Duration(seconds: 2),
-          onTimeout: () {});
+      return true;
+    } on MissingPluginException {
+      return false;
     } on Exception catch (e) {
       debugPrint('สาย: เปิดไมค์ไม่ได้ — $e');
+      return false;
+    }
+  }
+
+  Future<String?> _listen() async {
+    if (!await _openMic()) {
       _markDeaf();
       return null;
+    }
+
+    _turn = CallTurn.listening;
+    _rounds++;
+    _notify();
+
+    final pcm = BytesBuilder(copy: false);
+    final done = Completer<void>();
+    var quiet = 0.0;
+    var loud = 0.0;
+    var speechStarted = false;
+    var peak = 0.0;
+    DateTime? lastLoud;
+    final startedAt = DateTime.now();
+    final deafUntil = startedAt.add(_echoTail);
+
+    void finish() {
+      if (!done.isCompleted) done.complete();
+    }
+
+    // ให้ [_stopListening] ปิดเทิร์นนี้ได้ · ไม่มีทางนี้ เทิร์นจะค้างรอจนหมดเวลา
+    // 22 วิ ระหว่างนั้นจอบอก "กำลังฟัง" และทุกอย่างที่คู่สายพูดหายไปหมด
+    _endTurn = finish;
+
+    _onChunk = (chunk, level) {
+      final now = DateTime.now();
+      _micLevel = level;
+      if (now.isBefore(deafUntil)) return; // หางเสียงของเธอเอง
+      if (pcm.length < _bytesPerSecond * _maxTurn.inSeconds) pcm.add(chunk);
+      if (level > peak) peak = level;
+
+      // พื้นเสียง = ค่าต่ำสุดที่เคยเห็น · ไต่ขึ้นช้า ๆ กันการล็อกค่าไว้
+      // ที่ศูนย์ตลอดกาลเมื่อชิ้นแรกบังเอิญเป็นความเงียบสนิท
+      quiet = quiet == 0 ? level : math.min(quiet * 1.02, level);
+      loud = math.max(_floorMin, quiet * 3.5);
+
+      if (level > loud) {
+        speechStarted = true;
+        lastLoud = now;
+      }
+
+      if (speechStarted && lastLoud != null && now.difference(lastLoud!) > _endOfSpeech) {
+        finish();
+      } else if (!speechStarted && now.difference(startedAt) > _patience) {
+        finish();
+      } else if (now.difference(startedAt) > _maxTurn) {
+        finish();
+      }
+
+      _notify();
+    };
+
+    try {
+      await done.future.timeout(_maxTurn + const Duration(seconds: 2), onTimeout: () {});
     } finally {
       if (identical(_endTurn, finish)) _endTurn = null;
-      await _stopListening();
+      _onChunk = null;
+      _micLevel = 0;
     }
 
     // 🔴 ตัดสินจาก**ระดับเสียงที่วัดได้** ไม่ใช่จากข้อความที่ถอดได้
@@ -651,6 +705,7 @@ class CallSession extends ChangeNotifier {
     _silentRounds = 0;
 
     if (!speechStarted) return null;
+    _heardRounds++;
 
     final bytes = pcm.takeBytes();
     if (bytes.length < _bytesPerSecond ~/ 3) return null; // สั้นกว่า 0.3 วิ
@@ -684,16 +739,27 @@ class CallSession extends ChangeNotifier {
     if (_deaf) return;
     _deaf = true;
     _micLevel = 0;
+    // 🔴 สาเหตุที่พบบ่อยที่สุดบอกได้ตรง ๆ · Android 10+ ให้ความเงียบกับแอปที่อัด
+    // ระหว่างสาย เว้นแต่เปิดบริการการช่วยเหลือพิเศษ (android MindAccessibility.kt)
+    if (!_perms.of(MindPermission.accessibility)) _error = _state.s.callNeedsA11y;
     _notify();
   }
 
   /// ปิดเทิร์นการฟังที่ค้างอยู่ — ดู [_listen]
   void Function()? _endTurn;
 
+  /// เลิกฟังเทิร์นนี้ · **ไมค์ยังเปิดอยู่** (ดู [_mic]) ปิดจริงที่ [_closeMic]
   Future<void> _stopListening() async {
     final end = _endTurn;
     _endTurn = null;
+    _onChunk = null;
     end?.call();
+    _micLevel = 0;
+  }
+
+  /// ปิดไมค์ของทั้งสาย — สายจบ / เจ้าของแทรกสาย / ทิ้งตัวนี้
+  Future<void> _closeMic() async {
+    await _stopListening();
     final sub = _mic;
     _mic = null;
     await sub?.cancel();
@@ -780,12 +846,113 @@ class CallSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── บันทึกเสียงสนทนา ─────────────────────────────────────
+  //
+  // เจ้าของ: "ทำให้บันทึกเสียงสนทนาไว้ได้ด้วย" · ไมค์เปิดค้างทั้งสายอยู่แล้ว
+  // ([_mic]) จึงเขียนทุกก้อนลงไฟล์ WAV เดียว · เก็บในเครื่องเท่านั้น (ไม่ขึ้นสำเนา
+  // ไม่ขึ้นคลาวด์) ลบพร้อมบันทึกสาย · เธอบอกคู่สายตอนทักว่ามีการบันทึก
+
+  IOSink? _recSink;
+  File? _recFile;
+  int _recBytes = 0;
+
+  Future<void> _startRecording() async {
+    if (_recSink != null || !_state.recordCalls) return;
+    try {
+      final dir = await CallRecordings.dir();
+      // เสียงดิบระหว่างสาย · ห่อเป็น WAV ตอนจบ (ตอนนั้นถึงรู้ขนาด)
+      final f = File('${dir.path}${Platform.pathSeparator}rec-${DateTime.now().microsecondsSinceEpoch}.pcm');
+      _recFile = f;
+      _recBytes = 0;
+      _recSink = f.openWrite();
+    } on Object catch (e) {
+      debugPrint('สาย: เริ่มบันทึกเสียงไม่ได้ — ${e.runtimeType}');
+      _recSink = null;
+      _recFile = null;
+    }
+  }
+
+  /// ปิดไฟล์ แก้ขนาดในหัวไฟล์ · คืนไฟล์ หรือ null ถ้าสั้นเกินจะมีความหมาย
+  Future<File?> _finishRecording() async {
+    final sink = _recSink;
+    final file = _recFile;
+    final bytes = _recBytes;
+    _recSink = null;
+    _recFile = null;
+    _recBytes = 0;
+    if (sink == null || file == null) return null;
+    try {
+      await sink.flush();
+      await sink.close();
+      final pcmLen = await file.length();
+      if (bytes < _bytesPerSecond || pcmLen < _bytesPerSecond) {
+        await file.delete();
+        return null;
+      }
+      // หัวไฟล์ที่รู้ขนาดแล้ว + เสียงดิบทั้งก้อน (สตรีมต่อ ไม่โหลดทั้งไฟล์เข้าหน่วยความจำ)
+      final wav = File(file.path.replaceFirst(RegExp(r'\.pcm$'), '.wav'));
+      final header = wavOf(Uint8List(0));
+      final out = wav.openWrite();
+      try {
+        out.add(header.sublist(0, 4));
+        out.add(_u32(36 + pcmLen));
+        out.add(header.sublist(8, 40));
+        out.add(_u32(pcmLen));
+        await out.addStream(file.openRead());
+      } finally {
+        await out.close();
+      }
+      await file.delete();
+      return wav;
+    } on Object catch (e) {
+      debugPrint('สาย: ปิดไฟล์บันทึกเสียงไม่ได้ — ${e.runtimeType}');
+      return null;
+    }
+  }
+
+  static Uint8List _u32(int v) =>
+      Uint8List.fromList([v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >> 24) & 255]);
+
+  @visibleForTesting
+  Future<File?> debugRecord(List<Uint8List> chunks) async {
+    await _startRecording();
+    for (final c in chunks) {
+      _recSink?.add(c);
+      _recBytes += c.length;
+    }
+    return _finishRecording();
+  }
+
+  // ── ตัวเลขของสายนี้ (ไม่มีเนื้อหา ไม่มีเบอร์) · ส่งรายงานเองเมื่อสายมีปัญหา ──
+
+  int _rounds = 0;
+  int _heardRounds = 0;
+  double _peakEver = 0;
+
+  /// สายที่เธอถือแล้วมีอะไรผิด → จดเป็นเหตุการณ์ให้รายงานส่งเอง
+  ///
+  /// 🔴 เจ้าของ: "รับแล้ว แต่ไม่ยอมพูดตอบโต้อะไรเลย" · ไม่มีรายงานสักฉบับ เพราะ
+  /// ไม่มีอะไร "ล้ม" — เธอแค่ได้ยินความเงียบ · ตัวเลขชุดนี้บอกได้ว่าเงียบเพราะ
+  /// เครื่องไม่ให้ฟัง (peak≈0) เสียงเธอไปไม่ถึง (mute) หรือคู่สายไม่พูด
+  void _reportCall() {
+    final a11y = _perms.of(MindPermission.accessibility);
+    final line = 'call: rounds=$_rounds heard=$_heardRounds '
+        'peak=${_peakEver.toStringAsFixed(3)} deaf=$_deaf mute=$_mute a11y=$a11y '
+        'stream=${_state.callStream}';
+    debugPrint(line);
+    if (_deaf || _mute || (_rounds > 0 && _heardRounds == 0)) _state.noteIncident(line);
+    _rounds = 0;
+    _heardRounds = 0;
+    _peakEver = 0;
+  }
+
   @override
   void dispose() {
     _disposed = true;
     _poll?.cancel();
     _watch.removeListener(_onWatch);
-    unawaited(_stopListening());
+    unawaited(_closeMic());
+    unawaited(_finishRecording());
     _lazyRecorder?.dispose();
     super.dispose();
   }

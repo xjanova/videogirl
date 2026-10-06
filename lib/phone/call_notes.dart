@@ -12,12 +12,64 @@
 /// ของแอปเท่านั้น ไม่ส่งไปไหน และลบได้จากหน้าที่เปิดดู
 library;
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../store/mind_db.dart';
 import 'call_watch.dart';
+
+/// ไฟล์เสียงสนทนาของสายที่เธอรับแทน — หนึ่งไฟล์ต่อบันทึกสาย (`<id>.wav`)
+///
+/// 🔴 เก็บในพื้นที่ของแอปเท่านั้น (ไม่ใช่พื้นที่เก็บร่วม ไม่ขึ้นสำเนา ไม่ขึ้นคลาวด์) ·
+/// เป็นเสียงของคนอื่นที่อยู่ในเครื่องเรา · ลบพร้อมบันทึกสายเสมอ
+abstract final class CallRecordings {
+  /// เทสต์ชี้ไปโฟลเดอร์ชั่วคราว (path_provider ไม่มีในเทสต์)
+  @visibleForTesting
+  static Directory? debugDir;
+
+  static Future<Directory> dir() async {
+    final d = debugDir ??
+        Directory('${(await getApplicationDocumentsDirectory()).path}${Platform.pathSeparator}call_audio');
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  static Future<File> _fileOf(String id) async =>
+      File('${(await dir()).path}${Platform.pathSeparator}$id.wav');
+
+  /// ไฟล์เสียงของบันทึกสายนี้ · null = ไม่มี (ปิดการบันทึก / สายสั้นมาก / อ่านไม่ได้)
+  static Future<File?> forNote(String id) async {
+    try {
+      final f = await _fileOf(id);
+      return await f.exists() ? f : null;
+    } on Object {
+      return null;
+    }
+  }
+
+  /// ย้ายไฟล์ที่เพิ่งอัดมาเป็นของบันทึกสายนี้
+  static Future<File?> adopt(File recorded, String id) async {
+    try {
+      return await recorded.rename((await _fileOf(id)).path);
+    } on Object catch (e) {
+      debugPrint('call notes: ผูกไฟล์เสียงไม่ได้ — ${e.runtimeType}');
+      return null;
+    }
+  }
+
+  static Future<void> delete(String id) async {
+    try {
+      final f = await forNote(id);
+      await f?.delete();
+    } on Object catch (e) {
+      debugPrint('call notes: ลบไฟล์เสียงไม่ได้ — ${e.runtimeType}');
+    }
+  }
+}
 
 /// หนึ่งบรรทัดในสาย
 typedef CallNoteLine = ({bool fromHer, String text});
@@ -146,6 +198,10 @@ class CallNotes extends ChangeNotifier {
   Future<void> add(CallNote n) async {
     _notes.insert(0, n);
     if (_notes.length > kCallNotesLimit) {
+      // บันทึกที่หลุดเพดานไป ไฟล์เสียงต้องไปด้วย ไม่งั้นค้างในเครื่องโดยไม่มีใครเห็น
+      for (final old in _notes.sublist(kCallNotesLimit)) {
+        unawaited(CallRecordings.delete(old.id));
+      }
       _notes.removeRange(kCallNotesLimit, _notes.length);
     }
     notifyListeners();
@@ -171,6 +227,7 @@ class CallNotes extends ChangeNotifier {
   Future<void> remove(String id) async {
     _notes.removeWhere((n) => n.id == id);
     notifyListeners();
+    await CallRecordings.delete(id);
     try {
       await _db?.deleteCallNote(id);
     } on Object catch (e) {

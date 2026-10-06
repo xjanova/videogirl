@@ -139,6 +139,20 @@ class MainActivity : FlutterActivity() {
                         REQ_ANSWER, result
                     )
 
+                    // ── ให้เธอได้ยินปลายสาย (การช่วยเหลือพิเศษ) ──
+                    // เปิดตรงไปที่บริการของเราไม่ได้ทุกเครื่อง · พาไปหน้ารวมของระบบ
+                    "openAccessibility" -> {
+                        try {
+                            startActivity(
+                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        } catch (e: Exception) {
+                            openAppSettings()
+                        }
+                        result.success(true)
+                    }
+
                     // ── แอปโทรศัพท์หลัก ──────────────────────────
                     "requestDefaultDialer" -> {
                         requestDefaultDialer()

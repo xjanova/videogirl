@@ -160,8 +160,12 @@ class MindState extends ChangeNotifier {
     required List<CallNoteLine> lines,
     DateTime? at,
     CallSim? sim,
+    File? audio,
   }) async {
-    if (lines.isEmpty) return null;
+    if (lines.isEmpty) {
+      await audio?.delete().catchError((Object _) => audio);
+      return null;
+    }
     final when = at ?? _clock();
     final callerSpoke =
         lines.any((l) => !l.fromHer && l.text.trim().isNotEmpty);
@@ -199,6 +203,14 @@ class MindState extends ChangeNotifier {
       lines: List.of(lines),
       sim: sim,
     );
+    // เสียงสนทนาผูกกับบันทึกนี้ (ชื่อไฟล์ = id) · ไม่มีที่เก็บบันทึก = ไม่เก็บเสียงลอย ๆ
+    if (audio != null) {
+      if (_callNotes != null) {
+        await CallRecordings.adopt(audio, note.id);
+      } else {
+        await audio.delete().catchError((Object _) => audio);
+      }
+    }
     await _callNotes?.add(note);
     // เครื่องสองซิม = หัวข้อบอกด้วยว่าโทรเข้าเบอร์ไหน (งาน/ส่วนตัว)
     final title = sim == null
@@ -381,6 +393,7 @@ class MindState extends ChangeNotifier {
     _autoAnswer = p.getBool('autoAnswer') ?? true;
     _contactsOnly = p.getBool('autoAnswerContactsOnly') ?? false;
     _showOnCall = p.getBool('showMindOnCall') ?? true;
+    _recordCalls = p.getBool('recordCalls') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
     _callStream = p.getString('callStream') ?? callStreamCall;
 
@@ -1358,7 +1371,22 @@ class MindState extends ChangeNotifier {
   // เสียงต่างกัน และบทสนทนาไม่ควรปนเข้าไปในแชทของเจ้าของ
 
   /// ประโยคแรกที่เธอพูดเมื่อรับสายแทน
-  String callGreeting() => s.callGreeting;
+  ///
+  /// บันทึกเสียงอยู่ = บอกคู่สายตั้งแต่ประโยคแรก · คนที่ถูกบันทึกควรรู้ตัว
+  String callGreeting() =>
+      _recordCalls ? '${s.callGreeting} ${s.callRecordingNotice}' : s.callGreeting;
+
+  /// บันทึกเสียงสนทนาในสายที่เธอรับแทน · เปิดเป็นค่าตั้งต้น (เจ้าของ: "ทำให้
+  /// บันทึกเสียงสนทนาไว้ได้ด้วย") · ไฟล์อยู่ในเครื่องเท่านั้น ลบพร้อมบันทึกสาย
+  bool _recordCalls = true;
+  bool get recordCalls => _recordCalls;
+
+  void setRecordCalls(bool v) {
+    if (_recordCalls == v) return;
+    _recordCalls = v;
+    _save('recordCalls', v);
+    _notify();
+  }
 
   /// คำตอบสำหรับคนปลายสาย
   ///

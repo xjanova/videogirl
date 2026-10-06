@@ -25,4 +25,7 @@
     <string name="call_auto_not_contact">Mind won\'t answer: not in your contacts</string>
     <string name="call_auto_other_call">Mind won\'t answer: you are on another call</string>
     <string name="call_auto_no_mind">Mind won\'t answer: she could not be woken — keep the app open</string>
+    <string name="a11y_label">GigGok — let Mind hear calls</string>
+    <string name="a11y_summary">Lets Mind hear the caller when she answers for you</string>
+    <string name="a11y_desc">Android lets no app hear audio during a call unless it runs this service · GigGok uses it only so Mind can listen to the caller when she answers for you · it does not read your screen, does not act for you, and sends nothing from this service anywhere</string>
 </resources>

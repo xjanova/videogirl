@@ -832,6 +832,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       MindPermission.contacts => (t.permContacts, t.permContactsWhy),
       MindPermission.answerCalls => (t.permAnswer, t.permAnswerWhy),
       MindPermission.defaultDialer => (t.permDialer, t.permDialerWhy),
+      MindPermission.accessibility => (t.permA11y, t.permA11yWhy),
       MindPermission.install => (t.permInstall, t.permInstallWhy),
       MindPermission.allFiles => (t.permAllFiles, t.permAllFilesWhy),
     };
@@ -3185,6 +3186,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           // 🔴 เจ้าของ: "ไม่ยอมรับสายเองเลย" · ของเดิมไม่รับแล้วเงียบทุกด่าน
           // (ไม่ใช่แอปโทรศัพท์หลัก · เบอร์ไม่อยู่ในสมุด · ปลุกตัวเธอไม่ขึ้น)
           if (state.autoAnswer) ...[
+            // 🔴 ไม่เปิด = เธอรับสายแล้วหูหนวกทั้งสาย ("รับแล้ว แต่ไม่ยอมพูดตอบโต้อะไรเลย")
+            if (!context.watch<MindPermissions>().of(MindPermission.accessibility)) ...[
+              const SizedBox(height: 10),
+              _permRow(mode, S.of(context), context.watch<MindPermissions>(),
+                  MindPermission.accessibility),
+            ],
             if (!context.watch<MindPermissions>().of(MindPermission.defaultDialer)) ...[
               const SizedBox(height: 10),
               _permRow(mode, S.of(context), context.watch<MindPermissions>(),
@@ -3253,6 +3260,29 @@ class _SettingsScreenState extends State<SettingsScreen>
                   on: state.showOnCall,
                   mode: mode,
                   onTap: () => state.setShowOnCall(!state.showOnCall),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 3,
+                    children: [
+                      Text(S.of(context).recordCalls,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text(S.of(context).recordCallsHint,
+                          style: const TextStyle(
+                              fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                    ],
+                  ),
+                ),
+                _toggle(
+                  on: state.recordCalls,
+                  mode: mode,
+                  onTap: () => state.setRecordCalls(!state.recordCalls),
                 ),
               ],
             ),

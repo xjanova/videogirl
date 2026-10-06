@@ -183,6 +183,24 @@
             </intent-filter>
         </service>
 
+        <!-- ═══ ให้เธอได้ยินปลายสาย ════════════════════════════════
+             🔴 Android 10+ ให้ความเงียบกับแอปทั่วไปที่อัดเสียงระหว่างมีสาย ·
+             ข้อยกเว้นเดียวสำหรับแอปที่ไม่ใช่แอประบบคือบริการการช่วยเหลือพิเศษ
+             ไม่อ่านหน้าจอ ไม่กดอะไรแทน (ดู MindAccessibility.kt) · เจ้าของต้องเปิดเอง
+             exported เพราะระบบเป็นคนผูก · BIND_ACCESSIBILITY_SERVICE มีแต่ระบบถือ -->
+        <service
+            android:name=".MindAccessibility"
+            android:label="@string/a11y_label"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/mind_accessibility"/>
+        </service>
+
         <!-- ประเภทของ foreground service ต้องประกาศใน manifest
              ประกาศแค่ตอนเรียก startForeground ไม่พอ — Android ปฏิเสธ
              ปลั๊กอินประกาศ <service> มาให้แล้ว เราเติมแค่ประเภทเข้าไป -->
