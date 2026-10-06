@@ -77,4 +77,17 @@ extension VoiceStrings on S {
       );
   String premiumFailed(String provider) =>
       pick('$provider สร้างเสียงไม่สำเร็จ', '$provider could not make the audio');
+
+  // ── ลองฟังเสียง ──
+  String previewMaking(String what) =>
+      pick('กำลังสร้างเสียงจาก $what…', 'Making the sample with $what…');
+  String previewPlaying(String what) => pick('กำลังเล่น: $what', 'Playing: $what');
+  String previewPlayed(String what) => pick('ได้ยินเสียงจริงของ $what', 'That was really $what');
+  /// [fallback] = ตอนคุยจริงมีเสียงเครื่องรับแทน (ไม่จริงเมื่อเสียงเครื่องเองที่ล้ม)
+  String previewFailed(String what, String why, {bool fallback = true}) => fallback
+      ? pick(
+          'ลองฟัง $what ไม่ได้ — $why\nตอนคุยจริง เธอจะใช้เสียงเครื่องแทนจนกว่าจะแก้',
+          'Could not play $what — $why\nIn real chats she uses the phone voice until this is fixed',
+        )
+      : pick('ลองฟัง $what ไม่ได้ — $why', 'Could not play $what — $why');
 }

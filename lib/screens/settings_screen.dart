@@ -2338,7 +2338,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               children: [
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => state.previewVoice(channel),
+                    onTap: _previewing ? null : () => _preview(state, channel, profile),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 11),
                       alignment: Alignment.center,
@@ -2352,8 +2352,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                         mainAxisSize: MainAxisSize.min,
                         spacing: 7,
                         children: [
-                          Icon(Icons.volume_up_rounded,
-                              size: 16, color: mode.accent),
+                          if (_previewing)
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: mode.accent),
+                            )
+                          else
+                            Icon(Icons.volume_up_rounded,
+                                size: 16, color: mode.accent),
                           Text(
                               S.of(context)
                                   .listenTo(channel.labelOf(S.of(context))),
@@ -2389,10 +2397,90 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ],
             ),
+            // ผลการลองฟัง — ตรงใต้ปุ่ม ไม่ใช่ที่หน้าแชทซึ่งไม่ได้เปิดอยู่
+            if (_previewNote != null && _previewFor == channel) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 7,
+                children: [
+                  Icon(
+                    _previewNote!.ok
+                        ? Icons.graphic_eq_rounded
+                        : Icons.error_outline_rounded,
+                    size: 15,
+                    color: _previewNote!.ok
+                        ? const Color(0xFF00A894)
+                        : const Color(0xFFB46A00),
+                  ),
+                  Expanded(
+                    child: Text(
+                      _previewNote!.text,
+                      style: TextStyle(
+                        fontSize: 11,
+                        height: 1.5,
+                        color: _previewNote!.ok
+                            ? MindColors.ink75
+                            : const Color(0xFFB46A00),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ],
       ),
     );
+  }
+
+  /// กำลังลองฟังอยู่ · กันกดซ้ำระหว่างสร้างเสียง (เจ้าพรีเมียมใช้เวลาหลายวินาที)
+  bool _previewing = false;
+
+  /// ผลการลองฟังล่าสุด และของช่องไหน (สลับแท็บช่องแล้วผลเก่าต้องไม่ค้างโชว์)
+  ({bool ok, String text})? _previewNote;
+  VoiceChannel? _previewFor;
+
+  /// ลองฟังด้วยเจ้า/รุ่น/เสียงที่เลือกอยู่จริง แล้วบอกให้ชัดว่าได้ยินอะไร
+  /// หรือทำไมฟังไม่ได้ · ไม่ตกไปเสียงเครื่องเงียบ ๆ (ดู MindState.previewVoice)
+  Future<void> _preview(
+      MindState state, VoiceChannel channel, VoiceProfile profile) async {
+    final t = S.of(context);
+    final what = _voiceWhat(state, profile, t);
+    setState(() {
+      _previewing = true;
+      _previewFor = channel;
+      _previewNote = (ok: true, text: t.previewMaking(what));
+    });
+    final why = await state.previewVoice(channel, onPlaying: () {
+      if (mounted) setState(() => _previewNote = (ok: true, text: t.previewPlaying(what)));
+    });
+    if (!mounted) return;
+    setState(() {
+      _previewing = false;
+      _previewNote = why == null
+          ? (ok: true, text: t.previewPlayed(what))
+          : (
+              ok: false,
+              text: t.previewFailed(what, why,
+                  fallback: profile.engine != TtsEngine.device),
+            );
+    });
+  }
+
+  /// "ElevenLabs · eleven_v4 · Mali" — สิ่งที่กำลังจะได้ยินจริง
+  static String _voiceWhat(MindState state, VoiceProfile p, S t) {
+    final engine = p.engine.labelOf(t);
+    if (p.engine == TtsEngine.device) return engine;
+    final voice = p.engine == TtsEngine.elevenlabs
+        ? state
+                .accountVoices(TtsEngine.elevenlabs)
+                .where((v) => v.id == p.voice)
+                .map((v) => v.name)
+                .firstOrNull ??
+            p.voice
+        : p.voice;
+    return [engine, if (p.model.isNotEmpty) p.model, if (voice.isNotEmpty) voice].join(' · ');
   }
 
   // ── รับสายอัตโนมัติ ─────────────────────────────────────

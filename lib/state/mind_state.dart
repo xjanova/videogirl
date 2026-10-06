@@ -24,6 +24,7 @@ import '../ai/brain_provider.dart';
 import '../ai/device_speech.dart';
 import '../avatar/avatar_view.dart';
 import '../ai/local_brain.dart';
+import '../ai/mind_audio.dart';
 import '../ai/mind_persona.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
@@ -1501,8 +1502,47 @@ class MindState extends ChangeNotifier {
 
   /// ให้เธอพูดตัวอย่างในหน้าตั้งค่า — ผู้ใช้จะได้ยินผลของเสียงที่เลือกทันที
   /// ไม่ต้องเดาว่าเปลี่ยนแล้วต่างยังไง
-  Future<void> previewVoice([VoiceChannel channel = VoiceChannel.chat]) =>
-      _speakIfEnabled(s.flirtSample(effectiveFlirt), channel: channel);
+  ///
+  /// 🔴 **เสียงจริงของเจ้า/รุ่น/เสียงที่เลือกอยู่เท่านั้น — ไม่ตกไปเสียงเครื่อง**
+  ///
+  /// ของเดิมใช้ทางเดียวกับตอนคุย ซึ่งตกไปใช้เสียงเครื่องเมื่อเจ้าที่เลือกใช้ไม่ได้
+  /// (คีย์ผิด เครดิตหมด) · เจ้าของกดฟังเสียง ElevenLabs แล้วได้ยินเสียงเครื่อง
+  /// โดยไม่รู้ว่ามันไม่ใช่ตัวที่เลือก และเหตุผลไปขึ้นที่หน้าแชทซึ่งไม่ได้เปิดอยู่
+  ///
+  /// คืนเหตุผลที่ฟังไม่ได้ (ภาษาคน) · null = เล่นเสียงตัวที่เลือกแล้วจริง
+  /// [onPlaying] ถูกเรียกตอนสร้างเสียงเสร็จและเริ่มเล่น (หน้าจอบอกขั้นตอนได้)
+  Future<String?> previewVoice(
+    VoiceChannel channel, {
+    void Function()? onPlaying,
+  }) async {
+    final out = speaker;
+    if (out == null) return s.errVoiceNoOutput;
+    await hush();
+    final profile = voiceFor(channel);
+    final seq = ++_speechSeq;
+    try {
+      debugPrint('เสียง: ลองฟัง ${profile.engine.name} · ${profile.model} · ${profile.voice}');
+      final u = await _speech.synthesize(s.flirtSample(effectiveFlirt), profile: profile);
+      if (_disposed || seq != _speechSeq) return null;
+      _speaking = true;
+      _speakingSeq = seq;
+      _notify();
+      onPlaying?.call();
+      final played = await out(u);
+      if (!played && seq == _speechSeq) return s.errVoiceNoOutput;
+      // เล่น "สำเร็จ" แต่เสียงสื่อเป็นศูนย์ = ไม่มีใครได้ยิน · ต้องบอกตรงนี้
+      if (played && await MindAudio.mediaMuted() == true) return s.errMediaMuted;
+      return null;
+    } on OpenAiFailure catch (e) {
+      return e.message;
+    } on Object catch (e) {
+      debugPrint('เสียง: ลองฟังล้มแบบที่ไม่ได้เตรียมรับไว้ — ${e.runtimeType}');
+      return s.errTtsFailed;
+    } finally {
+      if (_speakingSeq == seq || !_speaking) _speaking = false;
+      if (!_disposed) _notify();
+    }
+  }
 
   // ═══ ฟองคำพูดเหนือหัวเธอ ═══════════════════════════════
   //
