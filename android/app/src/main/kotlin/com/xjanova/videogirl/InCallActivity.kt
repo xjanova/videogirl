@@ -54,6 +54,9 @@ import java.io.File
 class InCallActivity : Activity() {
 
     private lateinit var who: TextView
+
+    /** สายนี้เข้าทางซิมไหน · ซ่อนเมื่อเครื่องมีซิมเดียว (บอกไปก็ไม่มีประโยชน์) */
+    private lateinit var sim: TextView
     private lateinit var status: TextView
     private lateinit var answer: Button
     private lateinit var decline: Button
@@ -149,6 +152,13 @@ class InCallActivity : Activity() {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
             gravity = Gravity.CENTER
         }
+        sim = TextView(this).apply {
+            setTextColor(Color.parseColor("#5A4DE0"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(6), 0, 0)
+            visibility = View.GONE
+        }
         status = TextView(this).apply {
             setTextColor(Color.parseColor("#7A7490"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
@@ -156,6 +166,7 @@ class InCallActivity : Activity() {
             setPadding(0, dp(8), 0, dp(40))
         }
         root.addView(who, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        root.addView(sim, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(status, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
         // ปุ่มของมายด์ — "ให้มายด์รับ" ตอนสายดัง เปลี่ยนเป็น "แทรกสาย" ตอนเธอคุยอยู่
@@ -204,6 +215,17 @@ class InCallActivity : Activity() {
         val number = call.details.handle?.schemeSpecificPart
         val name = CallBridge(this).nameFor(number)
         who.text = name ?: number ?: getString(R.string.call_unknown)
+
+        // ซิมของสาย · อ่านทุกรอบ render ได้ (ถูก) แต่ล้มต้องไม่ทำจอนี้พัง
+        val s = SimInfo.of(this, call)
+        val simText = when {
+            s == null || s.count < 2 -> null
+            s.slot != null && s.label != null -> getString(R.string.call_sim_label, s.slot, s.label)
+            s.slot != null -> getString(R.string.call_sim, s.slot)
+            else -> s.label
+        }
+        sim.text = simText ?: ""
+        sim.visibility = if (simText == null) View.GONE else View.VISIBLE
 
         val state = MindInCallService.stateOf(call)
         val ringing = state == Call.STATE_RINGING

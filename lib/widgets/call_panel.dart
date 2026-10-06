@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../i18n/strings.dart';
+import '../i18n/strings_ai.dart';
 import '../phone/call_session.dart';
 import '../theme/tokens.dart';
 import 'glass.dart';
@@ -97,7 +98,10 @@ class _CallPanelState extends State<CallPanel> {
                     fontSize: 14.5, fontWeight: FontWeight.w600),
               ),
               Text(
-                _statusOf(t, call),
+                // เครื่องสองซิม = บอกด้วยว่าโทรเข้าเบอร์ไหน
+                call.sim == null
+                    ? _statusOf(t, call)
+                    : '${_statusOf(t, call)} · ${t.viaSim(call.sim!.slot, call.sim!.label)}',
                 style: const TextStyle(fontSize: 11.5, color: MindColors.ink55),
               ),
             ],

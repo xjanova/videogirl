@@ -128,6 +128,10 @@ class CallSession extends ChangeNotifier {
   String get who => _who;
   CallTurn get turn => _turn;
 
+  /// สายนี้เข้าทางซิมไหน (เครื่องสองซิม) · null = ซิมเดียว / ระบบไม่บอก
+  CallSim? _sim;
+  CallSim? get sim => _sim;
+
   final List<CallLine> _lines = [];
   List<CallLine> get lines => List.unmodifiable(_lines);
 
@@ -198,6 +202,7 @@ class CallSession extends ChangeNotifier {
     _live = live;
     _mind = mind;
     if (who.isNotEmpty) _who = who;
+    _sim = CallSim.fromMap(info) ?? _sim;
 
     if (!live) {
       _finish();
@@ -273,6 +278,7 @@ class CallSession extends ChangeNotifier {
             who: _who,
             lines: [for (final l in _lines) (fromHer: l.fromHer, text: l.text)],
             at: _startedAt,
+            sim: _sim,
           )
           .catchError((Object e) {
         debugPrint('สาย: จดบันทึกไม่สำเร็จ — ${e.runtimeType}');
@@ -281,6 +287,8 @@ class CallSession extends ChangeNotifier {
     }
     _handled = false;
     _startedAt = null;
+    // สายถัดไปอาจเข้าอีกซิม · ไม่ล้าง = บันทึกสายหน้าติดซิมของสายนี้
+    _sim = null;
     _notify();
   }
 

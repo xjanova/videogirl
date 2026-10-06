@@ -56,6 +56,55 @@ enum CallState {
   }
 }
 
+/// สายนั้นผ่านซิมไหน — เครื่องสองซิม (ดู SimInfo.kt)
+///
+/// เจ้าของใช้ซิมหนึ่งเป็นเบอร์งาน อีกซิมเป็นเบอร์ส่วนตัว · "มีสายจากคนนี้"
+/// ไม่พอ ต้องรู้ว่า**โทรเข้าเบอร์ไหน** · เครื่องซิมเดียว = null เสมอ
+/// (บอกว่า "ทางซิม 1" ทุกสายบนเครื่องที่มีซิมเดียวคือเสียงรบกวน)
+@immutable
+class CallSim {
+  const CallSim({this.slot, this.label});
+
+  /// ช่องซิม 1/2 · null = ระบบไม่บอก (ยังมีชื่อค่ายให้)
+  final int? slot;
+
+  /// ชื่อที่เจ้าของตั้งให้ซิม หรือชื่อค่าย
+  final String? label;
+
+  static CallSim? fromMap(Map<Object?, Object?>? raw) {
+    if (raw == null) return null;
+    final count = (raw['simCount'] as num?)?.toInt() ?? 0;
+    if (count < 2) return null;
+    final slot = (raw['simSlot'] as num?)?.toInt();
+    final label = (raw['simLabel'] as String?)?.trim();
+    if (slot == null && (label?.isEmpty ?? true)) return null;
+    return CallSim(slot: slot, label: (label?.isEmpty ?? true) ? null : label);
+  }
+
+  /// รูปที่เก็บลงฐาน/สมุดบันทึก · `2|AIS` · แปลเป็นคำตอนแสดง ไม่ใช่ตอนเก็บ
+  /// (สลับภาษาแล้วของที่บันทึกไว้ต้องเปลี่ยนตาม)
+  String encode() => '${slot ?? ''}|${(label ?? '').replaceAll('|', '/')}';
+
+  static CallSim? decode(String? v) {
+    if (v == null || !v.contains('|')) return null;
+    final i = v.indexOf('|');
+    final slot = int.tryParse(v.substring(0, i));
+    final label = v.substring(i + 1).trim();
+    if (slot == null && label.isEmpty) return null;
+    return CallSim(slot: slot, label: label.isEmpty ? null : label);
+  }
+
+  /// สำหรับ prompt ของเธอ · ภาษาเดียวกับส่วนอื่นของก้อนสาย (ชื่อ enum)
+  String get promptTag => 'sim${slot ?? '?'}${label == null ? '' : ' $label'}';
+
+  @override
+  bool operator ==(Object other) =>
+      other is CallSim && other.slot == slot && other.label == label;
+
+  @override
+  int get hashCode => Object.hash(slot, label);
+}
+
 @immutable
 class CallEvent {
   const CallEvent({
@@ -65,7 +114,11 @@ class CallEvent {
     this.number,
     this.name,
     this.seconds = 0,
+    this.sim,
   });
+
+  /// ซิมที่สายนี้ผ่าน · null = เครื่องซิมเดียว / ระบบไม่บอก
+  final CallSim? sim;
 
   final int id;
   final DateTime at;
@@ -97,7 +150,18 @@ class CallEvent {
       number: (number?.isEmpty ?? true) ? null : number,
       name: (name?.isEmpty ?? true) ? null : name,
       seconds: (raw['seconds'] as num?)?.toInt() ?? 0,
+      sim: CallSim.fromMap(raw.cast<Object?, Object?>()),
     );
+  }
+
+  /// รายละเอียดที่เก็บลงสมุดบันทึก · `missed` หรือ `missed@2|AIS`
+  String get journalDetail => sim == null ? type.name : '${type.name}@${sim!.encode()}';
+
+  /// แยกกลับ · ของเก่าก่อนมีซิมคือชื่อชนิดล้วน ต้องอ่านได้เหมือนเดิม
+  static ({String type, CallSim? sim}) parseJournalDetail(String detail) {
+    final i = detail.indexOf('@');
+    if (i < 0) return (type: detail, sim: null);
+    return (type: detail.substring(0, i), sim: CallSim.decode(detail.substring(i + 1)));
   }
 }
 
@@ -264,7 +328,9 @@ class CallWatch extends ChangeNotifier {
     return list.map((c) {
       final t = '${two(c.at.hour)}:${two(c.at.minute)}';
       final who = c.who.isEmpty ? '?' : c.who;
-      return '- $t ${c.type.name} $who';
+      // เครื่องสองซิม = บอกเธอด้วยว่าโทรเข้าเบอร์ไหน (งาน/ส่วนตัว)
+      final sim = c.sim == null ? '' : ' (${c.sim!.promptTag})';
+      return '- $t ${c.type.name} $who$sim';
     }).join('\n');
   }
 
@@ -291,7 +357,7 @@ class CallWatch extends ChangeNotifier {
     if (c.id == _lastRecordedId) return;
     _lastRecordedId = c.id;
 
-    await _journal?.record(JournalKind.call, c.who, detail: c.type.name);
+    await _journal?.record(JournalKind.call, c.who, detail: c.journalDetail);
     onCallEnded?.call(c);
   }
 

@@ -92,10 +92,14 @@ class CallBridge(private val context: Context) {
             CallLog.Calls.CACHED_NAME,
             CallLog.Calls.TYPE,
             CallLog.Calls.DATE,
-            CallLog.Calls.DURATION
+            CallLog.Calls.DURATION,
+            CallLog.Calls.PHONE_ACCOUNT_ID
         )
         val out = ArrayList<Map<String, Any?>>()
         val cap = limit.coerceIn(1, 200)
+        // เครื่องซิมเดียวไม่ต้องบอกซิม · ถามครั้งเดียวต่อรอบ ไม่ใช่ทุกแถว
+        val dualSim = SimInfo.activeCount(context) > 1
+        val simOf = HashMap<String, Map<String, Any?>>()
 
         // 🔴 ห้ามต่อ "LIMIT n" ท้าย sortOrder
         //
@@ -112,6 +116,14 @@ class CallBridge(private val context: Context) {
             while (c.moveToNext()) {
                 if (out.size >= cap) break
                 val number = c.getString(1)
+                val account = c.getString(6)
+                val sim = if (dualSim && account != null) {
+                    simOf.getOrPut(account) {
+                        SimInfo.ofAccountId(context, account)?.toMap() ?: emptyMap()
+                    }
+                } else {
+                    emptyMap()
+                }
                 out.add(
                     mapOf(
                         "id" to c.getLong(0),
@@ -122,7 +134,7 @@ class CallBridge(private val context: Context) {
                         "type" to c.getInt(3),
                         "at" to c.getLong(4),
                         "seconds" to c.getLong(5)
-                    )
+                    ) + sim
                 )
             }
         }

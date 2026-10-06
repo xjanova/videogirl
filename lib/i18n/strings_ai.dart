@@ -451,6 +451,15 @@ extension AiStrings on S {
         'มายด์รับสายแทน · ${who.isEmpty ? 'เบอร์ที่ไม่แสดง' : who}',
         'Mind took a call · ${who.isEmpty ? 'hidden number' : who}',
       );
+  /// สายนี้เข้าทางซิมไหน (เครื่องสองซิม) · ช่องไม่รู้ = ชื่อค่ายอย่างเดียว
+  String viaSim(int? slot, String? label) {
+    final l = (label?.trim().isEmpty ?? true) ? null : label!.trim();
+    if (slot == null) return pick('ทาง $l', 'via $l');
+    return l == null
+        ? pick('ทางซิม $slot', 'via SIM $slot')
+        : pick('ทางซิม $slot · $l', 'via SIM $slot · $l');
+  }
+
   String get callNoteSilent => pick(
         'คู่สายไม่ได้พูดอะไร หรือวางสายไปก่อน',
         'The caller said nothing, or hung up first',

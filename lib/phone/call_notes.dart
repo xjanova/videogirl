@@ -17,6 +17,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../store/mind_db.dart';
+import 'call_watch.dart';
 
 /// หนึ่งบรรทัดในสาย
 typedef CallNoteLine = ({bool fromHer, String text});
@@ -30,6 +31,7 @@ class CallNote {
     required this.summary,
     required this.lines,
     this.seen = false,
+    this.sim,
   });
 
   final String id;
@@ -37,6 +39,9 @@ class CallNote {
 
   /// ชื่อในสมุดโทรศัพท์ หรือเบอร์ · ว่างได้ (เบอร์ซ่อน)
   final String who;
+
+  /// โทรเข้าทางซิมไหน (เครื่องสองซิม) · null = ซิมเดียว / ระบบไม่บอก
+  final CallSim? sim;
 
   /// สรุปให้เจ้าของ: ใคร เรื่องอะไร ฝากอะไร ต้องโทรกลับไหม
   final String summary;
@@ -55,6 +60,7 @@ class CallNote {
         summary: summary,
         lines: lines,
         seen: seen ?? this.seen,
+        sim: sim,
       );
 
   Map<String, Object?> toRow() => {
@@ -66,6 +72,7 @@ class CallNote {
           for (final l in lines) {'her': l.fromHer, 't': l.text},
         ]),
         'seen': seen ? 1 : 0,
+        'sim': sim?.encode(),
       };
 
   static CallNote? fromRow(Map<String, Object?> r) {
@@ -92,6 +99,7 @@ class CallNote {
       summary: '${r['summary'] ?? ''}',
       lines: lines,
       seen: r['seen'] == 1,
+      sim: CallSim.decode(r['sim'] as String?),
     );
   }
 }

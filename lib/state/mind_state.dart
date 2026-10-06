@@ -145,6 +145,7 @@ class MindState extends ChangeNotifier {
     required String who,
     required List<CallNoteLine> lines,
     DateTime? at,
+    CallSim? sim,
   }) async {
     if (lines.isEmpty) return null;
     final when = at ?? _clock();
@@ -182,11 +183,16 @@ class MindState extends ChangeNotifier {
       who: who,
       summary: summary,
       lines: List.of(lines),
+      sim: sim,
     );
     await _callNotes?.add(note);
+    // เครื่องสองซิม = หัวข้อบอกด้วยว่าโทรเข้าเบอร์ไหน (งาน/ส่วนตัว)
+    final title = sim == null
+        ? s.callNoteTitle(who)
+        : '${s.callNoteTitle(who)} · ${s.viaSim(sim.slot, sim.label)}';
     unawaited(_journal?.record(
           JournalKind.call,
-          s.callNoteTitle(who),
+          title,
           detail: summary,
           id: note.id,
         ) ??
@@ -195,7 +201,7 @@ class MindState extends ChangeNotifier {
     // แจ้งเตือนแม้แอปอยู่เบื้องหลัง · สิทธิ์แจ้งเตือนไม่ได้ให้ = ฝั่งเนทีฟข้ามเงียบ ๆ
     try {
       await kSystemChannel.invokeMethod<bool>('notifyCallNote', {
-        'title': s.callNoteTitle(who),
+        'title': title,
         'body': summary,
       });
     } on Object catch (e) {

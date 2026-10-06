@@ -311,7 +311,12 @@ class _TimelineScreenState extends State<TimelineScreen> {
             Text(t.callNoteTitle(note.who),
                 style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w700, height: 1.4)),
-            Text('${t.dayLabel(note.at)} · ${_clock(note.at)}',
+            Text(
+                [
+                  t.dayLabel(note.at),
+                  _clock(note.at),
+                  if (note.sim != null) t.viaSim(note.sim!.slot, note.sim!.label),
+                ].join(' · '),
                 style: mindMono(size: 10.5, color: MindColors.ink50)),
             const SizedBox(height: 12),
             Text(note.summary,
@@ -378,14 +383,22 @@ class _TimelineScreenState extends State<TimelineScreen> {
   /// เก็บ เพราะสลับภาษาแล้วของที่บันทึกไว้แล้วต้องเปลี่ยนตามด้วย
   String _detailOf(JournalEntry e, S t) {
     if (e.kind != JournalKind.call) return e.detail;
-    return switch (e.detail) {
+    // `missed@2|AIS` = สายจากบันทึกการโทรของเครื่องสองซิม · ต้องเช็กว่าหน้า @
+    // เป็นชื่อชนิดจริง ไม่งั้นสรุปของสายที่เธอรับ (มีอีเมลอยู่ข้างใน) ถูกหั่นผิด
+    final d = CallEvent.parseJournalDetail(e.detail);
+    final type = switch (d.type) {
       'incoming' => t.tlCallIncoming,
       'outgoing' => t.tlCallOutgoing,
       'missed' => t.tlCallMissed,
       'rejected' => t.tlCallRejected,
       'unknown' => '',
-      _ => e.detail,
+      _ => null,
     };
+    if (type == null) return e.detail;
+    final sim = d.sim;
+    if (sim == null) return type;
+    final via = t.viaSim(sim.slot, sim.label);
+    return type.isEmpty ? via : '$type · $via';
   }
 
   String _kindLabel(JournalKind k, S t) => switch (k) {

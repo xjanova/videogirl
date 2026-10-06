@@ -17,6 +17,8 @@
     <string name="call_holding">พักสายไว้</string>
     <string name="call_ended">วางสายแล้ว</string>
     <string name="call_unknown">ไม่ทราบเบอร์</string>
+    <string name="call_sim">ทางซิม %1$d</string>
+    <string name="call_sim_label">ทางซิม %1$d · %2$s</string>
     <string name="call_answer">รับสาย</string>
     <string name="call_decline">ปฏิเสธ</string>
     <string name="call_hangup">วางสาย</string>

@@ -37,7 +37,8 @@ import 'package:sqflite/sqflite.dart';
 /// รุ่นของโครงตาราง — ขึ้นทีละหนึ่งเมื่อเพิ่ม/แก้ตาราง แล้วเขียนทางอัปเกรดไว้
 ///
 /// 2 = ตาราง `call_notes` (บันทึกสายที่มายด์รับแทน)
-const _schemaVersion = 2;
+/// 3 = `call_notes.sim` (โทรเข้าทางซิมไหน · เครื่องสองซิม)
+const _schemaVersion = 3;
 
 /// ชื่อไฟล์ฐาน · ใช้ชื่อเดียวกันทั้งในพื้นที่แอปและในสำเนาข้างนอก
 /// จะได้ไม่ต้องเดาว่าไฟล์ไหนคู่กับไฟล์ไหนตอนไปส่องด้วยตัวจัดการไฟล์
@@ -88,7 +89,13 @@ class MindDb {
       onUpgrade: (d, from, to) async {
         // ทีละขั้น · อย่า drop แล้วสร้างใหม่ นั่นคือการลบข้อมูลของผู้ใช้ทิ้ง
         debugPrint('db: อัปเกรดโครงตาราง $from → $to');
-        if (from < 2) await _createCallNotes(d);
+        // ตารางที่สร้างใหม่ตรงนี้มีคอลัมน์ sim อยู่แล้ว · เติมคอลัมน์เฉพาะ
+        // ตารางที่มีมาก่อน (รุ่น 2) ไม่งั้น ALTER ซ้ำคอลัมน์เดิมแล้วอัปเกรดล้ม
+        if (from < 2) {
+          await _createCallNotes(d);
+        } else if (from < 3) {
+          await d.execute('ALTER TABLE call_notes ADD COLUMN sim TEXT');
+        }
       },
     );
     final mind = MindDb._(db);
@@ -197,7 +204,8 @@ class MindDb {
         who        TEXT NOT NULL,
         summary    TEXT NOT NULL,
         transcript TEXT NOT NULL,
-        seen       INTEGER NOT NULL DEFAULT 0
+        seen       INTEGER NOT NULL DEFAULT 0,
+        sim        TEXT
       )
     ''');
     await d.execute(

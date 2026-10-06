@@ -157,7 +157,7 @@ class MindInCallService : InCallService() {
                 "number" to number,
                 "name" to CallBridge(context).nameFor(number),
                 "outgoing" to (state == Call.STATE_DIALING || state == Call.STATE_CONNECTING)
-            )
+            ) + (SimInfo.of(context, call)?.toMap() ?: emptyMap())
         }
 
         /**
