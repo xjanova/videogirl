@@ -118,6 +118,12 @@ class SystemBridge(context: Context) {
                 CallAudio.close(context)
                 result.success(true)
             }
+            // เจ้าของแตะ "ลำโพงปิดอยู่" · เปิดคืน แล้วกลับมาเฝ้าลำโพงให้เธอต่อ
+            "callSpeakerOn" -> {
+                CallAudio.ownerRouted = false
+                MindInCallService.setSpeaker(true)
+                result.success(true)
+            }
             "callDisconnect" -> result.success(MindInCallService.disconnect())
             "allFilesGranted" -> result.success(allFilesGranted())
             "deviceIds" -> result.success(deviceIds())

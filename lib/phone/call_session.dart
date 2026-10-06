@@ -157,6 +157,20 @@ class CallSession extends ChangeNotifier {
   bool _mute = false;
   bool get mute => _mute;
 
+  /// ลำโพงปิดอยู่ทั้งที่เธอถือสาย (ระบบย้ายเสียงกลับหูฟัง/บลูทูธ หรือเจ้าของกดปิด)
+  ///
+  /// 🔴 เจ้าของ: "ปลายสายหรือคนโทร ไม่ได้ยินเสียงน้องมาย" · ไม่มีอะไรล้ม เสียงเธอแค่
+  /// ไปออกหูฟังเบา ๆ ที่ไมค์ไม่ได้ยิน · ฝั่งเนทีฟเปิดคืนให้เอง ([CallAudio.keepSpeaker])
+  /// ตรงนี้มีไว้บอกเมื่อเปิดคืนไม่ได้ · ปิดเกินสามวิถึงนับ (ช่วงสลับเส้นทางตอนสายติด)
+  DateTime? _speakerOffSince;
+  bool get speakerOff {
+    final since = _speakerOffSince;
+    return since != null && DateTime.now().difference(since) > const Duration(seconds: 3);
+  }
+
+  /// สายนี้เคยเห็นลำโพงปิดระหว่างที่เธอถือสาย · ลงรายงาน
+  bool _speakerLost = false;
+
   String? _error;
   String? get error => _error;
 
@@ -227,6 +241,12 @@ class CallSession extends ChangeNotifier {
       _endRealtime();
       unawaited(_closeMic());
     }
+    if (mind && _turn != CallTurn.handedOver && info?['speaker'] == false) {
+      _speakerOffSince ??= DateTime.now();
+      if (speakerOff) _speakerLost = true;
+    } else {
+      _speakerOffSince = null;
+    }
     _notify();
   }
 
@@ -288,6 +308,7 @@ class CallSession extends ChangeNotifier {
     _mind = false;
     _turn = CallTurn.none;
     _micLevel = 0;
+    _speakerOffSince = null;
     if (!wasLive) return;
 
     _endRealtime();
@@ -354,6 +375,12 @@ class CallSession extends ChangeNotifier {
     await _closeMic();
     await _invoke('callStopSpeak');
     await _invoke('mindHandOver');
+  }
+
+  /// เปิดลำโพงคืน (เจ้าของแตะคำเตือน "ลำโพงปิดอยู่") · ให้ฝั่งเนทีฟกลับมาเฝ้าลำโพงต่อด้วย
+  Future<void> speakerOn() async {
+    await _invoke('callSpeakerOn');
+    await _refresh();
   }
 
   /// วางสาย
@@ -426,6 +453,7 @@ class CallSession extends ChangeNotifier {
   /// (เน็ตหลุดตอนขับรถ) และตอนนั้นเจ้าของต้องเห็นว่าเกิดอะไรขึ้น
   Future<void> _converse() async {
     try {
+      await _awaitSpeaker();
       // คุยสด (OpenAI Realtime) ก่อน ถ้าตั้งไว้ · ต่อไม่ได้ = ทางเดิม · หลุดกลางสาย =
       // ทางเดิมต่อจากที่ค้าง (ไม่ทักซ้ำ)
       var greeted = false;
@@ -449,6 +477,20 @@ class CallSession extends ChangeNotifier {
     // (handedOver เป็นของเจ้าของ ห้ามเขียนทับ)
     if (_turn != CallTurn.handedOver) _turn = CallTurn.none;
     _notify();
+  }
+
+  /// รอให้ลำโพงเปิดจริงก่อนเธอพูดคำแรก (ไม่เกินสามวิ)
+  ///
+  /// ฝั่งเนทีฟสั่งเปิดตอนสายติด แต่ระบบใช้เวลาสลับเส้นทางครู่หนึ่ง · พูดก่อน = คำทัก
+  /// ไปออกหูฟัง ปลายสายได้ยินแต่ความเงียบ แล้ววางไปก่อนเธอพูดประโยคที่สอง
+  Future<void> _awaitSpeaker() async {
+    final until = DateTime.now().add(const Duration(seconds: 3));
+    while (_live && _mind && !_disposed && DateTime.now().isBefore(until)) {
+      final info = await _callInfo();
+      // ไม่รอเฉพาะตอนเครื่องบอกชัดว่าลำโพงปิด · ไม่ตอบ/ไม่บอก = ไม่รู้ ไม่ขวางเธอ
+      if (info?['speaker'] != false) return;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
   }
 
   // ── คุยสด (OpenAI Realtime) ─────────────────────────────
@@ -553,6 +595,8 @@ class CallSession extends ChangeNotifier {
       busy = true;
       try {
         final pending = await _invoke<int>('liveAudioPending') ?? 0;
+        _herPlaying = pending > 0;
+        if (_herPlaying) _herSpoke = true;
         final now = DateTime.now();
         final speaking = _rtResponding || pending > 0;
         if (speaking) _rtOpenAt = now.add(_echoTail);
@@ -587,6 +631,7 @@ class CallSession extends ChangeNotifier {
 
     await ended.future;
     tick.cancel();
+    _herPlaying = false;
     _onChunk = null;
     if (_rtLips) {
       _rtLips = false;
@@ -705,10 +750,13 @@ class CallSession extends ChangeNotifier {
 
     // ปล่อยปากพร้อมสั่งเล่น ไม่รอ · รอ = ปากออกตัวทีหลังเสียงเสมอ
     if (lipsReady) unawaited(lips.startLips(lead: lipLead));
+    _herPlaying = true;
+    _herSpoke = true;
     final ok = await _invoke<bool>('callSpeak', {
       'path': file.path,
       'stream': _state.callStream,
     });
+    _herPlaying = false;
     // ปิดปากทุกครั้ง ทั้งจบปกติ ถูกแทรกสาย และวางสาย · ไม่ปิด = ปากค้าง
     // พึมพำต่อ (กรณีเตรียมไม่สำเร็จ) ทั้งที่เธอเงียบไปแล้ว
     if (lips != null) unawaited(lips.restLips());
@@ -799,6 +847,9 @@ class CallSession extends ChangeNotifier {
           encoder: AudioEncoder.pcm16bits,
           sampleRate: _rate,
           numChannels: 1,
+          // ไม่ขอ audio focus · ค่าตั้งต้นของปลั๊กอินขอ (แบบเสียงสื่อ) ทุกครั้งที่เริ่มอัด
+          // ระหว่างสายคือไปยุ่งกับ focus ของสายเอง (ดู CallAudio.play ที่ไม่ขอด้วยเหตุผลเดียวกัน)
+          audioInterruption: AudioInterruptionMode.none,
           // 🔴 ทุกค่าที่นี่เลือกมาเพื่อ**ไม่ไปแตะเสียงของสายที่กำลังคุยอยู่**
           //
           // voiceRecognition — แหล่งที่ปิดตัวตัดเสียงก้องกับตัวลดเสียงรบกวน
@@ -824,6 +875,7 @@ class CallSession extends ChangeNotifier {
           _recBytes += chunk.length;
           final level = levelOf(chunk);
           if (level > _peakEver) _peakEver = level;
+          if (_herPlaying && level > _echoPeak) _echoPeak = level;
           final turn = _onChunk;
           if (turn != null) {
             turn(chunk, level);
@@ -1153,6 +1205,20 @@ class CallSession extends ChangeNotifier {
   int _heardRounds = 0;
   double _peakEver = 0;
 
+  /// เสียงเธอกำลังออกลำโพงอยู่ตอนนี้ · ไมค์ช่วงนี้ได้ยิน "เสียงเธอในห้อง"
+  bool _herPlaying = false;
+  bool _herSpoke = false;
+
+  /// เสียงเธอดังแค่ไหนในห้องตอนพูด วัดจากไมค์ของเราเอง (ไม่ผ่านตัวตัดเสียงก้องของสาย)
+  ///
+  /// แยกสองสาเหตุของ "ปลายสายไม่ได้ยินเธอ" ออกจากกัน: ค่านี้ต่ำ = เสียงไม่ออกลำโพง
+  /// (เส้นทาง/ระดับเสียง) · ค่านี้สูงแต่ปลายสายยังไม่ได้ยิน = ตัวตัดเสียงก้องของเครื่องลบทิ้ง
+  /// (ต้องสลับช่องเสียงในหน้าตั้งค่า) · ใช้ได้เฉพาะเครื่องที่ให้ฟังระหว่างสาย
+  double _echoPeak = 0;
+
+  /// ต่ำกว่านี้ = ลำโพงที่เร่งสุดแล้วไม่น่าเบาขนาดนี้ · เสียงเธอไม่ได้ออกลำโพงจริง
+  static const _echoMin = .03;
+
   /// สายที่เธอถือแล้วมีอะไรผิด → จดเป็นเหตุการณ์ให้รายงานส่งเอง
   ///
   /// 🔴 เจ้าของ: "รับแล้ว แต่ไม่ยอมพูดตอบโต้อะไรเลย" · ไม่มีรายงานสักฉบับ เพราะ
@@ -1160,14 +1226,22 @@ class CallSession extends ChangeNotifier {
   /// เครื่องไม่ให้ฟัง (peak≈0) เสียงเธอไปไม่ถึง (mute) หรือคู่สายไม่พูด
   void _reportCall() {
     final a11y = _perms.of(MindPermission.accessibility);
+    // เธอพูดแล้ว ไมค์เราได้ยินคู่สายได้ (ไม่หูหนวก) แต่แทบไม่ได้ยินเสียงเธอเองจากลำโพง
+    final herQuiet = _herSpoke && !_deaf && _peakEver >= _floorMin && _echoPeak < _echoMin;
     final line = 'call: rounds=$_rounds heard=$_heardRounds '
-        'peak=${_peakEver.toStringAsFixed(3)} deaf=$_deaf mute=$_mute a11y=$a11y '
+        'peak=${_peakEver.toStringAsFixed(3)} echo=${_echoPeak.toStringAsFixed(3)} '
+        'deaf=$_deaf mute=$_mute spkLost=$_speakerLost a11y=$a11y '
         'stream=${_state.callStream}';
     debugPrint(line);
-    if (_deaf || _mute || (_rounds > 0 && _heardRounds == 0)) _state.noteIncident(line);
+    if (_deaf || _mute || _speakerLost || herQuiet || (_rounds > 0 && _heardRounds == 0)) {
+      _state.noteIncident(line);
+    }
     _rounds = 0;
     _heardRounds = 0;
     _peakEver = 0;
+    _echoPeak = 0;
+    _herSpoke = false;
+    _speakerLost = false;
   }
 
   @override

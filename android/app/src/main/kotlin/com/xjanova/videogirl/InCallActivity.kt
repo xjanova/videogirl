@@ -427,7 +427,10 @@ class InCallActivity : Activity() {
     }
 
     private fun toggleSpeaker() {
-        MindInCallService.setSpeaker(!MindInCallService.speakerOn())
+        val on = !MindInCallService.speakerOn()
+        // เจ้าของปิดลำโพงเองระหว่างที่เธอถือสาย · ไม่ไปเปิดทับ (ดู CallAudio.keepSpeaker)
+        if (MindInCallService.mindHandling) CallAudio.ownerRouted = !on
+        MindInCallService.setSpeaker(on)
     }
 
     companion object {

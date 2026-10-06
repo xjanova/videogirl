@@ -409,34 +409,14 @@ class _HomeScreenState extends State<HomeScreen>
           return Stack(
             clipBehavior: Clip.none,
             children: [
-              // แตะที่ตัวเธอเพื่อเรียกฟองที่จางไปแล้วกลับมาอ่านซ้ำ
-              // ไม่งั้นข้อความที่พลาดไปจะอ่านได้แค่ในแผงแชทข้างล่างเท่านั้น
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTap: studio ? null : state.showBubbleAgain,
-                  child: MindAvatarView(
-                    controller: widget.avatar,
-                    mode: mode,
-                    packBase: context.watch<AvatarPacks>().baseUrl,
-                    packModel: context.watch<AvatarPacks>().modelFile,
-                  ),
-                ),
-              ),
-
-              // สตูดิโอ: ปุ่มของมันเองเท่านั้น ที่เหลือบนเวทีทั้งหมดติดไปในภาพ
-              if (studio)
-                Positioned.fill(
-                  child: StudioOverlay(
-                    studio: context.read<MindStudio>(),
-                    avatar: widget.avatar,
-                    state: state,
-                  ),
-                ),
-
-              // วงแหวนเรืองรอบตัวเธอ ขยายออกแล้วจาง
+              // วงแหวนเรืองรอบตัวเธอ ขยายออกแล้วจาง · **อยู่หลังตัวเธอ** (เวทีโปร่ง เห็นทะลุ)
+              //
+              // 🔴 เดิมวาดทับเวที · ตอนช็อตเต็มตัวเป็นค่าตั้งต้น หน้าเธอเล็กอยู่กลางวง ไม่โดน ·
+              // พอช็อตครึ่งตัวนิ่งเป็นค่าตั้งต้น เส้นวงกวาดผ่านตา แก้ม ปากทุกสามวิ
+              // (เจ้าของ: "หน้าเธอมีเส้นที่ควรอยู่ด้านหลังบังหน้า")
               if (!studio)
               Positioned(
+                key: const ValueKey('mind-ring'),
                 left: w * _ringLeft,
                 top: top * _ringTop,
                 child: AnimatedBuilder(
@@ -461,6 +441,35 @@ class _HomeScreenState extends State<HomeScreen>
                   },
                 ),
               ),
+
+              // แตะที่ตัวเธอเพื่อเรียกฟองที่จางไปแล้วกลับมาอ่านซ้ำ
+              // ไม่งั้นข้อความที่พลาดไปจะอ่านได้แค่ในแผงแชทข้างล่างเท่านั้น
+              //
+              // 🔴 key จำเป็น · วงแหวนข้างบนหายไปตอนเข้าสตูดิโอ ลำดับลูกเลื่อน ไม่มี key =
+              // Flutter สร้างเวทีใหม่ทั้งก้อน (WebView โหลดตัวเธอใหม่หมด)
+              Positioned.fill(
+                key: const ValueKey('mind-stage'),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: studio ? null : state.showBubbleAgain,
+                  child: MindAvatarView(
+                    controller: widget.avatar,
+                    mode: mode,
+                    packBase: context.watch<AvatarPacks>().baseUrl,
+                    packModel: context.watch<AvatarPacks>().modelFile,
+                  ),
+                ),
+              ),
+
+              // สตูดิโอ: ปุ่มของมันเองเท่านั้น ที่เหลือบนเวทีทั้งหมดติดไปในภาพ
+              if (studio)
+                Positioned.fill(
+                  child: StudioOverlay(
+                    studio: context.read<MindStudio>(),
+                    avatar: widget.avatar,
+                    state: state,
+                  ),
+                ),
 
               // ปุ่มเชิดหุ่น — อยู่บนเวทีไม่ใช่ในหน้าตั้งค่า เพราะเป็นสวิตช์
               // ที่คนกดขณะ**มองหน้าเธออยู่** ไม่ใช่ค่าที่ตั้งทิ้งไว้
