@@ -170,6 +170,26 @@ void main() {
     await _unmount(t, s);
   });
 
+  /// 🔴 วงแหวนเรืองต้องอยู่หลังตัวเธอ
+  ///
+  /// เจ้าของ: "หน้าเธอมีเส้นที่ควรอยู่ด้านหลังบังหน้า" · เดิมวาดทับเวที พอช็อตครึ่งตัว
+  /// เป็นค่าตั้งต้น เส้นวงกวาดผ่านหน้าเธอทุกสามวิ · Stack วาดลูกตามลำดับ ตัวแรกอยู่หลังสุด
+  testWidgets('🔴 วงแหวนเรืองวาดก่อนเวที (อยู่หลังตัวเธอ ไม่บังหน้า)', (t) async {
+    final s = await _mount(t);
+    final stage = find.byKey(const ValueKey('mind-stage'));
+    final ring = find.byKey(const ValueKey('mind-ring'));
+    expect(stage, findsOneWidget);
+    expect(ring, findsOneWidget);
+
+    final stack = t.widget<Stack>(find.ancestor(of: stage, matching: find.byType(Stack)).first);
+    final keys = stack.children.map((c) => c.key).toList();
+    expect(keys.indexOf(const ValueKey('mind-ring')),
+        lessThan(keys.indexOf(const ValueKey('mind-stage'))),
+        reason: 'วงแหวนอยู่หลังเวทีในลำดับ = วาดทับหน้าเธอ');
+
+    await _unmount(t, s);
+  });
+
   /// 🔴 เข้าสตูดิโอต้องไม่สร้างเวทีใหม่
   ///
   /// เวทีคือ WebView + VRM 33MB · ถ้าโครงต้นไม้เปลี่ยนตำแหน่งตอนซ่อนหัวจอ

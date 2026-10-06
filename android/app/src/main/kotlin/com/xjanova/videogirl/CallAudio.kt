@@ -65,19 +65,69 @@ object CallAudio {
     var open = false
         private set
 
+    /// เจ้าของกดสลับลำโพงเองระหว่างที่เธอถือสาย · [keepSpeaker] เลิกเปิดทับ
+    @Volatile
+    var ownerRouted = false
+
+    private var openStream = STREAM_CALL
+    private var reasserts = 0
+    private var raisedOnSpeaker = false
+
+    /// เปิดลำโพงซ้ำได้กี่ครั้งต่อสาย · กันวนแย่งกับ ROM ที่ไม่ยอมจริง ๆ
+    private const val MAX_REASSERTS = 8
+
     /**
      * เปิดทางให้เธอพูดเข้าสาย · คืน false ถ้าทำไม่ได้จริง
      *
      * false = ยังไม่ได้เป็นแอปโทรศัพท์หลัก หรือระบบยังไม่ได้ผูกกับบริการเรา
      * ผู้เรียกต้องบอกผู้ใช้ ไม่ใช่เล่นเสียงต่อไปแล้วให้ปลายสายเงียบ
+     *
+     * 🔴 สั่งครั้งเดียวที่นี่ไม่พอ · สายเข้าถูกสั่งตอน**กริ่งยังดัง** (`answer()` ยังไม่เสร็จ)
+     * แล้วหลายเครื่องตั้งเส้นทางเสียงใหม่เป็นหูฟังตอนสายต่อติด · เสียงเธอไปออกหูฟังเบา ๆ
+     * ไมค์ไม่ได้ยิน ปลายสายไม่ได้ยิน · [keepSpeaker] คอยเปิดคืนตลอดสาย
      */
     fun open(context: Context, stream: String): Boolean {
         val service = MindInCallService.service ?: return false
 
+        openStream = stream
+        ownerRouted = false
+        reasserts = 0
+        raisedOnSpeaker = false
+        open = true
         service.setAudioRoute(CallAudioState.ROUTE_SPEAKER)
         raise(context, stream)
-        open = true
         return true
+    }
+
+    /**
+     * ลำโพงต้องเปิดอยู่ตลอดที่เธอถือสาย · เรียกทุกครั้งที่สถานะสายหรือเส้นทางเสียงเปลี่ยน
+     *
+     * ไม่ทำอะไรเมื่อเธอไม่ได้ถือสาย ([open] = false · เจ้าของแทรกสายแล้ว) หรือเจ้าของ
+     * สลับลำโพงเอง ([ownerRouted]) · หูฟังบลูทูธ/หูฟังสายก็สลับมาลำโพง เพราะตอนนั้น
+     * ไม่มีใครฟังอยู่ที่หู และไมค์ของหูฟังไม่ได้ยินเสียงเธอจากลำโพงเครื่อง
+     */
+    fun keepSpeaker(context: Context) {
+        if (!open || ownerRouted) return
+        val service = MindInCallService.service ?: return
+        val state = service.callAudioState ?: return
+        // ไมค์ของสายถูกปิด = ไม่มีเสียงอะไรขึ้นสายเลย · แอปเราไม่มีปุ่มปิดไมค์ ที่ปิดมาจากที่อื่น
+        // (ปุ่มบนหูฟังบลูทูธ / สายก่อนหน้า) · ตอนเธอถือสายไม่มีใครตั้งใจให้ปิด
+        if (state.isMuted && reasserts < MAX_REASSERTS) {
+            reasserts++
+            service.setMuted(false)
+        }
+        val route = state.route
+        if (route == CallAudioState.ROUTE_SPEAKER) {
+            // ระดับเสียงสายแยกตามอุปกรณ์ · ที่เร่งไว้ตอนกริ่งดังอาจเป็นของหูฟัง
+            if (!raisedOnSpeaker) {
+                raisedOnSpeaker = true
+                raise(context, openStream)
+            }
+            return
+        }
+        if (reasserts >= MAX_REASSERTS) return
+        reasserts++
+        service.setAudioRoute(CallAudioState.ROUTE_SPEAKER)
     }
 
     /**
@@ -90,8 +140,9 @@ object CallAudio {
         stop()
         liveStop()
         restore(context)
-        MindInCallService.service?.setAudioRoute(CallAudioState.ROUTE_EARPIECE)
+        // ปิดธงก่อนสลับ · [keepSpeaker] ที่ตามมากับการเปลี่ยนเส้นทางต้องไม่เปิดลำโพงคืน
         open = false
+        MindInCallService.service?.setAudioRoute(CallAudioState.ROUTE_EARPIECE)
     }
 
     /** จบสาย หรือเลิกให้เธอพูด — คืนระดับเสียงเดิมทุกครั้ง */
@@ -100,6 +151,7 @@ object CallAudio {
         liveStop()
         restore(context)
         open = false
+        ownerRouted = false
     }
 
     /**
@@ -198,6 +250,12 @@ object CallAudio {
      */
     private fun raise(context: Context, stream: String) {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        // ระหว่างสาย ระบบกดเสียงสื่อไม่ให้ดังเกินเสียงสาย · เลือกช่องสื่อก็ต้องเร่งช่องสายด้วย
+        raiseOne(am, STREAM_CALL)
+        if (stream == STREAM_MEDIA) raiseOne(am, STREAM_MEDIA)
+    }
+
+    private fun raiseOne(am: AudioManager, stream: String) {
         val type = streamType(stream)
         val saved = if (stream == STREAM_MEDIA) savedMediaVolume else savedCallVolume
 

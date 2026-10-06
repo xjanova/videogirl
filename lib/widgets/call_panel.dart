@@ -58,7 +58,9 @@ class _CallPanelState extends State<CallPanel> {
         spacing: MindSpace.gap,
         children: [
           _head(t, call, mode),
-          if (call.mute) _warn(t.callMuteWarn, const Color(0xFFD93A5B)),
+          if (call.mute) _warn(t.callMuteWarn, const Color(0xFFD93A5B))
+          else if (call.speakerOff)
+            _warn(t.callSpeakerOff, const Color(0xFFD93A5B), onTap: call.speakerOn),
           if (call.deaf) _warn(t.callDeaf, const Color(0xFFB07A16)),
           if (call.error != null) _warn(call.error!, const Color(0xFFD93A5B)),
           if (call.lines.isNotEmpty) _transcript(call, mode),
@@ -154,8 +156,8 @@ class _CallPanelState extends State<CallPanel> {
     );
   }
 
-  Widget _warn(String text, Color colour) {
-    return Container(
+  Widget _warn(String text, Color colour, {VoidCallback? onTap}) {
+    final box = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: colour.withValues(alpha: .10),
@@ -167,6 +169,8 @@ class _CallPanelState extends State<CallPanel> {
         style: TextStyle(fontSize: 11.5, height: 1.45, color: colour),
       ),
     );
+    if (onTap == null) return box;
+    return GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap, child: box);
   }
 
   // ── บทสนทนาสด ──────────────────────────────────────────

@@ -978,6 +978,12 @@ class S {
         'Speakerphone was refused — the caller will not hear her. '
             'Try the other audio path in Settings.',
       );
+  String get callSpeakerOff => _(
+        'ลำโพงปิดอยู่ ปลายสายจะไม่ได้ยินเธอ · แตะตรงนี้เพื่อเปิดลำโพง '
+            'ถ้าเปิดแล้วยังไม่ได้ยิน ลองสลับช่องเสียงในหน้าตั้งค่า',
+        'The speaker is off — the caller cannot hear her. Tap here to turn it on; '
+            'if they still cannot hear her, try the other audio path in Settings.',
+      );
 
   // ═══ ตัวตนของเธอ ════════════════════════════════════════
   String get sectionSoul => _('ตัวตนของเธอ', 'Who she is');

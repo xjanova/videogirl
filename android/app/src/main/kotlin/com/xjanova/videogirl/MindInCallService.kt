@@ -71,11 +71,33 @@ class MindInCallService : InCallService() {
 
     override fun onCallAudioStateChanged(audioState: CallAudioState) {
         super.onCallAudioStateChanged(audioState)
+        // ระบบย้ายเสียงกลับหูฟัง/บลูทูธระหว่างที่เธอถือสาย = ปลายสายไม่ได้ยินเธออีก
+        CallAudio.keepSpeaker(this)
         notifyChanged()
     }
 
     private val callback = object : Call.Callback() {
-        override fun onStateChanged(call: Call, state: Int) = notifyChanged()
+        override fun onStateChanged(call: Call, state: Int) {
+            if (state == Call.STATE_ACTIVE && mindHandling) onMindCallActive()
+            notifyChanged()
+        }
+    }
+
+    /**
+     * สายที่เธอถือต่อติดแล้ว · เปิดลำโพง**ตอนนี้** ไม่ใช่แค่ตอนสั่งรับ
+     *
+     * 🔴 สายเข้า: [mindAnswer] สั่งลำโพงตอนกริ่งยังดัง แล้วหลายเครื่องรีเซ็ตเส้นทาง
+     * เป็นหูฟังตอนสายต่อติด · สายออก: ฝั่ง Dart รู้ว่าปลายสายรับช้ากว่านี้ถึงหนึ่งวินาที
+     * (ถามทุกวินาที) คำแรกของปลายสายกับคำทักของเธอจะหลุดไปทางหูฟัง · ตามเช็กซ้ำอีกสองครั้ง
+     * เพราะบาง ROM สลับเส้นทางหลังสายติดไปแล้วโดยไม่บอก
+     */
+    private fun onMindCallActive() {
+        if (!CallAudio.open) CallAudio.open(this, MindPrefs.callStream(this))
+        CallAudio.keepSpeaker(this)
+        val ui = Handler(Looper.getMainLooper())
+        for (delay in longArrayOf(800L, 2500L)) {
+            ui.postDelayed({ CallAudio.keepSpeaker(this) }, delay)
+        }
     }
 
     private fun notifyChanged() {
