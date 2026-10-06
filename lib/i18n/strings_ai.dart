@@ -508,6 +508,12 @@ extension AiStrings on S {
       );
   String get errLocalEmpty =>
       pick('โมเดลในเครื่องตอบกลับมาว่าง', 'The on-device model returned nothing');
+  String get errLocalStopped =>
+      pick('หยุดให้เธอคิดแล้ว', 'Stopped her thinking');
+  String get errTtsStuck => pick(
+        'เสียงของเครื่องไม่ตอบ (ค้าง) · ลองอีกครั้ง หรือเปิดแอป Speech Services by Google ให้อัปเดตก่อน',
+        'The phone\'s voice engine is not responding · try again, or update Speech Services by Google',
+      );
 
   String get errTtsFailed =>
       pick('เครื่องนี้สังเคราะห์เสียงไม่สำเร็จ', 'This phone could not synthesise speech');

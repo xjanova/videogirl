@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../ai/mind_audio.dart';
 import '../i18n/strings.dart';
 import '../theme/tokens.dart';
 import 'stage_bridge.dart';
@@ -147,7 +148,21 @@ class MindAvatarController extends ChangeNotifier
     _visible = true;
     _loadPercent = 100;
     _error = null;
+    // เวทีเพิ่งเกิด (หรือโหลดใหม่หลัง renderer ตาย) เริ่มวาดเสมอ · ถ้าตอนนี้
+    // ไม่มีใครเห็นอยู่ ต้องบอกซ้ำ ไม่งั้นมันวาดเต็มกำลังอยู่หลังหน้าอื่น
+    if (_asleep) unawaited(_call('window.minde.sleep(true)'));
     notifyListeners();
+  }
+
+  /// ตอนนี้ไม่มีใครเห็นเธอ (แท็บอื่น · แอปอยู่เบื้องหลัง) → เวทีหยุดวาด
+  bool _asleep = false;
+  bool get asleep => _asleep;
+
+  /// หยุด/กลับมาวาด · จำค่าไว้ใช้ซ้ำตอนเวทีโหลดใหม่ · ดู avatar.js `setAsleep`
+  Future<void> setAsleep(bool on) async {
+    if (_asleep == on) return;
+    _asleep = on;
+    await _call('window.minde.sleep($on)');
   }
 
   void _onVisible() {
@@ -227,7 +242,11 @@ class MindAvatarController extends ChangeNotifier
     // เวทีเล่นแล้วไม่มีเสียงออก (context ถูกพัก / ตัวเล่นเสียงของ WebView
     // หลุด) · ส่งเข้าเวทีอีกก็เงียบอีก และต้องรอ 1.2 วิทุกประโยคกว่าจะรู้ ·
     // พักทางนี้ไว้สิบนาทีแล้วค่อยลองใหม่ ระหว่างนั้นเสียงไปทางสำรองตรง ๆ
-    if (why.startsWith('silent-output') || why.startsWith('audio-context')) {
+    if (why.startsWith('silent-output') ||
+        why.startsWith('audio-context') ||
+        why.startsWith('stalled-output') ||
+        why.startsWith('play-timeout') ||
+        why.startsWith('stage-timeout')) {
       _stageQuietUntil = DateTime.now().add(const Duration(minutes: 10));
       _incident('stage-silent: $why');
     }
@@ -299,17 +318,29 @@ class MindAvatarController extends ChangeNotifier
       return false;
     }
     try {
-      final res = await web.callAsyncJavaScript(
-        functionBody: 'return await window.minde.speakBytes(b64, mime);',
-        arguments: {'b64': base64Encode(bytes), 'mime': mime},
-      );
+      // 🔴 มีเวลาหมด · เวทีที่ค้าง (renderer ไม่ตอบ · เสียงเดินไม่ไป) เคยทำให้
+      // ทุกอย่างที่รอประโยคนี้ค้างตาม — ปุ่มลองฟังเสียงหมุนไม่หยุด เธอเงียบ
+      // ทุกประโยคต่อจากนั้น · หมดเวลา = ตัดเวทีทิ้งสิบนาที ไปทางสำรองแทน
+      final limit = MindAudio.limitFor(bytes, mime);
+      final res = await web
+          .callAsyncJavaScript(
+            functionBody: 'return await window.minde.speakBytes(b64, mime);',
+            arguments: {'b64': base64Encode(bytes), 'mime': mime},
+          )
+          .timeout(limit, onTimeout: () {
+        debugPrint('avatar: เวทีเล่นเสียงไม่จบใน ${limit.inSeconds} วิ — ตัดทิ้ง');
+        unawaited(stop());
+        _onSpeakFailed('stage-timeout ${limit.inSeconds}s');
+        return null;
+      });
+      if (res == null) return false;
       // 🔴 ฝั่ง JS บอก "เล่นไม่ได้" ด้วยการคืน false ไม่ใช่ throw
       // (ไม่มีตัวเธอ หรือ audio.play() ถูกปฏิเสธ) · callAsyncJavaScript ส่ง
       // ค่านั้นกลับมาเป็นผลลัพธ์ธรรมดา ถ้าไม่อ่านมัน ทางสำรอง [MindAudio]
       // จะไม่มีวันได้ทำงาน แล้วผู้ใช้ได้ยินความเงียบโดยไม่มีอะไรบอก
-      if (res?.error != null || res?.value != true) {
+      if (res.error != null || res.value != true) {
         debugPrint('avatar: เวทีเล่นเสียงไม่ได้ — '
-            '${res?.error ?? 'คืน ${res?.value}'}');
+            '${res.error ?? 'คืน ${res.value}'}');
         return false;
       }
       return true;

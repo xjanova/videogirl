@@ -40,6 +40,7 @@ import '../phone/call_session.dart';
 import '../studio/mind_studio.dart';
 import '../system/app_life.dart';
 import '../i18n/strings_voice.dart';
+import '../ai/local_server_scan.dart';
 import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
 import '../widgets/update_card.dart';
@@ -436,8 +437,14 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (!mounted) return;
     final studio = context.read<MindStudio>();
     final avatar = context.read<MindAvatarController>();
-    await studio.exit();
-    if (avatar.mocapOn) await avatar.stopMocap();
+    // 🔴 ทุกขั้นมีเวลาหมด · ขั้นไหนค้าง (เวที สมอง เครื่องเล่น) ต้องไม่ขวาง
+    // ทางออก — เจ้าของกดออกเพราะเครื่องร้อนและช้า แล้วปุ่มนี้ค้างตามไปด้วย
+    try {
+      await studio.exit().timeout(const Duration(seconds: 2));
+      if (avatar.mocapOn) await avatar.stopMocap().timeout(const Duration(seconds: 1));
+    } on Object catch (e) {
+      debugPrint('ออกจากแอป: ปิดสตูดิโอไม่ทัน — ${e.runtimeType}');
+    }
     await state.prepareExit();
     await AppLife.exit();
   }
@@ -1629,6 +1636,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 onReset: () => HomeServerDefaults.model,
               ),
             ),
+            ..._homeServerTools(state, mode),
           ],
           if (state.brain == BrainProvider.onDevice) ...[
             const SizedBox(height: 12),
@@ -1973,6 +1981,178 @@ class _SettingsScreenState extends State<SettingsScreen>
         _toggle(on: on, mode: mode, onTap: () => lb.setUseGpu(!on)),
       ],
     );
+  }
+
+  // ── เซิร์ฟเวอร์ในบ้าน: ค้นหาในวงไวไฟ · เลือกรุ่น · ทดสอบ ─────
+
+  bool _scanning = false;
+  double _scanProgress = 0;
+
+  /// ผลการค้นหาล่าสุด · null = ยังไม่เคยกดค้น
+  List<LocalServer>? _found;
+
+  /// รุ่นบนเซิร์ฟเวอร์ที่ตั้งไว้ (โหลดจากเซิร์ฟเวอร์ ไม่ต้องพิมพ์เอง)
+  List<String>? _serverModels;
+
+  bool _testingHome = false;
+  ({bool ok, String text})? _homeNote;
+
+  Future<void> _scanHome(MindState state) async {
+    setState(() {
+      _scanning = true;
+      _scanProgress = 0;
+      _found = null;
+    });
+    final scanner = LocalServerScanner();
+    try {
+      final found = await scanner.scan(onProgress: (p) {
+        if (mounted) setState(() => _scanProgress = p);
+      });
+      if (!mounted) return;
+      setState(() => _found = found);
+      // เจอตัวเดียว = ใช้เลย ไม่ต้องให้แตะซ้ำ
+      if (found.length == 1) _useServer(state, found.single);
+    } finally {
+      scanner.close();
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
+  void _useServer(MindState state, LocalServer srv) {
+    state.setHomeServerUrl(srv.baseUrl);
+    if (srv.models.isNotEmpty && !srv.models.contains(state.homeServerModel)) {
+      state.setHomeServerModel(srv.models.first);
+    }
+    setState(() {
+      _serverModels = srv.models;
+      _homeNote = null;
+    });
+  }
+
+  Future<void> _loadHomeModels(MindState state) async {
+    final scanner = LocalServerScanner();
+    try {
+      final list = await scanner.models(state.homeServerUrl);
+      if (!mounted) return;
+      setState(() {
+        _serverModels = list;
+        _homeNote = list == null
+            ? (ok: false, text: S.of(context).homeUnreachable(state.homeServerUrl))
+            : null;
+      });
+    } finally {
+      scanner.close();
+    }
+  }
+
+  Future<void> _testHome(MindState state) async {
+    setState(() {
+      _testingHome = true;
+      _homeNote = (ok: true, text: S.of(context).homeTesting);
+    });
+    final r = await state.testHomeServer();
+    if (!mounted) return;
+    setState(() {
+      _testingHome = false;
+      _homeNote = (ok: r.ok, text: r.message);
+    });
+  }
+
+  List<Widget> _homeServerTools(MindState state, MindMode mode) {
+    final t = S.of(context);
+    final found = _found;
+    final models = _serverModels;
+    return [
+      const SizedBox(height: 10),
+      Wrap(
+        spacing: MindSpace.sm,
+        runSpacing: MindSpace.sm,
+        children: [
+          _plainButton(
+            label: _scanning ? t.homeScanning((_scanProgress * 100).round()) : t.homeScan,
+            mode: mode,
+            onTap: _scanning ? null : () => _scanHome(state),
+          ),
+          _plainButton(
+            label: t.homeLoadModels,
+            mode: mode,
+            onTap: _scanning ? null : () => _loadHomeModels(state),
+          ),
+          _plainButton(
+            label: _testingHome ? t.homeTesting : t.homeTest,
+            mode: mode,
+            onTap: _testingHome ? null : () => _testHome(state),
+          ),
+        ],
+      ),
+      if (_scanning) ...[
+        const SizedBox(height: 7),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(MindRadius.pill),
+          child: LinearProgressIndicator(
+            value: _scanProgress,
+            minHeight: 4,
+            backgroundColor: MindColors.ink10,
+            valueColor: AlwaysStoppedAnimation(mode.accent),
+          ),
+        ),
+      ],
+      if (found != null && !_scanning) ...[
+        const SizedBox(height: 8),
+        Text(found.isEmpty ? t.homeScanNone : t.homeScanFound(found.length),
+            style: TextStyle(
+                fontSize: 10.5,
+                height: 1.5,
+                color: found.isEmpty ? const Color(0xFFB46A00) : MindColors.ink55)),
+        const SizedBox(height: 6),
+        for (final srv in found)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: _choiceRow(
+              title: '${srv.kind} · ${srv.host == '127.0.0.1' ? t.homeThisPhone : srv.host}',
+              subtitle: '${srv.baseUrl} · ${t.homeModelCount(srv.models.length)}',
+              selected: state.homeServerUrl == srv.baseUrl,
+              mode: mode,
+              onTap: () => _useServer(state, srv),
+            ),
+          ),
+      ],
+      if (models != null && models.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Text(t.homeModelsHere,
+            style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+        const SizedBox(height: 7),
+        for (final m in models)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: _choiceRow(
+              title: m,
+              selected: state.homeServerModel == m,
+              mode: mode,
+              onTap: () => state.setHomeServerModel(m),
+            ),
+          ),
+      ],
+      if (_homeNote != null) ...[
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 7,
+          children: [
+            Icon(_homeNote!.ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+                size: 15,
+                color: _homeNote!.ok ? const Color(0xFF00A894) : const Color(0xFFB46A00)),
+            Expanded(
+              child: Text(_homeNote!.text,
+                  style: TextStyle(
+                      fontSize: 11,
+                      height: 1.5,
+                      color: _homeNote!.ok ? MindColors.ink75 : const Color(0xFFB46A00))),
+            ),
+          ],
+        ),
+      ],
+    ];
   }
 
   // ── วิธีเอาคีย์ ─────────────────────────────────────────

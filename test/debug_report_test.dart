@@ -259,10 +259,12 @@ void _bugReportShapeGroup() {
 /// และทุกด่านล้มแบบ**เงียบ**ได้ (ยิงเกินไม่มีอะไรเตือน) เทสต์จึงเป็นที่เดียวที่จับได้
 class _FakeHttp extends http.BaseClient {
   final posts = <String>[];
+  final bodies = <String>[];
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     posts.add(request.url.toString());
+    if (request is http.Request) bodies.add(request.body);
     return http.StreamedResponse(
       Stream.value(utf8.encode('{"success":true,"data":{"id":1}}')),
       201,
@@ -314,6 +316,21 @@ void _autoSendGroup() {
       avatar.debugIncident('renderer-gone x1');
       await letItSend();
       expect(http_.posts, hasLength(1));
+    });
+
+    test('🔴 "ค้าง" ฝั่ง state (สมองคิดไม่หยุด) = ส่งเอง พร้อมหัวข้อที่บอกเหตุ', () async {
+      await setUpAll_();
+      state.noteIncident('gemma: ตัดคำตอบ (loop) ที่ 300 token');
+      await letItSend();
+      expect(http_.posts, hasLength(1),
+          reason: 'เครื่องร้อน เธอเงียบ ปุ่มค้าง แต่ระบบรายงานมี 0 ฉบับ');
+      final body = jsonDecode(http_.bodies.single) as Map<String, Object?>;
+      expect('${body['title']}', contains('ตัดคำตอบ (loop)'),
+          reason: 'หัวข้อ "no errors" ไม่บอกคนไล่บั๊กว่าเกิดอะไร');
+
+      state.noteIncident('gemma: ตัดคำตอบ (loop) ที่ 300 token');
+      await letItSend();
+      expect(http_.posts, hasLength(1), reason: 'เรื่องเดิมในหน้าต่างกันซ้ำ = ไม่ยิงซ้ำ');
     });
 
     test('มีข้อผิดพลาดใหม่ = ส่งเอง ไม่ต้องรอใครกด', () async {

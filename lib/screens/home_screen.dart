@@ -114,13 +114,24 @@ class _HomeScreenState extends State<HomeScreen>
     if (s == AppLifecycleState.paused && _voice.busy) {
       unawaited(_voice.cancel());
     }
+    // จอลอย (PiP) = inactive ไม่ใช่ paused · เธอยังอยู่บนจอ ต้องวาดต่อ
+    _hidden = s == AppLifecycleState.paused || s == AppLifecycleState.hidden;
+    _applySleep();
   }
+
+  /// แอปอยู่เบื้องหลัง (ปุ่มย้อนกลับพักแอปไว้ ไม่ได้ปิด)
+  bool _hidden = false;
+
+  /// เวทีหยุดวาดเมื่อไม่มีใครเห็นเธอ · ดู [MindAvatarController.setAsleep]
+  void _applySleep() =>
+      unawaited(widget.avatar.setAsleep(_hidden || !widget.active));
 
   /// ออกจากแท็บนี้ = ปิดกล้องและไมค์ · จุดเขียวที่มุมจอค้างอยู่ตอนผู้ใช้
   /// อยู่หน้าตั้งค่า คือแอปที่แอบดูแอบฟังในสายตาเขา ไม่ว่าเจตนาจะเป็นยังไง
   @override
   void didUpdateWidget(HomeScreen old) {
     super.didUpdateWidget(old);
+    if (old.active != widget.active) _applySleep();
     if (old.active && !widget.active) {
       if (_voice.busy) unawaited(_voice.cancel());
       if (widget.avatar.mocapPhase != MindMocapPhase.off) {

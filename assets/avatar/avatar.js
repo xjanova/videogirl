@@ -183,7 +183,7 @@ export class Avatar {
         // seconds, and a blank panel for those seconds is worse than a still
         // one.
         this.ready = true;
-        this._raf = requestAnimationFrame(this._loop);
+        if (!this._asleep) this._raf = requestAnimationFrame(this._loop);
 
         // ตัวเธออยู่บนจอแล้วตรงนี้ — คลิปท่าทางยังทยอยมาอยู่ แต่คนดูเห็นเธอแล้ว
         // นี่คือจังหวะที่หน้าเปิดแอปควรหลบให้ ไม่ใช่รอจนคลิปครบ
@@ -480,7 +480,32 @@ export class Avatar {
      * จึงต้องดักไว้ และ**รายงานออกไปครั้งเดียว** ให้ฝั่งแอปรู้ว่าเวทีตายแล้ว
      * ครั้งเดียวเพราะถ้ารายงานทุกเฟรมคือยิงข้ามสะพาน 60 ครั้งต่อวินาที
      */
+    /**
+     * หยุดวาดชั่วคราว — ตอนไม่มีใครเห็นเธอ (อยู่แท็บอื่น · แอปถูกพักไว้เบื้องหลัง)
+     *
+     * 🔴 เวทีวาด VRM 60 เฟรมต่อวินาทีตลอดเวลา แม้หน้าจอที่เห็นอยู่คือหน้าตั้งค่า
+     * (WebView ไม่รู้ว่าถูกซ่อนอยู่ใต้หน้าอื่น) · บวกสมองในเครื่องที่กิน GPU
+     * ก้อนเดียวกัน = เครื่องร้อนจัดและช้าทั้งเครื่อง
+     *
+     * เสียงไม่หยุดตาม (WebAudio เดินเองไม่ต้องมีเฟรม) · ปากไม่ขยับระหว่างนั้น
+     * ซึ่งไม่มีใครเห็นอยู่แล้ว
+     */
+    setAsleep(on) {
+        on = !!on;
+        if (on === !!this._asleep) return on;
+        this._asleep = on;
+        if (on) {
+            if (this._raf) cancelAnimationFrame(this._raf);
+            this._raf = 0;
+        } else if (this.ready && !this._raf) {
+            this.clock.getDelta();   // ทิ้งช่วงที่หลับไป ไม่งั้นเฟรมแรกกระโดด
+            this._raf = requestAnimationFrame(this._loop);
+        }
+        return on;
+    }
+
     _loop() {
+        if (this._asleep) { this._raf = 0; return; }
         this._raf = requestAnimationFrame(this._loop);
         try {
             this._frame();

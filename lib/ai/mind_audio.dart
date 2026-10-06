@@ -44,9 +44,15 @@ abstract final class MindAudio {
       file = File('${dir.path}${Platform.pathSeparator}minde_out_${_seq++}.$ext');
       await file.writeAsBytes(bytes, flush: true);
 
+      // 🔴 มีเวลาหมด · MediaPlayer ที่ไม่ยิง "จบ" (เสียงถูกแย่งช่อง ลำโพง
+      // บลูทูธหลุดกลางประโยค) = ปุ่มที่รอประโยคนี้ค้างตลอดกาล
       final ok = await kSystemChannel.invokeMethod<bool>('callSpeak', {
         'path': file.path,
         'stream': _stream,
+      }).timeout(limitFor(bytes, mime), onTimeout: () {
+        debugPrint('เสียง: ทางสำรองเล่นไม่จบในเวลา — สั่งหยุด');
+        unawaited(stop());
+        return false;
       });
       return ok == true;
     } on Object catch (e) {
@@ -57,6 +63,25 @@ abstract final class MindAudio {
       // (ฝั่งเนทีฟอ่านจบไปแล้วตอน callSpeak คืนค่า)
       unawaited(file?.delete().catchError((_) => file!) ?? Future<void>.value());
     }
+  }
+
+  /// ความยาวเสียงโดยประมาณ (วินาที) · WAV อ่านจากหัวไฟล์ได้เป๊ะ
+  /// นอกนั้น (mp3/ogg) คิดที่ 32 kbps ซึ่งต่ำกว่าทุกเจ้าที่ใช้ = ประมาณเกินเสมอ
+  @visibleForTesting
+  static double secondsOf(Uint8List b, String mime) {
+    if (b.length >= 44 &&
+        String.fromCharCodes(b.sublist(0, 4)) == 'RIFF' &&
+        String.fromCharCodes(b.sublist(8, 12)) == 'WAVE') {
+      final rate = ByteData.sublistView(b).getUint32(28, Endian.little);
+      if (rate > 0) return (b.length - 44) / rate;
+    }
+    return b.length / 4000;
+  }
+
+  /// เวลาที่ยอมรอเสียงหนึ่งประโยคเล่นจบ ก่อนถือว่าค้าง
+  static Duration limitFor(Uint8List b, String mime) {
+    final s = secondsOf(b, mime).clamp(0, 600);
+    return Duration(milliseconds: (s * 1500).round() + 8000);
   }
 
   /// เสียงสื่อของเครื่องปิดสนิทอยู่ไหม · null = ถามไม่ได้ (ไม่ใช่ Android)

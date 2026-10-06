@@ -31,6 +31,23 @@ const LOW = [0, 8], MID = [8, 40], HIGH = [40, 120];
  */
 const SILENCE_PROBE = 1.2;
 
+/** รอ AudioContext ตื่นได้นานสุดกี่มิลลิวินาที */
+const RESUME_LIMIT = 1500;
+
+/** รอ audio.play() เริ่มได้นานสุด · ไฟล์ในหน่วยความจำปกติเริ่มในไม่กี่สิบมิลลิวินาที */
+const PLAY_LIMIT = 5000;
+
+/**
+ * เวลาเล่นไม่ขยับเลยนานเท่านี้ (วินาที) = เสียงค้าง
+ *
+ * ต่างจากเงียบ: เงียบคือเวลาเดินแต่ไม่มีคลื่น · ค้างคือเวลาไม่เดินเลย
+ * (ช่องเสียงถูกแย่ง · ลำโพงบลูทูธหลุด · ตัวเล่นเสียงของ WebView ตาย)
+ * ของเดิมไม่จับ → 'ended' ไม่มีวันมา → ฝั่งแอปรอประโยคนี้ตลอดกาล
+ */
+const STALL_LIMIT = 4;
+
+const wait = (ms) => new Promise(res => setTimeout(res, ms));
+
 /**
  * Where each viseme sits on two axes: how open the mouth is, and how spread
  * (1) versus rounded (0) it is. Blending by distance on this plane means the
@@ -90,7 +107,12 @@ export class LipSync {
     async context() {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         this.ctx = this.ctx || new Ctx();
-        if (this.ctx.state === 'suspended') { try { await this.ctx.resume(); } catch {} }
+        // 🔴 resume() ที่ระบบไม่ยอมให้เริ่ม **ไม่ reject — ค้างไว้เฉย ๆ**
+        // (รอ user gesture ที่ไม่มีวันมา) · ไม่มีเวลาหมด = ทุกประโยคค้างตรงนี้
+        // แล้วฝั่งแอปรอไปด้วย · หมดเวลาแล้วปล่อยให้ play() เช็ก state เอง
+        if (this.ctx.state === 'suspended') {
+            try { await Promise.race([this.ctx.resume(), wait(RESUME_LIMIT)]); } catch {}
+        }
         return this.ctx;
     }
 
@@ -121,16 +143,51 @@ export class LipSync {
         if (this.ctx.state !== 'running') throw new Error(`audio-context-${this.ctx.state}`);
         const lag = this.outputLag();
         this._wire(audio, { audible: true, delay: lag });
-        const { ended } = await this._start(audio);
+        const started = await Promise.race([this._start(audio), wait(PLAY_LIMIT)]);
+        if (!started) {
+            this.stop();
+            throw new Error('play-timeout');
+        }
         const how = await Promise.race([
-            ended.then(() => 'ended'),
+            started.ended.then(() => 'ended'),
             this._watchSilence(audio, lag),
+            this._watchStall(audio),
         ]);
         if (how === 'silent') {
             this.stop();
             throw new Error('silent-output');
         }
+        if (how === 'stalled') {
+            this.stop();
+            throw new Error('stalled-output');
+        }
         return true;
+    }
+
+    /**
+     * จับเสียงที่ "เล่นอยู่แต่เวลาไม่เดิน" — คืน 'stalled' ถ้า currentTime
+     * ไม่ขยับเลย [STALL_LIMIT] วินาที · จบเองเมื่อเสียงจบ/ถูกหยุด/มีเสียงใหม่มาแทน
+     */
+    _watchStall(audio) {
+        return new Promise(res => {
+            let last = -1, still = 0;
+            const t = setInterval(() => {
+                if (this.audio !== audio || audio.paused || audio.ended) {
+                    clearInterval(t);
+                    return;
+                }
+                if (audio.currentTime === last) {
+                    still += 0.5;
+                    if (still >= STALL_LIMIT) {
+                        clearInterval(t);
+                        res('stalled');
+                    }
+                } else {
+                    last = audio.currentTime;
+                    still = 0;
+                }
+            }, 500);
+        });
     }
 
     /**

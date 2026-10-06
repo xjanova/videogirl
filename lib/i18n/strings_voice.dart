@@ -112,6 +112,39 @@ extension VoiceStrings on S {
           'On the same page read "Location/Region" (e.g. southeastasia) · enter both the key and the region in the app',
         ];
 
+  // ── เซิร์ฟเวอร์ในบ้าน: ค้นหา · ทดสอบ ──
+  String get homeScan => pick('ค้นหาเซิร์ฟเวอร์ในวงไวไฟ', 'Find servers on this Wi-Fi');
+  String homeScanning(int pct) => pick('กำลังค้นหา… $pct%', 'Searching… $pct%');
+  String homeScanFound(int n) =>
+      pick('เจอ $n เซิร์ฟเวอร์ · แตะเพื่อใช้', 'Found $n server(s) · tap one to use it');
+  String get homeScanNone => pick(
+        'ไม่เจอเซิร์ฟเวอร์ในวงไวไฟนี้ · เช็กว่า มือถืออยู่ไวไฟเดียวกับคอม · Ollama ตั้ง '
+            'OLLAMA_HOST=0.0.0.0 แล้วเปิดใหม่ · LM Studio เปิด "Serve on Local Network" · '
+            'ไฟร์วอลล์ของคอมยอมพอร์ตนั้น',
+        'No server found on this Wi-Fi · check the phone is on the same Wi-Fi as the PC · '
+            'Ollama: set OLLAMA_HOST=0.0.0.0 and restart · LM Studio: turn on "Serve on Local Network" · '
+            "the PC's firewall allows that port",
+      );
+  String get homeThisPhone => pick('ในเครื่องนี้ (เช่น Termux)', 'On this phone (e.g. Termux)');
+  String homeModelCount(int n) => pick('$n รุ่น', '$n model(s)');
+  String get homeModelsHere => pick('รุ่นบนเซิร์ฟเวอร์นี้', 'Models on this server');
+  String get homeLoadModels => pick('โหลดรายชื่อรุ่นจากเซิร์ฟเวอร์', 'Load the model list from the server');
+  String get homeTest => pick('ทดสอบว่าใช้ได้', 'Test that it works');
+  String get homeTesting => pick('กำลังทดสอบ…', 'Testing…');
+  String get homeTestSystem =>
+      pick('ตอบสั้นที่สุด คำเดียว เป็นภาษาไทย', 'Answer with a single word.');
+  String get homeTestQuestion => pick('พร้อมใช้งานไหม', 'Are you ready?');
+  String homeTestOk(String sec, String reply) =>
+      pick('ใช้ได้ · ตอบใน $sec วิ: "$reply"', 'Works · answered in $sec s: "$reply"');
+  String homeUnreachable(String url) => pick(
+        'ติดต่อ $url ไม่ได้ · อยู่ไวไฟเดียวกับคอมไหม · โปรแกรมบนคอมเปิดอยู่ไหม · Ollama ต้องตั้ง OLLAMA_HOST=0.0.0.0',
+        'Cannot reach $url · same Wi-Fi as the PC? · is the program running? · Ollama needs OLLAMA_HOST=0.0.0.0',
+      );
+  String homeModelMissing(String model, String have) => pick(
+        'ไม่มีรุ่น "$model" บนเซิร์ฟเวอร์นี้ · ที่มีคือ: $have',
+        'This server has no model "$model" · it has: $have',
+      );
+
   // ── ตอนอยู่ในสาย ──
   String get inCallTitle => pick('ตอนอยู่ในสาย เธอใช้อะไร', 'What she uses on a call');
   String get inCallListen => pick('ฟังคู่สาย', 'Listens with');

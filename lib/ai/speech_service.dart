@@ -70,9 +70,13 @@ class SpeechService {
     FlutterTts? deviceTts,
     S Function()? strings,
     this.premium,
+    @visibleForTesting Duration Function(String text)? deviceLimit,
   })  : _s = strings ?? _thai,
         _openai = openai ?? OpenAiClient(strings: strings),
-        _injectedTts = deviceTts;
+        _injectedTts = deviceTts,
+        _deviceLimit = deviceLimit ?? deviceLimitFor;
+
+  final Duration Function(String text) _deviceLimit;
 
   /// เจ้าเสียงพรีเมียม (Gemini · ElevenLabs · Azure) · null = ไม่ได้ต่อ
   final PremiumTts? premium;
@@ -151,7 +155,41 @@ class SpeechService {
     }
   }
 
-  Future<Utterance> _synthesizeOnDevice(String text) async {
+  /// คิวของเสียงเครื่อง · ทีละประโยคเท่านั้น
+  ///
+  /// 🔴 flutter_tts ฝั่ง Android ถือ "ผลที่รออยู่" ได้ตัวเดียว · สั่งประโยคที่สอง
+  /// ขณะที่ตัวแรกยังสังเคราะห์อยู่ (กดลองฟังเสียงตอนเธอกำลังพูด) = ตัวแรกถูก
+  /// เขียนทับแล้ว**รอตลอดกาล** · ต่อคิวไว้ ไม่ให้สองประโยคชนกัน
+  Future<void> _deviceQueue = Future<void>.value();
+
+  /// เผื่อเวลาให้เสียงเครื่องสังเคราะห์หนึ่งประโยค · สั้นกว่าเวลาพูดจริงมาก
+  /// (เขียนลงไฟล์เร็วกว่าเวลาพูด) แต่เผื่อเครื่องที่กำลังโหลดหนักไว้ด้วย
+  @visibleForTesting
+  static Duration deviceLimitFor(String text) =>
+      Duration(milliseconds: (12000 + text.length * 80).clamp(12000, 90000));
+
+  Future<Utterance> _synthesizeOnDevice(String text) {
+    final done = Completer<Utterance>();
+    final limit = _deviceLimit(text);
+    _deviceQueue = _deviceQueue.then((_) async {
+      try {
+        done.complete(await _synthesizeOnDeviceNow(text).timeout(limit));
+      } on TimeoutException {
+        // 🔴 เครื่องยนต์เสียงไม่ตอบ (ยังไม่พร้อม · ถูกระบบพัก · อัปเดตอยู่)
+        // ของเดิมรอไปเรื่อย ๆ ปุ่มลองฟังเสียงค้าง และเธอเงียบทุกประโยคต่อจากนั้น
+        debugPrint('เสียงเครื่อง: ไม่ตอบใน ${limit.inSeconds} วิ — ตัดทิ้ง');
+        _deviceReady = false;
+        _deviceLang = null;
+        unawaited(_tts.stop().catchError((_) => 0));
+        done.completeError(OpenAiFailure(_s().errTtsStuck));
+      } on Object catch (e, st) {
+        done.completeError(e, st);
+      }
+    });
+    return done.future;
+  }
+
+  Future<Utterance> _synthesizeOnDeviceNow(String text) async {
     await _prepareDevice();
 
     final dir = await getTemporaryDirectory();

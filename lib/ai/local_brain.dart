@@ -156,6 +156,28 @@ class LocalReplyStats {
   int get waitMs => (loadMs ?? 0) + firstMs;
 }
 
+/// เพดานของคำตอบหนึ่งครั้งจากสมองในเครื่อง — จำนวน token และเวลา
+///
+/// 🔴 สมองในเครื่องกิน CPU/GPU เต็มตลอดที่คิด · ไม่มีเพดาน = โมเดลที่ติดลูป
+/// คิดต่อได้หลายนาทีจนเต็ม context (เครื่องร้อน ทั้งเครื่องช้า) และงานอื่นทุกงาน
+/// ที่ต่อคิวอยู่ (คำถามถัดไป การปล่อยสมองตอนออกจากแอป) ค้างตามทั้งหมด
+///
+/// ตัวเลขเผื่อเครื่องช้า (CPU ราว 4–8 token/วิ) · คำตอบปกติของเธอสั้นกว่านี้มาก
+enum ReplyCap {
+  /// คุยในแชท · ยาวได้พอเขียนอีเมลหรือสรุปยาว ๆ
+  chat(1024, Duration(seconds: 150)),
+
+  /// ตอบในสายโทรศัพท์ · คู่สายรอฟังอยู่ ต้องสั้น
+  call(320, Duration(seconds: 45)),
+
+  /// งานเบื้องหลัง (สกัดความจำ สรุปสาย) · ไม่มีใครเห็นตอนมันวน จึงต้องเข้มที่สุด
+  background(480, Duration(seconds: 90));
+
+  const ReplyCap(this.tokens, this.time);
+  final int tokens;
+  final Duration time;
+}
+
 class LocalBrain extends ChangeNotifier {
   LocalBrain({
     S Function()? strings,
@@ -732,16 +754,22 @@ class LocalBrain extends ChangeNotifier {
 
   /// [onPartial] ได้ข้อความที่พิมพ์มาแล้วทั้งก้อนทุกครั้งที่มีคำใหม่ · ให้หน้าจอ
   /// โชว์คำตอบระหว่างที่เธอยังคิดอยู่ ไม่ต้องนั่งดูจุดสามจุดจนจบประโยค
+  ///
+  /// [cap] เพดานของงานนี้ (ดู [ReplyCap]) · ไม่ใส่ = เพดานของการคุยปกติ
   Future<String> reply({
     required String system,
     required List<Turn> history,
     void Function(String partial)? onPartial,
+    ReplyCap cap = ReplyCap.chat,
   }) {
     final done = Completer<String>();
+    final ticket = _abortTicket;
     _queue = _queue.then((_) async {
       try {
+        // ถูกสั่งเลิกระหว่างรอคิว (ปุ่มออกจากแอป) = ไม่ต้องเริ่มคิดเลย
+        if (ticket != _abortTicket) throw OpenAiFailure(_s().errLocalStopped);
         done.complete(await _reply(
-            system: system, history: history, onPartial: onPartial));
+            system: system, history: history, onPartial: onPartial, cap: cap));
       } on Object catch (e, st) {
         // คิวต้องไม่พังตามงานที่ล้ม ไม่งั้นทุกคำถามหลังจากนี้จะล้มตามกันหมด
         done.completeError(e, st);
@@ -754,6 +782,7 @@ class LocalBrain extends ChangeNotifier {
     required String system,
     required List<Turn> history,
     void Function(String partial)? onPartial,
+    required ReplyCap cap,
   }) async {
     // 🔴 `unknown` ไม่ใช่ "ยังไม่ได้โหลด" แต่คือ "ยังไม่ได้ดู"
     //
@@ -807,15 +836,48 @@ class LocalBrain extends ChangeNotifier {
       // คำแรกพร้อมตั้งนานแล้ว · ความเร็วจริงเท่าเดิม แต่ไม่ต้องรอดูความว่างเปล่า
       final buf = StringBuffer();
       int? firstMs;
+      var tokens = 0;
+      final ticket = _abortTicket;
+      // 🔴 **ต้องมีเพดาน** · เนทีฟคิดต่อได้จนเต็ม 8192 token ถ้าโมเดลวนซ้ำ
+      // (เจอบนเครื่องจริง: เครื่องร้อนจัด ทั้งเครื่องช้า เธอเงียบ ปุ่มออกจากแอป
+      // ค้าง เพราะทุกอย่างต่อคิวรอคำตอบที่ไม่มีวันจบ) · ตัดที่จำนวนคำ เวลา
+      // หรือเมื่อเห็นว่าวนซ้ำ แล้วสั่งเนทีฟให้หยุดจริง ไม่ใช่แค่เลิกฟัง
+      String? cut;
+      var keep = -1;
       await for (final r in chat.generateChatResponseAsync()) {
         if (r is! TextResponse || r.token.isEmpty) continue;
         firstMs ??= clock.elapsedMilliseconds;
         buf.write(r.token);
+        tokens++;
+        if (ticket != _abortTicket) {
+          cut = 'stopped';
+        } else if (tokens >= cap.tokens) {
+          cut = 'tokens';
+        } else if (clock.elapsed >= cap.time) {
+          cut = 'time';
+        } else if (tokens % 24 == 0) {
+          final at = loopAt(buf.toString());
+          if (at != null) {
+            cut = 'loop';
+            keep = at;
+          }
+        }
+        if (cut != null) break;
         onPartial?.call(buf.toString());
       }
       clock.stop();
 
-      final text = buf.toString();
+      var text = buf.toString();
+      if (cut != null) {
+        await _haltNative(chat);
+        if (keep > 0 && keep < text.length) text = text.substring(0, keep);
+        // ภาษาอังกฤษโดยตั้งใจ · ข้อความนี้ไปที่รายงานให้คนไล่บั๊กอ่าน ไม่ขึ้นจอ
+        final why = 'gemma: cut reply ($cut) at $tokens tokens · '
+            '${clock.elapsed.inSeconds}s · ${cap.name}';
+        debugPrint(why);
+        onRunaway?.call(why);
+        if (cut == 'stopped') throw OpenAiFailure(_s().errLocalStopped);
+      }
       if (text.trim().isEmpty) {
         throw OpenAiFailure(_s().errLocalEmpty);
       }
@@ -1111,7 +1173,61 @@ class LocalBrain extends ChangeNotifier {
   }
 
   /// ปล่อยสมองออกจากหน่วยความจำ (ปุ่มออกจากแอป) · ไฟล์ในเครื่องยังอยู่
-  Future<void> unload() => _release();
+  ///
+  /// 🔴 สั่งเลิกงานที่กำลังคิดอยู่**ก่อน** แล้วค่อยต่อคิวปล่อย · ของเดิมต่อคิว
+  /// อย่างเดียว ปุ่มออกจากแอปจึงต้องรอคำตอบที่ค้างอยู่ (ซึ่งอาจไม่มีวันจบ)
+  Future<void> unload() {
+    abort();
+    return _release();
+  }
+
+  /// เลขรอบของการสั่งเลิก · งานที่จำเลขเก่าไว้รู้ตัวว่าถูกยกเลิกแล้ว
+  int _abortTicket = 0;
+
+  /// ให้เลิกคิดเดี๋ยวนี้ ทั้งงานที่คิดอยู่และงานที่รอคิว · ไม่รอให้หยุดจริง
+  void abort() {
+    _abortTicket++;
+    final chat = _chat;
+    if (chat != null) unawaited(_haltNative(chat));
+  }
+
+  /// สั่งเนทีฟหยุดสร้างคำ แล้วทิ้ง session · มีเวลาหมดเพราะเนทีฟที่ค้างอาจไม่ตอบ
+  ///
+  /// session ที่ถูกตัดกลางประโยคไม่รู้ว่าเนทีฟจำอะไรไว้บ้าง · ทิ้งแล้วเปิดใหม่
+  /// (เล่าบทย้อนใหม่หนึ่งรอบ) ปลอดภัยกว่าต่อจากของที่ขาดครึ่ง
+  Future<void> _haltNative(InferenceChat chat) async {
+    try {
+      await chat.stopGeneration().timeout(const Duration(seconds: 3));
+    } on Object catch (e) {
+      debugPrint('gemma: สั่งหยุดไม่สำเร็จ — ${e.runtimeType}');
+    }
+    if (identical(_chat, chat)) {
+      _chat = null;
+      _loadedSystem = null;
+      _fed = const [];
+      unawaited(chat.close().timeout(const Duration(seconds: 3)).catchError((_) {}));
+    }
+  }
+
+  /// แจ้งเมื่อคำตอบถูกตัดเพราะยาว/นาน/วนซ้ำ · state ส่งต่อเป็นรายงาน
+  void Function(String what)? onRunaway;
+
+  /// ตำแหน่งที่ข้อความเริ่มวนซ้ำ (ตัดตรงนี้แล้วเหลือรอบแรกไว้) · null = ไม่วน
+  ///
+  /// ท้ายข้อความ [tail] ตัวอักษรโผล่ซ้ำตั้งแต่ [times] ครั้ง = โมเดลติดลูป
+  /// ข้อความจริงแทบไม่มีวลียาว 40 ตัวที่ซ้ำเป๊ะสามรอบ
+  @visibleForTesting
+  static int? loopAt(String text, {int tail = 40, int times = 3}) {
+    if (text.length < tail * times) return null;
+    final t = text.substring(text.length - tail);
+    var count = 0;
+    var first = -1;
+    for (var i = text.indexOf(t); i != -1; i = text.indexOf(t, i + 1)) {
+      if (first < 0) first = i;
+      if (++count >= times) return first + tail;
+    }
+    return null;
+  }
 
   /// ปล่อยโมเดล — **ต่อคิวเดียวกับการคิดคำตอบ**
   ///

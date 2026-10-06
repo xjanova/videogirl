@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -24,6 +25,7 @@ import '../ai/brain_provider.dart';
 import '../ai/device_speech.dart';
 import '../avatar/avatar_view.dart';
 import '../ai/local_brain.dart';
+import '../ai/local_server_scan.dart';
 import '../ai/mind_audio.dart';
 import '../ai/mind_persona.dart';
 import '../i18n/strings.dart';
@@ -160,6 +162,7 @@ class MindState extends ChangeNotifier {
         summary = (await _askBrain(
           callSummaryPrompt(_lang == AppLang.th),
           [(fromHer: false, text: block)],
+          cap: ReplyCap.background,
         ))
             .trim();
       } on Object catch (e) {
@@ -242,7 +245,9 @@ class MindState extends ChangeNotifier {
     final h = silencer;
     if (h == null) return;
     try {
-      await h();
+      // 🔴 เวทีหรือเครื่องเล่นที่ค้างต้องไม่ลากปุ่มที่เรียก hush ค้างตาม
+      // (ลองฟังเสียง · ส่งข้อความ · ออกจากแอป ทั้งหมดเริ่มด้วย hush)
+      await h().timeout(const Duration(seconds: 2));
     } on Object catch (e) {
       debugPrint('เสียง: สั่งเงียบไม่สำเร็จ — $e');
     }
@@ -628,7 +633,25 @@ class MindState extends ChangeNotifier {
         // ค่าตั้งต้นใช้ GPU · เครื่องที่ใช้ไม่ได้ LocalBrain ตกไป CPU เอง
         useGpu: _kv?.getBool(_kGemmaGpu) ?? true,
         onUseGpuChanged: (v) => _save(_kGemmaGpu, v),
-      )..herName = () => _soul?.name;
+      )
+        ..onRunaway = noteIncident
+        ..herName = (() => _soul?.name);
+
+  /// เรื่องที่ไม่ขึ้นเป็นข้อผิดพลาดให้ผู้ใช้เห็น แต่คนไล่บั๊กต้องรู้
+  /// (สมองคิดไม่หยุดจนถูกตัด · เสียงค้างจนหมดเวลา) · ตัวรายงานเฝ้าตัวนับนี้
+  ///
+  /// 🔴 ที่มา: เครื่องร้อน เธอเงียบ ปุ่มค้าง — แต่ระบบรายงานไม่มีสักฉบับ
+  /// เพราะ "ค้าง" ไม่เคยกลายเป็น error ที่ไหนเลย
+  int _incidents = 0;
+  int get incidents => _incidents;
+  String? _lastIncident;
+  String? get lastIncident => _lastIncident;
+
+  void noteIncident(String what) {
+    _incidents++;
+    _lastIncident = what;
+    if (!_disposed) _notify();
+  }
 
   /// มี LocalBrain อยู่แล้วไหม — ใช้ตอน dispose จะได้ไม่ไปสร้างขึ้นมาใหม่
   bool get hasLocalBrain => _lazyLocal != null;
@@ -686,9 +709,20 @@ class MindState extends ChangeNotifier {
   }
 
   /// เก็บกวาดก่อนปิดแอปจริง — เงียบเสียง แล้วปล่อยสมองออกจากหน่วยความจำ
-  Future<void> prepareExit() async {
-    await hush();
-    if (hasLocalBrain) await localBrain.unload();
+  ///
+  /// 🔴 **มีเวลาหมดเสมอ** · ของเดิมรอสมองที่คิดค้างอยู่ให้จบก่อนปล่อย ปุ่มออก
+  /// จากแอปจึงค้างไปด้วย · โปรเซสจะถูกปิดทิ้งอยู่แล้ว หน่วยความจำคืนแน่นอน
+  /// การเก็บกวาดเป็นแค่ความสุภาพ ห้ามเป็นสิ่งที่ขวางทางออก
+  Future<void> prepareExit({Duration limit = const Duration(seconds: 3)}) async {
+    if (hasLocalBrain) localBrain.abort();
+    try {
+      await Future.wait([
+        hush(),
+        if (hasLocalBrain) localBrain.unload(),
+      ]).timeout(limit);
+    } on Object catch (e) {
+      debugPrint('ออกจากแอป: เก็บกวาดไม่ทัน — ${e.runtimeType} · ออกเลย');
+    }
   }
 
   void setHomeServerUrl(String v) {
@@ -701,6 +735,58 @@ class MindState extends ChangeNotifier {
     _homeServerModel = v.trim();
     _save('homeServerModel', _homeServerModel);
     _notify();
+  }
+
+  /// ทดสอบเซิร์ฟเวอร์ในบ้าน**ด้วยคำถามจริง** — ติดต่อได้ไหม · มีรุ่นที่ตั้งไว้ไหม · ตอบได้ไหม
+  ///
+  /// แยกสามขั้นเพื่อบอกเหตุผลให้ตรงจุด · ของเดิมรู้ได้ทางเดียวคือทักเธอแล้วได้
+  /// "ต่อเน็ตไม่ได้" ซึ่งไม่บอกเลยว่าผิดที่ที่อยู่ ที่รุ่น หรือที่คอม
+  Future<({bool ok, String message})> testHomeServer({
+    LocalServerScanner? scanner,
+    @visibleForTesting http.Client? httpClient,
+  }) async {
+    final url = _homeServerUrl.trim();
+    if (url.isEmpty) return (ok: false, message: s.homeServerNoUrl);
+    final scan = scanner ?? LocalServerScanner();
+    try {
+      final models = await scan.models(url);
+      if (models == null) return (ok: false, message: s.homeUnreachable(url));
+      final model = _homeServerModel.trim();
+      if (models.isNotEmpty && !models.contains(model)) {
+        return (ok: false, message: s.homeModelMissing(model, models.take(6).join(', ')));
+      }
+      final client = OpenAiClient(
+        httpClient: httpClient,
+        baseUrl: url,
+        apiKey: '',
+        timeout: const Duration(seconds: 120),
+        strings: () => s,
+        upstream: Upstream.homeServer,
+      );
+      final clock = Stopwatch()..start();
+      try {
+        final reply = await client.reply(
+          system: s.homeTestSystem,
+          history: [(fromHer: false, text: s.homeTestQuestion)],
+          model: model,
+        );
+        final said = reply.trim().replaceAll(RegExp(r'\s+'), ' ');
+        return (
+          ok: true,
+          message: s.homeTestOk((clock.elapsedMilliseconds / 1000).toStringAsFixed(1),
+              said.length <= 60 ? said : '${said.substring(0, 59)}…'),
+        );
+      } finally {
+        client.close();
+      }
+    } on OpenAiFailure catch (e) {
+      return (ok: false, message: e.message);
+    } on Object catch (e) {
+      debugPrint('เซิร์ฟเวอร์ในบ้าน: ทดสอบล้ม — ${e.runtimeType}');
+      return (ok: false, message: s.homeUnreachable(url));
+    } finally {
+      if (scanner == null) scan.close();
+    }
   }
 
   // ═══ ส่งรายงานเองเมื่อมีข้อผิดพลาด ══════════════════════
@@ -1128,7 +1214,7 @@ class MindState extends ChangeNotifier {
       calls: _calls?.promptBlock() ?? '',
       now: _clock(),
     );
-    return _askBrain(system, history);
+    return _askBrain(system, history, cap: ReplyCap.call);
   }
 
   /// สังเคราะห์เสียงสำหรับพูดเข้าสาย · คืนไบต์ ไม่ได้เล่นเอง
@@ -1813,11 +1899,12 @@ class MindState extends ChangeNotifier {
     String system,
     List<({bool fromHer, String text})> history, {
     void Function(String partial)? onPartial,
+    ReplyCap cap = ReplyCap.chat,
   }) async {
     if (_brain == BrainProvider.onDevice) {
       debugPrint('สมอง: ในเครื่อง ${localBrain.variant.label}');
       return localBrain.reply(
-          system: system, history: history, onPartial: onPartial);
+          system: system, history: history, onPartial: onPartial, cap: cap);
     }
 
     final (:client, :model, :ours) = _networkBrain();
@@ -2109,6 +2196,7 @@ class MindState extends ChangeNotifier {
                 : '${s.distillKnown}\n$known\n\n$block',
           ),
         ],
+        cap: ReplyCap.background,
       );
       if (_disposed) return;
 

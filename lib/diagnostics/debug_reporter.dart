@@ -144,6 +144,7 @@ class DebugReporter extends ChangeNotifier {
     required MindState state,
     MindAvatarController? avatar,
     MindVault? vault,
+    String? reason,
   }) async {
     _set(ReportStage.building);
 
@@ -221,7 +222,13 @@ class DebugReporter extends ChangeNotifier {
       },
 
       errors: [
+        // เหตุที่ทำให้ส่งฉบับนี้มาก่อนเสมอ (เป็นหัวข้อในหน้าแอดมิน) ·
+        // เหตุการณ์อย่าง "เวทีค้าง" ไม่อยู่ในช่อง error ไหนเลย ไม่ใส่ตรงนี้
+        // = รายงานมาถึงพร้อมหัวข้อ "no errors" ที่ไม่บอกอะไร
+        if (reason != null && reason != state.lastError) 'why: $reason',
         if (state.lastError != null) 'state: ${state.lastError}',
+        if (state.lastIncident != null) 'stateIncident: ${state.lastIncident}',
+        if (avatar?.lastIncident != null) 'avatarIncident: ${avatar!.lastIncident}',
         if (lb?.error != null) 'localBrain: ${lb!.error}',
         if (avatar?.error != null) 'avatar: ${avatar!.error}',
         if (avatar?.speakError != null) 'speak: ${avatar!.speakError}',
@@ -484,6 +491,7 @@ class DebugReporter extends ChangeNotifier {
     _avatar?.removeListener(_onAvatarChanged);
     _avatar = avatar?..addListener(_onAvatarChanged);
     _seenIncidents = avatar?.incidents ?? 0;
+    _seenStateIncidents = state.incidents;
     _vault = vault;
     _lastSeenError = state.lastError;
     // รับข้อผิดพลาดที่ไม่มีใครดัก รวมถึงตัวที่เกิดก่อนหน้านี้ระหว่างเปิดแอป
@@ -577,9 +585,26 @@ class DebugReporter extends ChangeNotifier {
     _debounce = Timer(settle, () => unawaited(_autoSend(what)));
   }
 
+  /// เหตุการณ์ฝั่ง state ที่เห็นแล้ว (สมองคิดไม่หยุด · เสียงค้าง) · ดู [MindState.incidents]
+  int _seenStateIncidents = 0;
+
   void _onStateChanged() {
     final state = _watched;
     if (state == null) return;
+
+    // "ค้าง" ไม่เคยเป็น error ที่ไหน · ถ้าไม่ฟังตัวนับนี้ เครื่องร้อนจนต้อง
+    // บังคับปิดแอปก็ไม่มีรายงานสักฉบับ
+    if (state.incidents != _seenStateIncidents) {
+      _seenStateIncidents = state.incidents;
+      final what = state.lastIncident;
+      if (what != null && auto && _sentThisRun < maxPerRun) {
+        final last = _sentAt[what];
+        if (last == null || DateTime.now().difference(last) >= repeatAfter) {
+          _debounce?.cancel();
+          _debounce = Timer(settle, () => unawaited(_autoSend(what)));
+        }
+      }
+    }
 
     final err = state.lastError;
     // สนใจเฉพาะ**ข้อความใหม่** ไม่ใช่ทุกครั้งที่ state ขยับ
@@ -615,7 +640,7 @@ class DebugReporter extends ChangeNotifier {
     final keepReport = _report;
 
     try {
-      await collect(state: state, avatar: _avatar, vault: _vault);
+      await collect(state: state, avatar: _avatar, vault: _vault, reason: forError);
       final ok = await send(
         baseUrl: state.storeBaseUrl,
         license: state.licenseKey,

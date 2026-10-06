@@ -278,6 +278,8 @@ window.minde = {
   speak: (url) => avatar?.speak(url),
   speakBytes,
   stop:  ()    => avatar?.stop(),
+  /** หยุดวาดตอนไม่มีใครเห็น (แท็บอื่น · แอปอยู่เบื้องหลัง) · เสียงยังเล่นได้ */
+  sleep: (on)  => avatar?.setAsleep(on) ?? false,
   sit:   ()    => avatar?.sit(),
   stand: ()    => avatar?.stand(),
   /** 'bust' ตอนคุย · 'full' ตอนยืนเฉย ๆ */
