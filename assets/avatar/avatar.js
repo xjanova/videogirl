@@ -176,6 +176,11 @@ export class Avatar {
 
         this.idle = new Idle(vrm);
         this.framing = new Framing(this.camera, vrm);
+        // ช็อตที่เจ้าของเลือก + ขนาดเวทีที่ Flutter บอกมาก่อนตัวเธอโหลดเสร็จ ·
+        // กระโดดไปเลย ไม่ค่อย ๆ ซูมจากเต็มตัวตอนเปิดแอป
+        this.framing.setStageScale(this.studio ? 1 : this._stageK);
+        this._restCamera();
+        this.framing.snap();
         this.motion = new Motion(vrm, this.base);
 
         // She is on screen and breathing before the clips finish arriving:
@@ -337,12 +342,49 @@ export class Avatar {
 
     stopMocap() {
         this.mocap.stop();
-        // คืนกล้องให้ตัวจัดฉากอัตโนมัติ · มันจำได้ว่าระหว่างล็อกมันอยากได้ช็อต
-        // ไหน จึงคืนกลับกลางประโยคได้โดยไม่กระโดด
+        // คืนกล้องให้ช็อตที่เจ้าของเลือกไว้ (หรือตัวจัดฉากอัตโนมัติ ถ้าเลือก
+        // อัตโนมัติ · มันจำได้ว่าระหว่างล็อกอยากได้ช็อตไหน คืนกลางประโยคได้ไม่กระโดด)
         // ยกเว้นในสตูดิโอ ซึ่งกล้องเป็นของเจ้าของตลอด ไม่ว่าจะเชิดอยู่หรือไม่
-        if (this.studio) this.framing?.hold(this.mocapShot);
-        else this.framing?.release();
+        this._restCamera();
         return this.mocap.status();
+    }
+
+    // ── ระยะกล้องบนเวทีปกติ ─────────────────────────────────────────
+    //
+    // 🔴 เดิมกล้องดึงเข้าครึ่งตัวทุกครั้งที่เธอพูด แล้วถอยออกเต็มตัวตอนพูดจบ ·
+    // ต่างกันราวสามเท่า ทุกคำตอบเธอจึง "เล็กลง" อีกรอบ · เจ้าของ: "ทำไมอวาต้า
+    // ชอบเล็กลงตลอดเลยไม่คงที่ เวลาคุย" · ตอนนี้ล็อกช็อตที่เจ้าของเลือก
+    // ('auto' = แบบเดิม ซูมเข้าตอนพูด)
+    stageShot = 'bust';
+
+    setStageShot(name) {
+        if (!['auto', 'face', 'bust', 'full'].includes(name)) return this.stageShot;
+        this.stageShot = name;
+        this._restCamera();
+        // ค่าแรกที่ Flutter ส่งมาหลังเปิดแอป = กระโดดไปเลย ไม่ซูมให้เห็นตอนเปิด
+        if (!this._shotApplied && this.framing) {
+            this._shotApplied = true;
+            this.framing.snap();
+        }
+        return this.stageShot;
+    }
+
+    /** ใครถือกล้องตอนนี้: เชิดหุ่น/สตูดิโอ > ช็อตที่เจ้าของเลือก > ตัวจัดฉากอัตโนมัติ */
+    _restCamera() {
+        const f = this.framing;
+        if (!f) return;
+        if (this.mocap.active || this.studio) f.hold(this.mocapShot);
+        else if (this.stageShot !== 'auto') f.hold(this.stageShot);
+        else f.release();
+    }
+
+    /** ความสูงเวทีตอนนี้ ÷ ตอนพัก (แชทพับ ไม่มีคีย์บอร์ด) · ดู Framing.stageK */
+    _stageK = 1;
+
+    setStageScale(k) {
+        this._stageK = Math.max(0.3, Math.min(1, Number(k) || 1));
+        this.framing?.setStageScale(this.studio ? 1 : this._stageK);
+        return this._stageK;
     }
 
     // ── สตูดิโอ: ฉากหลัง กล้อง และพื้นตอนอัดคลิป ──────────────────────────
@@ -356,8 +398,9 @@ export class Avatar {
      */
     setStudio(on) {
         this.studio = !!on;
-        if (this.studio) this.framing?.hold(this.mocapShot);
-        else if (!this.mocap.active) this.framing?.release();
+        this._restCamera();
+        // สตูดิโอเต็มจอเสมอ ไม่ชดเชยความสูง · ออกมาแล้วกลับไปใช้ค่าของเวทีปกติ
+        this.framing?.setStageScale(this.studio ? 1 : this._stageK);
         return this.studio;
     }
 

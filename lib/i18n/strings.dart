@@ -665,6 +665,21 @@ class S {
 
   // ═══ ฟองคำพูด ══════════════════════════════════════════
   String get bubbleTitle => _('ฟองคำพูดเหนือหัวเธอ', 'Speech bubble');
+
+  // ═══ ระยะกล้องบนเวที ═══════════════════════════════════
+  String get stageShotTitle => _('ระยะกล้องบนเวที', 'Camera on the stage');
+  String stageShotLabel(String shot) => switch (shot) {
+        'face' => _('ใกล้หน้า', 'Face'),
+        'bust' => _('ครึ่งตัว', 'Half body'),
+        'full' => _('เต็มตัว', 'Full body'),
+        _ => _('อัตโนมัติ', 'Automatic'),
+      };
+  String get stageShotNote => _(
+        'ขนาดเธอคงที่ตลอด · แผงแชทหรือคีย์บอร์ดขึ้นจะบังส่วนล่างแทนการย่อตัวเธอ · '
+            '"อัตโนมัติ" = ซูมเข้าตอนเธอพูด ถอยออกตอนเงียบ',
+        'She stays the same size · the chat panel or keyboard covers her lower half instead of shrinking her · '
+            '"Automatic" = zooms in while she talks, out when she is quiet',
+      );
   String get bubbleEnabled => _('ให้มีฟองคำพูด', 'Show the speech bubble');
   String get bubbleHint => _(
         'ฟองลอยทับตัวเธอ ถ้าค้างไว้ตลอดก็บังหน้าเธอตลอด',
@@ -793,6 +808,13 @@ class S {
         'While she talks the phone is always on speaker, so you hear both sides · it cannot be turned off: Android does not let apps put audio into a call, '
             'so her voice has to go out of the speaker into the mic, and she hears the caller through the speaker too · tap "Take over" any time to talk yourself',
       );
+  String get dialerRestrictedHint => _(
+        'ถ้าขึ้นว่า "แอปถูกปฏิเสธไม่ให้เข้าถึงเพื่อเป็นแอปโทรศัพท์เริ่มต้น" (Android 13 ขึ้นไปกันแอปที่ไม่ได้ลงจาก Play Store): '
+            'เปิดหน้าข้อมูลแอป → แตะ ⋮ มุมขวาบน → "อนุญาตการตั้งค่าที่ถูกจำกัด" → ยืนยันตัวตน แล้วกลับมากดอีกครั้ง',
+        'If it says the app was denied access to be the default phone app (Android 13+ blocks apps not installed from Play): '
+            'open App info → tap ⋮ top-right → "Allow restricted settings" → confirm, then come back and tap again',
+      );
+  String get openAppInfo => _('เปิดหน้าข้อมูลแอป', 'Open App info');
   String get contactsOnly => _('เฉพาะเบอร์ในสมุดโทรศัพท์', 'Contacts only');
   String get contactsOnlyHint => _(
         'ปิด = รับทุกสาย รวมเบอร์แปลก · เปิด = เบอร์แปลกปล่อยให้ดังตามปกติ',

@@ -42,6 +42,25 @@ enum MindMood {
 /// ใครไปถึงได้ คือของที่มีต้นทุนแล้วไม่เคยได้ใช้
 enum MindFraming { face, bust, full }
 
+/// ระยะกล้องบนเวทีปกติ (ไม่ได้เชิดหุ่น ไม่ได้อยู่สตูดิโอ) — เจ้าของเลือก
+///
+/// 🔴 เดิมมีแบบเดียวคือ [auto]: ดึงเข้าครึ่งตัวทุกครั้งที่เธอพูด แล้วถอยออก
+/// เต็มตัวตอนเงียบ (ต่างกันราวสามเท่า) · ทุกคำตอบเธอจึง "เล็กลง" อีกรอบ ·
+/// เจ้าของ: "ทำไมอวาต้าชอบเล็กลงตลอดเลยไม่คงที่ เวลาคุย" · ค่าตั้งต้นจึงเป็น
+/// [bust] แบบนิ่ง
+enum MindStageShot {
+  /// ซูมเข้าตอนพูด ถอยออกตอนเงียบ (แบบเดิม)
+  auto,
+  face,
+  bust,
+  full;
+
+  static MindStageShot parse(Object? v) => MindStageShot.values.firstWhere(
+        (s) => s.name == '$v',
+        orElse: () => MindStageShot.bust,
+      );
+}
+
 /// ระยะกล้องที่โหมดเชิดหุ่นล็อกไว้
 ///
 /// 🔴 **จับได้แค่ใบหน้าเท่านั้น ทั้งสามโหมด**
@@ -151,6 +170,9 @@ class MindAvatarController extends ChangeNotifier
     // เวทีเพิ่งเกิด (หรือโหลดใหม่หลัง renderer ตาย) เริ่มวาดเสมอ · ถ้าตอนนี้
     // ไม่มีใครเห็นอยู่ ต้องบอกซ้ำ ไม่งั้นมันวาดเต็มกำลังอยู่หลังหน้าอื่น
     if (_asleep) unawaited(_call('window.minde.sleep(true)'));
+    // ช็อตที่เจ้าของเลือก + ขนาดเวทีตอนนี้ · ส่งก่อนเวทีพร้อมจะหายไปเงียบ ๆ (ดู _call)
+    unawaited(_call("window.minde.stageShot('${_stageShot.name}')"));
+    unawaited(_call('window.minde.stageScale(${_stageK.toStringAsFixed(3)})'));
     notifyListeners();
   }
 
@@ -652,6 +674,30 @@ class MindAvatarController extends ChangeNotifier
     _mocapShot = s;
     notifyListeners();
     await _call("window.minde.mocapShot('${s.name}')");
+  }
+
+  /// ระยะกล้องบนเวทีปกติที่เจ้าของเลือก · ดู [MindStageShot]
+  MindStageShot _stageShot = MindStageShot.bust;
+  MindStageShot get stageShot => _stageShot;
+
+  Future<void> setStageShot(MindStageShot s) async {
+    if (_stageShot == s) return;
+    _stageShot = s;
+    notifyListeners();
+    await _call("window.minde.stageShot('${s.name}')");
+  }
+
+  /// ความสูงเวทีตอนนี้ ÷ ตอนพัก (แชทพับ ไม่มีคีย์บอร์ด) · ดู framing.js `stageK`
+  ///
+  /// 🔴 เวทีหดเพราะแผงแชท/คีย์บอร์ด = ครอปส่วนล่าง **ไม่ย่อตัวเธอ** · เดิมเธอเล็กลง
+  /// ทุกครั้งที่แผงแชทเปิด แล้วโตกลับตอนพับ (เจ้าของ: "ชอบเล็กลงตลอดเลยไม่คงที่")
+  double _stageK = 1;
+
+  Future<void> setStageScale(double k) async {
+    final v = k.clamp(.3, 1.0);
+    if ((v - _stageK).abs() < .005) return;
+    _stageK = v;
+    await _call('window.minde.stageScale(${v.toStringAsFixed(3)})');
   }
 
   Future<void> _call(String js) async {

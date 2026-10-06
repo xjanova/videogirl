@@ -319,6 +319,7 @@ class MindState extends ChangeNotifier {
     _homeServerModel = p.getString('homeServerModel') ?? HomeServerDefaults.model;
     _autoReport = p.getBool('autoReport') ?? true;
     _mocapShot = MindMocapShot.parse(p.getString('mocapShot'));
+    _stageShot = MindStageShot.parse(p.getString('stageShot'));
     _studioBackdrop = StudioBackdrops.parse(p.getString('studioBackdrop'));
     _studioMic = p.getBool('studioMic') ?? false;
     _preloadBrain = p.getBool('preloadBrain') ?? false;
@@ -909,6 +910,17 @@ class MindState extends ChangeNotifier {
   // เปลี่ยนที่เก็บชุดโดยไม่ต้อง build ใหม่ทั้งตัว ค่าตั้งต้นมาจาก dart-define
   static const _packUrlDefault =
       String.fromEnvironment('AVATAR_PACK_URL');
+
+  /// ระยะกล้องบนเวทีปกติ · ค่าตั้งต้นครึ่งตัวแบบนิ่ง (ดู [MindStageShot])
+  MindStageShot _stageShot = MindStageShot.bust;
+  MindStageShot get stageShot => _stageShot;
+
+  void setStageShot(MindStageShot v) {
+    if (_stageShot == v) return;
+    _stageShot = v;
+    _save('stageShot', v.name);
+    _notify();
+  }
 
   String _avatarPackUrl = _packUrlDefault;
   String get avatarPackUrl => _avatarPackUrl;

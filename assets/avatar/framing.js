@@ -62,6 +62,21 @@ export class Framing {
         this.panX = 0;
         this.panY = 0;
 
+        /**
+         * How tall the stage is right now, as a share of its resting height
+         * (chat folded, no keyboard). 1 = resting. Set by Flutter, which is the
+         * only side that knows WHY the stage got shorter.
+         *
+         * 🔴 WHY. Every shot fits a number of metres into the VERTICAL field of
+         * view, so a shorter canvas meant a smaller her: the chat dock (up to
+         * 58% of the screen) or the keyboard opening shrank her whole body,
+         * and folding it grew her back — during every exchange. Owner: "ทำไม
+         * อวาต้าชอบเล็กลงตลอดเลยไม่คงที่ เวลาคุย". Now a shorter stage shows LESS
+         * of her at the SAME size, cropped from the bottom with her head kept
+         * where it was — the way a video call behaves when a panel slides up.
+         */
+        this.stageK = 1;
+
         const box = new THREE.Box3().setFromObject(vrm.scene);
         this.height = box.getSize(new THREE.Vector3()).y;
 
@@ -101,12 +116,19 @@ export class Framing {
     /** Where the camera and its aim point WANT to be, right now. */
     target(name) {
         const s = SHOTS[name] ?? SHOTS.full;
-        const aimY = (s.aimY === 'head' ? this.headY : this.height * s.aimY) + s.offY;
         // Distance is whatever puts `fit` metres across the vertical field of
         // view. Derived, so changing the fov or the model does not silently
         // reframe her.
+        //
+        // A shorter stage (k < 1) fits proportionally fewer metres — same
+        // metres per pixel, so the same size on screen — and the aim drops by
+        // what was cut, so the TOP edge of the shot (her head) does not move.
+        const k = this.stageK;
+        const fit = s.fit * this.zoom;
+        const aimY = (s.aimY === 'head' ? this.headY : this.height * s.aimY) + s.offY
+            + (fit / 2) * (1 - k);
         const half = THREE.MathUtils.degToRad(this.camera.fov) / 2;
-        const dist = (s.fit * this.zoom / 2) / Math.tan(half);
+        const dist = (fit * k / 2) / Math.tan(half);
 
         // Sideways is a DOLLY, not a turn: rotating to look past her skews the
         // perspective across her face, which on a close shot reads immediately
@@ -198,6 +220,41 @@ export class Framing {
     dolly(delta) {
         const z = this.zoom * (delta > 0 ? 1.12 : 1 / 1.12);
         this.zoom = Math.min(1.9, Math.max(0.42, z));
+        return this;
+    }
+
+    /**
+     * The stage got shorter or taller (see `stageK`).
+     *
+     * Moves the camera by exactly the change, NOT through the spring: the
+     * canvas resizes instantly, so easing toward the new distance would show
+     * her shrinking and then growing back over a second — the very wobble this
+     * fixes. Shifting by the delta keeps any shot change already in flight
+     * (a push-in mid-sentence) going from where it was.
+     *
+     * @param {number} k  0.3..1
+     */
+    setStageScale(k) {
+        const next = Math.max(0.3, Math.min(1, Number(k) || 1));
+        if (Math.abs(next - this.stageK) < 0.002) return this;
+        this.target(this.shot);
+        const t0 = this._t.clone(), a0 = this._a.clone();
+        this.stageK = next;
+        this.target(this.shot);
+        this.pos.add(this._t.sub(t0));
+        this.aim.add(this._a.sub(a0));
+        this._commit();
+        return this;
+    }
+
+    /** Jump to the current shot now (first frame, or a shot picked in settings). */
+    snap() {
+        this.target(this.shot);
+        this.pos.copy(this._t);
+        this.aim.copy(this._a);
+        this.vPos.set(0, 0, 0);
+        this.vAim.set(0, 0, 0);
+        this._commit();
         return this;
     }
 

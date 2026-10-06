@@ -322,8 +322,29 @@ void main() {
     final avatar = File('assets/avatar/avatar.js').readAsStringSync();
     expect(avatar, contains('this.framing?.hold('),
         reason: 'startMocap ต้องล็อกกล้อง');
-    expect(avatar, contains('this.framing?.release()'),
-        reason: 'stopMocap ต้องคืนกล้องให้ตัวจัดฉาก');
+    // stopMocap/setStudio คืนกล้องผ่าน _restCamera: ช็อตที่เจ้าของเลือก หรือตัวจัดฉาก
+    // อัตโนมัติ (release) ถ้าเลือก 'auto'
+    final rest = RegExp(r'_restCamera\(\) \{[\s\S]*?\n    \}').firstMatch(avatar)?.group(0) ?? '';
+    expect(rest, contains('f.release()'), reason: "'auto' ต้องคืนกล้องให้ตัวจัดฉาก");
+    expect(rest, contains('f.hold(this.stageShot)'), reason: 'ช็อตที่เจ้าของเลือกต้องล็อกไว้');
+    final stop = RegExp(r'stopMocap\(\) \{[\s\S]*?\n    \}').firstMatch(avatar)?.group(0) ?? '';
+    expect(stop, contains('this._restCamera()'), reason: 'เลิกเชิดหุ่นต้องคืนกล้อง');
+  });
+
+  /// 🔴 ระยะกล้องบนเวทีที่เจ้าของเลือก · ชื่อไม่ตรงกับฝั่ง JS = ถูกปัดทิ้งเงียบ ๆ
+  /// แล้วเธอกลับไปซูมเข้าออกเอง (อาการ "เล็กลงตลอด ไม่คงที่" กลับมา)
+  test('ทุกค่าใน MindStageShot ต้องเป็นค่าที่ avatar.js รับ', () {
+    final avatar = File('assets/avatar/avatar.js').readAsStringSync();
+    final accepted = RegExp(r"setStageShot\(name\) \{\s*if \(!\[([^\]]*)\]")
+        .firstMatch(avatar)
+        ?.group(1);
+    expect(accepted, isNotNull, reason: 'หา setStageShot ใน avatar.js ไม่เจอ — รูปแบบเปลี่ยนไป');
+    for (final s in MindStageShot.values) {
+      expect(accepted, contains("'${s.name}'"), reason: 'avatar.js ไม่รับ ${s.name}');
+    }
+    final html = File('assets/avatar/index.html').readAsStringSync();
+    expect(html, contains('stageShot:'));
+    expect(html, contains('stageScale:'));
   });
 
   /// คลิปที่ผูกกับอารมณ์ต้องผูกกับอารมณ์ที่มีอยู่จริง

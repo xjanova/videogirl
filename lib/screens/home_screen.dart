@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -353,7 +354,28 @@ class _HomeScreenState extends State<HomeScreen>
   static const _bubbleTop = 14 / 452;
   static const _bubbleMaxWidth = 210 / 380;
 
+  /// ความสูงเวทีตอนพัก (แชทพับ ไม่มีคีย์บอร์ด) · ดู [_stage]
+  double? _restH;
+  double? _restW;
+  double _sentK = 1;
+
+  /// บอกเวทีว่าตอนนี้สูงกี่ส่วนของตอนพัก · ส่งหลังวาดเสร็จ (เรียกจากใน layout)
+  void _pushStageScale(double k) {
+    if ((k - _sentK).abs() < .005) return;
+    _sentK = k;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(widget.avatar.setStageScale(k));
+    });
+  }
+
   Widget _stage(MindState state, MindMode mode, {bool studio = false, bool onCall = false}) {
+    // ช็อตที่เจ้าของเลือก (หน้าตั้งค่า) → เวที · หลังวาดเสร็จ เพราะตัวควบคุมแจ้งผู้ฟัง
+    if (widget.avatar.stageShot != state.stageShot) {
+      final want = state.stageShot;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(widget.avatar.setStageShot(want));
+      });
+    }
     final bubble = state.bubbleText;
     final thinkingOverHead = state.sending && state.bubbleEnabled;
 
@@ -364,6 +386,25 @@ class _HomeScreenState extends State<HomeScreen>
           final w = box.maxWidth;
           final h = box.maxHeight.isFinite ? box.maxHeight : _artboardStage.height;
           final ring = w * _ringSize;
+
+          // 🔴 เวทีหดเพราะแผงแชท/คีย์บอร์ด = ครอปส่วนล่างของเธอ ไม่ย่อทั้งตัว
+          //
+          // เดิมกล้องพอดีกับความสูงเวทีเสมอ แผงแชทเปิดทีเธอเล็กลงที พับทีโตขึ้นที
+          // (เจ้าของ: "ชอบเล็กลงตลอดเลยไม่คงที่ เวลาคุย") · จำความสูงตอนพัก
+          // (แชทพับ ไม่มีคีย์บอร์ด) แล้วบอกเวทีว่าตอนนี้เหลือกี่ส่วน
+          // · `max` เพราะตอนแชทกำลังพับ เวทีค่อย ๆ โตขึ้น ไม่ใช่ความสูงตอนพักจริง
+          final keyboard = MediaQuery.viewInsetsOf(context).bottom > 0;
+          if (_restW != w) {
+            _restW = w;
+            _restH = null;
+          }
+          if (!studio && !onCall && !state.chatOpen && !keyboard) {
+            _restH = math.max(_restH ?? 0, h);
+          }
+          final rest = _restH;
+          _pushStageScale(studio || onCall || rest == null ? 1 : (h / rest).clamp(.3, 1.0));
+          // ฟองกับวงแหวนยึดจากขอบบนตามความสูงตอนพัก · หัวเธออยู่ที่เดิมแล้ว
+          final top = studio || onCall || rest == null ? h : rest;
 
           return Stack(
             clipBehavior: Clip.none,
@@ -397,7 +438,7 @@ class _HomeScreenState extends State<HomeScreen>
               if (!studio)
               Positioned(
                 left: w * _ringLeft,
-                top: h * _ringTop,
+                top: top * _ringTop,
                 child: AnimatedBuilder(
                   animation: _ring,
                   builder: (_, _) {
@@ -494,7 +535,7 @@ class _HomeScreenState extends State<HomeScreen>
                   (bubble.isNotEmpty || (state.sending && state.bubbleEnabled)))
                 Positioned(
                   left: w * _bubbleLeft,
-                  top: h * _bubbleTop,
+                  top: top * _bubbleTop,
                   // IgnorePointer ตอนจาง ไม่งั้นฟองที่มองไม่เห็นยังกินการแตะอยู่
                   // แล้วแตะตัวเธอเพื่อเรียกฟองกลับจะไม่ทำงานในบริเวณนั้น
                   child: IgnorePointer(

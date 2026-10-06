@@ -233,12 +233,12 @@ async function snapshotFace(px) {
   if (!ren || !cam || !scn) return null;
 
   const size = px || 256;
-  const prevFraming = avatar.speaking ? 'bust' : 'full';
 
   try {
-    // ดึงกล้องเข้ามาใกล้ก่อน แล้วเร่งให้ถึงเป้าทันทีโดยไม่ต้องรอ ease
-    avatar.framing?.set('bust');
-    for (let i = 0; i < 40; i++) avatar.framing?.update(1 / 30, 40);
+    // ดึงกล้องเข้ามาใกล้ก่อน แล้วกระโดดไปทันที · hold ไม่ใช่ set — ช็อตที่เจ้าของ
+    // ล็อกไว้ (หน้าตั้งค่า) ทำให้ set ถูกเมิน แล้วรูปไอคอนจะเป็นหัวเล็ก ๆ จากเต็มตัว
+    avatar.framing?.hold('bust');
+    avatar.framing?.snap();
 
     // วาดแล้วอ่านในจังหวะเดียวกัน ห้ามมี await คั่น
     ren.render(scn, cam);
@@ -266,7 +266,10 @@ async function snapshotFace(px) {
     post('snapshot-failed', { why: String(err?.message ?? err) });
     return null;
   } finally {
-    avatar.framing?.set(prevFraming);
+    // คืนกล้องให้คนที่ถือมันอยู่ (ช็อตที่เลือก / เชิดหุ่น / ตัวจัดฉาก) แล้วกระโดดกลับ
+    // ไม่ให้เห็นกล้องค่อย ๆ ถอยออกตอนเปิดแอป
+    avatar._restCamera?.();
+    if (avatar.framing?.held) avatar.framing.snap();
   }
 }
 
@@ -282,8 +285,12 @@ window.minde = {
   sleep: (on)  => avatar?.setAsleep(on) ?? false,
   sit:   ()    => avatar?.sit(),
   stand: ()    => avatar?.stand(),
-  /** 'bust' ตอนคุย · 'full' ตอนยืนเฉย ๆ */
+  /** 'bust' ตอนคุย · 'full' ตอนยืนเฉย ๆ (คำขอของตัวจัดฉาก · ช็อตที่เจ้าของล็อกไว้ชนะ) */
   frame: (n)   => avatar?.framing?.set(n),
+  /** ช็อตที่เจ้าของเลือกสำหรับเวทีปกติ — 'auto' | 'face' | 'bust' | 'full' */
+  stageShot:  (n) => avatar?.setStageShot(n) ?? null,
+  /** ความสูงเวทีตอนนี้ ÷ ตอนพัก · เวทีหดเพราะแชท/คีย์บอร์ด = ครอปล่าง ไม่ย่อตัวเธอ */
+  stageScale: (k) => avatar?.setStageScale(k) ?? null,
 
   // ── ปากตามเสียงในสาย ──
   lipsPrepare,

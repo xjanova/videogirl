@@ -330,6 +330,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             _soulCard(context, mode, t),
             _modeCard(state, mode),
             _flirtCard(state, mode),
+            _stageShotCard(state, mode),
             _bubbleCard(state, mode),
           ],
         SettingsSection.brain => [
@@ -1367,6 +1368,62 @@ class _SettingsScreenState extends State<SettingsScreen>
           const SizedBox(height: 7),
           Text(S.of(context).flirtNote,
               style: const TextStyle(fontSize: 10.5, color: MindColors.ink50)),
+        ],
+      ),
+    );
+  }
+
+  // ── ระยะกล้องบนเวที ─────────────────────────────────────
+  //
+  // 🔴 เจ้าของ: "ทำไมอวาต้าชอบเล็กลงตลอดเลยไม่คงที่ เวลาคุย" · เดิมกล้องซูมเข้า
+  // ทุกประโยคแล้วถอยออก · ตอนนี้นิ่งตามที่เลือก (ค่าตั้งต้นครึ่งตัว)
+  Widget _stageShotCard(MindState state, MindMode mode) {
+    final t = S.of(context);
+    return _card(
+      mode: mode,
+      label: t.stageShotTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final shot in const [
+                MindStageShot.face,
+                MindStageShot.bust,
+                MindStageShot.full,
+                MindStageShot.auto,
+              ])
+                GestureDetector(
+                  onTap: () {
+                    state.setStageShot(shot);
+                    unawaited(context.read<MindAvatarController>().setStageShot(shot));
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                    decoration: BoxDecoration(
+                      gradient: state.stageShot == shot ? mode.gradient : null,
+                      color: state.stageShot == shot ? null : MindColors.glass80,
+                      borderRadius: BorderRadius.circular(MindRadius.pill),
+                      border: Border.all(color: MindColors.glassBorder, width: 1),
+                    ),
+                    child: Text(
+                      t.stageShotLabel(shot.name),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: state.stageShot == shot ? Colors.white : MindColors.ink60,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(t.stageShotNote,
+              style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
         ],
       ),
     );
@@ -3132,6 +3189,20 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: 10),
               _permRow(mode, S.of(context), context.watch<MindPermissions>(),
                   MindPermission.defaultDialer),
+              // 🔴 Android 13+ กันแอปที่ไม่ได้ลงจาก Play ไม่ให้ขอบทบาทนี้ · ระบบขึ้น
+              // "แอปถูกปฏิเสธ…" แล้วจบ ไม่บอกทางแก้ · เจ้าของเจอจริง ("ต้องทำไง")
+              const SizedBox(height: 6),
+              Text(S.of(context).dialerRestrictedHint,
+                  style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => unawaited(
+                      kSystemChannel.invokeMethod<void>('openSettings').catchError((Object _) {})),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 15),
+                  label: Text(S.of(context).openAppInfo),
+                ),
+              ),
             ],
             const SizedBox(height: 10),
             Row(
