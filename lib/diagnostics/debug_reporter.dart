@@ -169,6 +169,8 @@ class DebugReporter extends ChangeNotifier {
           'voice_${c.name}': state.voiceFor(c).engine.name,
         'mocapShot': state.mocapShot.name,
         'autoAnswer': state.autoAnswer,
+        'contactsOnly': state.contactsOnly,
+        'showOnCall': state.showOnCall,
         'callStream': state.callStream,
         'bubbleSeconds': state.bubbleSeconds,
       },
@@ -182,6 +184,8 @@ class DebugReporter extends ChangeNotifier {
         'durableStore': state.durableStore,
         'vault': vault?.stage.name,
         'wipeOnUninstall': state.wipeOnUninstall,
+        // สายล่าสุดเธอรับเองไหม และทำไม (จอสายจดไว้) · เหตุผลเป็นรหัส ไม่มีเบอร์
+        'lastAutoAnswer': state.lastAutoAnswerReason,
 
         // 🔴 เวทีพร้อมรับเสียงไหม
         //

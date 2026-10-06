@@ -71,6 +71,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
+  /// สายล่าสุดเธอรับเองไหม และทำไม · ถามครั้งเดียวต่อการเปิดหน้านี้
+  Future<({String reason, DateTime at})?>? _lastAuto;
+
   /// 🔴 สิทธิ์ที่ต้องไปกดในหน้าตั้งค่าของระบบ (ยกเว้นแบต, ติดตั้งแอปไม่รู้จัก)
   /// เปลี่ยนค่าตอนที่แอปเรา**ไม่ได้อยู่หน้าจอ** ถ้าไม่อ่านใหม่ตอนกลับมา
   /// การ์ดจะบอกว่ายังไม่ได้ให้ ทั้งที่เพิ่งไปกดให้มาหมาด ๆ
@@ -3120,6 +3123,89 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             ],
           ),
+          // ── ทำไมเธอไม่รับ — ด่านที่ทำให้เงียบ ต้องเห็นตรงนี้ ไม่ใช่เดาเอา ──
+          //
+          // 🔴 เจ้าของ: "ไม่ยอมรับสายเองเลย" · ของเดิมไม่รับแล้วเงียบทุกด่าน
+          // (ไม่ใช่แอปโทรศัพท์หลัก · เบอร์ไม่อยู่ในสมุด · ปลุกตัวเธอไม่ขึ้น)
+          if (state.autoAnswer) ...[
+            if (!context.watch<MindPermissions>().of(MindPermission.defaultDialer)) ...[
+              const SizedBox(height: 10),
+              _permRow(mode, S.of(context), context.watch<MindPermissions>(),
+                  MindPermission.defaultDialer),
+            ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 3,
+                    children: [
+                      Text(S.of(context).contactsOnly,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text(S.of(context).contactsOnlyHint,
+                          style: const TextStyle(
+                              fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                    ],
+                  ),
+                ),
+                _toggle(
+                  on: state.contactsOnly,
+                  mode: mode,
+                  onTap: () => state.setContactsOnly(!state.contactsOnly),
+                ),
+              ],
+            ),
+            if (state.contactsOnly &&
+                !context.watch<MindPermissions>().of(MindPermission.contacts)) ...[
+              const SizedBox(height: 6),
+              Text(S.of(context).contactsOnlyNeedsPerm,
+                  style: const TextStyle(fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
+            ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 3,
+                    children: [
+                      Text(S.of(context).showOnCall,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text(S.of(context).showOnCallHint,
+                          style: const TextStyle(
+                              fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                    ],
+                  ),
+                ),
+                _toggle(
+                  on: state.showOnCall,
+                  mode: mode,
+                  onTap: () => state.setShowOnCall(!state.showOnCall),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(S.of(context).callSpeakerNote,
+                style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+            FutureBuilder<({String reason, DateTime at})?>(
+              future: _lastAuto ??= state.lastAutoAnswer(),
+              builder: (context, snap) {
+                final why = snap.data == null ? '' : S.of(context).autoAnswerLast(snap.data!.reason);
+                if (why.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(why,
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          height: 1.5,
+                          color: snap.data!.reason == 'answered'
+                              ? MindColors.ink55
+                              : const Color(0xFFB46A00))),
+                );
+              },
+            ),
+          ],
           const SizedBox(height: 12),
           _inCallInfo(state),
           if (state.autoAnswer && !context.watch<MindWatch>().on) ...[

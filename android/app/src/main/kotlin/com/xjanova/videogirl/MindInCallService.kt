@@ -2,6 +2,9 @@ package com.xjanova.videogirl
 
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.telecom.Call
 import android.telecom.CallAudioState
 import android.telecom.InCallService
@@ -53,6 +56,10 @@ class MindInCallService : InCallService() {
             mindHandling = false
             service = null
             InCallActivity.dismiss(this)
+            // จอเธอที่ขึ้นทับจอล็อกระหว่างสาย ต้องถอนตัวทันทีที่สายจบ
+            MainActivity.leaveLockScreen()
+            // ตัวเธอที่ถูกปลุกมาคุยสายเบื้องหลัง · ไม่มีจอแล้วก็ปล่อย (หลังสรุปสายเสร็จ)
+            MindEngine.releaseWhenIdle()
         }
     }
 
@@ -139,8 +146,13 @@ class MindInCallService : InCallService() {
          * ถามทีละอย่างจะได้ภาพที่ไม่ตรงกันเอง เพราะสายเปลี่ยนสถานะระหว่างถาม
          * ได้จริง (คนวางสายตอนที่เราถามข้อสองอยู่พอดี)
          */
+        /// ครั้งล่าสุดที่ Dart ถามสถานะสาย (uptime) · ใช้ตัดสินว่ามีใครคุยในสายจริงไหม
+        @Volatile
+        private var dartSeenAt = 0L
+
         @JvmStatic
         fun callInfo(context: android.content.Context): Map<String, Any?> {
+            dartSeenAt = SystemClock.uptimeMillis()
             // 🔴 "มีสายที่คุยอยู่ไหม" ต้องดูจากทุกสาย ไม่ใช่สายที่เพิ่งเข้ามา
             // · สายซ้อนดังขึ้นมาระหว่างที่เธอคุยสายแรก = `current` ชี้ไปสายที่ดัง
             // แล้วฝั่ง Dart เห็น live=false → ปิดบทสนทนาและคืนเสียงกลางสายแรก
@@ -176,9 +188,33 @@ class MindInCallService : InCallService() {
             mindHandling = true
             if (stateOf(call) == Call.STATE_RINGING) {
                 call.answer(VideoProfile.STATE_AUDIO_ONLY)
+                watchForSilence(context.applicationContext, call)
             }
             return CallAudio.open(context, stream)
         }
+
+        /**
+         * 🔴 รับแล้วไม่มีใครคุย = วางสาย
+         *
+         * ตัวเธอถูกปลุกขึ้นมาตอนแอปปิด (ดู [MindEngine]) ถ้า Dart เปิดตัวไม่ขึ้น
+         * สายจะค้างบนลำโพงที่ไมค์เปิด ปลายสายได้ยินเสียงในห้องเจ้าของโดยไม่มีใครรู้
+         * · Dart ที่ตื่นอยู่ถามสถานะสายทุกวินาทีตลอดสาย ([callInfo]) · เงียบเกินเวลา
+         * = ไม่มีใครอยู่ · จดเหตุผลไว้ให้รายงานเห็น
+         */
+        private fun watchForSilence(context: android.content.Context, call: Call) {
+            val answeredAt = SystemClock.uptimeMillis()
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (current === call && mindHandling &&
+                    stateOf(call) == Call.STATE_ACTIVE && dartSeenAt < answeredAt
+                ) {
+                    MindPrefs.noteAutoAnswer(context, "no_talk")
+                    call.disconnect()
+                }
+            }, SILENCE_LIMIT_MS)
+        }
+
+        /// Dart เปิดตัวจากศูนย์ (ค่าตั้ง ฐานข้อมูล ความจำ) ช้าสุดที่วัดได้ราว 10 วิ · เผื่อไว้มาก
+        private const val SILENCE_LIMIT_MS = 45_000L
 
         /** เจ้าของแทรกสาย — เธอหยุด เสียงกลับเข้าหูฟัง สายยังอยู่ */
         @JvmStatic

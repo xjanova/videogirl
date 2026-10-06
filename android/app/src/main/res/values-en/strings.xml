@@ -19,4 +19,10 @@
     <string name="dial_call">Call</string>
     <string name="dial_hint">Enter a number</string>
     <string name="call_note_channel">Messages Mind took on the phone</string>
+    <string name="call_auto_in">Mind answers in %1$ds</string>
+    <string name="call_auto_now">Mind is picking up…</string>
+    <string name="call_auto_off">Auto-answer is off</string>
+    <string name="call_auto_not_contact">Mind won\'t answer: not in your contacts</string>
+    <string name="call_auto_other_call">Mind won\'t answer: you are on another call</string>
+    <string name="call_auto_no_mind">Mind won\'t answer: she could not be woken — keep the app open</string>
 </resources>

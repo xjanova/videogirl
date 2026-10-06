@@ -389,6 +389,7 @@ Never, under any circumstances:
     String calls = '',
     DateTime? now,
     bool tools = false,
+    bool webSearch = false,
     String pcProfile = '',
     String nudge = '',
   }) {
@@ -601,7 +602,7 @@ Never, under any circumstances:
     if (tools && !onCall) {
       buffer
         ..writeln()
-        ..writeln(toolsBlock(lang));
+        ..writeln(toolsBlock(lang, web: webSearch));
     }
 
     // ชวนเก็บความทรงจำบนคลาวด์ · มาเฉพาะรอบที่ MindState ตัดสินว่าถึงเวลา
@@ -650,25 +651,30 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
   }
 
   /// วิธีขอข้อมูลจากอินเทอร์เน็ต · แท็กที่ WebTools.parse อ่านได้ (ไทยหรืออังกฤษก็ได้)
-  static String toolsBlock(AppLang lang) => S(lang).pick(
+  /// [web] = สมองนี้ค้นเว็บทั่วไปได้ (OpenAI ด้วยคีย์ของเจ้าของ · ดู WebTools)
+  ///
+  /// 🔴 ของเดิมสั่ง "ข่าวล่าสุดยังค้นไม่ได้ ให้บอกตรง ๆ" กับทุกสมอง · ถามข่าว ราคาทอง
+  /// ผลบอล ได้คำตอบว่าค้นไม่ได้ทุกครั้ง · เจ้าของ: "มายด์ยังค้นออกเน็ตไม่ได้ เหมือนยัง
+  /// ใช้ model ในเครื่อง ทั้งๆที่เลือก open ai"
+  static String toolsBlock(AppLang lang, {bool web = false}) => S(lang).pick(
         '''
 === หาข้อมูลจากอินเทอร์เน็ต ===
-ถ้าคำถามต้องใช้ข้อมูลที่คุณไม่รู้แน่ หรืออาจเปลี่ยนไปแล้ว ให้ตอบ**บรรทัดเดียว**ตามรูปแบบนี้ แล้วรอผล:
-[[ค้นหา: คำค้นสั้น ๆ]]  — ข้อเท็จจริงทั่วไป บุคคล สถานที่ ประวัติ ความหมาย (จากวิกิพีเดีย)
+คุณค้นอินเทอร์เน็ตได้จริง ห้ามบอกว่าค้นไม่ได้หรือไม่มีอินเทอร์เน็ต · ถ้าคำถามต้องใช้ข้อมูลที่คุณไม่รู้แน่ หรืออาจเปลี่ยนไปแล้ว ให้ตอบ**บรรทัดเดียว**ตามรูปแบบนี้ แล้วรอผล:
+${web ? '[[เว็บ: คำค้น]]  — ข่าว ราคา (ทอง น้ำมัน หุ้น สินค้า) ผลกีฬา หวย เหตุการณ์วันนี้ หรืออะไรก็ได้ที่ต้องหาจากเว็บ\n' : ''}[[ค้นหา: คำค้นสั้น ๆ]]  — ข้อเท็จจริงทั่วไป บุคคล สถานที่ ประวัติ ความหมาย (จากวิกิพีเดีย)
 [[อากาศ: ชื่อเมืองหรือจังหวัด]]  — พยากรณ์อากาศวันนี้ถึงพรุ่งนี้
 [[ค่าเงิน: USD THB]]  — อัตราแลกเปลี่ยน (รหัสสกุลเงินสามตัว)
 - ถ้ารู้คำตอบแน่อยู่แล้ว หรือเป็นเรื่องของเจ้าของ (ตาราง ความจำ สาย) ให้ตอบเลย ไม่ต้องค้น
-- ห้ามเดาข้อมูลที่เปลี่ยนตามเวลา (อากาศ ราคา อัตราแลกเปลี่ยน) เอง
-- ข่าวล่าสุดยังค้นไม่ได้ ให้บอกเจ้าของตรง ๆ''',
+- ห้ามเดาข้อมูลที่เปลี่ยนตามเวลา (อากาศ ราคา อัตราแลกเปลี่ยน ข่าว) เอง
+${web ? '- เรื่องล่าสุดหรือไม่แน่ใจ ใช้ [[เว็บ: …]] เป็นหลัก' : '- ข่าวล่าสุดและราคาสินค้ายังค้นไม่ได้กับสมองตัวนี้ ให้บอกเจ้าของตรง ๆ'}''',
         '''
 === Looking things up on the internet ===
-If a question needs information you are not sure of, or that may have changed, reply with **one line only** in this form and wait for the result:
-[[search: short query]]  — general facts, people, places, history, meanings (from Wikipedia)
+You really can look things up — never say you cannot browse or have no internet. If a question needs information you are not sure of, or that may have changed, reply with **one line only** in this form and wait for the result:
+${web ? '[[web: query]]  — news, prices (gold, fuel, stocks, products), sports results, lottery, what happened today, or anything else that needs the web\n' : ''}[[search: short query]]  — general facts, people, places, history, meanings (from Wikipedia)
 [[weather: city or province]]  — weather forecast for today and tomorrow
 [[fx: USD THB]]  — exchange rate (three-letter currency codes)
 - If you already know the answer, or it is about the owner (schedule, memories, calls), just answer
-- Never guess things that change over time (weather, prices, exchange rates)
-- Latest news cannot be looked up yet — say so plainly''',
+- Never guess things that change over time (weather, prices, exchange rates, news)
+${web ? '- For anything recent or uncertain, prefer [[web: …]]' : '- Latest news and product prices cannot be looked up with this brain — say so plainly'}''',
       );
 
   static String _flirtWord(double f, AppLang lang) {

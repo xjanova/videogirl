@@ -29,4 +29,11 @@
     <string name="dial_call">โทร</string>
     <string name="dial_hint">กดเบอร์</string>
     <string name="call_note_channel">มายด์รับฝากเรื่องทางโทรศัพท์</string>
+    <!-- บอกตรง ๆ ว่าเธอจะรับเองไหม และทำไมไม่รับ · เดิมเงียบ เจ้าของเห็นแค่ว่า "ไม่ยอมรับสาย" -->
+    <string name="call_auto_in">มายด์จะรับในอีก %1$d วิ</string>
+    <string name="call_auto_now">มายด์กำลังรับสาย…</string>
+    <string name="call_auto_off">ไม่ได้เปิดให้มายด์รับสายเอง</string>
+    <string name="call_auto_not_contact">มายด์ไม่รับเอง: เบอร์นี้ไม่อยู่ในสมุดโทรศัพท์</string>
+    <string name="call_auto_other_call">มายด์ไม่รับเอง: กำลังมีอีกสายอยู่</string>
+    <string name="call_auto_no_mind">มายด์ไม่รับเอง: ปลุกตัวเธอไม่ขึ้น ลองเปิดแอปค้างไว้</string>
 </resources>

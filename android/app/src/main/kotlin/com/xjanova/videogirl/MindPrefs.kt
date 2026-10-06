@@ -32,6 +32,12 @@ object MindPrefs {
     const val KEY_AUTO_ANSWER = "autoAnswer"
     const val KEY_RING_SECONDS = "ringSeconds"
     const val KEY_CALL_STREAM = "callStream"
+    const val KEY_CONTACTS_ONLY = "autoAnswerContactsOnly"
+    const val KEY_SHOW_ON_CALL = "showMindOnCall"
+
+    /// เขียนฝั่งนี้ อ่านฝั่ง Dart (ผ่านช่อง `lastAutoAnswer` ไม่ใช่ shared_preferences
+    /// ซึ่งจำค่าเก่าไว้ในหน่วยความจำ) · "เหตุผล|เวลา"
+    private const val LAST_AUTO = "lastAutoAnswer"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -52,6 +58,48 @@ object MindPrefs {
         prefs(context).getLong(PREFIX + KEY_RING_SECONDS, 15L).toInt().coerceIn(0, 60)
     } catch (e: ClassCastException) {
         15
+    }
+
+    /**
+     * ให้เธอรับเฉพาะเบอร์ในสมุดโทรศัพท์ไหม · **ปิดเป็นค่าตั้งต้น** (รับทุกสาย)
+     *
+     * เดิมรับเฉพาะเบอร์ในสมุดเสมอ เพราะผู้ช่วยในสายเคยรู้ตารางและความจำของเจ้าของ ·
+     * ตอนนี้สายไม่มีข้อมูลส่วนตัวเลย (MindState.callPrompt) เหตุผลนั้นหมดไป · และ
+     * เลขาที่รับแต่สายคนรู้จักไม่ใช่เลขา · เจ้าของ: "ไม่ยอมรับสายเองเลย"
+     */
+    fun contactsOnly(context: Context): Boolean = try {
+        prefs(context).getBoolean(PREFIX + KEY_CONTACTS_ONLY, false)
+    } catch (e: ClassCastException) {
+        false
+    }
+
+    /**
+     * เธอรับสายแล้วตัดไปจอของเธอ (ตัวเธอคุย + คำที่คุยกันสด ๆ) **แม้จอล็อก** ไหม
+     * · เปิดเป็นค่าตั้งต้น · เจ้าของ: "ตอนเธอรับสายให้ตัดมาหน้าจอเธอ"
+     *
+     * ปิด = จอล็อกอยู่ก็อยู่ที่จอสายเนทีฟ (ไม่มีอะไรของแอปขึ้นทับจอล็อก)
+     */
+    fun showOnCall(context: Context): Boolean = try {
+        prefs(context).getBoolean(PREFIX + KEY_SHOW_ON_CALL, true)
+    } catch (e: ClassCastException) {
+        true
+    }
+
+    /** จดว่าสายล่าสุดเธอรับเองหรือไม่ และทำไม — ให้ Dart ใส่ในรายงานและบอกเจ้าของได้ */
+    fun noteAutoAnswer(context: Context, outcome: String) {
+        try {
+            prefs(context).edit()
+                .putString(PREFIX + LAST_AUTO, "$outcome|${System.currentTimeMillis()}")
+                .apply()
+        } catch (e: Exception) {
+            // จดไม่ได้ไม่ใช่เหตุให้จอสายพัง
+        }
+    }
+
+    fun lastAutoAnswer(context: Context): String? = try {
+        prefs(context).getString(PREFIX + LAST_AUTO, null)
+    } catch (e: ClassCastException) {
+        null
     }
 
     /** ช่องเสียงที่ใช้ส่งเสียงเธอเข้าสาย · ดู [CallAudio] */

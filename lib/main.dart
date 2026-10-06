@@ -191,10 +191,37 @@ class _MindBootstrapState extends State<MindBootstrap>
   bool get _deviceBlocked =>
       _device?.tier == RamTier.tooSmall && !_ignoredDeviceWarning;
 
+  /// มีจอให้วาดแล้วหรือยัง
+  ///
+  /// 🔴 ไม่มี = ตัวเธอถูกจอสายปลุกขึ้นมาคุยในสายเบื้องหลังตอนแอปปิดอยู่
+  /// (android MindEngine.kt) · ทุกอย่างทำงานได้ (ค่าตั้ง สมอง เสียง สาย) ยกเว้น
+  /// เวที: WebView สร้างไม่ได้เมื่อยังไม่มี Activity · สร้างเชลล์ตอนนั้น = เวทีเสีย
+  /// ค้างไปจนปิดแอป · จึงรอจนจอมาจริง (เจ้าของเปิดแอป) ค่อยสร้าง
+  bool _hasView = _viewNow();
+
+  static bool _viewNow() {
+    final v = WidgetsBinding.instance.platformDispatcher.implicitView;
+    return v != null && !v.physicalSize.isEmpty;
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (_hasView || !_viewNow() || !mounted) return;
+    setState(() => _hasView = true);
+  }
+
+  /// ฝั่งเนทีฟบอกว่าจอ (Activity) ตายแต่ตัวเธอยังอยู่ (มีสายค้าง) · เวทีเก่าใช้ไม่ได้แล้ว
+  static const _life = MethodChannel('giggok/life');
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _life.setMethodCallHandler((call) async {
+      // ทิ้งเชลล์ (และ WebView ที่ผูกกับ Activity เก่า) · จอกลับมา = สร้างใหม่ใน didChangeMetrics
+      if (call.method == 'viewGone' && mounted) setState(() => _hasView = false);
+      return null;
+    });
     _boot();
   }
 
@@ -437,7 +464,7 @@ class _MindBootstrapState extends State<MindBootstrap>
                   children: [
                     // เชลล์เกิดตั้งแต่วิดีโอยังเล่นอยู่ WebView จึงเริ่มโหลด VRM
                     // ไปพร้อมกัน แทนที่จะรอวิดีโอจบแล้วค่อยเริ่มนับหนึ่ง
-                    if (_canBuildShell) const MindShell(),
+                    if (_canBuildShell && _hasView) const MindShell(),
                     if (!_splashDone)
                       // 🔴 รอ `visible` ไม่ใช่ `ready`
                       //

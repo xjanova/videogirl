@@ -92,6 +92,28 @@ void main() {
             'กลางสายจริง:\n${missing.join('\n')}');
   });
 
+  /// 🔴 ตัวเธอถูกปลุกมาคุยในสายตอนแอปปิด **ไม่มี MainActivity** (MindEngine.kt)
+  ///
+  /// ตอนนั้นช่อง giggok/system มีแค่ SystemBridge ตอบ · เมธอดที่ Dart ใช้ตอนเปิดตัว
+  /// (ถามสิทธิ์) และตอนคุยในสาย ต้องอยู่ที่นั่น ไม่ใช่ใน MainActivity อย่างเดียว ·
+  /// หลุดตัวเดียว = notImplemented กลางสายจริงตอนจอล็อก ซึ่งไม่มีใครเห็น
+  test('เมธอดที่ใช้ตอนคุยในสายโดยไม่มีจอ ต้องตอบได้จาก SystemBridge', () {
+    final bridge = File('${kotlinDir.path}/SystemBridge.kt').readAsStringSync();
+    final session = File('lib/phone/call_session.dart').readAsStringSync();
+    final need = <String>{
+      for (final m in RegExp(r"""_invoke(?:<[^>]*>)?\(\s*'([A-Za-z]+)'""").allMatches(session)) m.group(1)!,
+      'callInfo',
+      'watchCalls',
+      'recentCalls',
+      'lastAutoAnswer',
+      // ถามสิทธิ์ตอนเปิดตัว (ขอสิทธิ์ต้องมีจอ ไม่ต้องอยู่ที่นี่)
+      for (final p in MindPermission.values) p.check,
+    };
+    final missing = need.where((m) => !bridge.contains('"$m" ->')).toList();
+    expect(missing, isEmpty,
+        reason: 'ตอนไม่มีจอ เมธอดพวกนี้จะได้ notImplemented:\n${missing.join('\n')}');
+  });
+
   /// 🔴 จอสายเนทีฟอ่านค่าที่ตั้งไว้จากไฟล์ของ shared_preferences ตรง ๆ
   ///
   /// ต้องอ่านเองเพราะตอนสายดัง Flutter engine อาจยังไม่เริ่ม · สะพานนี้

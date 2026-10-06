@@ -143,6 +143,74 @@ class OpenAiClient {
   /// ค่าใช้จ่ายของคำตอบล่าสุดจากพร็อกซีของเรา · null = ไม่ได้ผ่านพร็อกซี
   Map<String, Object?>? lastBilling;
 
+  /// ค้นเว็บจริงด้วยเครื่องมือ `web_search` ของ OpenAI (Responses API)
+  ///
+  /// ใช้ตอบสิ่งที่วิกิพีเดียไม่มี — ข่าว ราคา ผลบอล เหตุการณ์วันนี้ · เจ้าของ:
+  /// "มายด์ยังค้นออกเน็ตไม่ได้" ทั้งที่เลือก OpenAI ไว้ · คืนสรุปสั้นพร้อมแหล่งที่มา
+  ///
+  /// 🔴 ส่งไปแค่**คำค้น** ไม่ใช่บทสนทนา · ใช้คีย์ของเจ้าของเอง (ไปที่เดียวกับที่
+  /// ข้อความไปอยู่แล้ว ไม่ได้เปิดทางใหม่ให้ข้อมูลออก)
+  Future<({String text, List<({String title, String url})> sources})> webSearch(
+    String query, {
+    required String model,
+    String? country,
+    String? timezone,
+  }) async {
+    if (!usable) throw OpenAiFailure(_s().errNoKey);
+    final body = jsonEncode({
+      'model': model,
+      'tools': [
+        {
+          'type': 'web_search',
+          if (country != null)
+            'user_location': {'type': 'approximate', 'country': country, 'timezone': ?timezone},
+        },
+      ],
+      'input': 'Search the web and give a short factual summary (max ~8 lines) '
+          'that answers: $query\nInclude dates and numbers exactly as found.',
+      'max_output_tokens': 1200,
+    });
+    final res = await _post('/responses', body);
+    final Object? json;
+    try {
+      json = jsonDecode(utf8.decode(res));
+    } on FormatException {
+      throw OpenAiFailure(_s().errNoReply);
+    }
+    return parseWebSearch(json);
+  }
+
+  /// แกะคำตอบของ /responses · ข้อความอยู่ใน output[].content[] ชนิด output_text
+  /// (`output_text` แบบสำเร็จรูปเป็นของ SDK ไม่มีใน JSON ดิบ)
+  @visibleForTesting
+  static ({String text, List<({String title, String url})> sources}) parseWebSearch(Object? json) {
+    final text = StringBuffer();
+    final sources = <({String title, String url})>[];
+    final seen = <String>{};
+    final output = json is Map ? json['output'] : null;
+    if (output is List) {
+      for (final item in output) {
+        if (item is! Map || item['type'] != 'message') continue;
+        final content = item['content'];
+        if (content is! List) continue;
+        for (final c in content) {
+          if (c is! Map || c['type'] != 'output_text') continue;
+          final t = c['text'];
+          if (t is String) text.write(t);
+          final notes = c['annotations'];
+          if (notes is! List) continue;
+          for (final a in notes) {
+            if (a is! Map || a['type'] != 'url_citation') continue;
+            final url = a['url'];
+            if (url is! String || !seen.add(url)) continue;
+            sources.add((title: '${a['title'] ?? ''}'.trim(), url: url));
+          }
+        }
+      }
+    }
+    return (text: text.toString().trim(), sources: sources);
+  }
+
   /// แปลงข้อความเป็นเสียงพูด คืน mp3 เป็นไบต์
   ///
   /// ตัดอิโมจิออกก่อนเสมอ ไม่งั้น TTS จะอ่านชื่ออิโมจิออกมาดัง ๆ

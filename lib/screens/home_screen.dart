@@ -276,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen>
         child: Column(
           children: [
             Visibility(visible: !studio, child: _header(state, mode)),
-            Expanded(child: _stage(state, mode, studio: studio)),
+            Expanded(child: _stage(state, mode, studio: studio, onCall: onCall)),
             Visibility(
               visible: !studio,
               child: AnimatedSwitcher(
@@ -353,7 +353,7 @@ class _HomeScreenState extends State<HomeScreen>
   static const _bubbleTop = 14 / 452;
   static const _bubbleMaxWidth = 210 / 380;
 
-  Widget _stage(MindState state, MindMode mode, {bool studio = false}) {
+  Widget _stage(MindState state, MindMode mode, {bool studio = false, bool onCall = false}) {
     final bubble = state.bubbleText;
     final thinkingOverHead = state.sending && state.bubbleEnabled;
 
@@ -423,7 +423,10 @@ class _HomeScreenState extends State<HomeScreen>
 
               // ปุ่มเชิดหุ่น — อยู่บนเวทีไม่ใช่ในหน้าตั้งค่า เพราะเป็นสวิตช์
               // ที่คนกดขณะ**มองหน้าเธออยู่** ไม่ใช่ค่าที่ตั้งทิ้งไว้
-              if (!studio)
+              //
+              // 🔴 ซ่อนระหว่างสาย · จอนี้ขึ้นทับจอล็อกได้ตอนเธอรับสาย (ดู InCallActivity)
+              // ใครถือเครื่องที่ล็อกอยู่ต้องเปิดได้แค่จอสาย ไม่ใช่ร้าน/สเตตัส/สตูดิโอ
+              if (!studio && !onCall)
               Positioned(
                 right: 10,
                 top: 10,

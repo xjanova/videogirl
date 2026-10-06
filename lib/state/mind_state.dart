@@ -127,7 +127,14 @@ class MindState extends ChangeNotifier {
   /// สายโทรเข้า — ให้เธอตอบได้ว่าใครโทรมาบ้างวันนี้
   CallWatch? _calls;
 
-  void attachCalls(CallWatch c) => _calls = c;
+  void attachCalls(CallWatch c) {
+    _calls = c;
+    // สายจบ = จอสายเพิ่งจดว่าเธอรับเองไหม · อ่านเก็บไว้ (รายงานอ่านแบบไม่ต้องรอช่อง)
+    c.addListener(() {
+      if (c.state == CallState.idle) unawaited(lastAutoAnswer());
+    });
+    unawaited(lastAutoAnswer());
+  }
 
   /// บันทึกสายที่เธอรับแทน — ฝากเรื่องอะไรไว้
   CallNotes? _callNotes;
@@ -371,6 +378,8 @@ class MindState extends ChangeNotifier {
     _bubbleSeconds = p.getInt('bubbleSeconds') ?? 5;
     _voiceEnabled = p.getBool('voiceEnabled') ?? true;
     _autoAnswer = p.getBool('autoAnswer') ?? true;
+    _contactsOnly = p.getBool('autoAnswerContactsOnly') ?? false;
+    _showOnCall = p.getBool('showMindOnCall') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
     _callStream = p.getString('callStream') ?? callStreamCall;
 
@@ -380,6 +389,8 @@ class MindState extends ChangeNotifier {
     // ทั้งที่ในแอปโชว์ว่าปิดไว้
     for (final (key, value) in <(String, Object)>[
       ('autoAnswer', _autoAnswer),
+      ('autoAnswerContactsOnly', _contactsOnly),
+      ('showMindOnCall', _showOnCall),
       ('ringSeconds', _ringSeconds),
       ('callStream', _callStream),
       ('lang', _lang.code),
@@ -440,6 +451,8 @@ class MindState extends ChangeNotifier {
   /// `lang` ด้วย · งานเบื้องหลังอ่านจาก prefs เพื่อเลือกภาษาของแจ้งเตือน
   static const _mirroredToPrefs = {
     'autoAnswer',
+    'autoAnswerContactsOnly',
+    'showMindOnCall',
     'ringSeconds',
     'callStream',
     'lang',
@@ -1248,6 +1261,53 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
+  /// รับเฉพาะเบอร์ในสมุดโทรศัพท์ · **ปิดเป็นค่าตั้งต้น = รับทุกสาย**
+  ///
+  /// เดิมบังคับเฉพาะเบอร์ในสมุดเสมอ (ผู้ช่วยในสายเคยรู้ตารางงานของเจ้าของ) ·
+  /// ตอนนี้สายไม่มีข้อมูลส่วนตัวเลย ([callPrompt]) · เจ้าของ: "ไม่ยอมรับสายเองเลย"
+  bool _contactsOnly = false;
+  bool get contactsOnly => _contactsOnly;
+
+  void setContactsOnly(bool v) {
+    _contactsOnly = v;
+    _save('autoAnswerContactsOnly', v);
+    _notify();
+  }
+
+  /// เธอรับสายแล้วตัดมาจอของเธอ **แม้จอล็อก** · เปิดเป็นค่าตั้งต้น
+  ///
+  /// เจ้าของ: "ตอนเธอรับสายให้ตัดมาหน้าจอเธอ" · ระหว่างสายแอปเหลือแค่จอสาย
+  /// (ซ่อนแถบนำทางและปุ่มบนเวที) และถอนตัวจากจอล็อกทันทีที่วางสาย (ฝั่งเนทีฟ)
+  bool _showOnCall = true;
+  bool get showOnCall => _showOnCall;
+
+  void setShowOnCall(bool v) {
+    _showOnCall = v;
+    _save('showMindOnCall', v);
+    _notify();
+  }
+
+  /// สายล่าสุดเธอรับเองไหม และทำไม (จอสายเนทีฟจดไว้) · null = ยังไม่เคยมีสาย
+  ///
+  /// เดิมไม่รับแล้วเงียบ · เจ้าของเห็นแค่ "ไม่ยอมรับสายเองเลย" โดยไม่มีทางรู้ว่าติดตรงไหน
+  Future<({String reason, DateTime at})?> lastAutoAnswer() async {
+    try {
+      final raw = await kSystemChannel.invokeMethod<String>('lastAutoAnswer');
+      final parts = raw?.split('|');
+      if (parts == null || parts.length != 2) return null;
+      final ms = int.tryParse(parts[1]);
+      if (ms == null) return null;
+      return _lastAuto = (reason: parts[0], at: DateTime.fromMillisecondsSinceEpoch(ms));
+    } on Object {
+      // ไม่ใช่ Android / ช่องยังไม่พร้อม — ไม่ใช่ความผิดพลาด
+      return null;
+    }
+  }
+
+  /// ค่าที่อ่านไว้ล่าสุดของ [lastAutoAnswer] · รายงานดีบัคอ่านตัวนี้ ไม่รอช่องเนทีฟ
+  ({String reason, DateTime at})? _lastAuto;
+  String? get lastAutoAnswerReason => _lastAuto?.reason;
+
   void setRingSeconds(int v) {
     _ringSeconds = v;
     _save('ringSeconds', v);
@@ -1985,6 +2045,7 @@ class MindState extends ChangeNotifier {
   /// ตามผู้ให้บริการ เปลี่ยนแค่ว่าใครเป็นคนคิด
   Future<String> _think() async {
     final tools = _webSearch;
+    final web = tools ? _webSearcher() : null;
     final linked = _brainxSearch && brainx.connected;
     if (linked) unawaited(brainx.refreshOwnerProfile());
     final nudge = _nudgeDue();
@@ -2000,6 +2061,7 @@ class MindState extends ChangeNotifier {
       calls: _callsBlock,
       now: _clock(),
       tools: tools,
+      webSearch: web != null,
       pcProfile: linked ? brainx.ownerProfile : '',
       nudge: nudge
           ? MindPersona.cloudNudgeBlock(_lang,
@@ -2027,7 +2089,7 @@ class MindState extends ChangeNotifier {
       if (call == null || _disposed) break;
       _partial = s.lookingUp(call.arg);
       _notify();
-      final result = await webTools.run(call, last: round == maxLookups);
+      final result = await webTools.run(call, last: round == maxLookups, web: web);
       turns = [
         ...turns,
         (fromHer: true, text: answer.trim()),
@@ -2265,6 +2327,45 @@ class MindState extends ChangeNotifier {
 
   @visibleForTesting
   set debugWebTools(WebTools t) => _lazyWebTools = t;
+
+  /// ค้นเว็บทั่วไป (ข่าว ราคา ผลบอล) ได้ไหมกับสมองตอนนี้ · null = ไม่ได้
+  ///
+  /// ได้เฉพาะ **OpenAI ด้วยคีย์ของเจ้าของ** (เครื่องมือ web_search ของ OpenAI) ·
+  /// คำค้นไปที่เดียวกับที่ข้อความไปอยู่แล้ว ไม่ได้เปิดทางใหม่ให้ข้อมูลออก ·
+  /// สมองในเครื่อง/ในบ้านเลือกเพราะไม่อยากให้อะไรออกไปที่ OpenAI จึงไม่ยืมคีย์มาค้น
+  WebSearcher? _webSearcher() {
+    if (_brain != BrainProvider.openai || !hasOwnKey) return null;
+    return (query) async {
+      // web_search ใช้ได้บางรุ่น · รุ่นที่เลือกไว้ไม่รองรับ (400) → ลองรุ่นที่รองรับ
+      // แน่ ๆ แล้วจำรุ่นที่ผ่านไว้ ไม่ต้องล้มก่อนทุกครั้ง
+      final models = {?_searchModel, _brainModel, ...webSearchModels};
+      OpenAiFailure? last;
+      for (final m in models) {
+        try {
+          final r = await _openai.webSearch(
+            query,
+            model: m,
+            country: _lang == AppLang.th ? 'TH' : null,
+            timezone: _lang == AppLang.th ? 'Asia/Bangkok' : null,
+          );
+          _searchModel = m;
+          return r;
+        } on OpenAiFailure catch (e) {
+          last = e;
+          if (e.status != 400 && e.status != 404) rethrow;
+        }
+      }
+      throw last ?? OpenAiFailure(s.errNoReply);
+    };
+  }
+
+  String? _searchModel;
+
+  /// รุ่นที่ OpenAI ระบุว่าใช้ web_search ได้ (ตรวจ 2026-10-06) · ถูกก่อน แพงทีหลัง
+  static const webSearchModels = ['gpt-4.1-mini', 'gpt-6-astra'];
+
+  @visibleForTesting
+  WebSearcher? get debugWebSearcher => _webSearcher();
 
   // ═══ นึกออก — ความจำและบทสนทนาเก่าตามเรื่องที่คุย ═══════════
   //

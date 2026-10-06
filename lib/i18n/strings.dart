@@ -779,9 +779,46 @@ class S {
   // ═══ รับสาย ════════════════════════════════════════════
   String get autoAnswer => _('ให้เธอรับสายอัตโนมัติ', 'Let her answer calls');
   String get autoAnswerHint => _(
-        'เฉพาะเบอร์ในสมุดโทรศัพท์ · สายแปลกให้คัดกรองก่อน',
-        'Contacts only · unknown numbers get screened first',
+        'เธอรับฝากเรื่องแทนคุณ · ในสายเธอไม่รู้เรื่องส่วนตัวของคุณเลย ถามยังไงก็บอกไม่ได้',
+        'She takes messages for you · on a call she knows nothing private about you to give away',
       );
+  String get showOnCall => _('รับสายแล้วตัดมาหน้าจอเธอ', 'Switch to her screen when she answers');
+  String get showOnCallHint => _(
+        'เห็นเธอคุยและคำที่คุยกันสด ๆ แม้จอล็อกอยู่ · ระหว่างสายเปิดได้แค่จอสาย วางสายแล้วกลับไปจอล็อกทันที',
+        'See her talk and the live transcript, even on the lock screen · only the call screen opens, and it goes back behind the lock the moment the call ends',
+      );
+  String get callSpeakerNote => _(
+        'ระหว่างเธอคุย เครื่องเปิดลำโพงเสมอ คุณจึงได้ยินทั้งสองฝ่าย · ปิดลำโพงไม่ได้ เพราะ Android ไม่ให้แอปส่งเสียงเข้าสายตรง ๆ '
+            'เสียงเธอต้องออกลำโพงให้ไมค์รับเข้าสาย และเธอฟังปลายสายผ่านลำโพงเหมือนกัน · อยากให้เงียบ กด "แทรกสาย" แล้วคุยเองได้ทุกเมื่อ',
+        'While she talks the phone is always on speaker, so you hear both sides · it cannot be turned off: Android does not let apps put audio into a call, '
+            'so her voice has to go out of the speaker into the mic, and she hears the caller through the speaker too · tap "Take over" any time to talk yourself',
+      );
+  String get contactsOnly => _('เฉพาะเบอร์ในสมุดโทรศัพท์', 'Contacts only');
+  String get contactsOnlyHint => _(
+        'ปิด = รับทุกสาย รวมเบอร์แปลก · เปิด = เบอร์แปลกปล่อยให้ดังตามปกติ',
+        'Off = every call, unknown numbers too · On = unknown numbers just ring',
+      );
+  String get contactsOnlyNeedsPerm => _(
+        'ต้องให้สิทธิ์อ่านสมุดโทรศัพท์ก่อน ไม่งั้นทุกเบอร์จะถูกนับว่าเป็นเบอร์แปลก',
+        'Allow contacts access first, or every number counts as unknown',
+      );
+
+  /// ทำไมสายล่าสุดเธอไม่รับเอง (จอสายจดไว้) · ว่าง = ไม่ต้องบอกอะไร
+  String autoAnswerLast(String reason) => switch (reason) {
+        'answered' => _('สายล่าสุด: มายด์รับเองแล้ว', 'Last call: Mind picked up'),
+        'not_contact' => _('สายล่าสุดเธอไม่รับ เพราะเบอร์ไม่อยู่ในสมุดโทรศัพท์',
+            'She skipped the last call: number not in your contacts'),
+        'other_call' => _('สายล่าสุดเธอไม่รับ เพราะกำลังมีอีกสายอยู่',
+            'She skipped the last call: you were on another call'),
+        'no_mind' || 'no_service' => _(
+            'สายล่าสุดเธอไม่รับ เพราะปลุกตัวเธอไม่ขึ้น · เปิด "เฝ้างาน" และยกเว้นแบตให้แอปนี้',
+            'She skipped the last call: she could not be woken · turn on "Keep watch" and exempt the app from battery limits'),
+        'no_talk' => _('สายล่าสุดเธอรับแล้วแต่เปิดตัวไม่ทัน จึงวางสายให้ ไม่ให้ปลายสายได้ยินเสียงในห้อง',
+            'Last call: she picked up but could not start in time, so she hung up rather than leave your room on speaker'),
+        'stopped_ringing' => _('สายล่าสุด: คุณรับเองหรือปลายสายวางก่อนถึงตาเธอ',
+            'Last call: you answered, or the caller hung up before her turn'),
+        _ => '',
+      };
   String get ringDelayTitle => _(
         'ปล่อยให้กริ่งดังนานเท่าไหร่ก่อนเธอรับ',
         'How long it rings before she answers',

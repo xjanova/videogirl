@@ -48,8 +48,8 @@ import java.io.File
  * แต่**ไม่ปิดจอนี้ทิ้ง** เพราะจอนี้คือทางหนีเมื่อ Flutter ไม่ขึ้นหรือถูกปัดทิ้ง
  * ถ้าปิดแล้ว Flutter ไม่ขึ้น เจ้าของจะเหลือสายที่วางไม่ได้อยู่ในมือ
  *
- * และตอนจอล็อกอยู่ **ไม่ย้ายไป Flutter เลย** — MainActivity ไม่ได้ตั้ง
- * showWhenLocked ไว้ เปิดไปก็เห็นแต่จอล็อก ส่วนจอนี้ขึ้นทับจอล็อกได้
+ * ตอนจอล็อก ย้ายไป Flutter ก็ต่อเมื่อเจ้าของเปิด "ขึ้นจอเธอตอนรับสาย" ไว้
+ * (ค่าตั้งต้น) · MainActivity ขึ้นทับจอล็อกเฉพาะระหว่างสายนั้น ([handToFlutter])
  */
 class InCallActivity : Activity() {
 
@@ -58,6 +58,9 @@ class InCallActivity : Activity() {
     /** สายนี้เข้าทางซิมไหน · ซ่อนเมื่อเครื่องมีซิมเดียว (บอกไปก็ไม่มีประโยชน์) */
     private lateinit var sim: TextView
     private lateinit var status: TextView
+
+    /** เธอจะรับเองไหม — นับถอยหลัง หรือเหตุผลที่ไม่รับ · เดิมเงียบ เจ้าของเดาไม่ออก */
+    private lateinit var autoHint: TextView
     private lateinit var answer: Button
     private lateinit var decline: Button
     private lateinit var speaker: Button
@@ -68,6 +71,18 @@ class InCallActivity : Activity() {
     /// นาฬิกาปล่อยกริ่งก่อนเธอรับ · ต้องยกเลิกได้ทุกทางที่สายจบ
     private var autoAnswer: Runnable? = null
     private var autoArmed = false
+
+    /// เวลาที่เธอจะรับ (uptime) · ใช้นับถอยหลังบนจอ
+    private var autoAt = 0L
+    private val tick = object : Runnable {
+        override fun run() {
+            if (autoAnswer == null) return
+            val left = ((autoAt - android.os.SystemClock.uptimeMillis() + 999) / 1000).toInt()
+            autoHint.text = if (left > 0) getString(R.string.call_auto_in, left)
+            else getString(R.string.call_auto_now)
+            ui.postDelayed(this, 500)
+        }
+    }
 
     /// ย้ายไปจอ Flutter ไปแล้วหรือยัง — กันการเด้งซ้ำทุกครั้งที่ render
     private var handedOver = false
@@ -163,11 +178,18 @@ class InCallActivity : Activity() {
             setTextColor(Color.parseColor("#7A7490"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(40))
+            setPadding(0, dp(8), 0, dp(6))
+        }
+        autoHint = TextView(this).apply {
+            setTextColor(Color.parseColor("#5A4DE0"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(34))
         }
         root.addView(who, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(sim, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(status, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        root.addView(autoHint, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
         // ปุ่มของมายด์ — "ให้มายด์รับ" ตอนสายดัง เปลี่ยนเป็น "แทรกสาย" ตอนเธอคุยอยู่
         // ปุ่มเดียวสองความหมายเพราะเป็นสวิตช์เดียวกัน: ใครถือสายนี้อยู่
@@ -261,7 +283,12 @@ class InCallActivity : Activity() {
             if (mindOn) R.string.call_mind_barge else R.string.call_mind_answer
         )
 
-        if (ringing) armAutoAnswer() else cancelAutoAnswer()
+        if (ringing) armAutoAnswer() else {
+            // นับถอยหลังอยู่แล้วกริ่งหยุด = เจ้าของคว้าเครื่องทัน หรือคนโทรวางก่อน
+            if (autoAnswer != null) MindPrefs.noteAutoAnswer(this, "stopped_ringing")
+            cancelAutoAnswer()
+            autoHint.text = ""
+        }
         if (mindOn && state == Call.STATE_ACTIVE) handToFlutter()
     }
 
@@ -276,45 +303,66 @@ class InCallActivity : Activity() {
      */
     private fun armAutoAnswer() {
         if (autoArmed) return
-        if (!MindPrefs.autoAnswer(this)) return
-        if (MindInCallService.service == null) return
+        // ตัดสินครั้งเดียวต่อสาย ทั้งรับและไม่รับ · ไม่งั้นทุก render จดเหตุผลซ้ำ
+        autoArmed = true
 
-        // 🔴 เฉพาะเบอร์ในสมุดโทรศัพท์ — ตรงตามที่หน้าตั้งค่าเขียนไว้
+        if (!MindPrefs.autoAnswer(this)) return skip("off", R.string.call_auto_off)
+        if (MindInCallService.service == null) return skip("no_service", R.string.call_auto_no_mind)
+
+        // เฉพาะเบอร์ในสมุดโทรศัพท์ — **เมื่อเจ้าของเลือกไว้เท่านั้น** (ค่าตั้งต้นรับทุกสาย)
         //
-        // ("เฉพาะเบอร์ในสมุดโทรศัพท์ · สายแปลกให้คัดกรองก่อน") · ถ้ารับทุกสาย
-        // สวิตช์นั้นจะโกหกผู้ใช้ และเบอร์ที่ซ่อนเลขหรือเบอร์ขายประกันจะได้คุย
-        // กับผู้ช่วยที่รู้ตารางงานของเจ้าของ
-        val number = MindInCallService.current?.details?.handle?.schemeSpecificPart
-        if (CallBridge(this).nameFor(number) == null) return
-
-        // 🔴 รับแล้วต้องมีคนคุยจริง · จอนี้รับสาย เปิดลำโพง เร่งเสียงได้เอง
-        // แต่บทสนทนาอยู่ฝั่ง Dart ทั้งหมด · จอล็อกอยู่ = [handToFlutter] ไม่เปิด
-        // Flutter ให้ ถ้าแอปถูกปิดไปแล้วด้วย จะไม่มีใครคุยในสายเลย —
-        // สายถูกรับบนลำโพง ไมค์เปิด ปลายสายได้ยินเสียงในห้องเจ้าของ
-        // โดยที่เจ้าของไม่รู้ว่ามีสายถูกรับ · ปล่อยให้ดังตามปกติดีกว่า
-        val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-        if (keyguard?.isKeyguardLocked == true && !MainActivity.dartAlive) return
+        // เดิมบังคับเสมอ เพราะผู้ช่วยในสายเคยรู้ตารางงานของเจ้าของ · ตอนนี้สายไม่มี
+        // ข้อมูลส่วนตัวเลย (MindState.callPrompt) · เบอร์ซ่อน/เบอร์แปลกคุยกับเธอได้
+        // แค่ฝากเรื่อง ซึ่งคือสิ่งที่เลขาทำ
+        if (MindPrefs.contactsOnly(this)) {
+            val number = MindInCallService.current?.details?.handle?.schemeSpecificPart
+            if (CallBridge(this).nameFor(number) == null) {
+                return skip("not_contact", R.string.call_auto_not_contact)
+            }
+        }
 
         // สายซ้อน = เจ้าของกำลังคุยอีกสายอยู่ · รับแทนตอนนี้คือพักสายที่เขาคุยอยู่
         // ทิ้งโดยที่เขาไม่ได้กดอะไรเลย · ปล่อยให้เขาตัดสินใจเอง
-        if (MindInCallService.hasOtherCall()) return
-
-        autoArmed = true
+        if (MindInCallService.hasOtherCall()) return skip("other_call", R.string.call_auto_other_call)
 
         val delay = MindPrefs.ringSeconds(this) * 1000L
         val task = Runnable {
             autoAnswer = null
-            if (MindInCallService.stateOf(MindInCallService.current) == Call.STATE_RINGING) {
-                letMindAnswer()
+            if (MindInCallService.stateOf(MindInCallService.current) != Call.STATE_RINGING) return@Runnable
+            // 🔴 รับแล้วต้องมีคนคุยจริง · บทสนทนาอยู่ฝั่ง Dart ทั้งหมด · ปลุกไม่ขึ้น
+            // แล้วยังรับ = ลำโพงเปิด ปลายสายได้ยินเสียงในห้องเจ้าของโดยไม่มีใครรู้
+            if (!mindAwake()) {
+                skip("no_mind", R.string.call_auto_no_mind)
+                return@Runnable
             }
+            MindPrefs.noteAutoAnswer(this, "answered")
+            letMindAnswer()
         }
         autoAnswer = task
+        autoAt = android.os.SystemClock.uptimeMillis() + delay
         ui.postDelayed(task, delay)
+        ui.post(tick)
+
+        // ปลุกตัวเธอ**ตอนนี้** ไม่ใช่ตอนรับ · Dart เปิดตัว (ค่าตั้ง สมอง) ระหว่างกริ่งดัง
+        // · ทำหลังจอสายวาดเสร็จ การสร้าง engine กินเธรดหลักชั่วครู่
+        ui.post { mindAwake() }
+    }
+
+    /// ตัวเธอ (Dart) ตื่นอยู่ หรือปลุกขึ้นได้ตอนนี้ไหม · ดู [MindEngine]
+    private fun mindAwake(): Boolean =
+        MainActivity.dartAlive || MindEngine.running || MindEngine.wake(this)
+
+    /** ไม่รับเอง — บอกบนจอ และจดไว้ให้รายงาน/หน้าตั้งค่าเห็น */
+    private fun skip(reason: String, text: Int) {
+        cancelAutoAnswer()
+        autoHint.setText(text)
+        MindPrefs.noteAutoAnswer(this, reason)
     }
 
     private fun cancelAutoAnswer() {
         autoAnswer?.let { ui.removeCallbacks(it) }
         autoAnswer = null
+        ui.removeCallbacks(tick)
     }
 
     private fun toggleMind() {
@@ -328,6 +376,9 @@ class InCallActivity : Activity() {
 
     private fun letMindAnswer() {
         cancelAutoAnswer()
+        autoHint.text = ""
+        // เจ้าของกด "ให้มายด์รับ" เองตอนแอปปิด = ปลุกเธอด้วย ไม่งั้นรับแล้วเงียบ
+        mindAwake()
         val ok = MindInCallService.mindAnswer(this, MindPrefs.callStream(this))
         if (!ok) {
             // รับไปแล้วแต่เปิดลำโพงไม่ได้ = ปลายสายจะไม่ได้ยินเธอเลย
@@ -340,19 +391,25 @@ class InCallActivity : Activity() {
     /**
      * ย้ายไปจอ Flutter ที่มีตัวเธอยกโทรศัพท์จริง ๆ
      *
-     * ไม่ปิดจอนี้ทิ้ง (ดูหัวคลาส) และ**ไม่ย้ายตอนจอล็อก** เพราะ MainActivity
-     * ไม่ได้ตั้ง showWhenLocked ไว้ ย้ายไปก็เห็นแต่จอล็อกแทนที่จะเห็นปุ่มวางสาย
+     * ไม่ปิดจอนี้ทิ้ง (ดูหัวคลาส) · ตอนจอล็อก MainActivity ขอขึ้นทับจอล็อก
+     * **เฉพาะระหว่างสายที่เธอถือ** แล้วถอนตัวเมื่อสายจบ (เจ้าของปิดได้ในหน้าตั้งค่า)
+     * · ระหว่างสายแอปซ่อนทุกทางไปหน้าอื่น เหลือแค่จอสายของเธอ
      */
     private fun handToFlutter() {
         if (handedOver) return
         val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-        if (keyguard?.isKeyguardLocked == true) return
+        val locked = keyguard?.isKeyguardLocked == true
+        // จอล็อก + เจ้าของไม่ได้เลือกให้ขึ้นจอเธอ = อยู่จอนี้ (ขึ้นทับจอล็อกได้อยู่แล้ว)
+        if (locked && !MindPrefs.showOnCall(this)) return
         handedOver = true
 
         try {
             startActivity(
                 Intent(this, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    // 🔴 ขอขึ้นทับจอล็อกเฉพาะสายนี้ · วางสายแล้ว MainActivity ถอนตัวเอง
+                    // กลับไปหลังจอล็อกทันที (ดู MainActivity.leaveLockScreen)
+                    .putExtra(MainActivity.EXTRA_OVER_LOCK, locked)
             )
         } catch (e: Exception) {
             // เปิดไม่ได้ = อยู่จอนี้ต่อ ซึ่งวางสายได้อยู่แล้ว

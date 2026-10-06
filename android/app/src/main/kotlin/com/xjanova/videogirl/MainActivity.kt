@@ -42,8 +42,6 @@ import io.flutter.plugin.common.MethodChannel
  */
 class MainActivity : FlutterActivity() {
 
-    private val calls by lazy { CallBridge(this) }
-
     /// ถอดเสียงในเครื่อง — ช่องแยกจาก giggok/system โดยตั้งใจ
     /// (ฝั่ง Dart ของช่องนั้นมี CallWatch เป็นเจ้าของ handler แต่ผู้เดียว)
     private val speech by lazy { MindSpeech(this) }
@@ -55,8 +53,6 @@ class MainActivity : FlutterActivity() {
     /// ไม่ใช่แค่ตอบคำถามที่ Dart ถามมา
     private var channel: MethodChannel? = null
 
-    private var phoneListener: Any? = null
-
     private var pending: MethodChannel.Result? = null
     private var pendingNotify: MethodChannel.Result? = null
 
@@ -64,48 +60,71 @@ class MainActivity : FlutterActivity() {
     /// ถามเป็นรายสิทธิ์ ถามผิดตัวจะได้คำตอบของสิทธิ์อื่น
     private var pendingPermission: String? = null
 
+    /**
+     * engine ก้อนเดียวของทั้งแอป (ดู [MindEngine]) แทนการสร้างของตัวเอง
+     *
+     * 🔴 สายเข้าตอนแอปปิด จอสายปลุกตัวเธอขึ้นมาก่อนแล้ว · เปิดแอปตอนนั้นต้องได้
+     * ตัวเดิมที่กำลังคุยในสายอยู่ ไม่ใช่ตัวใหม่อีกตัวที่ไม่รู้ว่ามีสาย
+     * · สร้างไม่ได้ด้วยเหตุใดก็ตาม = คืน null แล้ว FlutterActivity สร้างเองแบบเดิม
+     */
+    override fun provideFlutterEngine(context: Context): FlutterEngine? = try {
+        MindEngine.obtain(context)
+    } catch (e: Throwable) {
+        null
+    }
+
+    /**
+     * Activity ตาย → engine ตายด้วย **เหมือนเดิม** ยกเว้นตอนมีสายอยู่
+     *
+     * 🔴 engine ที่อยู่ต่อหลัง Activity ตาย = เวที (WebView) ของ Activity เก่าถูกทิ้ง
+     * แต่ฝั่ง Dart ยังคิดว่ามีอยู่ · เปิดแอปใหม่แล้วตัวเธอไม่ขึ้น · เก็บ engine ไว้
+     * เฉพาะตอนเธอยังคุยสายอยู่ (ฆ่าตอนนั้น = ตัดบทกลางสาย) แล้วบอก Dart ให้ทิ้ง
+     * เวทีไปสร้างใหม่ตอนจอกลับมา (ดู onDestroy)
+     */
+    override fun shouldDestroyEngineWithHost(): Boolean {
+        val e = engine ?: return super.shouldDestroyEngineWithHost()
+        // engine ที่ไม่ได้มาจาก MindEngine = ของ Activity นี้เอง · ทำแบบเดิม
+        if (MindEngine.bridgeOf(e) == null) return super.shouldDestroyEngineWithHost()
+        return MindInCallService.service == null
+    }
+
+    /// ช่องส่วนที่ไม่ต้องมีจอ · ของ engine ก้อนนี้ (อยู่ต่อหลัง Activity ตาย)
+    private var bridge: SystemBridge? = null
+    private var engine: FlutterEngine? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         dartAlive = true
+        engine = flutterEngine
         ensureWatchChannel()
-        speech.attach(flutterEngine.dartExecutor.binaryMessenger)
-        studio.attach(flutterEngine.dartExecutor.binaryMessenger)
-        channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
+        // engine ที่ไม่ได้มาจาก MindEngine (สร้างไม่สำเร็จ) ต้องมีช่องของตัวเอง
+        val b = MindEngine.bridgeOf(flutterEngine)
+            ?: SystemBridge(applicationContext).also { it.attach(messenger) }
+        bridge = b
+        speech.attach(messenger)
+        studio.attach(messenger)
+        channel = MethodChannel(messenger, CHANNEL)
         channel!!.setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "status" -> result.success(if (granted()) GRANTED else DENIED)
                     "request" -> request(result)
                     "openSettings" -> {
                         openAppSettings()
                         result.success(true)
                     }
+                    "hasScreen" -> result.success(true)
 
                     // ── งานเบื้องหลัง ────────────────────────────
-                    "batteryExempt" -> result.success(batteryExempt())
                     "requestBatteryExempt" -> {
                         requestBatteryExempt()
                         result.success(true)
                     }
-                    "notifyGranted" -> result.success(notifyGranted())
                     "requestNotify" -> requestNotify(result)
 
-                    // ── ไมค์ ─────────────────────────────────────
-                    "micGranted" -> result.success(granted(Manifest.permission.RECORD_AUDIO))
+                    // ── สิทธิ์ที่ต้องมีจอให้กด ───────────────────
                     "requestMic" -> ask(Manifest.permission.RECORD_AUDIO, REQ_MIC, result)
-
-                    // ── ปฏิทินของเครื่อง ─────────────────────────
-                    "calendarGranted" ->
-                        result.success(granted(Manifest.permission.READ_CALENDAR))
                     "requestCalendar" ->
                         ask(Manifest.permission.READ_CALENDAR, REQ_CALENDAR, result)
-                    "readCalendar" -> readCalendar(
-                        (call.argument<Number>("from") ?: 0).toLong(),
-                        (call.argument<Number>("to") ?: 0).toLong(),
-                        result
-                    )
-
-                    // ── สายโทรเข้า ───────────────────────────────
-                    "callGranted" -> result.success(calls.canReadCalls())
                     "requestCall" -> askMany(
                         arrayOf(
                             Manifest.permission.READ_PHONE_STATE,
@@ -113,93 +132,41 @@ class MainActivity : FlutterActivity() {
                         ),
                         REQ_CALL, result
                     )
-                    "contactsGranted" -> result.success(calls.canReadContacts())
                     "requestContacts" ->
                         ask(Manifest.permission.READ_CONTACTS, REQ_CONTACTS, result)
-                    "answerGranted" -> result.success(calls.canAnswer())
                     "requestAnswer" -> askMany(
                         arrayOf(Manifest.permission.ANSWER_PHONE_CALLS),
                         REQ_ANSWER, result
                     )
-                    "recentCalls" ->
-                        result.success(calls.recentCalls(call.argument<Int>("limit") ?: 30))
-                    "answerCall" -> result.success(calls.answer())
-                    "hangUp" -> result.success(calls.hangUp())
-                    "watchCalls" -> {
-                        watchCalls()
-                        result.success(true)
-                    }
 
                     // ── แอปโทรศัพท์หลัก ──────────────────────────
-                    "isDefaultDialer" -> result.success(isDefaultDialer())
                     "requestDefaultDialer" -> {
                         requestDefaultDialer()
                         result.success(true)
                     }
 
-                    // ── สายที่เธอถือเอง ──────────────────────────
-                    //
-                    // 🔴 ฝั่ง Dart ต้อง**ถามเอา** ไม่ใช่รอให้ยิงมาบอก
-                    // จอสายเนทีฟตัดสินใจตอนที่ Flutter engine อาจยังไม่เริ่ม
-                    // ดู MindInCallService.mindHandling
-                    "callInfo" -> result.success(MindInCallService.callInfo(this))
-                    "mindAnswer" -> result.success(
-                        MindInCallService.mindAnswer(
-                            this,
-                            call.argument<String>("stream") ?: CallAudio.STREAM_CALL
-                        )
-                    )
-                    "mindHandOver" -> {
-                        MindInCallService.handOver(this)
-                        result.success(true)
-                    }
-                    "callSpeak" -> callSpeak(
-                        call.argument<String>("path"),
-                        call.argument<String>("stream"),
-                        result
-                    )
-                    "mediaVolume" -> result.success(mediaVolume())
                     // ปุ่มย้อนกลับที่หน้าแรก = พักแอปไว้เบื้องหลัง ไม่ใช่ปิด
                     "moveToBack" -> result.success(moveTaskToBack(true))
                     "exitApp" -> {
                         result.success(true)
                         exitApp()
                     }
-                    "callStopSpeak" -> {
-                        CallAudio.stop()
-                        result.success(true)
-                    }
-                    "callEndAudio" -> {
-                        CallAudio.close(this)
-                        result.success(true)
-                    }
-                    "callDisconnect" -> result.success(MindInCallService.disconnect())
 
                     // ── ไฟล์ทั้งเครื่อง (สำเนาที่รอดการถอนแอป) ────
-                    "allFilesGranted" -> result.success(allFilesGranted())
                     "requestAllFiles" -> {
                         requestAllFiles()
                         result.success(true)
                     }
 
-                    // ── รหัสเครื่องสำหรับไลเซนส์ (แฮชแล้วเท่านั้น) ──
-                    "deviceIds" -> result.success(deviceIds())
-
-                    // ── แจ้งเตือนเรื่องที่ฝากไว้ทางโทรศัพท์ ────────
-                    "notifyCallNote" -> result.success(
-                        notifyCallNote(
-                            call.argument<String>("title"),
-                            call.argument<String>("body"),
-                        )
-                    )
-
                     // ── ติดตั้งแอปที่ไม่รู้จัก ────────────────────
-                    "canInstall" -> result.success(canInstall())
                     "requestInstall" -> {
                         requestInstall()
                         result.success(true)
                     }
-                    else -> result.notImplemented()
+
+                    // ที่เหลือ (ถามสิทธิ์ สาย ปฏิทิน เสียงในสาย ฯลฯ) ไม่ต้องมีจอ
+                    // · ตัวเดียวกับที่ตอบตอนเธอถูกปลุกมาคุยในสายเบื้องหลัง
+                    else -> if (!b.handle(call, result)) result.notImplemented()
                 }
             }
     }
@@ -207,67 +174,6 @@ class MainActivity : FlutterActivity() {
     private fun granted(permission: String) = ContextCompat.checkSelfPermission(
         this, permission
     ) == PackageManager.PERMISSION_GRANTED
-
-    /**
-     * รหัสเครื่องสำหรับขอไลเซนส์ฟรีจาก xman studio — **แฮช SHA-256 แล้วเสมอ**
-     *
-     * แบบเดียวกับแอปพี่น้อง (Tping/LocalVPN) ที่หลังบ้านใช้จับคู่ไลเซนส์กับ
-     * เครื่อง: Widevine device id (อยู่รอดการถอนแอป) + ANDROID_ID (อยู่รอดการ
-     * ลงใหม่ด้วยกุญแจเซ็นเดิม) · ส่งเฉพาะแฮช ไม่ส่งค่าดิบ ค่าที่ได้จึงย้อนกลับไป
-     * เป็นรหัสจริงของเครื่องไม่ได้ และใช้กับแอปอื่นไม่ได้ (ผสมชื่อแอปไว้)
-     *
-     * ค่าใดอ่านไม่ได้ (บางเครื่องไม่มี Widevine) ก็ส่ง null ของตัวนั้น
-     */
-    private fun deviceIds(): Map<String, String?> {
-        fun sha(v: String): String = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("giggok:$v".toByteArray())
-            .joinToString("") { "%02x".format(it) }
-
-        val drm = try {
-            val uuid = java.util.UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed") // Widevine
-            val md = android.media.MediaDrm(uuid)
-            try {
-                val bytes = md.getPropertyByteArray(android.media.MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
-                bytes.joinToString("") { "%02x".format(it) }
-            } finally {
-                if (Build.VERSION.SDK_INT >= 28) md.close() else @Suppress("DEPRECATION") md.release()
-            }
-        } catch (e: Throwable) {
-            null
-        }
-        val android = try {
-            Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
-        } catch (e: Throwable) {
-            null
-        }
-        return mapOf(
-            "drm" to drm?.takeIf { it.isNotEmpty() }?.let(::sha),
-            "android" to android?.takeIf { it.isNotEmpty() }?.let(::sha),
-        )
-    }
-
-    /**
-     * เล่นเสียงเธอออกลำโพงให้ไมค์รับเข้าสาย แล้วตอบกลับ**เมื่อเล่นจบ**
-     *
-     * 🔴 ตอบตอนเริ่มเล่นไม่ได้ · ฝั่ง Dart ใช้ค่าที่คืนมาเป็นสัญญาณว่า
-     * "ถึงตาปลายสายพูดแล้ว" ถ้าตอบทันที เธอจะเริ่มฟังตั้งแต่ตัวเองยังพูดอยู่
-     * แล้วได้ยินเสียงตัวเองกลับเข้ามาเป็นคำถามของปลายสาย
-     *
-     * [CallAudio.play] รับประกันว่าเรียก onDone ครั้งเดียวเสมอ ทั้งตอนจบปกติ
-     * ตอนพัง และตอนถูกสั่งหยุดกลางคัน — ซึ่งจำเป็น เพราะ MethodChannel.Result
-     * ตอบซ้ำแล้วโยน IllegalStateException ทิ้งทั้ง engine
-     */
-    private fun callSpeak(path: String?, stream: String?, result: MethodChannel.Result) {
-        if (path.isNullOrEmpty()) {
-            result.success(false)
-            return
-        }
-        CallAudio.play(this, path, stream ?: CallAudio.STREAM_CALL) { ok ->
-            runOnUiThread { result.success(ok) }
-        }
-    }
-
-    private fun granted() = granted(Manifest.permission.CAMERA)
 
     private fun request(result: MethodChannel.Result) =
         ask(Manifest.permission.CAMERA, REQ_CAMERA, result)
@@ -291,29 +197,11 @@ class MainActivity : FlutterActivity() {
         ActivityCompat.requestPermissions(this, arrayOf(permission), code)
     }
 
-    /**
-     * ติดตั้ง APK ที่โหลดมาเองได้ไหม
-     *
-     * 🔴 ถ้าไม่ได้ auto-update จะโหลดไฟล์จนจบ (หลายร้อยเมก) แล้วค่อยล้ม
-     * ตรงขั้นสุดท้าย · ต้องเช็ค**ก่อน**เริ่มโหลด ไม่ใช่ค้นพบตอนจบ
-     *
-     * Android 8+ สิทธิ์นี้ให้ทีละแอป และ**ขอผ่านกล่องปกติไม่ได้**
-     * ต้องพาไปหน้าตั้งค่าของระบบเท่านั้น
-     */
+    /// ดู [SystemBridge.canInstall] · ขอผ่านกล่องปกติไม่ได้ ต้องพาไปหน้าตั้งค่าของระบบ
     private fun canInstall(): Boolean =
         if (Build.VERSION.SDK_INT >= 26) packageManager.canRequestPackageInstalls() else true
 
-    /**
-     * เข้าถึงไฟล์ทั้งเครื่องได้ไหม
-     *
-     * 🔴 ใช้เก็บ**สำเนาที่รอดจากการถอนแอป**เท่านั้น — ทุกอย่างที่อยู่ใน
-     * `/data/data/<pkg>/` ถูกล้างตอน uninstall รวมทั้งฐาน SQLite และ
-     * `Android/data/<pkg>/` ด้วย · ที่ที่รอดจริงคือพื้นที่เก็บร่วม
-     * ซึ่งเขียนได้ก็ต่อเมื่อมีสิทธิ์นี้
-     *
-     * Android 10 ลงมาไม่มีสิทธิ์ตัวนี้ ใช้ WRITE_EXTERNAL_STORAGE แทน
-     * ซึ่งประกาศไว้ใน manifest พร้อม maxSdkVersion แล้ว
-     */
+    /// ดู [SystemBridge.allFilesGranted] — สำเนาที่รอดจากการถอนแอป
     private fun allFilesGranted(): Boolean =
         if (Build.VERSION.SDK_INT >= 30) {
             Environment.isExternalStorageManager()
@@ -367,11 +255,25 @@ class MainActivity : FlutterActivity() {
     ///
     /// SpeechRecognizer จองไมค์กับบริการของระบบไว้ · ไม่ปล่อยแล้วปิดแอป
     /// ตอนที่ยังฟังอยู่ = ไมค์ค้างจนกว่าระบบจะเก็บกวาดเอง ซึ่งอาจนาน
+    ///
+    /// 🔴 engine อยู่ต่อหลัง Activity ตาย (ดู [MindEngine]) · คืนช่อง giggok/system
+    /// ให้ตัวที่ไม่ต้องมีจอ ไม่งั้นทุกคำถามของ Dart วิ่งเข้า Activity ที่ตายแล้ว
     override fun onDestroy() {
         speech.dispose()
         studio.detach()
+        val e = engine
+        val b = bridge
+        if (e != null && b != null && MindEngine.bridgeOf(e) === b && !shouldDestroyEngineWithHost()) {
+            b.reclaim(e.dartExecutor.binaryMessenger)
+            // เวทีของ Activity นี้ตายไปด้วย · Dart ต้องทิ้งแล้วสร้างใหม่ตอนจอกลับมา
+            MethodChannel(e.dartExecutor.binaryMessenger, LIFE_CHANNEL).invokeMethod("viewGone", null)
+        }
+        if (live?.get() === this) live = null
         dartAlive = false
+        // 🔴 super ก่อน แล้วค่อยลืม engine · FlutterActivity ถาม shouldDestroyEngineWithHost
+        // ระหว่าง super.onDestroy ซึ่งต้องยังเห็น engine ไม่งั้นตอบผิดแล้ว engine ไม่ถูกปิด
         super.onDestroy()
+        engine = null
     }
 
     /// ปุ่มเพิ่ม/ลดเสียงตอนอยู่ในแอป = เสียงสื่อ (ช่องที่เสียงเธอออก)
@@ -381,6 +283,42 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         volumeControlStream = AudioManager.STREAM_MUSIC
+        live = java.lang.ref.WeakReference(this)
+        overLockFrom(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        overLockFrom(intent)
+    }
+
+    /// ขึ้นทับจอล็อกอยู่ไหม (เฉพาะระหว่างสายที่เธอถือ)
+    private var overLock = false
+
+    /**
+     * จอสายขอให้ขึ้นทับจอล็อก — เจ้าของเห็นเธอคุยสายโดยไม่ต้องปลดล็อก
+     *
+     * 🔴 รับเฉพาะตอนเธอถือสายอยู่จริง · intent เก่าที่ค้างมา (เปิดแอปซ้ำจากประวัติ)
+     * ต้องไม่ทำให้แอปทั้งแอปขึ้นทับจอล็อกได้นอกเวลาสาย
+     */
+    private fun overLockFrom(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OVER_LOCK, false) != true) return
+        intent.removeExtra(EXTRA_OVER_LOCK)
+        if (!MindInCallService.mindHandling) return
+        setOverLock(true)
+    }
+
+    private fun setOverLock(on: Boolean) {
+        overLock = on
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(on)
+            setTurnScreenOn(on)
+        } else {
+            @Suppress("DEPRECATION")
+            val flags = android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            if (on) window.addFlags(flags) else window.clearFlags(flags)
+        }
     }
 
     /// ปิดแอปจริง — ทางเดียวที่คืนหน่วยความจำของสมองในเครื่องกับตัวเธอทั้งหมด
@@ -395,19 +333,6 @@ class MainActivity : FlutterActivity() {
         android.os.Handler(mainLooper).postDelayed({
             android.os.Process.killProcess(android.os.Process.myPid())
         }, 400)
-    }
-
-    /// ระดับเสียงสื่อตอนนี้ · {now, max} — เสียงเธอออกช่องนี้ทั้งจากเวทีและทางสำรอง
-    private fun mediaVolume(): Map<String, Int>? {
-        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
-        return try {
-            mapOf(
-                "now" to am.getStreamVolume(AudioManager.STREAM_MUSIC),
-                "max" to am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            )
-        } catch (e: Exception) {
-            null
-        }
     }
 
     /// เข้า/ออกจอลอย — ฝั่ง Dart ซ่อนปุ่มทั้งหมดตอนเหลือแต่ตัวเธอในหน้าต่างเล็ก
@@ -509,11 +434,8 @@ class MainActivity : FlutterActivity() {
     /// ไม่ได้ยกเว้น = ระบบหรี่ให้ตื่นทุก 9–15 นาทีแทนที่จะเป็นตามที่ตั้งไว้
     /// และบาง ROM (Xiaomi/Huawei/OPPO) ฆ่าทิ้งเลย · ประกาศใน manifest
     /// อย่างเดียวไม่พอ ผู้ใช้ต้องกดยอมรับเองเท่านั้น
-    private fun batteryExempt(): Boolean {
-        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
-            ?: return false
-        return pm.isIgnoringBatteryOptimizations(packageName)
-    }
+    private fun batteryExempt(): Boolean =
+        bridge?.batteryExempt() ?: SystemBridge(applicationContext).batteryExempt()
 
     private fun requestBatteryExempt() {
         if (batteryExempt()) return
@@ -532,63 +454,8 @@ class MainActivity : FlutterActivity() {
 
     /// Android 13+ การแจ้งเตือนเป็นสิทธิ์ที่ต้องขอ · ไม่ได้ขอ = บริการรันอยู่จริง
     /// แต่ผู้ใช้ไม่เห็นอะไรเลย แล้วจะคิดว่ามันไม่ทำงาน
-    /**
-     * แจ้งเจ้าของว่ามายด์รับสายแทนและรับฝากเรื่องไว้
-     *
-     * ช่องแยกจากของงานเบื้องหลัง เพราะความสำคัญต่างกัน: ตัวนั้นเงียบ ค้างอยู่
-     * ตลอด · ตัวนี้คือ "มีคนฝากเรื่องไว้" ต้องดังและเด้งให้เห็น · และเจ้าของ
-     * ปิดอย่างใดอย่างหนึ่งในตั้งค่าของเครื่องได้โดยไม่กระทบอีกอย่าง
-     *
-     * ไม่ได้สิทธิ์แจ้งเตือน = คืน false เงียบ ๆ · บันทึกยังอยู่ในไทม์ไลน์ครบ
-     */
-    private fun notifyCallNote(title: String?, body: String?): Boolean {
-        if (!notifyGranted()) return false
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            ?: return false
-        if (nm.getNotificationChannel(CALL_NOTE_CHANNEL) == null) {
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    CALL_NOTE_CHANNEL,
-                    getString(R.string.call_note_channel),
-                    NotificationManager.IMPORTANCE_HIGH,
-                )
-            )
-        }
-        val open = android.app.PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT or
-                android.app.PendingIntent.FLAG_IMMUTABLE,
-        )
-        val text = body.orEmpty()
-        val n = androidx.core.app.NotificationCompat.Builder(this, CALL_NOTE_CHANNEL)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title.orEmpty())
-            .setContentText(text)
-            .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
-            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_MESSAGE)
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .build()
-        return try {
-            // id ตามเวลา = แต่ละสายเป็นแจ้งเตือนของตัวเอง ไม่ทับกัน
-            nm.notify((System.currentTimeMillis() / 1000).toInt(), n)
-            true
-        } catch (e: SecurityException) {
-            false
-        }
-    }
-
-    private fun notifyGranted(): Boolean {
-        if (Build.VERSION.SDK_INT < 33) return true
-        return ContextCompat.checkSelfPermission(
-            this, "android.permission.POST_NOTIFICATIONS"
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
     private fun requestNotify(result: MethodChannel.Result) {
-        if (notifyGranted()) {
+        if (SystemBridge(applicationContext).notifyGranted()) {
             result.success(true)
             return
         }
@@ -597,82 +464,6 @@ class MainActivity : FlutterActivity() {
         ActivityCompat.requestPermissions(
             this, arrayOf("android.permission.POST_NOTIFICATIONS"), REQ_NOTIFY
         )
-    }
-
-    /**
-     * อ่านนัดจากปฏิทินของเครื่องในช่วงเวลาที่ขอมา
-     *
-     * ใช้ `Instances` ไม่ใช่ `Events` เพราะนัดที่เกิดซ้ำทุกสัปดาห์มีแถวเดียว
-     * ใน `Events` แต่มีทุกครั้งใน `Instances` · ถามจาก `Events` ตรง ๆ จะได้
-     * ประชุมประจำสัปดาห์มาแค่ครั้งแรกครั้งเดียว แล้วสัปดาห์อื่นหายหมด
-     * โดยไม่มีอะไรบอกว่าขาด
-     *
-     * 🔴 ทำในเธรดอื่น ไม่ใช่เธรดหลัก · ContentResolver ของปฏิทินช้าได้จริง
-     * บนเครื่องที่ซิงก์หลายบัญชี และ MethodChannel เรียกบนเธรด UI
-     */
-    private fun readCalendar(from: Long, to: Long, result: MethodChannel.Result) {
-        if (!granted(Manifest.permission.READ_CALENDAR)) {
-            result.success(null)
-            return
-        }
-        if (to <= from) {
-            result.success(emptyList<Map<String, Any?>>())
-            return
-        }
-
-        Thread {
-            val events = try {
-                queryInstances(from, to)
-            } catch (e: Exception) {
-                // ปฏิทินอ่านไม่ได้ไม่ควรทำให้ทั้งแท็บพัง — คืน null แปลว่า
-                // "ถามไม่สำเร็จ" ซึ่งต่างจาก emptyList ที่แปลว่า "ไม่มีนัด"
-                null
-            }
-            runOnUiThread { result.success(events) }
-        }.start()
-    }
-
-    private fun queryInstances(from: Long, to: Long): List<Map<String, Any?>> {
-        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().let {
-            ContentUris.appendId(it, from)
-            ContentUris.appendId(it, to)
-            it.build()
-        }
-        val cols = arrayOf(
-            CalendarContract.Instances.EVENT_ID,
-            CalendarContract.Instances.TITLE,
-            CalendarContract.Instances.BEGIN,
-            CalendarContract.Instances.END,
-            CalendarContract.Instances.ALL_DAY,
-            CalendarContract.Instances.EVENT_LOCATION,
-            CalendarContract.Instances.CALENDAR_DISPLAY_NAME,
-            CalendarContract.Instances.DISPLAY_COLOR,
-            CalendarContract.Instances.SELF_ATTENDEE_STATUS
-        )
-
-        val out = ArrayList<Map<String, Any?>>()
-        contentResolver.query(uri, cols, null, null, CalendarContract.Instances.BEGIN + " ASC")
-            ?.use { c ->
-                while (c.moveToNext()) {
-                    // นัดที่เจ้าของกดปฏิเสธไปแล้ว ไม่ใช่ตารางของเขา
-                    val status = c.getInt(8)
-                    if (status == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED) continue
-
-                    out.add(
-                        mapOf(
-                            "id" to c.getLong(0),
-                            "title" to (c.getString(1) ?: ""),
-                            "begin" to c.getLong(2),
-                            "end" to c.getLong(3),
-                            "allDay" to (c.getInt(4) == 1),
-                            "location" to c.getString(5),
-                            "calendar" to c.getString(6),
-                            "color" to c.getInt(7)
-                        )
-                    )
-                }
-            }
-        return out
     }
 
     /**
@@ -698,61 +489,6 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * เฝ้าสถานะสาย แล้วบอก Dart ทุกครั้งที่เปลี่ยน
-     *
-     * 🔴 เบอร์ที่ได้จากตรงนี้ **ว่างเปล่าบน Android 9+ ถ้าไม่มี READ_CALL_LOG**
-     * และไม่มี error อะไรบอก · ฝั่ง Dart จึงต้องเผื่อเบอร์ว่างเสมอ และไปอ่าน
-     * จากบันทึกการโทรหลังสายจบแทน
-     */
-    private fun watchCalls() {
-        if (phoneListener != null) return
-        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
-
-        if (Build.VERSION.SDK_INT >= 31) {
-            val cb = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
-                override fun onCallStateChanged(state: Int) = sendCallState(state, null)
-            }
-            phoneListener = cb
-            tm.registerTelephonyCallback(mainExecutor, cb)
-        } else {
-            @Suppress("DEPRECATION")
-            val l = object : PhoneStateListener() {
-                override fun onCallStateChanged(state: Int, phoneNumber: String?) =
-                    sendCallState(state, phoneNumber)
-            }
-            phoneListener = l
-            @Suppress("DEPRECATION")
-            tm.listen(l, PhoneStateListener.LISTEN_CALL_STATE)
-        }
-    }
-
-    private fun sendCallState(state: Int, number: String?) {
-        channel?.invokeMethod(
-            "onCallState",
-            mapOf(
-                "state" to state,
-                "number" to number,
-                "name" to calls.nameFor(number)
-            )
-        )
-    }
-
-    /**
-     * แอปนี้เป็นแอปโทรศัพท์หลักของเครื่องอยู่หรือเปล่า
-     *
-     * ถามผ่าน RoleManager บน Android 10 ขึ้นไป ที่เหลือถาม TelecomManager
-     * สองทางนี้ตอบเรื่องเดียวกัน แต่ทางเก่าถูกเลิกใช้ไปแล้วบนรุ่นใหม่
-     */
-    private fun isDefaultDialer(): Boolean {
-        if (Build.VERSION.SDK_INT >= 29) {
-            val rm = getSystemService(RoleManager::class.java) ?: return false
-            return rm.isRoleHeld(RoleManager.ROLE_DIALER)
-        }
-        val tm = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager ?: return false
-        return tm.defaultDialerPackage == packageName
-    }
-
-    /**
      * ขอเป็นแอปโทรศัพท์หลัก
      *
      * 🔴 **เป็นแล้วทุกสายของเครื่องผ่านแอปนี้** ไม่ใช่แค่สายที่เราสนใจ
@@ -761,7 +497,7 @@ class MainActivity : FlutterActivity() {
      * และถอนออกได้ตลอดจากหน้าตั้งค่าของเครื่อง
      */
     private fun requestDefaultDialer() {
-        if (isDefaultDialer()) return
+        if (SystemBridge.isDefaultDialer(this)) return
         try {
             val intent = if (Build.VERSION.SDK_INT >= 29) {
                 getSystemService(RoleManager::class.java)
@@ -791,6 +527,26 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        /// จอสายขอให้ขึ้นทับจอล็อกระหว่างสายที่เธอถือ · ดู [overLockFrom]
+        const val EXTRA_OVER_LOCK = "giggok.overLock"
+
+        private var live: java.lang.ref.WeakReference<MainActivity>? = null
+
+        /**
+         * สายจบ → ถอนตัวจากหน้าจอล็อกทันที
+         *
+         * 🔴 ไม่ถอน = แอปทั้งแอป (แชท ความจำ หน้าตั้งค่า) เปิดได้โดยไม่ต้องปลดล็อก
+         * ไปจนกว่าจะปิดแอป · เรียกจาก [MindInCallService] ตอนไม่เหลือสายแล้ว
+         */
+        @JvmStatic
+        fun leaveLockScreen() {
+            val a = live?.get() ?: return
+            if (!a.overLock) return
+            a.setOverLock(false)
+            val keyguard = a.getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+            if (keyguard?.isKeyguardLocked == true) a.moveTaskToBack(true)
+        }
+
         /// ฝั่ง Dart (ที่เป็นคนคุยในสายจริง ๆ) ยังมีชีวิตอยู่ไหม
         ///
         /// จอสายเนทีฟรับสายเองได้ แต่**คุยไม่ได้** · บทสนทนาทั้งหมดอยู่ใน
@@ -801,6 +557,9 @@ class MainActivity : FlutterActivity() {
             private set
 
         private const val CHANNEL = "giggok/system"
+
+        /// ช่องแยก · handler ของ giggok/system ฝั่ง Dart เป็นของ CallWatch แต่ผู้เดียว
+        private const val LIFE_CHANNEL = "giggok/life"
         private const val REQ_CAMERA = 8747
         private const val REQ_ALL_FILES = 8756
         private const val REQ_NOTIFY = 8748
@@ -823,8 +582,6 @@ class MainActivity : FlutterActivity() {
         /// ไม่ตรงกัน = บริการหาช่องไม่เจอ แล้วตายแบบเดียวกับไม่มีช่องเลย
         private const val WATCH_CHANNEL = "mind_watch"
 
-        /// แจ้งเตือน "มายด์รับสายแทนและรับฝากเรื่องไว้"
-        private const val CALL_NOTE_CHANNEL = "call_notes"
         private const val GRANTED = "granted"
         private const val DENIED = "denied"
         private const val BLOCKED = "blocked"
