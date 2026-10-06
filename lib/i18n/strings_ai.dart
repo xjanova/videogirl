@@ -154,9 +154,6 @@ extension AiStrings on S {
   String get ttsCheapest => pick(
       'เร็วและถูกที่สุด · สั่งอารมณ์ไม่ได้', 'Fastest and cheapest · no tone control');
 
-  String get realtimeBest => pick('ดีเลย์ต่ำ คุณภาพสูงสุด', 'Lowest latency, best quality');
-  String get realtimeCheap => pick('ถูกกว่า เร็วกว่า', 'Cheaper and faster');
-  String get realtimeOlder => pick('รุ่นก่อนหน้า', 'Previous generation');
 
   // ═══ เสียงของ OpenAI ═══════════════════════════════════
   String get voiceCoral => pick('Coral — นุ่ม อบอุ่น', 'Coral — soft and warm');
@@ -613,9 +610,4 @@ extension AiStrings on S {
         _ => ttsCheapest,
       };
 
-  String realtimeHint(String id) => switch (id) {
-        'gpt-realtime-2.1' => realtimeBest,
-        'gpt-realtime-2.1-mini' => realtimeCheap,
-        _ => realtimeOlder,
-      };
 }

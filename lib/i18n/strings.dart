@@ -741,12 +741,6 @@ class S {
   String get voiceModel => _('โมเดลเสียง', 'Voice model');
   String get voicePick => _('เสียง', 'Voice');
   String get voiceInstructions => _('น้ำเสียงที่สั่งไว้', 'Tone instructions');
-  String get realtimeModel =>
-      _('โมเดลคุยสดตอนอยู่ในสาย', 'Live conversation model for calls');
-  String get realtimeNote => _(
-        'ใช้ตอนต่อสายจริงเท่านั้น ยังไม่ได้ต่อ — ดู docs/telephony.md',
-        'Only used on real calls, not wired up yet — see docs/telephony.md',
-      );
   String listenTo(String what) => _('ลองฟัง$what', 'Preview $what');
 
   String noInstructionSupport(String model) => _(

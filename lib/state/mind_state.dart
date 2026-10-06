@@ -323,8 +323,6 @@ class MindState extends ChangeNotifier {
     _licenseKey = p.getString('licenseKey') ?? '';
     _licenseType = p.getString('licenseType') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
-    _realtimeModel = OpenAiConfig.migrateRealtime(
-        p.getString('realtimeModel') ?? OpenAiConfig.realtimeModel);
 
     for (final c in VoiceChannel.values) {
       final raw = p.getString('voice_${c.name}');
@@ -1026,22 +1024,12 @@ class MindState extends ChangeNotifier {
 
   VoiceProfile voiceFor(VoiceChannel c) => _voices[c]!;
 
-  /// โมเดลคุยสดสำหรับตอนรับสาย/โทรออกจริง (ยังไม่ได้ต่อ — docs/telephony.md)
-  String _realtimeModel = OpenAiConfig.realtimeModel;
-  String get realtimeModel => _realtimeModel;
-
   bool _voiceEnabled = true;
   bool get voiceEnabled => _voiceEnabled;
 
   void setBrainModel(String v) {
     _brainModel = v;
     _save('brainModel', v);
-    _notify();
-  }
-
-  void setRealtimeModel(String v) {
-    _realtimeModel = v;
-    _save('realtimeModel', v);
     _notify();
   }
 

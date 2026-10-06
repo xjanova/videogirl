@@ -3,7 +3,7 @@
 /// ที่ต้องคุมด้วยเทสต์:
 /// 1. ระดับการคิด (`reasoning_effort`) · ไม่ส่ง = รุ่น 5.6/6 คิดระดับ medium
 ///    ซึ่งกินเพดานคำตอบ 600 จนเธอตอบกลับมาว่างเปล่า · ส่งผิดค่า = 400
-/// 2. ค่าที่ผู้ใช้เคยเลือกไว้ (tts-1, gpt-realtime) ต้องย้ายไปรุ่นที่ยังใช้ได้
+/// 2. ค่าที่ผู้ใช้เคยเลือกไว้ (tts-1) ต้องย้ายไปรุ่นที่ยังใช้ได้
 library;
 
 import 'dart:convert';
@@ -101,15 +101,9 @@ void main() {
       }
     });
 
-    test('gpt-realtime ย้ายไป 2.1', () {
-      expect(OpenAiConfig.migrateRealtime('gpt-realtime'), 'gpt-realtime-2.1');
-      expect(OpenAiConfig.migrateRealtime('gpt-realtime-2.1-mini'), 'gpt-realtime-2.1-mini');
-    });
-
     test('รายการเสียงไม่มีรุ่นที่ถูกประกาศเลิกใช้', () {
       expect(OpenAiConfig.ttsChoices, isNot(contains('tts-1')));
       expect(OpenAiConfig.ttsChoices, isNot(contains('tts-1-hd')));
-      expect(OpenAiConfig.realtimeChoices.map((r) => r.id), isNot(contains('gpt-realtime')));
     });
 
     test('เสียงใหม่ marin / cedar มีชื่อที่อ่านออก ไม่ใช่ตกไปเป็นเสียงอื่น', () {

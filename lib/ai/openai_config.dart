@@ -20,10 +20,6 @@ abstract final class OpenAiConfig {
   static const ttsModel =
       String.fromEnvironment('OPENAI_TTS_MODEL', defaultValue: 'gpt-4o-mini-tts');
 
-  /// เสียงรับสายแบบเรียลไทม์ (ยังไม่ได้ต่อ — ดู docs/telephony.md)
-  static const realtimeModel =
-      String.fromEnvironment('OPENAI_REALTIME_MODEL', defaultValue: 'gpt-realtime-2.1');
-
   /// ถอดเสียงปลายสายเป็นข้อความ
   ///
   /// ตั้งไว้ที่ `whisper-1` โดยตั้งใจ ทั้งที่มีรุ่นใหม่กว่า — รุ่นนี้เป็นรุ่น
@@ -108,17 +104,6 @@ abstract final class OpenAiConfig {
   /// รุ่นเสียงที่เลิกเสนอแล้ว → รุ่นที่ใช้แทน
   static String migrateTts(String model) =>
       model == 'tts-1' || model == 'tts-1-hd' ? 'gpt-4o-mini-tts' : model;
-
-  /// โมเดลคุยสด (speech-to-speech) สำหรับตอนรับสาย/โทรออกจริง
-  /// ยังไม่ได้ต่อ — ดู docs/telephony.md
-  static const realtimeChoices = <({String id, String label})>[
-    (id: 'gpt-realtime-2.1', label: 'Realtime 2.1'),
-    (id: 'gpt-realtime-2.1-mini', label: 'Realtime 2.1 mini'),
-  ];
-
-  /// `gpt-realtime` ถูกประกาศปิด 2027-01-20 → ถอดออกจากรายการ ตัวแทนคือ 2.1
-  static String migrateRealtime(String model) =>
-      model == 'gpt-realtime' ? 'gpt-realtime-2.1' : model;
 
   /// โมเดลที่รับพารามิเตอร์ `instructions` — ตัวอื่นส่งไปก็ไม่มีผล
   static bool supportsInstructions(String ttsModel) =>

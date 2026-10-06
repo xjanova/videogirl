@@ -1571,6 +1571,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               mode: mode,
               onTap: () => _editOpenAiKey(state, mode),
             ),
+            _keyGuide('OpenAI', mode),
             const SizedBox(height: 12),
             Text(S.of(context).sectionBrain,
                 style: mindMono(
@@ -1974,6 +1975,102 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  // ── วิธีเอาคีย์ ─────────────────────────────────────────
+
+  /// หน้าที่ออกคีย์ของแต่ละเจ้า · ตรวจ 2026-10-06
+  static const _keyPages = {
+    'OpenAI': 'https://platform.openai.com/api-keys',
+    'Gemini': 'https://aistudio.google.com/apikey',
+    'ElevenLabs': 'https://elevenlabs.io/app/settings/api-keys',
+    'Azure': 'https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices',
+  };
+
+  /// เจ้าที่เปิดคู่มืออยู่ · พับไว้เป็นค่าตั้งต้น ไม่ให้การ์ดยาวจนหาอย่างอื่นไม่เจอ
+  final Set<String> _openGuides = {};
+
+  /// คู่มือเอาคีย์ทีละขั้น + ปุ่มเปิดหน้าออกคีย์ของเจ้านั้น
+  Widget _keyGuide(String provider, MindMode mode) {
+    final t = S.of(context);
+    final open = _openGuides.contains(provider);
+    final url = _keyPages[provider]!;
+    final steps = switch (provider) {
+      'OpenAI' => t.keyGuideOpenAi,
+      'Gemini' => t.keyGuideGemini,
+      'ElevenLabs' => t.keyGuideElevenLabs,
+      _ => t.keyGuideAzure,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          button: true,
+          expanded: open,
+          label: t.keyGuideTitle(provider),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() =>
+                open ? _openGuides.remove(provider) : _openGuides.add(provider)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                spacing: 6,
+                children: [
+                  Icon(Icons.help_outline_rounded, size: 15, color: mode.accent),
+                  Expanded(
+                    child: Text(t.keyGuideTitle(provider),
+                        style: TextStyle(
+                            fontSize: 11.5, fontWeight: FontWeight.w600, color: mode.accent)),
+                  ),
+                  Icon(open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                      size: 18, color: mode.accent),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (open)
+          Container(
+            padding: const EdgeInsets.all(11),
+            decoration: BoxDecoration(
+              color: MindColors.glass80,
+              borderRadius: BorderRadius.circular(MindRadius.control),
+              border: Border.all(color: MindColors.glassBorder, width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 6,
+              children: [
+                for (var i = 0; i < steps.length; i++)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 7,
+                    children: [
+                      Text('${i + 1}.',
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w700, color: mode.accent)),
+                      Expanded(
+                        child: Text(steps[i],
+                            style: const TextStyle(
+                                fontSize: 11, height: 1.5, color: MindColors.ink75)),
+                      ),
+                    ],
+                  ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _plainButton(
+                    label: t.keyGuideOpen(Uri.parse(url).host),
+                    mode: mode,
+                    onTap: () => launchUrl(Uri.parse(url),
+                        mode: LaunchMode.externalApplication),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   // ── เสียงพรีเมียม (Gemini · ElevenLabs · Azure) ───────────
   //
   // คีย์ของผู้ใช้เก็บในที่เก็บลับของเครื่อง · รุ่นและเสียงมีให้เลือกเฉพาะตัว
@@ -2021,6 +2118,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           onReset: () => '',
         ),
       ),
+      _keyGuide(name, mode),
       if (e == TtsEngine.azure) ...[
         const SizedBox(height: 7),
         _linkRow(
@@ -2045,7 +2143,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           style: const TextStyle(fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00)),
         ),
       ],
-      if (models.isNotEmpty) ...[
+      if (models.length == 1) ...[
+        const SizedBox(height: 10),
+        Text('${t.premiumModel}: ${models.single}',
+            style: const TextStyle(fontSize: 11, color: MindColors.ink60)),
+      ],
+      if (models.length > 1) ...[
         const SizedBox(height: 14),
         Text(t.premiumModel,
             style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
@@ -2217,6 +2320,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 mode: mode,
                 onTap: () => _editOpenAiKey(state, mode),
               ),
+              _keyGuide('OpenAI', mode),
               if (!state.hasOwnKey) ...[
                 const SizedBox(height: 7),
                 Text(
@@ -2308,30 +2412,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
             ],
 
-            if (channel != VoiceChannel.chat) ...[
-              const SizedBox(height: 14),
-              Text(S.of(context).realtimeModel,
-                  style: mindMono(
-                      size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
-              const SizedBox(height: 7),
-              for (final r in OpenAiConfig.realtimeChoices)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 7),
-                  child: _choiceRow(
-                    title: r.label,
-                    subtitle: S.of(context).realtimeHint(r.id),
-                    trailing: r.id,
-                    selected: state.realtimeModel == r.id,
-                    mode: mode,
-                    onTap: () => state.setRealtimeModel(r.id),
-                  ),
-                ),
-              Text(
-                S.of(context).realtimeNote,
-                style: const TextStyle(fontSize: 10.5, color: MindColors.ink55),
-              ),
-            ],
-
+            // 🔴 เดิมมี "โมเดลคุยสดตอนอยู่ในสาย" (OpenAI Realtime) โผล่ตรงนี้ทุกเจ้า
+            // ทั้งที่**ไม่เคยถูกใช้เลย** (เขียนไว้เองว่ายังไม่ได้ต่อ) · ถอดออก แล้ว
+            // บอกของจริงในการ์ดรับสายแทน ว่าในสายเธอใช้อะไรฟัง คิด และพูด
             const SizedBox(height: 12),
             Row(
               spacing: 8,
@@ -2483,6 +2566,66 @@ class _SettingsScreenState extends State<SettingsScreen>
     return [engine, if (p.model.isNotEmpty) p.model, if (voice.isNotEmpty) voice].join(' · ');
   }
 
+  /// ตอนอยู่ในสาย เธอใช้อะไรจริง — ฟัง · คิด · พูด
+  ///
+  /// ตอบคำถาม "โมเดลตอนอยู่ในสายคืออะไร" ด้วยค่าที่เลือกไว้จริง ไม่ใช่รายการ
+  /// รุ่นที่ไม่ได้ใช้ · ทั้งสามอย่างตั้งได้ที่อื่น (สมอง · เสียงช่อง "รับสาย")
+  Widget _inCallInfo(MindState state) {
+    final t = S.of(context);
+    final answer = state.voiceFor(VoiceChannel.answer);
+    final listen = switch (state.brain) {
+      BrainProvider.onDevice => t.callListenOnDevice,
+      BrainProvider.openai => t.callListenOpenAi,
+      BrainProvider.mindProxy => t.callListenProxy,
+      BrainProvider.homeServer => t.callListenHome,
+    };
+    final think = state.brain == BrainProvider.onDevice
+        ? '${state.brain.labelOf(t)} · ${state.localBrain.variant.label}'
+        : state.brain == BrainProvider.homeServer
+            ? '${state.brain.labelOf(t)} · ${state.homeServerModel}'
+            : '${state.brain.labelOf(t)} · ${state.brainModel}';
+    final speak = _voiceWhat(state, answer, t);
+    Widget line(IconData icon, String label, String value) => Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 7,
+          children: [
+            Icon(icon, size: 14, color: MindColors.ink55),
+            Expanded(
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(
+                      text: '$label  ',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  TextSpan(text: value),
+                ]),
+                style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink75),
+              ),
+            ),
+          ],
+        );
+    return Container(
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: MindColors.glass80,
+        borderRadius: BorderRadius.circular(MindRadius.control),
+        border: Border.all(color: MindColors.glassBorder, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 6,
+        children: [
+          Text(t.inCallTitle,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          line(Icons.hearing_rounded, t.inCallListen, listen),
+          line(Icons.psychology_rounded, t.inCallThink, think),
+          line(Icons.record_voice_over_rounded, t.inCallSpeak, speak),
+          Text(t.inCallWhere,
+              style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+        ],
+      ),
+    );
+  }
+
   // ── รับสายอัตโนมัติ ─────────────────────────────────────
   Widget _callCard(MindState state, MindMode mode) {
     return _card(
@@ -2514,6 +2657,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          _inCallInfo(state),
           if (state.autoAnswer && !context.watch<MindWatch>().on) ...[
             const SizedBox(height: 8),
             Text(S.of(context).callBackgroundHint,

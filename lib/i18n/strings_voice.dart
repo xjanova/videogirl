@@ -26,22 +26,110 @@ extension VoiceStrings on S {
         'No $provider key yet — she will use the phone voice until you add one',
       );
   String get premiumKeyEditorGemini => pick(
-        'คีย์จาก aistudio.google.com › Get API key · เก็บในที่เก็บลับของเครื่องนี้เท่านั้น',
-        'A key from aistudio.google.com › Get API key · stored only in this phone\'s secure storage',
+        'วางคีย์ Gemini (ขึ้นต้นด้วย AIza) · เก็บในที่เก็บลับของเครื่องนี้เท่านั้น · ดูวิธีเอาคีย์ใต้ช่องคีย์',
+        'Paste your Gemini key (starts with AIza) · kept only in this phone\'s secure storage · see "How to get" under the key row',
       );
   String get premiumKeyEditorElevenLabs => pick(
-        'คีย์จาก elevenlabs.io › Profile › API keys · เก็บในที่เก็บลับของเครื่องนี้เท่านั้น',
-        'A key from elevenlabs.io › Profile › API keys · stored only in this phone\'s secure storage',
+        'วางคีย์ ElevenLabs (ขึ้นต้นด้วย sk_) · เก็บในที่เก็บลับของเครื่องนี้เท่านั้น · ดูวิธีเอาคีย์ใต้ช่องคีย์',
+        'Paste your ElevenLabs key (starts with sk_) · kept only in this phone\'s secure storage · see "How to get" under the key row',
       );
   String get premiumKeyEditorAzure => pick(
-        'คีย์จาก Azure portal › Speech service › Keys and Endpoint · เก็บในที่เก็บลับของเครื่องนี้เท่านั้น',
-        'A key from Azure portal › Speech service › Keys and Endpoint · stored only in this phone\'s secure storage',
+        'วาง KEY 1 จาก Azure Speech · เก็บในที่เก็บลับของเครื่องนี้เท่านั้น · ดูวิธีเอาคีย์ใต้ช่องคีย์',
+        'Paste KEY 1 from Azure Speech · kept only in this phone\'s secure storage · see "How to get" under the key row',
       );
   String get azureRegionTitle => pick('ภูมิภาคของ Azure', 'Azure region');
   String get azureRegionEditor => pick(
         'ภูมิภาคที่สร้าง Speech service ไว้ เช่น southeastasia (ดูได้ในหน้า Keys and Endpoint)',
         'The region of your Speech service, e.g. southeastasia (shown on Keys and Endpoint)',
       );
+
+  // ── วิธีเอาคีย์ ──
+  String keyGuideTitle(String provider) =>
+      pick('วิธีเอาคีย์ $provider', 'How to get a $provider key');
+  String keyGuideOpen(String host) => pick('เปิด $host', 'Open $host');
+
+  List<String> get keyGuideOpenAi => isThai
+      ? const [
+          'เปิดหน้า API keys ของ OpenAI แล้วล็อกอิน (สมัครด้วยอีเมลหรือบัญชี Google ได้)',
+          'เติมเครดิตก่อน: Settings › Billing › เพิ่มบัตรและเติมเงิน (ขั้นต่ำราว 5 ดอลลาร์) — ไม่มีเครดิต คีย์จะใช้ไม่ได้',
+          'กลับมาหน้า API keys › กด "Create new secret key" ตั้งชื่อ เช่น GigGok',
+          'คัดลอกคีย์ที่ขึ้นต้นด้วย sk- ทันที — เว็บโชว์ให้ดูแค่ครั้งเดียว',
+          'กลับมาที่แอป แตะช่อง "คีย์ของคุณเอง" แล้ววาง',
+        ]
+      : const [
+          'Open the OpenAI API keys page and sign in (email or Google account)',
+          'Add credit first: Settings › Billing › add a card and top up (about US\$5 minimum) — keys do nothing without credit',
+          'Back on API keys › "Create new secret key", name it e.g. GigGok',
+          'Copy the key starting with sk- right away — it is shown only once',
+          'In the app, tap "Your own key" and paste it',
+        ];
+
+  List<String> get keyGuideGemini => isThai
+      ? const [
+          'เปิดหน้า API key ของ Google AI Studio แล้วล็อกอินด้วยบัญชี Google',
+          'กด "Create API key" (ถ้าถามโปรเจกต์ ให้สร้างใหม่หรือเลือกที่มีอยู่)',
+          'คัดลอกคีย์ที่ขึ้นต้นด้วย AIza',
+          'กลับมาที่แอป แตะช่องคีย์ Gemini แล้ววาง',
+          'แผนฟรีใช้ได้ทันที แต่ Google นำข้อมูลไปปรับปรุงบริการ · ไม่ต้องการแบบนั้นให้กด Set up billing ใน AI Studio',
+        ]
+      : const [
+          'Open the Google AI Studio API key page and sign in with Google',
+          'Tap "Create API key" (create or pick a project if asked)',
+          'Copy the key starting with AIza',
+          'In the app, tap the Gemini key row and paste it',
+          'The free tier works right away, but Google uses the data to improve its products — set up billing in AI Studio if you do not want that',
+        ];
+
+  List<String> get keyGuideElevenLabs => isThai
+      ? const [
+          'สมัครหรือล็อกอิน elevenlabs.io (แผนฟรี 10,000 ตัวอักษรต่อเดือน ใช้เชิงพาณิชย์ไม่ได้)',
+          'เปิดหน้า API Keys (เมนูโปรไฟล์ › API Keys)',
+          'กด "Create API Key" ตั้งชื่อ แล้วให้สิทธิ์ Text to Speech และอ่าน Voices เป็นอย่างน้อย',
+          'คัดลอกคีย์ที่ขึ้นต้นด้วย sk_ แล้ววางในช่องคีย์ ElevenLabs ในแอป',
+          'กด "โหลดเสียงในบัญชีของฉัน" แล้วเลือกเสียง · หาเสียงไทยเพิ่มได้จาก Voice Library บนเว็บ แล้วกดโหลดใหม่',
+        ]
+      : const [
+          'Sign up or sign in at elevenlabs.io (free plan: 10,000 characters a month, non-commercial)',
+          'Open the API Keys page (profile menu › API Keys)',
+          'Tap "Create API Key", name it, and allow at least Text to Speech and reading Voices',
+          'Copy the key starting with sk_ and paste it into the ElevenLabs key row',
+          'Tap "Load the voices in my account" and pick one · add Thai voices from the Voice Library on the web, then load again',
+        ];
+
+  List<String> get keyGuideAzure => isThai
+      ? const [
+          'ล็อกอิน portal.azure.com (สมัครต้องยืนยันด้วยบัตร แต่มีแผนฟรี)',
+          'สร้าง resource ใหม่ › ค้นหา "Speech" › เลือก Speech service › Create',
+          'Region เลือกที่ใกล้ไทย เช่น Southeast Asia · Pricing tier เลือก Free F0 (ฟรี 0.5 ล้านตัวอักษรต่อเดือน) หรือ S0',
+          'สร้างเสร็จ › เปิด resource › เมนู "Keys and Endpoint" › คัดลอก KEY 1',
+          'ในหน้าเดียวกันดู "Location/Region" (เช่น southeastasia) · ใส่ทั้งคีย์และภูมิภาคในแอป',
+        ]
+      : const [
+          'Sign in to portal.azure.com (sign-up needs a card, but there is a free tier)',
+          'Create a resource › search "Speech" › Speech service › Create',
+          'Pick a region near you, e.g. Southeast Asia · pricing tier Free F0 (500,000 characters a month) or S0',
+          'When it is ready › open the resource › "Keys and Endpoint" › copy KEY 1',
+          'On the same page read "Location/Region" (e.g. southeastasia) · enter both the key and the region in the app',
+        ];
+
+  // ── ตอนอยู่ในสาย ──
+  String get inCallTitle => pick('ตอนอยู่ในสาย เธอใช้อะไร', 'What she uses on a call');
+  String get inCallListen => pick('ฟังคู่สาย', 'Listens with');
+  String get inCallThink => pick('คิดด้วย', 'Thinks with');
+  String get inCallSpeak => pick('พูดด้วย', 'Speaks with');
+  String get inCallWhere => pick(
+        'เปลี่ยนสมองได้ที่ สมองและเสียง › สมองของเธอ · เปลี่ยนเสียงได้ที่ เสียงพูด › แท็บรับสาย',
+        'Change the brain under Brain & voice › Her brain · change the voice under Voice › the Answering tab',
+      );
+  String get callListenOnDevice => pick(
+        'ถอดเสียงในเครื่อง (Android 13 ขึ้นไป · เสียงคู่สายไม่ออกนอกเครื่อง)',
+        'On-device transcription (Android 13+ · the caller\'s voice never leaves the phone)',
+      );
+  String get callListenOpenAi =>
+      pick('OpenAI whisper-1 ด้วยคีย์ของคุณ', 'OpenAI whisper-1 with your key');
+  String get callListenProxy =>
+      pick('บริการของเรา (ใช้ไลเซนส์ของเครื่อง)', 'Our service (uses this device\'s license)');
+  String get callListenHome => pick('เซิร์ฟเวอร์ในบ้านของคุณ', 'Your home server');
 
   // ── รุ่น / เสียง / สไตล์ ──
   String get premiumModel => pick('รุ่นเสียง', 'Voice model');
