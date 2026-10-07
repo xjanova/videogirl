@@ -973,6 +973,12 @@ class S {
         'This phone will not let her hear the call. Type and she will say it — '
             'the caller still hears her fine.',
       );
+  String get callMicBlocked => _(
+        'ระบบของเครื่องกำลังปิดไมค์ของเธอ เธอจึงไม่ได้ยินปลายสาย (ไม่ใช่ปลายสายเงียบ) · '
+            'ให้จอเธอเปิดค้างไว้ อย่าสลับไปแอปอื่น และเปิด "ให้มายด์ได้ยินสาย" ในการช่วยเหลือพิเศษ',
+        'The phone is silencing her microphone, so she cannot hear the caller (they are not just quiet) · '
+            'keep her screen on, stay in the app, and turn on "Let Mind hear calls" in Accessibility',
+      );
   String get callMuteWarn => _(
         'เปิดลำโพงเข้าสายไม่ได้ ปลายสายจะไม่ได้ยินเธอ ลองสลับช่องเสียงในหน้าตั้งค่า',
         'Speakerphone was refused — the caller will not hear her. '

@@ -121,13 +121,16 @@ class InCallActivity : Activity() {
      *
      * ไม่ทำ = สายเข้าตอนจอดับแล้วไม่มีอะไรขึ้นเลย ซึ่งกับแอปโทรศัพท์หลัก
      * แปลว่ารับสายไม่ได้
+     *
+     * 🔴 **ไม่ขอปลดล็อก** (`requestDismissKeyguard`) · ขึ้นทับจอล็อกพอแล้วสำหรับรับ/วางสาย ·
+     * ขอปลดล็อกบนเครื่องที่ล็อกด้วย PIN = แป้นกรอกรหัสเด้งขึ้นมาบังจอสายตั้งแต่กริ่งดัง แล้ว
+     * หมดเวลาจอดับในไม่กี่วินาที (จอที่ถูกบังไม่นับเป็นจอที่ขอติดค้าง) · จอดับระหว่างที่เธอถือสาย
+     * = ไมค์ของเธอได้แต่ความเงียบ (ดู [CallScreen])
      */
     private fun showOverLockScreen() {
         if (Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
-            (getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager)
-                ?.requestDismissKeyguard(this, null)
         } else {
             @Suppress("DEPRECATION")
             window.addFlags(
@@ -289,6 +292,8 @@ class InCallActivity : Activity() {
             cancelAutoAnswer()
             autoHint.text = ""
         }
+        // จอติดค้างตลอดที่เธอถือสาย (ทั้งตอนอยู่จอนี้ และตอนจอนี้อยู่ใต้จอเธอ) · ดู [CallScreen]
+        CallScreen.apply(this)
         if (mindOn && state == Call.STATE_ACTIVE) handToFlutter()
     }
 

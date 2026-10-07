@@ -60,6 +60,8 @@ class MindInCallService : InCallService() {
             CallAudio.close(this)
             mindHandling = false
             mindOutgoing = false
+            // จอกลับไปดับตามเวลาพักจอปกติ · ดู [CallScreen]
+            MainActivity.syncCallScreen()
             service = null
             InCallActivity.dismiss(this)
             // จอเธอที่ขึ้นทับจอล็อกระหว่างสาย ต้องถอนตัวทันทีที่สายจบ
@@ -101,6 +103,9 @@ class MindInCallService : InCallService() {
     }
 
     private fun notifyChanged() {
+        // จอติดค้างตลอดที่เธอถือสาย · จอดับ = ระบบส่งความเงียบให้ไมค์ของเธอ (ดู [CallScreen])
+        // · จอสายเนทีฟซิงก์เองตอน render จากประกาศข้างล่าง
+        MainActivity.syncCallScreen()
         sendBroadcast(Intent(ACTION_CALL_CHANGED).setPackage(packageName))
     }
 
@@ -188,6 +193,10 @@ class MindInCallService : InCallService() {
         private fun activeCall(): Call? =
             service?.calls?.firstOrNull { stateOf(it) == Call.STATE_ACTIVE }
 
+        /** เธอถือสายที่ต่อติดแล้วอยู่ตอนนี้ (ไม่ใช่แค่กำลังดัง/กำลังโทรออก) */
+        @JvmStatic
+        fun mindLive(): Boolean = mindHandling && activeCall() != null
+
         /** มีมากกว่าหนึ่งสายอยู่ตอนนี้ไหม — สายซ้อน */
         @JvmStatic
         fun hasOtherCall(): Boolean = (service?.calls?.size ?: 0) > 1
@@ -243,6 +252,8 @@ class MindInCallService : InCallService() {
                 "mind" to mindHandling,
                 "mindOutgoing" to mindOutgoing,
                 "speaker" to speakerOn(),
+                // ระบบกำลังส่งความเงียบให้ไมค์ของเธอไหม (null = ไม่รู้) · ดู CallAudio.micSilenced
+                "micSilenced" to CallAudio.micSilenced(context),
                 "number" to number,
                 "name" to CallBridge(context).nameFor(number),
                 "outgoing" to (state == Call.STATE_DIALING || state == Call.STATE_CONNECTING)
@@ -267,7 +278,10 @@ class MindInCallService : InCallService() {
                 call.answer(VideoProfile.STATE_AUDIO_ONLY)
                 watchForSilence(context.applicationContext, call)
             }
-            return CallAudio.open(context, stream)
+            val ok = CallAudio.open(context, stream)
+            // สายที่ต่อติดอยู่แล้ว (เจ้าของส่งคืนให้เธอ) ไม่มีสถานะเปลี่ยนมาเรียก [notifyChanged]
+            MainActivity.syncCallScreen()
+            return ok
         }
 
         /**
@@ -298,6 +312,7 @@ class MindInCallService : InCallService() {
         fun handOver(context: android.content.Context) {
             mindHandling = false
             CallAudio.handOver(context)
+            MainActivity.syncCallScreen()
         }
 
         /** วางสายที่กำลังดังหรือกำลังคุยอยู่ ผ่านสายที่ระบบส่งมาให้เราโดยตรง */

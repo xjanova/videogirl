@@ -4,6 +4,8 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
+import android.media.MediaRecorder
+import android.os.Build
 import android.telecom.CallAudioState
 
 /**
@@ -129,6 +131,36 @@ object CallAudio {
         reasserts++
         service.setAudioRoute(CallAudioState.ROUTE_SPEAKER)
     }
+
+    /**
+     * ระบบกำลังส่ง**ความเงียบ**ให้ไมค์ของเธอไหม · null = ไม่รู้ (Android ต่ำกว่า 10 / ไมค์ยังไม่เปิด)
+     *
+     * 🔴 ไมค์ที่ถูกปิดเงียบไม่มี error · ได้ก้อนเสียงครบ ขนาดถูก แต่เป็นศูนย์ทั้งหมด · ของเดิมเดา
+     * จากระดับเสียง (เงียบสนิท 25 วิ) ซึ่งแยกไม่ออกว่าเครื่องปิด หรือห้องเงียบ/คู่สายไม่พูด ·
+     * Android 10+ บอกตรง ๆ ผ่าน `isClientSilenced` ("silenced by the audio framework due to
+     * concurrent capture policy") · ระหว่างสายสาเหตุมีสองอย่าง: ยังไม่ได้เปิดการช่วยเหลือพิเศษ
+     * หรือจอแอปไม่ได้อยู่บนสุด (จอดับ/สลับแอป) — ดู [CallScreen]
+     *
+     * รายการที่ระบบให้แอปทั่วไปเป็นแบบไม่บอกเจ้าของ · ระบุของเธอจากรูปแบบที่ CallSession เปิด
+     * (VOICE_RECOGNITION 16 kHz) · เป็นของแอปอื่นที่ไม่ถูกปิด = ตอบ false (ไม่ฟันธงว่าเงียบ)
+     */
+    fun micSilenced(context: Context): Boolean? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
+        val mine = try {
+            am.activeRecordingConfigurations.filter {
+                it.clientAudioSource == MediaRecorder.AudioSource.VOICE_RECOGNITION &&
+                    it.clientFormat.sampleRate == MIC_RATE
+            }
+        } catch (e: Exception) {
+            return null
+        }
+        if (mine.isEmpty()) return null
+        return mine.all { it.isClientSilenced }
+    }
+
+    /// อัตราที่ไมค์ของทั้งสายเปิด · ต้องตรงกับ `_rate` ใน lib/phone/call_session.dart
+    private const val MIC_RATE = 16000
 
     /**
      * เจ้าของแทรกสาย — คืนเสียงให้หูฟังแล้วหยุดเธอทันที
