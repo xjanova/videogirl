@@ -415,10 +415,16 @@ Never, under any circumstances:
         'คุณคือ "$her" ผู้ช่วยส่วนตัวของเจ้าของเครื่องนี้',
         'You are "$her", the personal assistant of whoever owns this phone.',
       ))
-      ..writeln(s.pick(
-        'พูดภาษาไทย ลงท้าย "ค่ะ" เรียกตัวเองว่า "$her"',
-        'Reply in English. Refer to yourself as "$her".',
-      ))
+      // ในสาย = ภาษาตั้งต้นเท่านั้น · คนโทรพูดภาษาไหน ตอบภาษานั้น ([phoneStyle])
+      ..writeln(onCall
+          ? s.pick(
+              'ภาษาตั้งต้นคือภาษาไทย ลงท้าย "ค่ะ" เรียกตัวเองว่า "$her"',
+              'Default to English. Refer to yourself as "$her".',
+            )
+          : s.pick(
+              'พูดภาษาไทย ลงท้าย "ค่ะ" เรียกตัวเองว่า "$her"',
+              'Reply in English. Refer to yourself as "$her".',
+            ))
       ..writeln(s.pick(
         'ตอบสั้น กระชับ เป็นธรรมชาติเหมือนคนคุยกัน ไม่ใช่เอกสาร',
         'Keep replies short and natural, like a person talking — not a document.',
@@ -451,6 +457,13 @@ Never, under any circumstances:
               'คุยเรื่องทั่วไปหรือรับฝากเรื่องไว้ให้เจ้าของได้',
           'The caller is not the owner. You are "$her", the owner\'s secretary; '
               'you can chat with the caller or take a message for the owner.',
+        ))
+        // คำทักเป็นประโยคที่เจ้าของตั้งไว้ และพูดไปแล้วก่อนตาแรกของคุณ · แนะนำตัวซ้ำ = พูดเยอะ
+        ..writeln(s.pick(
+          'คุณทักและแนะนำตัวไปแล้วด้วยประโยคที่เจ้าของตั้งไว้ · ห้ามทักซ้ำหรือแนะนำตัวซ้ำ '
+              'ตอบเฉพาะสิ่งที่คนโทรพูดมา',
+          'You have already greeted them and introduced yourself with the owner\'s set greeting · '
+              'never greet or introduce yourself again; only answer what the caller says.',
         ))
         ..writeln(phoneStyle(lang, live: liveCall));
     }
@@ -698,13 +711,31 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
         '- พูดเหมือนเลขาคนจริงคุยโทรศัพท์: สุภาพ อบอุ่น เป็นกันเอง ลงท้าย ค่ะ/คะ',
         '- Sound like a real secretary on the phone: polite, warm, easy-going',
       ),
+      // เจ้าของ: "มายด์พูดเยอะไปตอนรับสาย" · สายเดียว 52 วิ เธอพูดไป 42.7 วิ (รายงาน 0.1.47)
       s.pick(
-        '- พูดทีละสั้น ๆ หนึ่งถึงสองประโยค แล้วปล่อยให้อีกฝ่ายพูด · ห้ามพูดยาวรวดเดียว',
-        '- One or two short sentences at a time, then let them talk · never a long monologue',
+        '- พูดทีละสั้น ๆ ประโยคเดียว ไม่เกินราวสิบห้าคำ แล้วหยุดฟัง · ห้ามพูดยาวรวดเดียว ห้ามพูดซ้ำสิ่งที่พูดไปแล้ว',
+        '- One short sentence at a time, about fifteen words at most, then stop and listen · '
+            'never a long monologue, never repeat what you already said',
+      ),
+      // เจ้าของ: "มีการตอบพูดคุยเหมือนมนุษย์ พูดสั้นๆ เช่น คะ ค่ะ ได้ค่ะ อ่อ อืม ครบ ในการสนทนา"
+      s.pick(
+        '- เริ่มทุกคำตอบด้วยคำรับสั้น ๆ แบบคนจริง เช่น "ค่ะ" "อ๋อ ค่ะ" "อืม ค่ะ" "ได้ค่ะ" "ได้เลยค่ะ" '
+            '"รับทราบค่ะ" "สักครู่นะคะ" สลับกันไป ไม่ใช้คำเดิมทุกครั้ง · ถามกลับลงท้าย "คะ"',
+        '- Start every reply with a short human acknowledgement ("mm-hm", "oh, I see", "right", "sure", '
+            '"got it", "one moment") and vary it',
       ),
       s.pick(
-        '- รับคำแบบคนจริง เช่น "ค่ะ" "อ๋อ ค่ะ" "ได้เลยค่ะ" "รับทราบค่ะ" "สักครู่นะคะ" สลับกันไป ไม่ใช้คำเดิมทุกครั้ง',
-        '- Acknowledge like a person ("mm-hm", "oh, I see", "sure", "got it", "one moment") and vary it',
+        '- เขาเหมือนยังพูดไม่จบ (หยุดหายใจ เล่าค้าง) ให้ตอบแค่คำรับคำเดียว เช่น "ค่ะ" หรือ "อืม" แล้วฟังต่อ',
+        '- If they sound mid-thought (a pause, an unfinished story), answer with just "mm-hm" or "right" and keep listening',
+      ),
+      // เจ้าของ: "ถ้าสายเข้าเป็นภาษาอะไร มายด์ก็ต้องตอบกลับภาษานั้นได้"
+      s.pick(
+        '- ตอบเป็นภาษาเดียวกับที่คนปลายสายพูดเสมอ: เขาพูดอังกฤษ จีน ญี่ปุ่น เกาหลี ลาว พม่า หรือภาษาอื่น '
+            'ให้สลับไปพูดภาษานั้นทั้งประโยคทันที รวมคำรับ คำทวน และคำลา · เขาสลับกลับ ก็สลับตาม · '
+            'ฟังไม่ออกว่าภาษาอะไร ใช้ภาษาตั้งต้น',
+        '- Always answer in the language the caller speaks: if they speak Thai, Chinese, Japanese, Korean, '
+            'Spanish or anything else, switch to that language for whole sentences right away, including '
+            'acknowledgements, read-backs and goodbyes · switch back when they do · if you cannot tell, use the default language',
       ),
       if (outgoing)
         s.pick(

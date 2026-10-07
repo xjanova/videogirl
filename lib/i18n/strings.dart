@@ -925,6 +925,16 @@ class S {
         'ปลายสายรับสายแล้ว ทักทาย แนะนำตัว และบอกว่าโทรมาเรื่องอะไร',
         'They have picked up. Greet them, introduce yourself, and say why you are calling.',
       );
+  String get callGreetingLabel => _('คำทักตอนรับสาย', 'What she says when she answers');
+  String get callGreetingHint => _(
+        'น้องมายพูดตามนี้คำต่อคำ แล้วหยุดฟังคนโทร · ว่างไว้ = คำทักตั้งต้น · '
+            'เปิดบันทึกเสียงอยู่ จะต่อท้ายว่า "สายนี้มีการบันทึกเสียงไว้นะคะ" ให้ทุกครั้ง (ไม่อยากให้มี ปิดบันทึกเสียง)',
+        'Mai says exactly this, then stops and listens · empty = the default greeting · '
+            'while recording is on, "Please note this call is being recorded." is always added (turn recording off to drop it)',
+      );
+  /// คำที่บอกว่าคำทักพูดถึงการบันทึกเสียงเองแล้ว (ไม่ต่อประโยคบันทึกซ้ำ) · ดู MindState.callGreeting
+  String get recordingWord => _('บันทึก', 'record');
+  String get callGreetingDefault => _('ใช้คำทักตั้งต้น', 'Using the default greeting');
   String get callerNameLabel => _('ชื่อที่น้องมายใช้เรียกคุณตอนโทรแทน', 'Name Mai uses for you on calls');
   String get callerNameHint => _(
         'เช่น "ต้น" → "น้องมาย เลขาของคุณต้นค่ะ" · ว่างไว้ = "เลขาของเจ้าของเบอร์นี้"',
