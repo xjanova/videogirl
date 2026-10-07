@@ -36,6 +36,7 @@ import '../widgets/liquid_background.dart';
 import '../widgets/screen_header.dart';
 import '../ai/openai_client.dart';
 import '../i18n/strings_settings.dart';
+import '../phone/call_knowledge.dart';
 import '../phone/call_session.dart';
 import '../studio/mind_studio.dart';
 import '../system/app_life.dart';
@@ -1369,6 +1370,32 @@ class _SettingsScreenState extends State<SettingsScreen>
           const SizedBox(height: 7),
           Text(S.of(context).flirtNote,
               style: const TextStyle(fontSize: 10.5, color: MindColors.ink50)),
+        ],
+      ),
+    );
+  }
+
+  /// แถวในการ์ดรับสาย: หัวข้อ + ค่าตอนนี้ (บรรทัดเดียว) + ปุ่มแก้
+  Widget _callTextRow({required String label, required String value, required VoidCallback onTap}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 3,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+              ],
+            ),
+          ),
+          const Icon(Icons.edit_rounded, size: 18, color: MindColors.ink45),
         ],
       ),
     );
@@ -3354,6 +3381,65 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             ),
             const SizedBox(height: 10),
+            // ข้อมูลที่น้องมายใช้ตอบสาย · ตอบได้แค่ไหน · ห้ามตอบอะไร
+            // เจ้าของ: "ให้พร้อมข้อมูลหรืออัพโหลดไฟล์ที่มายด์จะใช้ตอบได้แค่ไหนไว้ ห้ามตอบอะไรไว้ได้"
+            _callTextRow(
+              label: S.of(context).callKnowledgeLabel,
+              value: state.callKnowledge.isEmpty
+                  ? S.of(context).callKnowledgeEmpty
+                  : '${S.of(context).callKnowledgeSize(state.callKnowledge.length)} · '
+                      '${state.callKnowledge.split('\n').first}',
+              onTap: () => unawaited(_editText(
+                state: state,
+                mode: mode,
+                title: S.of(context).callKnowledgeLabel,
+                hint: S.of(context).callKnowledgeHint,
+                value: state.callKnowledge,
+                onSave: state.setCallKnowledge,
+                onReset: () => '',
+                onImport: CallKnowledge.pick,
+              )),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 3,
+                    children: [
+                      Text(S.of(context).callOnlyKnowledge,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text(S.of(context).callOnlyKnowledgeHint,
+                          style: const TextStyle(
+                              fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                    ],
+                  ),
+                ),
+                _toggle(
+                  on: state.callOnlyKnowledge,
+                  mode: mode,
+                  onTap: () => state.setCallOnlyKnowledge(!state.callOnlyKnowledge),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _callTextRow(
+              label: S.of(context).callNoGoLabel,
+              value: state.callNoGo.isEmpty
+                  ? S.of(context).callNoGoEmpty
+                  : state.callNoGo.replaceAll('\n', ' · '),
+              onTap: () => unawaited(_editText(
+                state: state,
+                mode: mode,
+                title: S.of(context).callNoGoLabel,
+                hint: S.of(context).callNoGoHint,
+                value: state.callNoGo,
+                onSave: state.setCallNoGo,
+                onReset: () => '',
+              )),
+            ),
+            const SizedBox(height: 10),
             // ชื่อที่น้องมายใช้ตอนโทรออกแทน ("เลขาของคุณต้นค่ะ")
             GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -4598,6 +4684,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     required String value,
     required void Function(String) onSave,
     required String Function() onReset,
+    Future<String?> Function()? onImport,
   }) async {
     final result = await Navigator.of(context).push<String?>(
       MaterialPageRoute(
@@ -4607,6 +4694,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           initial: value,
           mode: mode,
           onReset: onReset,
+          onImport: onImport,
         ),
       ),
     );

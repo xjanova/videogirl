@@ -18,7 +18,12 @@ class TextEditorScreen extends StatefulWidget {
     required this.mode,
     required this.onReset,
     this.readOnly = false,
+    this.onImport,
   });
+
+  /// ปุ่ม "นำเข้าจากไฟล์" · null = ไม่มีปุ่ม · คืน null = ยกเลิก · '' = อ่านไม่ได้ ·
+  /// ข้อความ = ต่อท้ายของเดิม (ว่างอยู่ = แทนที่)
+  final Future<String?> Function()? onImport;
 
   /// ดูอย่างเดียว · ไม่มีปุ่มบันทึก ไม่มีคืนค่า และแก้ไม่ได้
   ///
@@ -88,6 +93,18 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     if (leave == true && mounted) Navigator.of(context).pop<String?>(null);
   }
 
+  Future<void> _import() async {
+    final got = await widget.onImport!();
+    if (got == null || !mounted) return;
+    if (got.trim().isEmpty) {
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(SnackBar(content: Text(S.of(context).importFailed)));
+      return;
+    }
+    final now = _text.text.trimRight();
+    setState(() => _text.text = now.isEmpty ? got : '$now\n\n$got');
+  }
+
   Future<void> _reset() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -141,6 +158,13 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                             style: const TextStyle(
                                 fontSize: 17, fontWeight: FontWeight.w700)),
                       ),
+                      if (!widget.readOnly && widget.onImport != null)
+                        TextButton(
+                          onPressed: _import,
+                          child: Text(S.of(context).importFromFile,
+                              style: const TextStyle(
+                                  fontSize: 12, color: MindColors.ink60)),
+                        ),
                       if (!widget.readOnly)
                         TextButton(
                           onPressed: _reset,

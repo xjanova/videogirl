@@ -935,6 +935,37 @@ class S {
   /// คำที่บอกว่าคำทักพูดถึงการบันทึกเสียงเองแล้ว (ไม่ต่อประโยคบันทึกซ้ำ) · ดู MindState.callGreeting
   String get recordingWord => _('บันทึก', 'record');
   String get callGreetingDefault => _('ใช้คำทักตั้งต้น', 'Using the default greeting');
+  String get callKnowledgeLabel => _('ข้อมูลที่น้องมายใช้ตอบสาย', 'What Mai can tell callers');
+  String get callKnowledgeHint => _(
+        'เช่น เวลาทำการ ที่อยู่ร้าน ราคา บริการ คำถามที่ลูกค้าถามบ่อย · น้องมายตอบตามนี้ ไม่แต่งเพิ่ม · '
+            'พิมพ์เอง หรือกด "นำเข้าจากไฟล์" (txt, md, csv, json, Word .docx · PDF ให้คัดลอกข้อความมาวาง) · '
+            '🔴 ทุกอย่างในนี้คนโทรอาจได้ยิน ห้ามใส่รหัส เลขบัญชี หรือเรื่องส่วนตัว',
+        'e.g. opening hours, address, prices, services, common questions · Mai answers from this and adds nothing · '
+            'type it or tap "Import from file" (txt, md, csv, json, Word .docx · for a PDF, copy and paste the text) · '
+            '🔴 callers may hear anything in here — no passwords, account numbers or private matters',
+      );
+  String get callKnowledgeEmpty => _('ยังไม่ได้ใส่ · แตะเพื่อใส่ข้อมูล', 'Nothing yet · tap to add');
+  String callKnowledgeSize(int n) => _('$n ตัวอักษร', '$n characters');
+  String get callOnlyKnowledge => _('ตอบได้เฉพาะเรื่องในข้อมูลนี้', 'Answer only from this information');
+  String get callOnlyKnowledgeHint => _(
+        'เปิด = เรื่องที่ไม่มีในข้อมูล น้องมายไม่ตอบเอง จะรับเรื่องและเบอร์ไว้แจ้งคุณ · '
+            'ปิด = คุยเรื่องทั่วไปได้ตามขอบเขต',
+        'On = anything not in the information, Mai will not answer herself; she takes the matter and a number for you · '
+            'Off = she may chat about general things within her boundaries',
+      );
+  String get callNoGoLabel => _('เรื่องที่ห้ามตอบคนโทร', 'Topics Mai must not answer');
+  String get callNoGoHint => _(
+        'เขียนทีละบรรทัด เช่น "ราคาส่ง" "เบอร์มือถือเจ้าของ" "ว่าเจ้าของอยู่ที่ไหน" · '
+            'ถูกถามแล้วน้องมายจะปฏิเสธสุภาพ แล้วรับฝากเรื่องไว้ · ข้อนี้ชนะข้อมูลข้างบนเสมอ',
+        'One per line, e.g. "wholesale prices", "the owner\'s mobile number", "where the owner is" · '
+            'if asked, Mai politely declines and offers to take a message · this always beats the information above',
+      );
+  String get callNoGoEmpty => _('ยังไม่ได้ตั้ง', 'None set');
+  String get importFromFile => _('นำเข้าจากไฟล์', 'Import from file');
+  String get importFailed => _(
+        'อ่านไฟล์นี้ไม่ได้ · ใช้ได้กับ txt md csv json และ Word .docx (PDF ให้คัดลอกข้อความมาวาง)',
+        'Could not read that file · txt, md, csv, json and Word .docx work (for a PDF, copy and paste the text)',
+      );
   String get callerNameLabel => _('ชื่อที่น้องมายใช้เรียกคุณตอนโทรแทน', 'Name Mai uses for you on calls');
   String get callerNameHint => _(
         'เช่น "ต้น" → "น้องมาย เลขาของคุณต้นค่ะ" · ว่างไว้ = "เลขาของเจ้าของเบอร์นี้"',
