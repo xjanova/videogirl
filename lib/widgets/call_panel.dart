@@ -61,7 +61,9 @@ class _CallPanelState extends State<CallPanel> {
           if (call.mute) _warn(t.callMuteWarn, const Color(0xFFD93A5B))
           else if (call.speakerOff)
             _warn(t.callSpeakerOff, const Color(0xFFD93A5B), onTap: call.speakerOn),
-          if (call.deaf) _warn(t.callDeaf, const Color(0xFFB07A16)),
+          // ระบบปิดไมค์ = รู้สาเหตุแน่ชัดกว่า "หูหนวก" (เดาจากความเงียบ) · บอกอันที่ชัดกว่า
+          if (call.micBlocked) _warn(t.callMicBlocked, const Color(0xFFD93A5B))
+          else if (call.deaf) _warn(t.callDeaf, const Color(0xFFB07A16)),
           if (call.error != null) _warn(call.error!, const Color(0xFFD93A5B)),
           if (call.lines.isNotEmpty) _transcript(call, mode),
           // เจ้าของแทรกสายไปแล้ว = เขาคุยเอง · ช่องพิมพ์ตอนนั้นเป็นปุ่มที่

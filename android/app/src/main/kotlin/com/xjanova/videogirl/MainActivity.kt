@@ -306,6 +306,12 @@ class MainActivity : FlutterActivity() {
         overLockFrom(intent)
     }
 
+    /// ขึ้นมาบนจอระหว่างสายที่เธอถืออยู่แล้ว (จอสายส่งต่อมา) · ติดจอค้างให้ทันที · ดู [CallScreen]
+    override fun onResume() {
+        super.onResume()
+        CallScreen.apply(this)
+    }
+
     /// ขึ้นทับจอล็อกอยู่ไหม (เฉพาะระหว่างสายที่เธอถือ)
     private var overLock = false
 
@@ -559,6 +565,17 @@ class MainActivity : FlutterActivity() {
             a.setOverLock(false)
             val keyguard = a.getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
             if (keyguard?.isKeyguardLocked == true) a.moveTaskToBack(true)
+        }
+
+        /**
+         * ติดจอค้างตลอดที่เธอถือสาย ปล่อยเมื่อสายจบ/เจ้าของแทรกสาย · ดู [CallScreen]
+         *
+         * เรียกจาก [MindInCallService] ทุกครั้งที่สถานะสายเปลี่ยน (เธรดหลัก)
+         */
+        @JvmStatic
+        fun syncCallScreen() {
+            val a = live?.get() ?: return
+            CallScreen.apply(a)
         }
 
         /// ฝั่ง Dart (ที่เป็นคนคุยในสายจริง ๆ) ยังมีชีวิตอยู่ไหม

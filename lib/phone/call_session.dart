@@ -171,6 +171,22 @@ class CallSession extends ChangeNotifier {
   /// สายนี้เคยเห็นลำโพงปิดระหว่างที่เธอถือสาย · ลงรายงาน
   bool _speakerLost = false;
 
+  /// **ระบบ**กำลังส่งความเงียบให้ไมค์ของเธอ (ไม่ใช่ปลายสายเงียบ) เกินสองวินาที
+  ///
+  /// 🔴 เจ้าของ: "มายด์ก็ไม่ได้ยินเสียงที่พูดมาเลย" · ไมค์ที่ถูกปิดเงียบไม่มี error ได้ศูนย์ล้วน ·
+  /// ของเดิมรู้ได้จากระดับเสียงเท่านั้น (เงียบสนิท 25 วิ) ซึ่งแยกไม่ออกจากห้องเงียบ ·
+  /// Android 10+ บอกตรง ๆ (ฝั่งเนทีฟ `CallAudio.micSilenced`) · สาเหตุระหว่างสาย: ยังไม่เปิด
+  /// การช่วยเหลือพิเศษ หรือจอแอปไม่ได้อยู่บนสุด (จอดับ/สลับแอป · ฝั่งเนทีฟติดจอค้างให้แล้ว)
+  /// · ไม่ตั้ง [deaf] ให้ · ปิดชั่วคราว (สลับแอปแล้วกลับมา) ต้องฟังต่อได้เอง
+  DateTime? _micBlockedSince;
+  bool get micBlocked {
+    final since = _micBlockedSince;
+    return since != null && DateTime.now().difference(since) > const Duration(seconds: 2);
+  }
+
+  /// สายนี้เคยเห็นระบบปิดไมค์ของเธอ · ลงรายงาน
+  bool _micBlockedSeen = false;
+
   String? _error;
   String? get error => _error;
 
@@ -247,6 +263,13 @@ class CallSession extends ChangeNotifier {
     } else {
       _speakerOffSince = null;
     }
+    // ไม่ตอบ/ไม่รู้ (null · Android ต่ำกว่า 10) = ไม่เตือน · ดู [micBlocked]
+    if (mind && _turn != CallTurn.handedOver && info?['micSilenced'] == true) {
+      _micBlockedSince ??= DateTime.now();
+      if (micBlocked) _micBlockedSeen = true;
+    } else {
+      _micBlockedSince = null;
+    }
     _notify();
   }
 
@@ -309,6 +332,7 @@ class CallSession extends ChangeNotifier {
     _turn = CallTurn.none;
     _micLevel = 0;
     _speakerOffSince = null;
+    _micBlockedSince = null;
     if (!wasLive) return;
 
     _endRealtime();
@@ -1230,10 +1254,10 @@ class CallSession extends ChangeNotifier {
     final herQuiet = _herSpoke && !_deaf && _peakEver >= _floorMin && _echoPeak < _echoMin;
     final line = 'call: rounds=$_rounds heard=$_heardRounds '
         'peak=${_peakEver.toStringAsFixed(3)} echo=${_echoPeak.toStringAsFixed(3)} '
-        'deaf=$_deaf mute=$_mute spkLost=$_speakerLost a11y=$a11y '
+        'deaf=$_deaf mute=$_mute spkLost=$_speakerLost silenced=$_micBlockedSeen a11y=$a11y '
         'stream=${_state.callStream}';
     debugPrint(line);
-    if (_deaf || _mute || _speakerLost || herQuiet || (_rounds > 0 && _heardRounds == 0)) {
+    if (_deaf || _mute || _speakerLost || _micBlockedSeen || herQuiet || (_rounds > 0 && _heardRounds == 0)) {
       _state.noteIncident(line);
     }
     _rounds = 0;
@@ -1242,6 +1266,7 @@ class CallSession extends ChangeNotifier {
     _echoPeak = 0;
     _herSpoke = false;
     _speakerLost = false;
+    _micBlockedSeen = false;
   }
 
   @override
