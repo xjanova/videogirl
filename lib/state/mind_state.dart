@@ -165,6 +165,25 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
+  /// คำทักตอนรับสายที่เจ้าของตั้งเอง · ว่าง = คำทักตั้งต้น ([S.callGreeting])
+  ///
+  /// เจ้าของ: "มายด์พูดเยอะไปตอนรับสาย สอนให้พูดแค่คำที่เราตั้ง (ตั้งค่าได้ เมื่อรับสายให้พูด
+  /// ว่าอะไร เหมือนตอนโทรออกที่ตั้งได้)" · ดู [callGreeting]
+  String _callGreetingText = '';
+  String get callGreetingText => _callGreetingText;
+
+  /// เพดานความยาวคำทัก · ประโยคทักที่ยาวกว่านี้คือสิ่งที่เจ้าของบ่นว่า "พูดเยอะไป" เอง
+  static const callGreetingMax = 160;
+
+  void setCallGreetingText(String v) {
+    var t = v.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (t.length > callGreetingMax) t = t.substring(0, callGreetingMax);
+    if (t == _callGreetingText) return;
+    _callGreetingText = t;
+    _save('callGreeting', t);
+    _notify();
+  }
+
   /// เธอเขียน `[[โทร: … | …]]` → หาเบอร์ (ชื่อ → สมุดโทรศัพท์) → ขึ้นกล่องยืนยัน
   Future<void> _proposeCall(String target, String task) async {
     // ให้คำตอบของเธอขึ้นจอก่อน แล้วค่อยกล่อง/ข้อความเรื่องโทร · ไม่งั้นลำดับกลับหัว
@@ -508,6 +527,7 @@ class MindState extends ChangeNotifier {
     _showOnCall = p.getBool('showMindOnCall') ?? true;
     _recordCalls = p.getBool('recordCalls') ?? true;
     _callerName = p.getString('callerName') ?? '';
+    _callGreetingText = p.getString('callGreeting') ?? '';
     _realtimeCalls = p.getBool('realtimeCalls') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
     _callStream = p.getString('callStream') ?? callStreamCall;
@@ -1485,11 +1505,24 @@ class MindState extends ChangeNotifier {
   // แยกจากการคุยในแอปทั้งหมด: คนปลายสายไม่ใช่เจ้าของ บุคลิกต่างกัน
   // เสียงต่างกัน และบทสนทนาไม่ควรปนเข้าไปในแชทของเจ้าของ
 
-  /// ประโยคแรกที่เธอพูดเมื่อรับสายแทน
+  /// ประโยคแรกที่เธอพูดเมื่อรับสายแทน · พูดตามนี้คำต่อคำ ไม่แต่งเพิ่ม
   ///
-  /// บันทึกเสียงอยู่ = บอกคู่สายตั้งแต่ประโยคแรก · คนที่ถูกบันทึกควรรู้ตัว
-  String callGreeting() =>
-      _recordCalls ? '${s.callGreeting} ${s.callRecordingNotice}' : s.callGreeting;
+  /// เจ้าของตั้งเองได้ ([callGreetingText]) · ว่าง = คำทักตั้งต้น
+  ///
+  /// 🔴 บันทึกเสียงอยู่ = บอกคู่สายตั้งแต่ประโยคแรกเสมอ แม้เจ้าของตั้งคำทักเอง · คนที่ถูกบันทึก
+  /// ควรรู้ตัว · ไม่อยากให้มีประโยคนี้ = ปิดการบันทึก · ไม่ต่อซ้ำเมื่อคำทักพูดถึงการบันทึกเองแล้ว
+  String callGreeting() {
+    final own = _callGreetingText.trim();
+    final base = own.isEmpty ? s.callGreeting : own;
+    if (!_recordCalls || _mentionsRecording(own)) return base;
+    return '$base ${s.callRecordingNotice}';
+  }
+
+  /// ตรวจทั้งสองภาษา · เจ้าของพิมพ์คำทักเป็นภาษาไหนก็ได้ ไม่ขึ้นกับภาษาของแอป
+  static bool _mentionsRecording(String t) {
+    final l = t.toLowerCase();
+    return AppLang.values.any((lang) => l.contains(S(lang).recordingWord));
+  }
 
   /// บันทึกเสียงสนทนาในสายที่เธอรับแทน · เปิดเป็นค่าตั้งต้น (เจ้าของ: "ทำให้
   /// บันทึกเสียงสนทนาไว้ได้ด้วย") · ไฟล์อยู่ในเครื่องเท่านั้น ลบพร้อมบันทึกสาย

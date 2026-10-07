@@ -1374,6 +1374,41 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  /// แก้คำทักตอนรับสาย · ว่าง = คำทักตั้งต้น · ช่องว่างตั้งต้นเป็นคำทักตั้งต้นให้แก้ต่อได้เลย
+  Future<void> _editCallGreeting(MindState state) async {
+    final s = S.of(context);
+    final ctl = TextEditingController(
+        text: state.callGreetingText.isEmpty ? s.callGreeting : state.callGreetingText);
+    try {
+      final v = await showDialog<String>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text(S.of(c).callGreetingLabel, style: const TextStyle(fontSize: 15)),
+          content: TextField(
+            controller: ctl,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 4,
+            maxLength: MindState.callGreetingMax,
+            decoration: InputDecoration(helperText: S.of(c).callGreetingHint, helperMaxLines: 5),
+          ),
+          actions: [
+            // คืนเป็นคำทักตั้งต้น = บันทึกค่าว่าง
+            TextButton(onPressed: () => Navigator.pop(c, ''), child: Text(S.of(c).resetToDefault)),
+            TextButton(onPressed: () => Navigator.pop(c), child: Text(S.of(c).cancel)),
+            TextButton(onPressed: () => Navigator.pop(c, ctl.text), child: Text(S.of(c).save)),
+          ],
+        ),
+      );
+      if (v == null || !mounted) return;
+      // พิมพ์ทับด้วยคำทักตั้งต้นเดิมเป๊ะ = ไม่ได้ตั้งเอง · เก็บว่างไว้ ให้เปลี่ยนตามภาษาได้
+      state.setCallGreetingText(v.trim() == s.callGreeting ? '' : v);
+    } finally {
+      // ตัวควบคุมของกล่อง ต้องปล่อยหลังกล่องปิด (รอแอนิเมชันปิดจบก่อน · ดู [_editCallerName])
+      unawaited(Future<void>.delayed(const Duration(milliseconds: 600), ctl.dispose));
+    }
+  }
+
   /// แก้ชื่อที่น้องมายใช้เรียกเจ้าของตอนโทรแทน · ว่าง = "เจ้าของเบอร์นี้"
   Future<void> _editCallerName(MindState state) async {
     final ctl = TextEditingController(text: state.callerName);
@@ -3291,6 +3326,32 @@ class _SettingsScreenState extends State<SettingsScreen>
                   onTap: () => state.setShowOnCall(!state.showOnCall),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            // คำทักตอนรับสาย · เจ้าของ: "สอนให้พูดแค่คำที่เราตั้ง (ตั้งค่าได้ เมื่อรับสายให้พูดว่าอะไร)"
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => unawaited(_editCallGreeting(state)),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 3,
+                      children: [
+                        Text(S.of(context).callGreetingLabel,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text(
+                            state.callGreetingText.isEmpty
+                                ? '${S.of(context).callGreetingDefault} · ${state.callGreeting()}'
+                                : state.callGreeting(),
+                            style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.edit_rounded, size: 18, color: MindColors.ink45),
+                ],
+              ),
             ),
             const SizedBox(height: 10),
             // ชื่อที่น้องมายใช้ตอนโทรออกแทน ("เลขาของคุณต้นค่ะ")
