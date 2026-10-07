@@ -187,6 +187,15 @@ class CallSession extends ChangeNotifier {
   /// สายนี้เคยเห็นระบบปิดไมค์ของเธอ · ลงรายงาน
   bool _micBlockedSeen = false;
 
+  /// เสียงเธอที่ Realtime ส่งมาให้เล่นทั้งสาย (PCM 24 kHz 16 บิต = 48 ไบต์ต่อมิลลิวินาที)
+  ///
+  /// แยก "เธอไม่ได้พูดเลย" (0 · ดู [_rtError]) ออกจาก "พูดแล้วแต่ไม่ออกลำโพง" (สูง แต่ echo ≈ 0)
+  /// และ "ออกลำโพงแล้วแต่ปลายสายไม่ได้ยิน" (สูง และ echo สูง = AEC ของเครื่อง)
+  int _rtAudioBytes = 0;
+
+  /// รหัสข้อผิดพลาดล่าสุดจากเซสชันคุยสด · null = ไม่มี
+  String? _rtError;
+
   String? _error;
   String? get error => _error;
 
@@ -552,6 +561,7 @@ class CallSession extends ChangeNotifier {
     _rtGated = !outgoing;
 
     rt.onAudio = (pcm) {
+      _rtAudioBytes += pcm.length;
       unawaited(_invoke('liveAudioWrite', {'pcm': pcm}));
     };
     rt.onResponseStart = () {
@@ -572,6 +582,9 @@ class CallSession extends ChangeNotifier {
       _notify();
     };
     rt.onError = (m) {
+      // ของเดิมทิ้งเงียบเมื่อท่อยังต่ออยู่ · เก็บรหัสไว้ลงรายงาน (ไม่เก็บข้อความ อาจมีเนื้อหา)
+      final code = m.split(':').first.trim().replaceAll(RegExp(r'\s+'), '_');
+      _rtError = code.isEmpty ? 'unknown' : code;
       if (!rt.connected && !ended.isCompleted) {
         dropped = true;
         ended.complete();
@@ -863,6 +876,9 @@ class CallSession extends ChangeNotifier {
 
   Future<bool>? _opening;
 
+  /// มาตรวัดระดับเสียงเคยพังในสายนี้ · บอกครั้งเดียว ไม่ท่วม log ทุก 0.1 วิ
+  bool _levelFailed = false;
+
   Future<bool> _doOpenMic() async {
     if (!await _canListen()) return false;
     try {
@@ -897,7 +913,16 @@ class CallSession extends ChangeNotifier {
         (chunk) {
           _recSink?.add(chunk);
           _recBytes += chunk.length;
-          final level = levelOf(chunk);
+          // 🔴 มาตรวัดพังต้องไม่กั้นเสียงไปถึงเธอ · ของเดิมโยนตรงนี้ทุกก้อน (รายงาน #3681)
+          // แล้วก้อนไม่เคยถึง [_onChunk] · ระดับ 0 แทน แล้วส่งก้อนต่อ
+          double level;
+          try {
+            level = levelOf(chunk);
+          } on Object catch (e) {
+            level = 0;
+            if (!_levelFailed) debugPrint('สาย: วัดระดับเสียงไม่ได้ — $e');
+            _levelFailed = true;
+          }
           if (level > _peakEver) _peakEver = level;
           if (_herPlaying && level > _echoPeak) _echoPeak = level;
           final turn = _onChunk;
@@ -1088,18 +1113,21 @@ class CallSession extends ChangeNotifier {
   /// เป็น public เพื่อให้เทสต์ยิงตรงได้ · ตรรกะแยกเสียงพูดออกจากความเงียบ
   /// คือจุดที่ทั้งฟีเจอร์ตัดสินว่า "เครื่องนี้ให้ฟังไหม" ปล่อยให้ทดสอบ
   /// ผ่านสายจริงอย่างเดียวไม่ได้
+  ///
+  /// 🔴 อ่านผ่าน [ByteData] ห้าม `buffer.asInt16List(offsetInBytes)` · ก้อนจากช่องสื่อสาร
+  /// ของ Flutter เป็น view ซ้อนในก้อนข้อความ ตำแหน่งเริ่มเป็นเลขคี่ได้ (เครื่องจริงได้ 5) ·
+  /// `asInt16List` บนตำแหน่งคี่โยน RangeError ทุกก้อน · ของเดิมโยนก่อนส่งก้อนให้เธอฟัง →
+  /// ไฟล์บันทึกได้ยินคู่สาย แต่เธอไม่ได้ยินอะไรเลยทั้งสาย (รายงาน #3681)
   static double levelOf(Uint8List chunk) {
-    if (chunk.length < 2) return 0;
-    final samples = chunk.buffer.asInt16List(
-      chunk.offsetInBytes,
-      chunk.lengthInBytes ~/ 2,
-    );
+    final n = chunk.lengthInBytes ~/ 2;
+    if (n == 0) return 0;
+    final data = ByteData.sublistView(chunk);
     var sum = 0.0;
-    for (final s in samples) {
-      final v = s / 32768.0;
+    for (var i = 0; i < n; i++) {
+      final v = data.getInt16(i * 2, Endian.little) / 32768.0;
       sum += v * v;
     }
-    return math.sqrt(sum / samples.length);
+    return math.sqrt(sum / n);
   }
 
   /// ห่อ PCM ดิบด้วยหัวไฟล์ WAV · public เพื่อให้เทสต์ยิงตรงได้
@@ -1255,7 +1283,7 @@ class CallSession extends ChangeNotifier {
     final line = 'call: rounds=$_rounds heard=$_heardRounds '
         'peak=${_peakEver.toStringAsFixed(3)} echo=${_echoPeak.toStringAsFixed(3)} '
         'deaf=$_deaf mute=$_mute spkLost=$_speakerLost silenced=$_micBlockedSeen a11y=$a11y '
-        'stream=${_state.callStream}';
+        'stream=${_state.callStream} rtAudioMs=${_rtAudioBytes ~/ 48} rtErr=${_rtError ?? '-'}';
     debugPrint(line);
     if (_deaf || _mute || _speakerLost || _micBlockedSeen || herQuiet || (_rounds > 0 && _heardRounds == 0)) {
       _state.noteIncident(line);
@@ -1267,6 +1295,9 @@ class CallSession extends ChangeNotifier {
     _herSpoke = false;
     _speakerLost = false;
     _micBlockedSeen = false;
+    _rtAudioBytes = 0;
+    _rtError = null;
+    _levelFailed = false;
   }
 
   @override
