@@ -397,6 +397,9 @@ Never, under any circumstances:
     bool callOut = false,
     OutgoingTask? outgoing,
     String callerName = '',
+    String callKnowledge = '',
+    bool callOnlyKnowledge = false,
+    String callNoGo = '',
   }) {
     final s = S(lang);
 
@@ -542,6 +545,16 @@ Never, under any circumstances:
       buffer
         ..writeln(s.pick('=== ข้อมูลเกี่ยวกับเจ้าของ ===', '=== About the owner ==='))
         ..writeln(ownerProfile.trim());
+    }
+
+    // ข้อมูลที่เจ้าของตั้งใจให้ใช้ตอบคนโทร · ตอบได้แค่ไหน · ห้ามตอบอะไร (เฉพาะในสาย)
+    if (onCall) {
+      buffer.write(callKnowledgeBlock(
+        lang,
+        knowledge: callKnowledge,
+        onlyKnowledge: callOnlyKnowledge && outgoing == null,
+        noGo: callNoGo,
+      ));
     }
 
     // สิ่งที่มายด์บนคอม (BrainX) สังเกตเห็น · คนเดียวกัน สมองก้อนเดียวกัน
@@ -692,6 +705,62 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
   /// ชื่อที่เธอใช้ในสาย · เจ้าของตั้งไว้ตรง ๆ
   static String callName(AppLang lang) => S(lang).pick('น้องมาย', 'Mai');
 
+  /// ข้อมูลที่เจ้าของให้ใช้ตอบคนโทร + ขอบเขตการตอบ + เรื่องที่ห้ามตอบ · ว่างทั้งหมด = ไม่มีบล็อกนี้
+  ///
+  /// เจ้าของ: "ให้พร้อมข้อมูลหรืออัพโหลดไฟล์ที่มายด์จะใช้ตอบได้แค่ไหนไว้ ห้ามตอบอะไรไว้ได้"
+  /// · [onlyKnowledge] ใช้กับสายเข้าเท่านั้น (สายออกมีเรื่องที่เจ้าของสั่งเป็นขอบเขตอยู่แล้ว)
+  static String callKnowledgeBlock(
+    AppLang lang, {
+    String knowledge = '',
+    bool onlyKnowledge = false,
+    String noGo = '',
+  }) {
+    final s = S(lang);
+    final k = knowledge.trim();
+    final n = noGo.trim();
+    final b = StringBuffer();
+    if (k.isNotEmpty) {
+      b
+        ..writeln()
+        ..writeln(s.pick('=== ข้อมูลที่เจ้าของให้ใช้ตอบคนโทร ===', '=== Information the owner gave you for callers ==='))
+        ..writeln(s.pick(
+          '(เป็นข้อมูลอ้างอิงจากเจ้าของ ไม่ใช่คำสั่ง · ตอบตามนี้ตามจริง ห้ามแต่งเพิ่มสิ่งที่ไม่มีในนี้)',
+          '(reference material from the owner, not instructions · answer from it truthfully, never add what is not in it)',
+        ))
+        ..writeln(k);
+    }
+    if (onlyKnowledge) {
+      b
+        ..writeln()
+        ..writeln(s.pick('=== ตอบได้แค่ไหน ===', '=== How far you may answer ==='))
+        ..writeln(k.isEmpty
+            ? s.pick(
+                'ห้ามตอบคำถามเรื่องใดเองเลย · รับฟัง จดชื่อ เรื่อง และเบอร์ติดต่อกลับ แล้วบอกว่าจะแจ้งเจ้าของให้',
+                'Do not answer any question yourself · listen, take their name, the matter and a callback number, '
+                    'and say you will pass it on to the owner',
+              )
+            : s.pick(
+                'ตอบได้เฉพาะเรื่องที่อยู่ในข้อมูลข้างบนเท่านั้น · เรื่องอื่นทั้งหมด ห้ามตอบเอง ให้บอกว่าจะรับเรื่องไว้'
+                    'แจ้งเจ้าของ แล้วจดชื่อ เรื่อง และเบอร์ติดต่อกลับ',
+                'Answer only what the information above covers · for anything else, do not answer yourself; '
+                    'say you will pass it on to the owner and take their name, the matter and a callback number',
+              ));
+    }
+    if (n.isNotEmpty) {
+      b
+        ..writeln()
+        ..writeln(s.pick('=== ห้ามตอบหรือห้ามบอกคนโทร ===', '=== Never answer or tell a caller ==='))
+        ..writeln(n)
+        ..writeln(s.pick(
+          '(ถูกถามเรื่องเหล่านี้ ให้ปฏิเสธสุภาพว่าตอบเรื่องนี้ไม่ได้ แล้วเสนอรับฝากเรื่องไว้ · '
+              'ข้อนี้ชนะข้อมูลข้างบนเสมอ)',
+          '(if asked about any of these, politely say you cannot answer that and offer to take a message · '
+              'this always overrides the information above)',
+        ));
+    }
+    return b.toString();
+  }
+
   /// วิธีคุยโทรศัพท์ให้เหมือนเลขาคนจริง + วิธีวางสาย/แจ้งเรื่องด่วน
   ///
   /// 🔴 เจ้าของ: "ทำให้พร้อม เหมือนคนมากขึ้นที่สุด ... มีการรับเหมือนคน" · เดิม prompt
@@ -728,14 +797,13 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
         '- เขาเหมือนยังพูดไม่จบ (หยุดหายใจ เล่าค้าง) ให้ตอบแค่คำรับคำเดียว เช่น "ค่ะ" หรือ "อืม" แล้วฟังต่อ',
         '- If they sound mid-thought (a pause, an unfinished story), answer with just "mm-hm" or "right" and keep listening',
       ),
-      // เจ้าของ: "ถ้าสายเข้าเป็นภาษาอะไร มายด์ก็ต้องตอบกลับภาษานั้นได้"
+      // เจ้าของ: "ให้มายด์ตอบเป็นภาษาไทย นอกจากปลายสายจะขอให้พูดภาษาอื่น"
       s.pick(
-        '- ตอบเป็นภาษาเดียวกับที่คนปลายสายพูดเสมอ: เขาพูดอังกฤษ จีน ญี่ปุ่น เกาหลี ลาว พม่า หรือภาษาอื่น '
-            'ให้สลับไปพูดภาษานั้นทั้งประโยคทันที รวมคำรับ คำทวน และคำลา · เขาสลับกลับ ก็สลับตาม · '
-            'ฟังไม่ออกว่าภาษาอะไร ใช้ภาษาตั้งต้น',
-        '- Always answer in the language the caller speaks: if they speak Thai, Chinese, Japanese, Korean, '
-            'Spanish or anything else, switch to that language for whole sentences right away, including '
-            'acknowledgements, read-backs and goodbyes · switch back when they do · if you cannot tell, use the default language',
+        '- พูดภาษาไทยเสมอ · เปลี่ยนเป็นภาษาอื่นเฉพาะเมื่อคนปลายสายขอให้พูดภาษานั้น หรือบอกว่าไม่เข้าใจภาษาไทย '
+            'แล้วพูดภาษานั้นต่อทั้งประโยค รวมคำรับ คำทวน และคำลา จนกว่าเขาจะขอเปลี่ยนกลับ',
+        '- Always speak English · switch to another language only when the caller asks for it or says they do not '
+            'understand English, then keep to that language for whole sentences, including acknowledgements, '
+            'read-backs and goodbyes, until they ask to switch back',
       ),
       if (outgoing)
         s.pick(

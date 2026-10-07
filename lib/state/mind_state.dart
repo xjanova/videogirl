@@ -38,6 +38,7 @@ import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
 import '../ai/proxy_account.dart';
 import '../ai/web_tools.dart';
+import '../phone/call_knowledge.dart';
 import '../phone/call_tags.dart';
 import '../phone/outgoing_call.dart';
 import '../phone/realtime_call.dart';
@@ -181,6 +182,45 @@ class MindState extends ChangeNotifier {
     if (t == _callGreetingText) return;
     _callGreetingText = t;
     _save('callGreeting', t);
+    _notify();
+  }
+
+  // ── ข้อมูลที่น้องมายใช้ตอบสาย · ตอบได้แค่ไหน · ห้ามตอบอะไร ──
+  //
+  // เจ้าของ: "ให้พร้อมข้อมูลหรืออัพโหลดไฟล์ที่มายด์จะใช้ตอบได้แค่ไหนไว้ ห้ามตอบอะไรไว้ได้"
+  // · ทุกอย่างในนี้คนโทรอาจได้ยิน (เจ้าของตั้งใจให้) · ดู [CallKnowledge]
+
+  String _callKnowledge = '';
+  String get callKnowledge => _callKnowledge;
+
+  void setCallKnowledge(String v) {
+    final t = CallKnowledge.clean(v);
+    if (t == _callKnowledge) return;
+    _callKnowledge = t;
+    _save('callKnowledge', t);
+    _notify();
+  }
+
+  /// ตอบได้เฉพาะเรื่องที่อยู่ใน [callKnowledge] · เรื่องอื่นรับฝากไว้แจ้งเจ้าของ
+  bool _callOnlyKnowledge = false;
+  bool get callOnlyKnowledge => _callOnlyKnowledge;
+
+  void setCallOnlyKnowledge(bool v) {
+    if (v == _callOnlyKnowledge) return;
+    _callOnlyKnowledge = v;
+    _save('callOnlyKnowledge', v);
+    _notify();
+  }
+
+  /// เรื่องที่ห้ามตอบหรือห้ามบอกคนโทร (เจ้าของเขียนเอง)
+  String _callNoGo = '';
+  String get callNoGo => _callNoGo;
+
+  void setCallNoGo(String v) {
+    final t = CallKnowledge.clean(v, max: CallKnowledge.maxNoGoChars);
+    if (t == _callNoGo) return;
+    _callNoGo = t;
+    _save('callNoGo', t);
     _notify();
   }
 
@@ -528,6 +568,9 @@ class MindState extends ChangeNotifier {
     _recordCalls = p.getBool('recordCalls') ?? true;
     _callerName = p.getString('callerName') ?? '';
     _callGreetingText = p.getString('callGreeting') ?? '';
+    _callKnowledge = p.getString('callKnowledge') ?? '';
+    _callOnlyKnowledge = p.getBool('callOnlyKnowledge') ?? false;
+    _callNoGo = p.getString('callNoGo') ?? '';
     _realtimeCalls = p.getBool('realtimeCalls') ?? true;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
     _callStream = p.getString('callStream') ?? callStreamCall;
@@ -1570,6 +1613,9 @@ class MindState extends ChangeNotifier {
         liveCall: live,
         outgoing: outgoing ? _outgoing : null,
         callerName: _callerName,
+        callKnowledge: _callKnowledge,
+        callOnlyKnowledge: _callOnlyKnowledge,
+        callNoGo: _callNoGo,
         soul: _soul,
         schedule: _calendar?.busyBlock(now: _clock()) ?? '',
         now: _clock(),

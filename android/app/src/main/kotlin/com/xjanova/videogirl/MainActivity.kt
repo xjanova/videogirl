@@ -172,6 +172,9 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
 
+                    // ── ไฟล์ข้อมูลที่น้องมายใช้ตอบสาย (ตัวเลือกไฟล์ของระบบ) ──
+                    "pickTextFile" -> pickTextFile(result)
+
                     // ── ติดตั้งแอปที่ไม่รู้จัก ────────────────────
                     "requestInstall" -> {
                         requestInstall()
@@ -365,6 +368,73 @@ class MainActivity : FlutterActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         studio.onUserLeaveHint()
+    }
+
+    /// ไฟล์ที่กำลังให้เลือก · ตอบได้ครั้งเดียว
+    private var pendingPick: MethodChannel.Result? = null
+
+    /**
+     * ให้เจ้าของเลือกไฟล์ข้อความ (txt md csv json docx) ด้วยตัวเลือกไฟล์ของระบบ
+     *
+     * ไม่ต้องขอสิทธิ์ไฟล์ · ตัวเลือกของระบบให้สิทธิ์อ่านเฉพาะไฟล์ที่เจ้าของกดเลือก ·
+     * คืน `{name, bytes}` ให้ Dart แปลงเป็นข้อความเอง (CallKnowledge.textOf) · ยกเลิก = null
+     */
+    private fun pickTextFile(result: MethodChannel.Result) {
+        pendingPick?.success(null)
+        pendingPick = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*")
+            .putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "text/*",
+                    "application/json",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            )
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQ_PICK_TEXT)
+        } catch (e: Exception) {
+            pendingPick = null
+            result.success(null)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_PICK_TEXT) return
+        val reply = pendingPick ?: return
+        pendingPick = null
+        val uri = data?.data
+        if (resultCode != RESULT_OK || uri == null) {
+            reply.success(null)
+            return
+        }
+        // ไฟล์บนคลาวด์ (Drive) อ่านช้าได้ · อ่านนอกเธรดหลัก แล้วตอบบนเธรดหลัก
+        Thread {
+            val out = try {
+                val name = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: ""
+                val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                    val buf = java.io.ByteArrayOutputStream()
+                    val chunk = ByteArray(16 * 1024)
+                    while (buf.size() <= MAX_PICK_BYTES) {
+                        val n = input.read(chunk)
+                        if (n < 0) break
+                        buf.write(chunk, 0, n)
+                    }
+                    buf.toByteArray()
+                }
+                // ใหญ่เกินเพดาน = ไม่ใช่ไฟล์ข้อมูลตอบสาย · ตอบว่าอ่านไม่ได้ ดีกว่าตัดกลางไฟล์ docx
+                if (bytes == null || bytes.size > MAX_PICK_BYTES) mapOf("name" to name)
+                else mapOf("name" to name, "bytes" to bytes)
+            } catch (e: Exception) {
+                mapOf("name" to "")
+            }
+            runOnUiThread { reply.success(out) }
+        }.start()
     }
 
     override fun onRequestPermissionsResult(
@@ -600,6 +670,10 @@ class MainActivity : FlutterActivity() {
         private const val REQ_CONTACTS = 8752
         private const val REQ_ANSWER = 8753
         private const val REQ_DIALER_ROLE = 8754
+        private const val REQ_PICK_TEXT = 8755
+
+        /// ไฟล์ข้อมูลตอบสายใหญ่สุดที่อ่าน · ข้อความที่ใช้จริงถูกตัดที่ CallKnowledge.maxChars อีกชั้น
+        private const val MAX_PICK_BYTES = 4 * 1024 * 1024
 
         /// รหัสคำขอทุกตัวที่ [ask] / [askMany] ใช้
         ///
