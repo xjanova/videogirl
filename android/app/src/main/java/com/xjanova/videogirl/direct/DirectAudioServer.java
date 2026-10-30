@@ -135,8 +135,15 @@ public final class DirectAudioServer {
                         case AudioProtocol.WRITE:
                             if (!injecting || f.data.length==0 || (f.data.length&1)!=0 || f.data.length>9600)
                                 throw new IOException("invalid audio write");
-                            // Bound latency and memory even if a producer runs faster than playback.
-                            if (queued.get()+f.data.length>96000) throw new IOException("audio backpressure");
+                            // Realtime delivers speech faster than the call plays it. Hold the reply until the
+                            // queue has room, so the app's writes follow the line's pace; failing here dropped
+                            // the whole direct path ~28 s into the owner's first call. Memory stays bounded.
+                            long deadline=SystemClock.elapsedRealtime()+2000;
+                            while (queued.get()+f.data.length>96000 || queue.remainingCapacity()==0) {
+                                if (!injecting || !alive) throw new IOException("playback stopped");
+                                if (SystemClock.elapsedRealtime()>deadline) throw new IOException("audio backpressure");
+                                Thread.sleep(10);
+                            }
                             queued.addAndGet(f.data.length);
                             if(!queue.offer(f.data)) { queued.addAndGet(-f.data.length); throw new IOException("audio queue full"); }
                             reply(f.id,"ok"); break;
