@@ -99,8 +99,10 @@ object DirectAudioSetup {
         val apk = context.applicationInfo.sourceDir
         // APK is supplied by PackageManager; still quote it as shell code, never JSON-quote.
         fun quote(s: String) = "'" + s.replace("'", "'\"'\"'") + "'"
-        // setsid takes the helper out of adbd's session so closing this stream cannot take it down.
-        val script = "IFS= read -r secret; S=; command -v setsid >/dev/null 2>&1 && S=setsid; " +
+        // adbd hands this stream a PTY, so when sh exits the kernel SIGHUPs its process group, which still
+        // holds the helper until setsid runs. Ignoring HUP first is inherited across fork/exec and closes
+        // that race; setsid then takes the helper out of adbd's session so closing the stream cannot reach it.
+        val script = "trap '' HUP; IFS= read -r secret; S=; command -v setsid >/dev/null 2>&1 && S=setsid; " +
             "printf '%s\\n' \"\$secret\" | \$S nohup env CLASSPATH=${quote(apk)} app_process / com.xjanova.videogirl.direct.DirectAudioServer $socket ${context.applicationInfo.uid} >/dev/null 2>&1 &"
         adb.openStream("shell:sh -c ${quote(script)}").use { stream ->
             stream.openOutputStream().apply { write((token + "\n").toByteArray(Charsets.US_ASCII)); flush() }
@@ -114,7 +116,8 @@ object DirectAudioSetup {
         val socketName = prefs.getString("socket", null) ?: error("not_configured")
         val token = prefs.getString("token", null) ?: error("not_configured")
         var last: Exception? = null
-        repeat(5) {
+        // A cold app_process binds in ~0.6 s on a quiet phone; leave room for a busy one.
+        repeat(15) {
             try {
                 LocalSocket().use { socket ->
                     socket.connect(LocalSocketAddress(socketName, LocalSocketAddress.Namespace.ABSTRACT))
