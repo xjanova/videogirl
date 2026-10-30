@@ -4,6 +4,16 @@ import 'strings.dart';
 extension SettingsStrings on S {
   String get directCallSetup => pick('ตั้งค่าเสียงตรงในสาย', 'Set up direct call audio');
   String get directCallSetupHint => pick('เชื่อมต่อกับเครื่องนี้เพื่อให้คู่สายได้ยินชัดขึ้น', 'Connect to this phone for clearer call audio');
+  String get directCallTitle => pick('ต่อสายตรง', 'Direct call audio');
+  String get directCallChecking => pick('กำลังตรวจ…', 'Checking…');
+  String get directCallReady => pick('ต่อติดแล้ว · น้องมายพูดเข้าสายตรง ไม่ผ่านลำโพง', 'Connected · she speaks straight into the call, not through the speaker');
+  String get directCallOffline => pick('ยังไม่ได้ต่อ · สายจะใช้ทางลำโพง', 'Not connected · calls use the speaker');
+  String get directCallNotPaired => pick('ยังไม่เคยตั้งค่า · สายจะใช้ทางลำโพง', 'Not set up yet · calls use the speaker');
+  String get directCallInCall => pick('กำลังใช้อยู่ในสาย', 'In use on the current call');
+  String get directCallUnsupported => pick('เครื่องนี้ยังไม่รองรับ · สายใช้ทางลำโพง', 'This phone does not support it · calls use the speaker');
+  String get directCallConnect => pick('ต่อสายตรง', 'Connect');
+  String get directCallFirstSetup => pick('ตั้งค่าครั้งแรก', 'First-time setup');
+  String get directCallNeedsDebugging => pick('ต่อไม่ได้ · เปิด Wi-Fi และ Wireless debugging แล้วกดอีกครั้ง', 'Could not connect · turn on Wi-Fi and Wireless debugging, then try again');
   // ── หมวด ──
   String get settingsMenuTitle => pick('ตั้งค่า', 'Settings');
   String get settingsBack => pick('กลับไปหน้าตั้งค่า', 'Back to settings');

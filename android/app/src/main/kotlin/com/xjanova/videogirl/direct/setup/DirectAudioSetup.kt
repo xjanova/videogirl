@@ -47,6 +47,10 @@ object DirectAudioSetup {
                     result.success(true)
                 }
                 "reconnect" -> { reconnect(context.applicationContext); result.success(true) }
+                "live" -> work.execute {
+                    val answer = live(context.applicationContext)
+                    main.post { result.success(answer) }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -80,6 +84,7 @@ object DirectAudioSetup {
     private fun submit(context: Context, complete: () -> Unit = {}, job: () -> Unit) {
         synchronized(this) { if (busy) { complete(); return }; busy = true }
         diag = ""
+        status = "connecting"
         work.execute {
             try {
                 check(context.getSystemService(android.media.AudioManager::class.java).mode != android.media.AudioManager.MODE_IN_CALL) { "call_in_progress" }
@@ -152,6 +157,22 @@ object DirectAudioSetup {
             AudioProtocol.clientHello(input, output, token.toByteArray(Charsets.US_ASCII))
             return Channel(socket, input, output)
         } catch (e: Exception) { socket.close(); throw e }
+    }
+
+    /** What the settings card shows: asked of the helper now, because a reboot or an update ends it
+     *  even though setup once succeeded. Runs on [work], so never alongside a setup probe. */
+    private fun live(context: Context): String {
+        val prefs = context.getSharedPreferences("giggok_direct_audio", Context.MODE_PRIVATE)
+        if (prefs.getString("token", null) == null) return "not_paired"
+        // The helper serves one session at a time; during a call that session is the call.
+        if (context.getSystemService(android.media.AudioManager::class.java).mode == android.media.AudioManager.MODE_IN_CALL) return "in_call"
+        return try {
+            open(context).use { ch ->
+                AudioProtocol.write(ch.output, AudioProtocol.STATUS, 1, ByteArray(0))
+                val reply = AudioProtocol.read(ch.input)
+                if (reply.type == AudioProtocol.REPLY && reply.text() == "ready") "ready" else "unsupported"
+            }
+        } catch (_: Exception) { "offline" }
     }
 
     private fun probe(context: Context): Boolean {

@@ -20,6 +20,7 @@ import '../ai/voice_profile.dart';
 import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
 import '../background/mind_watch.dart';
+import 'direct_call_panel.dart';
 import 'shop_screen.dart';
 import '../memory/mind_memory.dart';
 import '../system/permissions.dart';
@@ -364,14 +365,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             _memoryCard(context, state, mode, t),
           ],
         SettingsSection.calls => [
+            // เจ้าของ: "อยากให้หน้าต่อสายตรง โดดเด่นในการตั้งค่า และสถานะชัดเจนเมื่อต่อติด"
+            _card(mode: mode, label: t.directCallSetupHint, child: DirectCallPanel(accent: mode.accent)),
             _callCard(state, mode),
-            ListTile(
-              leading: const Icon(Icons.settings_phone_rounded),
-              title: Text(t.directCallSetup),
-              subtitle: Text(t.directCallSetupHint),
-              onTap: () => unawaited(const MethodChannel('giggok/direct_setup')
-                  .invokeMethod<void>('open').catchError((Object _) {})),
-            ),
           ],
         SettingsSection.general => [
             _languageCard(state, mode, t),

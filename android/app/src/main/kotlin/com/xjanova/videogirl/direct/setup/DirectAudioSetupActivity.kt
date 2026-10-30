@@ -16,9 +16,9 @@ class DirectAudioSetupActivity : Activity() {
     private val refresh = object : Runnable {
         override fun run() {
             status.text = when (DirectAudioSetup.status) {
-                "helper_started" -> "เปิดตัวช่วยแล้ว หากสายยังใช้ลำโพง ให้ตรวจว่ารุ่นนี้รองรับทางเสียงตรง"
+                "helper_started" -> "✅ ต่อสายตรงแล้ว น้องมายจะพูดเข้าสายตรง ไม่ผ่านลำโพง"
                 "waiting_for_code" -> "รอรหัสจากการแจ้งเตือน — อย่าปิดหน้ารหัสจับคู่"
-                "finding_pairing_port", "paired_connecting" -> "กำลังเชื่อมต่อกับเครื่องนี้…"
+                "connecting", "finding_pairing_port", "paired_connecting" -> "กำลังเชื่อมต่อกับเครื่องนี้…"
                 "setup_failed" -> "ยังไม่สำเร็จ ตรวจ Wi-Fi และ Wireless debugging แล้วลองใหม่"
                 "notifications_required" -> "ต้องเปิดการแจ้งเตือนเพื่อกรอกรหัสขณะหน้าตั้งค่าเปิดอยู่"
                 "requires_android_11" -> "ทางเสียงตรงต้องใช้ Android 11 ขึ้นไป"
@@ -50,7 +50,7 @@ class DirectAudioSetupActivity : Activity() {
             }
         })
         content.addView(Button(this).apply { text = "เคยจับคู่แล้ว — เชื่อมต่ออีกครั้ง"; setOnClickListener { DirectAudioSetup.reconnect(applicationContext) } })
-        content.addView(text("ถ้ารีสตาร์ตเครื่อง อาจต้องเปิด Wireless debugging แล้วเชื่อมต่ออีกครั้ง การทำงานเมื่อปิด debugging และความเข้ากันได้กับแอปธนาคารยังต้องทดสอบกับรุ่นนี้", 14f))
+        content.addView(text("รีสตาร์ตเครื่องหรืออัปเดตแอปแล้ว ให้เปิด Wireless debugging แล้วกด \"เคยจับคู่แล้ว — เชื่อมต่ออีกครั้ง\"", 14f))
         content.addView(Button(this).apply { text = "กลับ"; setOnClickListener { finish() } })
         setContentView(ScrollView(this).apply { addView(content) })
     }
