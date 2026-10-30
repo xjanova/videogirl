@@ -1,17 +1,17 @@
 package com.xjanova.videogirl
 
 import android.content.Context
-import android.net.LocalSocket
-import android.net.LocalSocketAddress
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import com.xjanova.videogirl.direct.AudioProtocol as P
+import com.xjanova.videogirl.direct.setup.DirectAudioSetup
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.net.Socket
 import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /** One authenticated helper connection per app process, shared by screen/headless engines. */
 object DirectAudioClient {
-    private var socket: LocalSocket? = null
+    private var socket: Socket? = null
     private var output: DataOutputStream? = null
     private val ids = AtomicInteger()
     private val waiting = ConcurrentHashMap<Int, CompletableFuture<String>>()
@@ -109,28 +109,21 @@ object DirectAudioClient {
 
     @Synchronized private fun connect(context: Context) {
         if (socket != null) return
-        val prefs = context.getSharedPreferences("giggok_direct_audio", Context.MODE_PRIVATE)
-        val name = prefs.getString("socket", null) ?: error("not paired")
-        val token = prefs.getString("token", null) ?: error("not paired")
-        require(token.matches(Regex("[a-fA-F0-9]{64}")))
-        val local = LocalSocket()
+        val channel = DirectAudioSetup.open(context)
         try {
-            local.connect(LocalSocketAddress(name, LocalSocketAddress.Namespace.ABSTRACT))
-            check(local.peerCredentials.uid == 2000) { "unexpected helper uid" }
-            val out = DataOutputStream(local.outputStream)
-            out.writeInt(P.VERSION); out.write(token.toByteArray(Charsets.UTF_8)); out.flush()
-            output = out; socket = local
-            Thread({ read(local) }, "giggok-direct-events").apply { isDaemon = true; start() }
-        } catch(e: Exception) { local.close(); throw e }
+            // Events arrive whenever the call produces them; only the handshake had a deadline.
+            channel.socket.soTimeout = 0
+            output = channel.output; socket = channel.socket
+            Thread({ read(channel.socket, channel.input) }, "giggok-direct-events").apply { isDaemon = true; start() }
+        } catch(e: Exception) { channel.close(); throw e }
     }
     private fun lost() {
         val wasActive = active
         disconnect()
         if (wasActive) main.post { sink?.error("direct_lost", "Call audio helper disconnected", null) }
     }
-    private fun read(local: LocalSocket) {
+    private fun read(local: Socket, input: DataInputStream) {
         try {
-            val input = DataInputStream(local.inputStream)
             while (true) {
                 val f = P.read(input)
                 if (f.type == P.REPLY) {

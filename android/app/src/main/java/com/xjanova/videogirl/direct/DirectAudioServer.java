@@ -1,21 +1,21 @@
 package com.xjanova.videogirl.direct;
 
 import android.media.*;
-import android.net.LocalServerSocket;
-import android.net.LocalSocket;
 import android.os.Process;
 import android.os.SystemClock;
 import java.io.*;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 /** Shell-only entry point. The launcher supplies the secret on stdin, never argv. */
 public final class DirectAudioServer {
-    private final int appUid;
     private final byte[] secret;
-    private DirectAudioServer(int uid, String token) { appUid=uid; secret=token.getBytes(StandardCharsets.UTF_8); }
+    private DirectAudioServer(String token) { secret=token.getBytes(StandardCharsets.US_ASCII); }
 
     /** Shell-readable trace (`adb shell cat`), apps cannot read /data/local/tmp. Never the token or audio. */
     static final File LOG=new File("/data/local/tmp/giggok-helper.log");
@@ -38,7 +38,8 @@ public final class DirectAudioServer {
         try {
             if (Process.myUid()!=2000 || args.length!=2) throw new SecurityException("shell launcher required");
             int uid=Integer.parseInt(args[1]);
-            if (uid<10000 || !args[0].matches("giggok_[a-zA-Z0-9_]{1,80}")) throw new SecurityException("bad identity");
+            int port=args[0].matches("[0-9]{4,5}")?Integer.parseInt(args[0]):0;
+            if (uid<10000 || port<1024 || port>65535) throw new SecurityException("bad identity");
             byte[] tokenBytes=new byte[64];
             new DataInputStream(System.in).readFully(tokenBytes);
             String token=new String(tokenBytes,StandardCharsets.US_ASCII);
@@ -48,30 +49,32 @@ public final class DirectAudioServer {
             log("token format ok, appUid="+uid);
             ShellAudio.fillActivityThread();
             if (ShellAudio.ctx==null) throw new IllegalStateException("shell context unavailable");
-            new DirectAudioServer(uid,token).serve(args[0]);
+            new DirectAudioServer(token).serve(port);
         } catch (Exception | LinkageError e) {
             log("exit "+describe(e));
             throw e;
         }
     }
 
-    private void serve(String name) throws Exception {
-        try (LocalServerSocket server=new LocalServerSocket(name)) {
-            log("listening @"+name);
+    private void serve(int port) throws Exception {
+        try (ServerSocket server=new ServerSocket()) {
+            server.setReuseAddress(true);
+            // Loopback only: SELinux closes the shell user's unix sockets to apps, TCP on 127.0.0.1 it does not.
+            server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(),port),4);
+            log("listening 127.0.0.1:"+port);
             for (;;) {
-                LocalSocket socket=server.accept();
+                Socket socket=server.accept();
                 try {
-                    int peer=socket.getPeerCredentials().getUid();
-                    if (peer!=appUid) { log("accept: rejected peer uid "+peer); socket.close(); continue; }
+                    socket.setTcpNoDelay(true);
                     socket.setSoTimeout(3000);
-                    DataInputStream in=new DataInputStream(socket.getInputStream());
-                    int version=in.readInt();
-                    if (version!=AudioProtocol.VERSION) { log("accept: bad version "+version); socket.close(); continue; }
-                    byte[] offered=new byte[64]; in.readFully(offered);
-                    if (!MessageDigest.isEqual(secret,offered)) { log("accept: token mismatch"); socket.close(); continue; }
+                    DataInputStream in=new DataInputStream(new BufferedInputStream(socket.getInputStream()));
+                    DataOutputStream out=new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
+                    // Any app can reach this port, so the token proof is the only gate; no peer-uid check exists for TCP.
+                    try { AudioProtocol.serverHello(in,out,secret); }
+                    catch (AudioProtocol.HandshakeException e) { log("accept: "+e.getMessage()); socket.close(); continue; }
                     log("accept: session open");
                     socket.setSoTimeout(0);
-                    try (Session session=new Session(socket)) { session.run(in); }
+                    try (Session session=new Session(socket,out)) { session.run(in); }
                     log("session closed");
                 } catch (Exception | LinkageError e) {
                     // One bad session must not take the helper down; the next call needs it.
@@ -92,7 +95,7 @@ public final class DirectAudioServer {
     }
 
     private static final class Session implements AutoCloseable {
-        final LocalSocket socket;
+        final Socket socket;
         final DataOutputStream out;
         volatile boolean alive=true, injecting=false;
         AudioTrack track;
@@ -104,8 +107,8 @@ public final class DirectAudioServer {
         volatile long generation;
         final Thread watchdog;
         String variant="none";
-        Session(LocalSocket socket) throws IOException {
-            this.socket=socket; out=new DataOutputStream(socket.getOutputStream());
+        Session(Socket socket,DataOutputStream out) {
+            this.socket=socket; this.out=out;
             // If the app stops draining events, closing the socket releases any blocked send.
             watchdog=new Thread(()-> {
                 try {

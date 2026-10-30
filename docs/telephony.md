@@ -202,8 +202,13 @@ MODIFY_PHONE_STATE / CAPTURE_AUDIO_OUTPUT / CALL_AUDIO_INTERCEPTION · ใส่
   แอปจับคู่กับ Wireless debugging ของเครื่องเอง (รหัส 6 หลักกรอกผ่านการแจ้งเตือน ระหว่างหน้า
   รหัสยังเปิดอยู่) → ต่อ adbd ของเครื่องเองที่ 127.0.0.1 → `setsid nohup app_process` คลาส
   `direct.DirectAudioServer` จาก APK ของ GigGok · กุญแจ adb อยู่ใน `noBackupFilesDir`
-- **ล็อกตัวช่วย:** รับเฉพาะ uid ของ GigGok (peer credentials ของ LocalSocket) + token 64 hex
-  (ส่งทาง stdin ไม่อยู่ใน argv) · คำสั่งตายตัว (`AudioProtocol`): STATUS/START/WRITE/CLEAR/
+- **ช่องคุย:** TCP `127.0.0.1:<port>` (port สุ่ม 10000–31999 เก็บใน prefs ส่งเป็น argv) ·
+  ไม่ใช้ abstract unix socket เพราะ SELinux ห้ามแอปธรรมดาต่อเข้า socket ของ shell แบบเงียบ
+  (vivo V2144: `connect: Permission denied` ไม่มี avc ในบันทึก)
+- **ล็อกตัวช่วย:** token 64 hex (ส่งทาง stdin ไม่อยู่ใน argv) ไม่เคยส่งขึ้นสาย · ทั้งสองฝั่งพิสูจน์
+  ด้วย HMAC-SHA256 ของ nonce สองฝั่ง (`AudioProtocol.clientHello/serverHello`) เพราะแอปไหนก็ต่อ
+  หรือแย่ง port ได้ · ตัวช่วยพิสูจน์ไม่ผ่าน = แอปทิ้ง port นั้น เชื่อมต่อครั้งหน้าใช้ port ใหม่ ·
+  คำสั่งตายตัว (`AudioProtocol`): STATUS/START/WRITE/CLEAR/
   PENDING/TAKEOVER/STOP · ไม่มีคำสั่ง shell อิสระ · ขนาด frame และคิวเสียงมีเพดาน
 - **ระหว่างสาย:** START ตรวจ `isPstnCallAudioInterceptable` + มี TYPE_TELEPHONY + โหมด IN_CALL
   แล้วลองทางเสียง C (`getCallUplinkInjectionAudioTrack`) → A → B · ทางไหนเขียนเสียงเงียบแล้ว

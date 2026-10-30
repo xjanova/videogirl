@@ -4,16 +4,21 @@ import android.app.*
 import android.content.*
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import android.net.LocalSocket
-import android.net.LocalSocketAddress
 import android.os.*
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
+import com.xjanova.videogirl.direct.AudioProtocol
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
+import java.net.Socket
 import java.security.SecureRandom
 import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
@@ -100,9 +105,10 @@ object DirectAudioSetup {
         val prefs = context.getSharedPreferences("giggok_direct_audio", Context.MODE_PRIVATE)
         val random = SecureRandom()
         val token = prefs.getString("token", null) ?: ByteArray(32).also(random::nextBytes).joinToString("") { "%02x".format(it.toInt() and 255) }
-        val socket = prefs.getString("socket", null) ?: "giggok_${context.applicationInfo.uid}_${java.util.UUID.randomUUID().toString().replace("-", "") }"
-        require(token.matches(Regex("[a-f0-9]{64}")) && socket.matches(Regex("giggok_[a-zA-Z0-9_]{1,80}")))
-        check(prefs.edit().putString("token", token).putString("socket", socket).commit())
+        // Below the kernel's ephemeral range, so an outgoing connection's local port never takes it.
+        val helperPort = prefs.getInt("port", 0).takeIf { it in PORTS } ?: (PORTS.first + random.nextInt(PORTS.count()))
+        require(token.matches(Regex("[a-f0-9]{64}")))
+        check(prefs.edit().putString("token", token).putInt("port", helperPort).remove("socket").commit())
         val apk = context.applicationInfo.sourceDir
         // APK is supplied by PackageManager; still quote it as shell code, never JSON-quote.
         fun quote(s: String) = "'" + s.replace("'", "'\"'\"'") + "'"
@@ -115,7 +121,7 @@ object DirectAudioSetup {
         val script = "trap '' HUP; IFS= read -r secret; " +
             "pkill -f '^app_process / com[.]xjanova[.]videogirl[.]direct[.]DirectAudioServer ' 2>/dev/null && sleep 1; " +
             "S=; command -v setsid >/dev/null 2>&1 && S=setsid; " +
-            "printf '%s\\n' \"\$secret\" | \$S nohup env CLASSPATH=${quote(apk)} app_process / com.xjanova.videogirl.direct.DirectAudioServer $socket ${context.applicationInfo.uid} >/dev/null 2>>/data/local/tmp/giggok-helper.log &"
+            "printf '%s\\n' \"\$secret\" | \$S nohup env CLASSPATH=${quote(apk)} app_process / com.xjanova.videogirl.direct.DirectAudioServer $helperPort ${context.applicationInfo.uid} >/dev/null 2>>/data/local/tmp/giggok-helper.log &"
         adb.openStream("shell:sh -c ${quote(script)}").use { stream ->
             stream.openOutputStream().apply { write((token + "\n").toByteArray(Charsets.US_ASCII)); flush() }
             // Keep transport alive briefly so nohup has consumed stdin before adb closes.
@@ -123,37 +129,57 @@ object DirectAudioSetup {
         }
     }
 
-    private fun probe(context: Context): Boolean {
+    private val PORTS = 10000..31999
+
+    /** An authenticated connection to the helper: loopback TCP, then both ends prove the token. */
+    class Channel(val socket: Socket, val input: DataInputStream, val output: DataOutputStream) : java.io.Closeable {
+        override fun close() = socket.close()
+    }
+
+    fun open(context: Context, stage: (String) -> Unit = {}): Channel {
         val prefs = context.getSharedPreferences("giggok_direct_audio", Context.MODE_PRIVATE)
-        val socketName = prefs.getString("socket", null) ?: error("not_configured")
-        val token = prefs.getString("token", null) ?: error("not_configured")
+        val port = prefs.getInt("port", 0).takeIf { it in PORTS } ?: error("not_configured")
+        val token = prefs.getString("token", null)?.takeIf { it.matches(Regex("[a-f0-9]{64}")) } ?: error("not_configured")
+        val socket = Socket()
+        try {
+            stage("connect")
+            socket.tcpNoDelay = true
+            socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 1000)
+            stage("handshake")
+            socket.soTimeout = 1000
+            val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
+            val output = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
+            AudioProtocol.clientHello(input, output, token.toByteArray(Charsets.US_ASCII))
+            return Channel(socket, input, output)
+        } catch (e: Exception) { socket.close(); throw e }
+    }
+
+    private fun probe(context: Context): Boolean {
         var last: Exception? = null
         var stage = "connect"
-        // A cold app_process binds in ~0.6 s on a quiet phone; leave room for a busy one.
-        repeat(15) {
+        // A cold app_process binds in ~0.6 s on a quiet phone, after the launcher's 1 s for a stale helper.
+        for (attempt in 1..25) {
             try {
-                LocalSocket().use { socket ->
-                    stage = "connect"
-                    socket.connect(LocalSocketAddress(socketName, LocalSocketAddress.Namespace.ABSTRACT))
-                    stage = "peer"
-                    socket.soTimeout = 1000
-                    check(socket.peerCredentials.uid == 2000)
-                    stage = "handshake"
-                    val output = java.io.DataOutputStream(socket.outputStream)
-                    output.writeInt(1); output.write(token.toByteArray(Charsets.US_ASCII))
-                    output.writeInt(1); output.writeInt(1); output.writeInt(0); output.flush()
-                    val input = java.io.DataInputStream(socket.inputStream)
-                    check(input.readInt() == 100 && input.readInt() == 1)
-                    val size = input.readInt(); check(size in 0..128)
-                    val text = ByteArray(size).also(input::readFully).toString(Charsets.UTF_8)
+                open(context) { stage = it }.use { ch ->
+                    stage = "status"
+                    AudioProtocol.write(ch.output, AudioProtocol.STATUS, 1, ByteArray(0))
+                    val reply = AudioProtocol.read(ch.input)
+                    check(reply.type == AudioProtocol.REPLY && reply.id == 1)
+                    val text = reply.text()
                     check(text == "ready" || text == "unsupported")
                     return text == "ready"
                 }
+            } catch (e: AudioProtocol.HandshakeException) {
+                // Whoever holds the port cannot prove the token: another app took it before the helper could
+                // bind. The next reconnect starts the helper on a fresh port instead of retrying this one.
+                context.getSharedPreferences("giggok_direct_audio", Context.MODE_PRIVATE).edit().remove("port").commit()
+                last = e; stage = "auth"
+                break
             } catch (e: Exception) { last = e; Thread.sleep(200) }
         }
-        // Stage + errno text only (e.g. "Permission denied" from connect): never the token or socket name.
+        // Stage + errno text only (e.g. "Connection refused"): never the token.
         diag = "probe failed at $stage: ${last?.javaClass?.simpleName}" +
-            if (stage == "connect") " ${last?.message?.take(60)}" else ""
+            if (stage == "connect" || stage == "auth") " ${last?.message?.take(60)}" else ""
         android.util.Log.w("GigGokDirect", diag)
         throw last ?: IllegalStateException("helper_unavailable")
     }
