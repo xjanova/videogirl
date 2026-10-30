@@ -20,6 +20,8 @@ import '../ai/voice_profile.dart';
 import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
 import '../background/mind_watch.dart';
+import 'call_knowledge_panel.dart';
+import 'call_personality_panel.dart';
 import 'direct_call_panel.dart';
 import 'shop_screen.dart';
 import '../memory/mind_memory.dart';
@@ -367,6 +369,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         SettingsSection.calls => [
             // เจ้าของ: "อยากให้หน้าต่อสายตรง โดดเด่นในการตั้งค่า และสถานะชัดเจนเมื่อต่อติด"
             _card(mode: mode, label: t.directCallSetupHint, child: DirectCallPanel(accent: mode.accent)),
+            // เจ้าของ: "เราต้องการให้เธอรู้เรื่องที่เราเปิดไว้ให้ไปดึงมาตอบได้ ทำหน้าตั้งค่านั้นให้ดี"
+            _card(mode: mode, label: t.kbCard, child: CallKnowledgePanel(accent: mode.accent)),
+            _card(mode: mode, label: t.cpCard, child: CallPersonalityPanel(accent: mode.accent)),
             _callCard(state, mode),
           ],
         SettingsSection.general => [

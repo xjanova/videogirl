@@ -225,7 +225,24 @@ class BrainXLink extends ChangeNotifier {
 
   /// token ถูกเพิกถอน (ออกจากระบบจากคอม · ครบจำนวนเครื่อง) → ขอใหม่เงียบ ๆ
   /// ผ่านหลังบ้าน (หรือคีย์ที่พิมพ์ไว้ในรอบนี้) · ไม่มีทั้งคู่ = ให้ผู้ใช้เชื่อมใหม่
-  Future<bool> _relogin() async {
+  /// ล็อกอินใหม่ที่กำลังทำอยู่ · หลายงานเจอ token หลุดพร้อมกัน (ค้นหลายหมวดในสาย) = ล็อกอินรอบเดียว
+  ///
+  /// 🔴 ทุกครั้งคือการลงชื่อเข้าคลาวด์ (หลังบ้านกั้น 6 ครั้ง/นาที · คลาวด์เตะ token เก่าสุดเมื่อเกิน 20)
+  /// ล็อกอินซ้อนกันแปดรอบ = ชนเพดาน และอาจเตะคอมของเจ้าของหลุด
+  Future<bool>? _relogging;
+
+  Future<bool> _relogin() {
+    final pending = _relogging;
+    if (pending != null) return pending;
+    final f = _reloginOnce();
+    _relogging = f;
+    f.then((_) {}, onError: (Object _) {}).whenComplete(() {
+      if (identical(_relogging, f)) _relogging = null;
+    });
+    return f;
+  }
+
+  Future<bool> _reloginOnce() async {
     final via = xmanSource?.call();
     if (via != null && via.storeBase.trim().isNotEmpty && via.license.trim().isNotEmpty) {
       final r = await _signInViaXman(via.storeBase, via.license);
@@ -253,10 +270,12 @@ class BrainXLink extends ChangeNotifier {
   /// เรียกงานกับคลาวด์ · token หลุด = ล็อกอินใหม่หนึ่งรอบแล้วลองซ้ำ
   Future<T?> _guard<T>(Future<T> Function(String token) job) async {
     if (_token.isEmpty) return null;
+    final used = _token;
     try {
-      return await job(_token);
+      return await job(used);
     } on BrainXCloudError catch (e) {
-      if (e.needsLogin && await _relogin()) {
+      // งานอื่นล็อกอินใหม่ให้แล้วระหว่างที่งานนี้รอ = ใช้ token ใหม่เลย ไม่ล็อกอินซ้ำ
+      if (e.needsLogin && (_token != used || await _relogin())) {
         try {
           return await job(_token);
         } on BrainXCloudError catch (e2) {
@@ -296,6 +315,45 @@ class BrainXLink extends ChangeNotifier {
           .timeout(limit, onTimeout: () => const <BrainXHit>[]);
     } on Object catch (e) {
       debugPrint('brainx: ค้นไม่สำเร็จ — ${e.runtimeType}');
+      return const [];
+    }
+  }
+
+  /// โฟลเดอร์ในสมอง ให้เจ้าของติ๊กว่าเรื่องไหนคนโทรรู้ได้ · ว่าง = ยังไม่เชื่อม/ดึงไม่ได้
+  Future<List<({String scope, int notes})>> scopes() async {
+    if (!connected) return const [];
+    try {
+      return await _guard(_cloud.scopes) ?? const [];
+    } on Object catch (e) {
+      debugPrint('brainx: ดึงรายการหมวดไม่ได้ — ${e.runtimeType}');
+      return const [];
+    }
+  }
+
+  /// ค้นเฉพาะโฟลเดอร์ที่เจ้าของติ๊กให้คนโทรรู้ได้ · ใช้ระหว่างสาย
+  ///
+  /// 🔒 คนโทรเป็นคนนอก · BrainX กรองด้วย scope แล้ว ยังกรอง path ซ้ำที่นี่อีกชั้น ·
+  /// ผลที่ไม่มี path หรืออยู่นอกโฟลเดอร์ที่ติ๊ก = ทิ้ง (ถ้าฝั่งคลาวด์ไม่รู้จัก scope ก็ไม่หลุด)
+  Future<List<BrainXHit>> searchAllowed(String query, Set<String> allowed,
+      {Duration limit = const Duration(seconds: 4)}) async {
+    if (!connected || query.trim().isEmpty || allowed.isEmpty) return const [];
+    bool inside(String? raw) {
+      final path = raw?.replaceAll(r'\', '/');
+      return path != null && allowed.any((a) => path == a || path.startsWith(a.endsWith('/') ? a : '$a/'));
+    }
+    try {
+      final batches = await Future.wait([
+        for (final scope in allowed.take(8))
+          _guard((t) => _cloud.search(t, query, limit: 3, scope: scope)).then((v) => v ?? const <BrainXHit>[]),
+      ]).timeout(limit, onTimeout: () => const <List<BrainXHit>>[]);
+      final seen = <String>{};
+      return [
+        for (final b in batches)
+          for (final h in b)
+            if (inside(h.path) && seen.add(h.path!)) h,
+      ];
+    } on Object catch (e) {
+      debugPrint('brainx: ค้นให้คนโทรไม่สำเร็จ — ${e.runtimeType}');
       return const [];
     }
   }

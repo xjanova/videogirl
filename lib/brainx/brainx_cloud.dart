@@ -252,8 +252,24 @@ class BrainXCloud {
     return (j is Map ? j.cast<String, Object?>() : <String, Object?>{}, res.headers['mcp-session-id']);
   }
 
-  Future<String> _openSession(String token) async {
-    if (_session != null && _sessionToken == token) return _session!;
+  /// เปิดอยู่ · ค้นหลายหมวดพร้อมกันต้องได้เซสชันเดียว ไม่ใช่ initialize ซ้อนกันทีละหลายอัน
+  Future<String>? _opening;
+  String? _openingToken;
+
+  Future<String> _openSession(String token) {
+    if (_session != null && _sessionToken == token) return Future.value(_session!);
+    final pending = _opening;
+    if (pending != null && _openingToken == token) return pending;
+    final f = _initSession(token);
+    _opening = f;
+    _openingToken = token;
+    f.then((_) {}, onError: (Object _) {}).whenComplete(() {
+      if (identical(_opening, f)) _opening = null;
+    });
+    return f;
+  }
+
+  Future<String> _initSession(String token) async {
     final (_, sid) = await _mcp(token, {
       'jsonrpc': '2.0',
       'id': ++_rpc,
@@ -273,7 +289,7 @@ class BrainXCloud {
   }
 
   /// ค้นสมอง · เวลาจำกัดสั้นโดยตั้งใจ — เธอรอคำตอบอยู่ ค้นไม่ทันก็ตอบจากที่มี
-  Future<List<BrainXHit>> search(String token, String query, {int limit = 4}) async {
+  Future<List<BrainXHit>> search(String token, String query, {int limit = 4, String? scope}) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       final sid = await _openSession(token);
       try {
@@ -285,7 +301,8 @@ class BrainXCloud {
             'method': 'tools/call',
             'params': {
               'name': 'brain_search',
-              'arguments': {'query': query, 'limit': limit, 'preview_chars': 400},
+              // scope = โฟลเดอร์ที่เจ้าของติ๊กให้คนโทรรู้ได้ · ตัวกรองแข็งของ BrainX (ผู้เรียกกรองซ้ำอีกชั้น)
+              'arguments': {'query': query, 'limit': limit, 'preview_chars': 400, 'scope': ?scope},
             },
           },
           session: sid,
@@ -301,6 +318,73 @@ class BrainXCloud {
       }
     }
     return const [];
+  }
+
+  /// โฟลเดอร์ในสมองพร้อมจำนวนโน้ต (brain_scope_list) · ให้เจ้าของติ๊กว่าเรื่องไหนคนโทรรู้ได้
+  Future<List<({String scope, int notes})>> scopes(String token, {int depth = 2}) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final sid = await _openSession(token);
+      try {
+        final (j, _) = await _mcp(
+          token,
+          {
+            'jsonrpc': '2.0',
+            'id': ++_rpc,
+            'method': 'tools/call',
+            'params': {
+              'name': 'brain_scope_list',
+              'arguments': {'depth': depth, 'minSize': 1},
+            },
+          },
+          session: sid,
+          timeout: const Duration(seconds: 15),
+        );
+        return parseScopes(j);
+      } on BrainXCloudError catch (e) {
+        if (e.code == 'SESSION_GONE' && attempt == 0) {
+          _session = null;
+          continue;
+        }
+        rethrow;
+      }
+    }
+    return const [];
+  }
+
+  /// ผลของ brain_scope_list → (โฟลเดอร์, จำนวนโน้ต) · รับได้ทั้ง scopes/folders เป็นรายการหรือแผนที่
+  @visibleForTesting
+  static List<({String scope, int notes})> parseScopes(Map<String, Object?> rpc) {
+    final result = rpc['result'];
+    final content = result is Map ? result['content'] : null;
+    if (content is! List || content.isEmpty) return const [];
+    final text = (content.first as Map?)?['text'];
+    if (text is! String) return const [];
+    Object? j;
+    try {
+      j = jsonDecode(text);
+    } on FormatException {
+      return const [];
+    }
+    final rows = j is Map ? (j['scopes'] ?? j['folders'] ?? j['results']) : j;
+    final out = <({String scope, int notes})>[];
+    void add(Object? name, Object? count) {
+      final s = '${name ?? ''}'.trim();
+      if (s.isEmpty) return;
+      out.add((scope: s, notes: count is num ? count.toInt() : int.tryParse('$count') ?? 0));
+    }
+
+    if (rows is List) {
+      for (final r in rows) {
+        if (r is Map) {
+          add(r['scope'] ?? r['path'] ?? r['name'] ?? r['folder'], r['notes'] ?? r['count'] ?? r['noteCount']);
+        } else if (r is String) {
+          add(r, 0);
+        }
+      }
+    } else if (rows is Map) {
+      rows.forEach(add);
+    }
+    return out;
   }
 
   /// ผลของ tools/call brain_search → รายการอ่านง่าย · ผลเป็น JSON ใน content[0].text

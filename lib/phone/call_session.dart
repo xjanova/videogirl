@@ -643,6 +643,20 @@ class CallSession extends ChangeNotifier {
 
     _rounds = 1;
     final started = DateTime.now();
+    // เจ้าของ: "ไม่ให้คุยนาน เธอต้องหาทางลงได้เอง เพื่อวางสาย ขอตัวเป็น" · ครบเวลาที่ตั้ง = สะกิดเงียบ ๆ
+    // ให้เริ่มปิดบท · อีกนาทีครึ่งยังไม่จบ = ลาแล้ววางในคำตอบถัดไป · เจ้าของแทรกสายแล้ว = ไม่ยุ่ง
+    final limit = _state.callMaxMinutes;
+    Timer wrapAt(Duration after, {required bool firm}) => Timer(after, () {
+          if (ended.isCompleted || _turn == CallTurn.handedOver) return;
+          debugPrint('call: คุยครบเวลา ${after.inSeconds} วิ · ให้เธอ${firm ? 'ลาแล้ววางสาย' : 'เริ่มหาทางลง'}');
+          rt.remind(_state.callWrapUp(firm: firm));
+        });
+    final wrapUp = [
+      if (limit > 0) ...[
+        wrapAt(Duration(minutes: limit), firm: false),
+        wrapAt(Duration(minutes: limit, seconds: 90), firm: true),
+      ],
+    ];
     if (!_directMode && !await _openMic()) _markDeaf();
     // โทรออกแล้วปลายสายเงียบ (บางคนรอให้คนโทรพูดก่อน) → เธอเริ่มเองหลังสองวินาทีครึ่ง
     if (outgoing) {
@@ -701,6 +715,9 @@ class CallSession extends ChangeNotifier {
 
     await ended.future;
     tick.cancel();
+    for (final t in wrapUp) {
+      t.cancel();
+    }
     _herPlaying = false;
     _onChunk = null;
     if (_rtLips) {
