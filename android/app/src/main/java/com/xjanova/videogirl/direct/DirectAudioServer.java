@@ -17,36 +17,65 @@ public final class DirectAudioServer {
     private final byte[] secret;
     private DirectAudioServer(int uid, String token) { appUid=uid; secret=token.getBytes(StandardCharsets.UTF_8); }
 
+    /** Shell-readable trace (`adb shell cat`), apps cannot read /data/local/tmp. Never the token or audio. */
+    static final File LOG=new File("/data/local/tmp/giggok-helper.log");
+    static synchronized void log(String line) {
+        try {
+            boolean append=LOG.length()<64*1024;
+            try (FileOutputStream f=new FileOutputStream(LOG,append)) {
+                f.write((new java.text.SimpleDateFormat("HH:mm:ss.SSS",java.util.Locale.US).format(new java.util.Date())
+                        +" "+Process.myPid()+" "+line+"\n").getBytes(StandardCharsets.UTF_8));
+            }
+        } catch (Exception ignored) {}
+    }
+    static String describe(Throwable e) {
+        String m=e.getMessage();
+        return e.getClass().getSimpleName()+(m==null?"":": "+(m.length()>80?m.substring(0,80):m));
+    }
+
     public static void main(String[] args) throws Exception {
-        if (Process.myUid()!=2000 || args.length!=2) throw new SecurityException("shell launcher required");
-        int uid=Integer.parseInt(args[1]);
-        if (uid<10000 || !args[0].matches("giggok_[a-zA-Z0-9_]{1,80}")) throw new SecurityException("bad identity");
-        byte[] tokenBytes=new byte[64];
-        new DataInputStream(System.in).readFully(tokenBytes);
-        String token=new String(tokenBytes,StandardCharsets.US_ASCII);
-        int terminator=System.in.read();
-        if (terminator=='\r') terminator=System.in.read();
-        if (terminator!='\n' || !token.matches("[a-fA-F0-9]{64}")) throw new SecurityException("bad token");
-        ShellAudio.fillActivityThread();
-        if (ShellAudio.ctx==null) throw new IllegalStateException("shell context unavailable");
-        new DirectAudioServer(uid,token).serve(args[0]);
+        log("start sdk="+android.os.Build.VERSION.SDK_INT+" uid="+Process.myUid()+" args="+args.length);
+        try {
+            if (Process.myUid()!=2000 || args.length!=2) throw new SecurityException("shell launcher required");
+            int uid=Integer.parseInt(args[1]);
+            if (uid<10000 || !args[0].matches("giggok_[a-zA-Z0-9_]{1,80}")) throw new SecurityException("bad identity");
+            byte[] tokenBytes=new byte[64];
+            new DataInputStream(System.in).readFully(tokenBytes);
+            String token=new String(tokenBytes,StandardCharsets.US_ASCII);
+            int terminator=System.in.read();
+            if (terminator=='\r') terminator=System.in.read();
+            if (terminator!='\n' || !token.matches("[a-fA-F0-9]{64}")) throw new SecurityException("bad token");
+            log("token format ok, appUid="+uid);
+            ShellAudio.fillActivityThread();
+            if (ShellAudio.ctx==null) throw new IllegalStateException("shell context unavailable");
+            new DirectAudioServer(uid,token).serve(args[0]);
+        } catch (Exception | LinkageError e) {
+            log("exit "+describe(e));
+            throw e;
+        }
     }
 
     private void serve(String name) throws Exception {
         try (LocalServerSocket server=new LocalServerSocket(name)) {
+            log("listening @"+name);
             for (;;) {
                 LocalSocket socket=server.accept();
                 try {
-                    if (socket.getPeerCredentials().getUid()!=appUid) { socket.close(); continue; }
+                    int peer=socket.getPeerCredentials().getUid();
+                    if (peer!=appUid) { log("accept: rejected peer uid "+peer); socket.close(); continue; }
                     socket.setSoTimeout(3000);
                     DataInputStream in=new DataInputStream(socket.getInputStream());
-                    if (in.readInt()!=AudioProtocol.VERSION) { socket.close(); continue; }
+                    int version=in.readInt();
+                    if (version!=AudioProtocol.VERSION) { log("accept: bad version "+version); socket.close(); continue; }
                     byte[] offered=new byte[64]; in.readFully(offered);
-                    if (!MessageDigest.isEqual(secret,offered)) { socket.close(); continue; }
+                    if (!MessageDigest.isEqual(secret,offered)) { log("accept: token mismatch"); socket.close(); continue; }
+                    log("accept: session open");
                     socket.setSoTimeout(0);
                     try (Session session=new Session(socket)) { session.run(in); }
-                } catch (Exception | LinkageError ignored) {
+                    log("session closed");
+                } catch (Exception | LinkageError e) {
                     // One bad session must not take the helper down; the next call needs it.
+                    log("session ended: "+describe(e));
                     socket.close();
                 }
             }
@@ -55,9 +84,11 @@ public final class DirectAudioServer {
 
     private static boolean supported() {
         try {
-            return ShellAudio.telephonyOut()!=null && Boolean.TRUE.equals(AudioManager.class
-                    .getMethod("isPstnCallAudioInterceptable").invoke(ShellAudio.audioManager()));
-        } catch (Exception e) { return false; }
+            AudioDeviceInfo out=ShellAudio.telephonyOut();
+            Object interceptable=AudioManager.class.getMethod("isPstnCallAudioInterceptable").invoke(ShellAudio.audioManager());
+            log("status: telephonyOut="+(out!=null)+" interceptable="+interceptable);
+            return out!=null && Boolean.TRUE.equals(interceptable);
+        } catch (Exception e) { log("status: "+describe(e)); return false; }
     }
 
     private static final class Session implements AutoCloseable {
@@ -95,7 +126,9 @@ public final class DirectAudioServer {
                         throw new IOException("unexpected command payload");
                     switch(f.type) {
                         case AudioProtocol.STATUS: reply(f.id,supported()?"ready":"unsupported"); break;
-                        case AudioProtocol.START: reply(f.id,start()?"direct:"+variant:"unavailable"); break;
+                        case AudioProtocol.START:
+                            String started=start()?"direct:"+variant:"unavailable";
+                            log("start: "+started); reply(f.id,started); break;
                         case AudioProtocol.WRITE:
                             if (!injecting || f.data.length==0 || (f.data.length&1)!=0 || f.data.length>9600)
                                 throw new IOException("invalid audio write");
@@ -124,6 +157,7 @@ public final class DirectAudioServer {
                         default: throw new IOException("unknown command");
                     }
                 } catch (Exception e) {
+                    log("command "+f.type+" failed: "+describe(e));
                     stop();
                     reply(f.id,"error:"+e.getClass().getSimpleName());
                 }
@@ -272,6 +306,7 @@ public final class DirectAudioServer {
         }
         void release(AudioRecord r) { if(r!=null) { try { r.stop(); } catch(Exception ignored) {} r.release(); } }
         void fail(String reason) {
+            log("session failed: "+reason);
             injecting=false; alive=false;
             // Do not attempt another write: the failure itself may be a blocked output stream.
             try { socket.close(); } catch(IOException ignored) {}

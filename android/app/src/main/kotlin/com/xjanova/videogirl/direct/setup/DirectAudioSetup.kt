@@ -29,6 +29,9 @@ object DirectAudioSetup {
     @Volatile var status = "not_started"
         private set
     @Volatile private var busy = false
+    /** Why the last setup failed, in step + class words only. vivo drops app logcat, so this rides on the
+     *  card's extras where `adb shell dumpsys notification --noredact` shows it; the card text stays Thai. */
+    @Volatile private var diag = ""
 
     fun attach(context: Context, messenger: BinaryMessenger) {
         MethodChannel(messenger, "giggok/direct_setup").setMethodCallHandler { call, result ->
@@ -71,6 +74,7 @@ object DirectAudioSetup {
 
     private fun submit(context: Context, complete: () -> Unit = {}, job: () -> Unit) {
         synchronized(this) { if (busy) { complete(); return }; busy = true }
+        diag = ""
         work.execute {
             try {
                 check(context.getSystemService(android.media.AudioManager::class.java).mode != android.media.AudioManager.MODE_IN_CALL) { "call_in_progress" }
@@ -82,6 +86,9 @@ object DirectAudioSetup {
             catch (e: Exception) {
                 // Do not log a pairing code, key, token, shell output or exception message.
                 status = "setup_failed"
+                // Our own check() reasons are fixed words; anything else is reduced to its class name.
+                val reason = e.message?.takeIf { e is IllegalStateException && it.matches(Regex("[a-z_]{1,40}")) }
+                if (diag.isEmpty()) diag = "setup: ${e.javaClass.simpleName}" + (reason?.let { " $it" } ?: "")
                 notify(context, "ยังเชื่อมต่อไม่ได้ เปิด Wi-Fi และ Wireless debugging แล้วลองรหัสใหม่", true)
             } finally { busy = false; complete() }
         }
@@ -102,8 +109,13 @@ object DirectAudioSetup {
         // adbd hands this stream a PTY, so when sh exits the kernel SIGHUPs its process group, which still
         // holds the helper until setsid runs. Ignoring HUP first is inherited across fork/exec and closes
         // that race; setsid then takes the helper out of adbd's session so closing the stream cannot reach it.
-        val script = "trap '' HUP; IFS= read -r secret; S=; command -v setsid >/dev/null 2>&1 && S=setsid; " +
-            "printf '%s\\n' \"\$secret\" | \$S nohup env CLASSPATH=${quote(apk)} app_process / com.xjanova.videogirl.direct.DirectAudioServer $socket ${context.applicationInfo.uid} >/dev/null 2>&1 &"
+        // A helper left over from before an app update still runs the old APK and holds the socket name, so
+        // the new one could never bind: reconnect replaces it (setup refuses during a call, so none is in use).
+        // The ^app_process anchor cannot match this sh, whose own command line also names the class.
+        val script = "trap '' HUP; IFS= read -r secret; " +
+            "pkill -f '^app_process / com[.]xjanova[.]videogirl[.]direct[.]DirectAudioServer ' 2>/dev/null && sleep 1; " +
+            "S=; command -v setsid >/dev/null 2>&1 && S=setsid; " +
+            "printf '%s\\n' \"\$secret\" | \$S nohup env CLASSPATH=${quote(apk)} app_process / com.xjanova.videogirl.direct.DirectAudioServer $socket ${context.applicationInfo.uid} >/dev/null 2>>/data/local/tmp/giggok-helper.log &"
         adb.openStream("shell:sh -c ${quote(script)}").use { stream ->
             stream.openOutputStream().apply { write((token + "\n").toByteArray(Charsets.US_ASCII)); flush() }
             // Keep transport alive briefly so nohup has consumed stdin before adb closes.
@@ -140,8 +152,9 @@ object DirectAudioSetup {
             } catch (e: Exception) { last = e; Thread.sleep(200) }
         }
         // Stage + errno text only (e.g. "Permission denied" from connect): never the token or socket name.
-        android.util.Log.w("GigGokDirect", "probe failed at $stage: ${last?.javaClass?.simpleName}" +
-            if (stage == "connect") " ${last?.message?.take(60)}" else "")
+        diag = "probe failed at $stage: ${last?.javaClass?.simpleName}" +
+            if (stage == "connect") " ${last?.message?.take(60)}" else ""
+        android.util.Log.w("GigGokDirect", diag)
         throw last ?: IllegalStateException("helper_unavailable")
     }
 
@@ -185,6 +198,7 @@ object DirectAudioSetup {
         val builder = NotificationCompat.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.stat_sys_phone_call)
             .setContentTitle("GigGok · เสียงตรงในสาย").setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setOnlyAlertOnce(true).setAutoCancel(!input)
+            .addExtras(Bundle().apply { putString("giggok.diag", diag) })
         // While the pairing sheet waits for its code, opening GigGok would close it and void the code.
         if (!input) builder.setContentIntent(open)
         if (input) {
