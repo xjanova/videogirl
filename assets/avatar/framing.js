@@ -74,6 +74,8 @@ export class Framing {
          * อวาต้าชอบเล็กลงตลอดเลยไม่คงที่ เวลาคุย". Now a shorter stage shows LESS
          * of her at the SAME size, cropped from the bottom with her head kept
          * where it was — the way a video call behaves when a panel slides up.
+         *
+         * A CROP, not a closer camera — see `_lens()` for why.
          */
         this.stageK = 1;
 
@@ -120,21 +122,21 @@ export class Framing {
         // view. Derived, so changing the fov or the model does not silently
         // reframe her.
         //
-        // A shorter stage (k < 1) fits proportionally fewer metres — same
-        // metres per pixel, so the same size on screen — and the aim drops by
-        // what was cut, so the TOP edge of the shot (her head) does not move.
-        const k = this.stageK;
+        // The stage height (k) is deliberately NOT in here: a shorter stage is
+        // a crop of this same shot (`_lens()`), so the camera stays put.
         const fit = s.fit * this.zoom;
-        const aimY = (s.aimY === 'head' ? this.headY : this.height * s.aimY) + s.offY
-            + (fit / 2) * (1 - k);
+        const aimY = (s.aimY === 'head' ? this.headY : this.height * s.aimY) + s.offY;
         const half = THREE.MathUtils.degToRad(this.camera.fov) / 2;
-        const dist = (fit * k / 2) / Math.tan(half);
+        const dist = (fit / 2) / Math.tan(half);
 
         // Sideways is a DOLLY, not a turn: rotating to look past her skews the
         // perspective across her face, which on a close shot reads immediately
         // as a lens artefact. Moving the camera and its aim together is a pure
         // slide. The owner's pan rides in the same place.
-        const visW = 2 * dist * Math.tan(half) * this.camera.aspect;
+        //
+        // `lateral` is a share of what is actually ON SCREEN, which on a shorter
+        // stage is the cropped width — hence the k.
+        const visW = 2 * dist * Math.tan(half) * this.camera.aspect * this.stageK;
         const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
         // ทุกช็อตเล็งจากแกนตัวเธอจริง ไม่ใช่จากจุดกำเนิดของฉาก
         const ax = this.centreX + visW * this.lateral + this.panX * cy;
@@ -210,7 +212,9 @@ export class Framing {
     pan(dx, dy, viewportH) {
         const half = THREE.MathUtils.degToRad(this.camera.fov) / 2;
         const dist = this.pos.distanceTo(this.aim) || 1;
-        const perPixel = (2 * dist * Math.tan(half)) / Math.max(1, viewportH);
+        // × stageK: on a shorter stage the viewport shows only that share of
+        // the shot's height (the crop), so each pixel is that much less.
+        const perPixel = (2 * dist * Math.tan(half) * this.stageK) / Math.max(1, viewportH);
         this.panX -= dx * perPixel;
         this.panY += dy * perPixel;
         return this;
@@ -226,11 +230,12 @@ export class Framing {
     /**
      * The stage got shorter or taller (see `stageK`).
      *
-     * Moves the camera by exactly the change, NOT through the spring: the
-     * canvas resizes instantly, so easing toward the new distance would show
-     * her shrinking and then growing back over a second — the very wobble this
-     * fixes. Shifting by the delta keeps any shot change already in flight
-     * (a push-in mid-sentence) going from where it was.
+     * Applied at once, NOT through the spring: the canvas resizes instantly,
+     * so easing toward the new crop would show her shrinking and then growing
+     * back over a second — the very wobble this fixes. The only part of the
+     * camera's target that depends on k is the `lateral` share of the visible
+     * width; that is shifted by exactly the delta, so any shot change already
+     * in flight (a push-in mid-sentence) keeps going from where it was.
      *
      * @param {number} k  0.3..1
      */
@@ -243,8 +248,34 @@ export class Framing {
         this.target(this.shot);
         this.pos.add(this._t.sub(t0));
         this.aim.add(this._a.sub(a0));
+        this._lens();
         this._commit();
         return this;
+    }
+
+    /**
+     * Show only the top `stageK` of the shot: full width, same scale, her head
+     * where it was at k = 1. A window into the k = 1 picture — the camera does
+     * not move for it.
+     *
+     * 🔴 WHY A CROP AND NOT A CLOSER CAMERA. This used to fit `fit × k` metres
+     * by moving IN to `dist × k`. On the face shot at k = 0.3 (chat open and
+     * the keyboard up) that put the camera 0.20 m from her head axis with her
+     * bangs 0.126 m away — under 3 cm clear of the 0.1 m near plane, measured
+     * on the shipped model. A 15° nod while puppeteering, or a wheel zoom-in,
+     * and the front of her face was cut away to show the inside of her head.
+     * The close camera also bent her face with perspective the k = 1 shot
+     * never had. The crop shows exactly the pixels the k = 1 shot has there,
+     * so the camera is never nearer than the shot itself puts it.
+     *
+     * In `aspect` units so `setViewOffset` (which overwrites `camera.aspect`
+     * with fullWidth / fullHeight) leaves the aspect alone, and as fractions
+     * so the crop stays right when the canvas is resized after this.
+     */
+    _lens() {
+        const cam = this.camera, k = this.stageK, w = cam.aspect;
+        if (k < 1) cam.setViewOffset(w, 1, w * (1 - k) / 2, 0, w * k, k);
+        else cam.clearViewOffset();
     }
 
     /** Jump to the current shot now (first frame, or a shot picked in settings). */
