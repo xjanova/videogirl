@@ -83,4 +83,22 @@ void main() {
     expect(reply, isNot(contains('recall')));
     expect(reply, isNot(contains('brainx')));
   });
+
+  // เจ้าของ: "เรื่องใน brainx เลือกได้ว่าจะให้ตอบเรื่องไหนได้บ้าง ติ๊กเลือกได้" · ทางเดียวที่สายแตะ BrainX
+  test('🔴 สายค้น BrainX ได้ทางเดียว: เฉพาะหมวดที่เจ้าของติ๊ก (searchAllowed) · ไม่ใช่ค้นทั้งสมอง', () {
+    final src = File('lib/state/mind_state.dart').readAsStringSync();
+    final start = src.indexOf('Future<List<({String title, String text, String source})>> callLookup(');
+    expect(start, greaterThan(0), reason: 'หา callLookup ไม่เจอ — รูปแบบเปลี่ยน ต้องแก้เทสต์นี้');
+    final body = src.substring(start, src.indexOf('\n  }\n', start));
+    expect(body, contains('brainx.searchAllowed(query, _callScopes)'));
+    for (final banned in ['brainx.recall', 'brainx.search(', '_brainHits', 'ownerProfile', 'memory.']) {
+      expect(body, isNot(contains(banned)), reason: 'callLookup แตะ $banned');
+    }
+    // ค่าตั้งต้น = ไม่เปิดสักหมวด
+    expect(src, contains('Set<String> _callScopes = const {};'));
+    final link = File('lib/brainx/brainx_link.dart').readAsStringSync();
+    final allowed = link.substring(link.indexOf('Future<List<BrainXHit>> searchAllowed('));
+    expect(allowed.substring(0, allowed.indexOf('\n  }\n')), contains('inside(h.path)'),
+        reason: 'ต้องกรอง path ซ้ำในแอป ไม่เชื่อตัวกรองฝั่งคลาวด์อย่างเดียว');
+  });
 }

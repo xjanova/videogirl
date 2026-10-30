@@ -162,12 +162,103 @@ void main() {
       expect('${(e['response'] as Map)['instructions']}', contains('คุณต้นจะโทรกลับภายในบ่ายนี้ค่ะ'));
     });
 
+    test('ไม่มีคำใบ้ = ไม่ส่ง prompt ให้ตัวถอดเสียง', () {
+      final t = (((socket.sent.first['session'] as Map)['audio'] as Map)['input'] as Map)['transcription'] as Map;
+      expect(t.containsKey('prompt'), isFalse);
+    });
+
     test('เสียงที่ Realtime ไม่รู้จัก = ใช้ marin', () async {
       final s2 = _FakeSocket();
       final r2 = RealtimeCall(
           apiKey: 'k', instructions: 'i', greeting: 'g', voice: 'nova', connect: (_, _) async => s2);
       await r2.start();
       expect((((s2.sent.first['session'] as Map)['audio'] as Map)['output'] as Map)['voice'], 'marin');
+      await r2.close();
+    });
+  });
+
+  group('🔴 ตัวกันหลุดไปพูดอังกฤษ (สายจริง 2026-10-07: คู่สายพูด "ครับ" เธอตอบอังกฤษห้าตา)', () {
+    const reminder = 'คนปลายสายยังพูดภาษาไทยอยู่ ตอบเป็นภาษาไทยต่อ';
+    late _FakeSocket socket;
+    late RealtimeCall rt;
+
+    setUp(() async {
+      socket = _FakeSocket();
+      rt = RealtimeCall(
+        apiKey: 'k',
+        instructions: 'i',
+        greeting: 'สวัสดีค่ะ',
+        transcriptionHint: 'บทสนทนาทางโทรศัพท์ภาษาไทย',
+        languageReminder: reminder,
+        connect: (_, _) async => socket,
+      );
+      await rt.start();
+    });
+
+    tearDown(() => rt.close());
+
+    Future<void> caller(String t) async {
+      socket.push({'type': 'conversation.item.input_audio_transcription.completed', 'transcript': t});
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    Future<void> her(String t) async {
+      socket.push({'type': 'response.output_audio_transcript.done', 'transcript': t});
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    List<Map<String, Object?>> reminders() => [
+          for (final e in socket.sent)
+            if (e['type'] == 'conversation.item.create' && (e['item'] as Map)['role'] == 'system') e,
+        ];
+
+    test('คำใบ้ไปถึงตัวถอดเสียงพร้อมภาษา', () {
+      final t = (((socket.sent.first['session'] as Map)['audio'] as Map)['input'] as Map)['transcription'] as Map;
+      expect(t['language'], 'th');
+      expect(t['prompt'], 'บทสนทนาทางโทรศัพท์ภาษาไทย');
+    });
+
+    test('คู่สายพูดไทย แล้วเธอตอบอังกฤษ = บอกเซสชันทันทีให้กลับมาพูดไทย', () async {
+      await caller('ครับ');
+      await her('Okay, may I have your name, please?');
+      final r = reminders().single;
+      final content = ((r['item'] as Map)['content'] as List).single as Map;
+      expect(content['text'], reminder);
+      expect(rt.languageReminders, 1);
+    });
+
+    test('เตือนครั้งเดียวต่อหนึ่งตาของคู่สาย · ตาใหม่ที่หลุดอีก = เตือนอีก · ไม่เกินเพดานต่อสาย', () async {
+      await caller('ครับ');
+      await her('Okay, may I have your name, please?');
+      await her('Sure, could you tell me your name, please?');
+      expect(reminders(), hasLength(1));
+      for (final t in ['ที่นี่บริษัทอะไรนะ', 'ได้', 'อืม', 'ฮัลโหล']) {
+        await caller(t);
+        await her('Got it, please tell me your name first.');
+      }
+      expect(reminders(), hasLength(RealtimeCall.maxLanguageReminders));
+    });
+
+    test('ไม่เตือนเมื่อเธอตอบไทย (มีคำอังกฤษปนได้) · ตอนทักก่อนได้ยินคู่สาย · หรือคู่สายพูดอังกฤษ', () async {
+      await her('Hello, this is Mai');
+      await caller('ครับ');
+      await her('ค่ะ ขอทราบชื่อก่อนได้ไหมคะ');
+      await her('ได้ค่ะ ส่งทาง LINE ได้เลยค่ะ');
+      await caller('Hello, I am calling about my order');
+      await her('Sure, may I have your name, please?');
+      expect(reminders(), isEmpty);
+      expect(rt.languageReminders, 0);
+    });
+
+    test('ไม่มีข้อความเตือน (แอปเป็นอังกฤษ) = ไม่เตือน', () async {
+      final s2 = _FakeSocket();
+      final r2 = RealtimeCall(apiKey: 'k', instructions: 'i', greeting: 'g', language: 'en', connect: (_, _) async => s2);
+      await r2.start();
+      s2
+        ..push({'type': 'conversation.item.input_audio_transcription.completed', 'transcript': 'ครับ'})
+        ..push({'type': 'response.output_audio_transcript.done', 'transcript': 'Okay, may I have your name?'});
+      await Future<void>.delayed(Duration.zero);
+      expect(s2.sent.where((e) => e['type'] == 'conversation.item.create'), isEmpty);
       await r2.close();
     });
   });
@@ -201,6 +292,14 @@ void main() {
       expect(rt.instructions, isNot(contains('99/12')));
       expect(rt.greeting, s.callGreeting());
       expect(rt.apiKey, 'sk-test-key-for-unit-tests');
+      // คำใบ้ให้ตัวถอดเสียงมีคำทัก (ชื่อร้านที่เจ้าของตั้ง) แต่ไม่มีข้อมูลส่วนตัว
+      expect(rt.transcriptionHint, contains(s.callGreeting()));
+      expect(rt.transcriptionHint, isNot(contains('99/12')));
+      expect(rt.languageReminder, isNotEmpty);
+      // โทรออกไม่มีคำทัก · คำใบ้ยังบอกว่าเป็นสายไทย
+      final out = s.openRealtimeCall(outgoing: true);
+      expect(out.greeting, isEmpty);
+      expect(out.transcriptionHint, isNotEmpty);
     });
   });
 }

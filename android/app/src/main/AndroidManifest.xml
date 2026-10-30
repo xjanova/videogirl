@@ -104,6 +104,14 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config">
+        <activity android:name=".direct.setup.DirectAudioSetupActivity"
+            android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <receiver android:name=".direct.setup.DirectPairingReceiver" android:exported="false" />
+        <service android:name=".direct.setup.DirectPairingService" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-requested local wireless debugging pairing for call audio; ends after pairing" />
+        </service>
         <activity
             android:name=".MainActivity"
             android:exported="true"

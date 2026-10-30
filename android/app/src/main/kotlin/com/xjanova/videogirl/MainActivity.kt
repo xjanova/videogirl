@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.PowerManager
 import android.provider.CalendarContract
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
@@ -104,6 +105,7 @@ class MainActivity : FlutterActivity() {
         bridge = b
         speech.attach(messenger)
         studio.attach(messenger)
+        com.xjanova.videogirl.direct.setup.DirectAudioSetup.attach(applicationContext, messenger)
         channel = MethodChannel(messenger, CHANNEL)
         channel!!.setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -171,6 +173,9 @@ class MainActivity : FlutterActivity() {
                         requestAllFiles()
                         result.success(true)
                     }
+
+                    // ── ไฟล์ความรู้ให้น้องมายตอบคนโทร ─────────────
+                    "pickTextFile" -> pickTextFile(result)
 
                     // ── ติดตั้งแอปที่ไม่รู้จัก ────────────────────
                     "requestInstall" -> {
@@ -365,6 +370,81 @@ class MainActivity : FlutterActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         studio.onUserLeaveHint()
+    }
+
+    /// ไฟล์ที่เจ้าของเลือกให้น้องมายใช้ตอบคนโทร · ค้างได้ทีละคำขอ
+    private var pendingPick: MethodChannel.Result? = null
+
+    /**
+     * เลือกไฟล์ด้วยตัวเลือกของระบบ → คืน {name, bytes} · ยกเลิก = null
+     *
+     * ไม่ต้องขอสิทธิ์ไฟล์ (ระบบให้สิทธิ์อ่านเฉพาะไฟล์ที่เลือก) · ไม่กรองชนิดไฟล์
+     * เพราะตัวจัดการไฟล์บางเครื่องบอก .md เป็น octet-stream แล้วกดไม่ได้ ·
+     * ฝั่ง Dart เช็กนามสกุลแล้วบอกเป็นภาษาคนเอง
+     */
+    private fun pickTextFile(result: MethodChannel.Result) {
+        pendingPick?.success(null)
+        pendingPick = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*")
+        try {
+            startActivityForResult(intent, REQ_PICK_FILE)
+        } catch (e: Exception) {
+            pendingPick = null
+            result.success(mapOf("error" to "no_picker"))
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode != REQ_PICK_FILE) {
+            super.onActivityResult(requestCode, resultCode, data)
+            return
+        }
+        val reply = pendingPick ?: return
+        pendingPick = null
+        val uri = data?.data
+        if (resultCode != RESULT_OK || uri == null) {
+            reply.success(null)
+            return
+        }
+        // อ่านนอกเธรดจอ · ไฟล์จากไดรฟ์ออนไลน์อาจต้องโหลดก่อนหลายวินาที
+        Thread {
+            val out: Map<String, Any> = try {
+                var name = "file"
+                var size = -1L
+                contentResolver.query(
+                    uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null
+                )?.use { c ->
+                    if (c.moveToFirst()) {
+                        if (!c.isNull(0)) name = c.getString(0)
+                        if (!c.isNull(1)) size = c.getLong(1)
+                    }
+                }
+                if (size > MAX_PICK_BYTES) {
+                    mapOf("error" to "too_large")
+                } else {
+                    val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                        val buf = java.io.ByteArrayOutputStream()
+                        val chunk = ByteArray(64 * 1024)
+                        while (buf.size() <= MAX_PICK_BYTES) {
+                            val n = input.read(chunk)
+                            if (n < 0) break
+                            buf.write(chunk, 0, n)
+                        }
+                        buf.toByteArray()
+                    }
+                    when {
+                        bytes == null -> mapOf("error" to "read_failed")
+                        bytes.size > MAX_PICK_BYTES -> mapOf("error" to "too_large")
+                        else -> mapOf("name" to name, "bytes" to bytes)
+                    }
+                }
+            } catch (e: Exception) {
+                mapOf("error" to "read_failed")
+            }
+            runOnUiThread { reply.success(out) }
+        }.start()
     }
 
     override fun onRequestPermissionsResult(
@@ -600,6 +680,10 @@ class MainActivity : FlutterActivity() {
         private const val REQ_CONTACTS = 8752
         private const val REQ_ANSWER = 8753
         private const val REQ_DIALER_ROLE = 8754
+        private const val REQ_PICK_FILE = 8757
+
+        /// เท่ากับเพดานไฟล์ฝั่ง Dart (CallKnowledge.addFile) · ไฟล์ข้อความใหญ่กว่านี้ไม่ใช่เอกสารที่คนเขียน
+        private const val MAX_PICK_BYTES = 12 * 1024 * 1024
 
         /// รหัสคำขอทุกตัวที่ [ask] / [askMany] ใช้
         ///

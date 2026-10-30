@@ -50,6 +50,7 @@ class SystemBridge(context: Context) {
 
     /** ผูกกับ engine · ตั้ง handler ของตัวเองด้วย (ใช้ตอนไม่มี Activity) */
     fun attach(messenger: BinaryMessenger) {
+        DirectAudioClient.attach(context, messenger)
         channel = MethodChannel(messenger, CHANNEL).also { ch ->
             ch.setMethodCallHandler { call, result ->
                 if (!handle(call, result)) result.notImplemented()

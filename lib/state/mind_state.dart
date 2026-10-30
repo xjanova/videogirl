@@ -40,6 +40,7 @@ import '../ai/proxy_account.dart';
 import '../ai/web_tools.dart';
 import '../phone/call_tags.dart';
 import '../phone/outgoing_call.dart';
+import '../phone/call_knowledge.dart';
 import '../phone/realtime_call.dart';
 import '../brainx/brainx_cloud.dart';
 import '../brainx/brainx_link.dart';
@@ -500,6 +501,10 @@ class MindState extends ChangeNotifier {
     _webSearch = p.getBool('webSearch') ?? true;
     _brainxSearch = p.getBool('brainxSearch') ?? true;
     _brainxShare = p.getBool('brainxShare') ?? true;
+    _callScopes = decodeScopes(p.getString('callBrainxScopes'));
+    _callPlay = (p.getDouble('callPlay') ?? 0.4).clamp(0.0, 1.0);
+    _callMaxMinutes = p.getInt('callMaxMinutes') ?? 3;
+    _callStyle = p.getString('callStyle') ?? '';
 
     for (final c in VoiceChannel.values) {
       final raw = p.getString('voice_${c.name}');
@@ -1560,7 +1565,63 @@ class MindState extends ChangeNotifier {
   @visibleForTesting
   ///
   /// [outgoing] = สายที่น้องมายโทรออกเอง · ได้เรื่องที่เจ้าของสั่ง ([outgoing]) เพิ่มอย่างเดียว
-  String callPrompt({bool live = false, bool outgoing = false}) => MindPersona.system(
+  String callPrompt({bool live = false, bool outgoing = false}) {
+    final base = _callPromptBase(live: live, outgoing: outgoing);
+    final style = MindPersona.callPersonality(_lang, play: _callPlay, style: _callStyle, maxMinutes: _callMaxMinutes);
+    final withStyle = '$base\n$style';
+    // เรื่องที่เจ้าของเปิดให้คนโทรรู้ · เฉพาะคุยสด (มีเครื่องมือ lookup_info)
+    if (!live || !callLookupReady) return withStyle;
+    final index = [
+      callKnowledge.index(),
+      if (_callBrainxOn) _callScopes.take(12).map((s) => s.split('/').last).join(' · '),
+    ].where((s) => s.isNotEmpty).join(' · ');
+    return '$withStyle\n${MindPersona.callKnowledgeRule(_lang, index)}';
+  }
+
+  // ── บุคลิกตอนรับสาย ──
+  //
+  // เจ้าของ: "ให้เธอตอบอารมณ์ คำสวยเหมือนคน มีหัวเราะบ้าง จีบได้ คุยสนุกได้ แต่ไม่ให้คุยนาน
+  // เธอต้องหาทางลงได้เอง เพื่อวางสาย ขอตัวเป็น บุคลิกเรากำหนดได้ใช่ไหม"
+
+  /// ความขี้เล่นกับคนโทร 0 = สุภาพเรียบร้อย · 1 = ขี้เล่น แซว/จีบเบา ๆ ได้
+  double _callPlay = 0.4;
+  double get callPlay => _callPlay;
+  void setCallPlay(double v) {
+    final next = v.clamp(0.0, 1.0);
+    if (next == _callPlay) return;
+    _callPlay = next;
+    _save('callPlay', next);
+    _notify();
+  }
+
+  /// คุยนานสุดกี่นาทีแล้วเธอเริ่มหาทางลงเอง · 0 = ไม่จำกัด
+  static const callMinuteChoices = [2, 3, 5, 10, 0];
+  int _callMaxMinutes = 3;
+  int get callMaxMinutes => _callMaxMinutes;
+  void setCallMaxMinutes(int v) {
+    if (v < 0 || v == _callMaxMinutes) return;
+    _callMaxMinutes = v;
+    _save('callMaxMinutes', v);
+    _notify();
+  }
+
+  /// ข้อความสะกิดกลางสายเมื่อคุยครบเวลา (ดู CallSession._talkRealtime)
+  String callWrapUp({bool firm = false}) => MindPersona.callWrapUp(_lang, minutes: _callMaxMinutes, firm: firm);
+
+  /// บุคลิกที่เจ้าของเขียนเอง (เช่น เรียกคนโทรว่าพี่ ชอบหัวเราะ) · ว่าง = ตามค่าตั้งต้น
+  static const callStyleMax = 400;
+  String _callStyle = '';
+  String get callStyle => _callStyle;
+  void setCallStyle(String v) {
+    final t = v.trim();
+    final next = t.length > callStyleMax ? t.substring(0, callStyleMax) : t;
+    if (next == _callStyle) return;
+    _callStyle = next;
+    _save('callStyle', next);
+    _notify();
+  }
+
+  String _callPromptBase({bool live = false, bool outgoing = false}) => MindPersona.system(
         lang: _lang,
         mode: mode,
         flirt: effectiveFlirt,
@@ -1574,6 +1635,56 @@ class MindState extends ChangeNotifier {
         schedule: _calendar?.busyBlock(now: _clock()) ?? '',
         now: _clock(),
       );
+
+  /// ข้อมูลที่ให้คนโทรรู้ได้ (ดู CallKnowledge) · คลังในเครื่องที่เจ้าของใส่เอง
+  CallKnowledge get callKnowledge => _lazyKnowledge ??= (CallKnowledge()..load());
+  CallKnowledge? _lazyKnowledge;
+
+  /// หมวดในสมอง BrainX ที่เจ้าของติ๊กให้คนโทรรู้ได้ · ค่าตั้งต้น = ไม่มีสักหมวด
+  ///
+  /// 🔒 คนโทรเป็นคนนอก · สมองมีบันทึกส่วนตัว รหัส งานลูกค้า · ต้องเลือกเปิดเองทีละหมวด
+  /// หมวดที่ไม่ติ๊ก เธอมองไม่เห็นเลย (กรองทั้งฝั่งคลาวด์และในแอป ดู BrainXLink.searchAllowed)
+  Set<String> _callScopes = const {};
+  Set<String> get callBrainxScopes => _callScopes;
+
+  void setCallBrainxScopes(Set<String> scopes) {
+    final next = Set<String>.unmodifiable(scopes.map((s) => s.trim()).where((s) => s.isNotEmpty));
+    if (setEquals(next, _callScopes)) return;
+    _callScopes = next;
+    _save('callBrainxScopes', jsonEncode(next.toList()..sort()));
+    _notify();
+  }
+
+  @visibleForTesting
+  static Set<String> decodeScopes(String? raw) {
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final j = jsonDecode(raw);
+      if (j is List) return Set.unmodifiable(j.whereType<String>().where((s) => s.isNotEmpty));
+    } on FormatException {
+      // ค่าเสีย = ไม่เปิดสักหมวด (ปลอดภัยกว่าเปิดเกิน)
+    }
+    return const {};
+  }
+
+  bool get _callBrainxOn => _callScopes.isNotEmpty && brainx.connected;
+
+  /// มีอะไรให้เธอค้นตอนรับสายไหม · ไม่มี = ไม่ให้เครื่องมือค้น (เธอจะไม่เสียเวลาค้นของว่าง)
+  bool get callLookupReady => !callKnowledge.isEmpty || _callBrainxOn;
+
+  /// ค้นเรื่องที่เจ้าของเปิดให้คนโทรรู้ · คลังในเครื่องก่อน แล้วหมวด BrainX ที่ติ๊ก
+  ///
+  /// หน้าตั้งค่าใช้ตัวเดียวกันลองค้น · เจ้าของเห็นเหมือนที่เธอเห็นในสายทุกตัวอักษร
+  Future<List<({String title, String text, String source})>> callLookup(String query) async {
+    // ค้นพลาด = ไม่เจอ · ห้ามโยนเข้าสาย (เธอจะเงียบไปทั้งเทิร์น)
+    final local = callKnowledge.search(query).then((v) => v, onError: (Object _) => const <KnowledgeHit>[]);
+    final remote = _callBrainxOn ? brainx.searchAllowed(query, _callScopes) : Future.value(const <BrainXHit>[]);
+    final (mine, brain) = await (local, remote).wait;
+    return [
+      for (final h in mine) (title: h.title, text: h.text, source: 'owner'),
+      for (final h in brain) (title: h.title, text: h.text, source: 'brainx'),
+    ];
+  }
 
   /// เรื่องด่วนระหว่างสาย → แจ้งเตือนเจ้าของทันที (แตะแล้วไปจอสาย แทรกสายคุยเองได้)
   ///
@@ -1625,13 +1736,21 @@ class MindState extends ChangeNotifier {
   ///
   /// [outgoing] = สายที่น้องมายโทรออก · ไม่มีคำทักตายตัว (รอปลายสายพูด "ฮัลโหล" ก่อน)
   RealtimeCall openRealtimeCall({bool outgoing = false}) {
+    final greeting = outgoing ? '' : callGreeting();
+    // สร้างดัชนีคลังไว้ตั้งแต่สายเริ่ม · คำถามแรกของคนโทรจะได้ไม่ต้องรอ
+    unawaited(callKnowledge.warm());
     return RealtimeCall(
       apiKey: effectiveOpenAiKey,
       instructions: callPrompt(live: true, outgoing: outgoing),
-      greeting: outgoing ? '' : callGreeting(),
+      greeting: greeting,
       // เสียงที่ตั้งไว้ให้ "ตอบรับสาย" · ไม่ใช่เสียงที่ Realtime รู้จัก = marin
       voice: voiceFor(VoiceChannel.answer).voice,
       language: _sttLang,
+      transcriptionHint: MindPersona.callTranscriptionHint(_lang, greeting: greeting),
+      languageReminder: MindPersona.callLanguageReminder(_lang),
+      lookup: callLookupReady
+          ? (q) async => [for (final h in await callLookup(q)) (title: h.title, text: h.text)]
+          : null,
       connect: debugRealtimeConnect,
     );
   }
@@ -2368,7 +2487,8 @@ class MindState extends ChangeNotifier {
   // เรื่องเดียวกันจำได้หมด" · "ไม่ต้องกลัวว่าถอนแล้วจะลืมที่คุยกัน จีบกันไว้"
   // · บัญชี xman เดียวกัน = คีย์เดียวกัน · จ่าย BrainX Cloud แล้ว มือถือเชื่อมฟรี
   //
-  // 🔴 สายโทรศัพท์ไม่แตะส่วนนี้เลย (replyOnCall ไม่เรียก) — บังคับด้วยโค้ด
+  // 🔴 สายโทรศัพท์ไม่แตะส่วนนี้ (replyOnCall ไม่เรียก) — บังคับด้วยโค้ด ·
+  // ยกเว้นทางเดียว: คุยสดค้นได้เฉพาะหมวดที่เจ้าของติ๊กเอง (ดู callLookup)
 
   BrainXLink? _lazyBrainX;
   BrainXLink get brainx => _lazyBrainX ??= _wireBrainX(BrainXLink());
@@ -3110,6 +3230,7 @@ class MindState extends ChangeNotifier {
     _speech.dispose();
     if (hasLocalBrain) _lazyLocal!.dispose();
     _lazyWebTools?.close();
+    _lazyKnowledge?.dispose();
     memory.removeListener(_queueMemory);
     _soul?.removeListener(_queueSoul);
     final link = _lazyBrainX;
