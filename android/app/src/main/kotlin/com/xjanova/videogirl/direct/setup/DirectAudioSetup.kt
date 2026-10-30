@@ -116,13 +116,17 @@ object DirectAudioSetup {
         val socketName = prefs.getString("socket", null) ?: error("not_configured")
         val token = prefs.getString("token", null) ?: error("not_configured")
         var last: Exception? = null
+        var stage = "connect"
         // A cold app_process binds in ~0.6 s on a quiet phone; leave room for a busy one.
         repeat(15) {
             try {
                 LocalSocket().use { socket ->
+                    stage = "connect"
                     socket.connect(LocalSocketAddress(socketName, LocalSocketAddress.Namespace.ABSTRACT))
+                    stage = "peer"
                     socket.soTimeout = 1000
                     check(socket.peerCredentials.uid == 2000)
+                    stage = "handshake"
                     val output = java.io.DataOutputStream(socket.outputStream)
                     output.writeInt(1); output.write(token.toByteArray(Charsets.US_ASCII))
                     output.writeInt(1); output.writeInt(1); output.writeInt(0); output.flush()
@@ -135,6 +139,9 @@ object DirectAudioSetup {
                 }
             } catch (e: Exception) { last = e; Thread.sleep(200) }
         }
+        // Stage + errno text only (e.g. "Permission denied" from connect): never the token or socket name.
+        android.util.Log.w("GigGokDirect", "probe failed at $stage: ${last?.javaClass?.simpleName}" +
+            if (stage == "connect") " ${last?.message?.take(60)}" else "")
         throw last ?: IllegalStateException("helper_unavailable")
     }
 
