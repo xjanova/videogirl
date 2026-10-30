@@ -174,7 +174,9 @@ object DirectAudioSetup {
         val open = PendingIntent.getActivity(context, 0, Intent(context, DirectAudioSetupActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = NotificationCompat.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.stat_sys_phone_call)
             .setContentTitle("GigGok · เสียงตรงในสาย").setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setContentIntent(open).setOnlyAlertOnce(true).setAutoCancel(!input)
+            .setOnlyAlertOnce(true).setAutoCancel(!input)
+        // While the pairing sheet waits for its code, opening GigGok would close it and void the code.
+        if (!input) builder.setContentIntent(open)
         if (input) {
             val reply = PendingIntent.getBroadcast(context, 1, Intent(context, DirectPairingReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
             builder.addAction(NotificationCompat.Action.Builder(android.R.drawable.ic_menu_edit, "กรอกรหัส 6 หลัก", reply)

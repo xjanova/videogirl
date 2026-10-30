@@ -7,7 +7,6 @@ import io.github.muntashirakon.adb.AbsAdbConnectionManager
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
-import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import java.io.File
 import java.math.BigInteger
@@ -43,12 +42,13 @@ internal class LocalAdbIdentity(context: Context) : AbsAdbConnectionManager() {
             val random = SecureRandom()
             val pair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048, random) }.generateKeyPair()
             val subject = X500Name("CN=GigGok local call audio")
-            val provider = BouncyCastleProvider()
+            // Sign and convert with the platform providers. BouncyCastleProvider loads its algorithms
+            // by class name, R8 strips those classes, and SHA256withRSA then fails in release only.
             val cert = JcaX509v3CertificateBuilder(subject, BigInteger(128, random),
                 Date(System.currentTimeMillis() - 86400000L), Date(System.currentTimeMillis() + 315360000000L),
-                subject, pair.public).build(JcaContentSignerBuilder("SHA256withRSA").setProvider(provider).build(pair.private))
+                subject, pair.public).build(JcaContentSignerBuilder("SHA256withRSA").build(pair.private))
             key = pair.private
-            certificate = JcaX509CertificateConverter().setProvider(provider).getCertificate(cert)
+            certificate = JcaX509CertificateConverter().getCertificate(cert)
             val output = file.startWrite()
             try {
                 val data = java.io.DataOutputStream(output)
