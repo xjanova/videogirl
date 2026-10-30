@@ -14,3 +14,6 @@
 # NoSuchMethodError/ClassNotFoundException โดยไม่มีอะไรเตือนตอน build เลย
 -keep class com.google.mediapipe.** { *; }
 -keep class dev.flutterberlin.flutter_gemma.** { *; }
+
+# Started by app_process from the installed APK, outside the normal Android entry points.
+-keep class com.xjanova.videogirl.direct.DirectAudioServer { public static void main(java.lang.String[]); }

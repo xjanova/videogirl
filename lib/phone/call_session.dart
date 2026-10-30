@@ -42,6 +42,8 @@ import 'call_notes.dart';
 import 'call_tags.dart';
 import 'call_watch.dart';
 import 'realtime_call.dart';
+import 'direct_audio.dart';
+import 'direct_recording.dart';
 
 /// บรรทัดหนึ่งของบทสนทนาในสาย
 @immutable
@@ -269,14 +271,14 @@ class CallSession extends ChangeNotifier {
       _endRealtime();
       unawaited(_closeMic());
     }
-    if (mind && _turn != CallTurn.handedOver && info?['speaker'] == false) {
+    if (!_directMode && mind && _turn != CallTurn.handedOver && info?['speaker'] == false) {
       _speakerOffSince ??= DateTime.now();
       if (speakerOff) _speakerLost = true;
     } else {
       _speakerOffSince = null;
     }
     // ไม่ตอบ/ไม่รู้ (null · Android ต่ำกว่า 10) = ไม่เตือน · ดู [micBlocked]
-    if (mind && _turn != CallTurn.handedOver && info?['micSilenced'] == true) {
+    if (!_directMode && mind && _turn != CallTurn.handedOver && info?['micSilenced'] == true) {
       _micBlockedSince ??= DateTime.now();
       if (micBlocked) _micBlockedSeen = true;
     } else {
@@ -323,9 +325,11 @@ class CallSession extends ChangeNotifier {
     // ไมค์ (และไฟล์บันทึก) เปิดก่อนเธอทัก · คำทักกับคำแรกของคู่สายอยู่ในบันทึกด้วย
     unawaited(() async {
       await _startRecording();
-      await _openMic();
+      if (_state.realtimeCallsReady && !_directMode) await _startDirect();
+      if (!_live || !_mind || _disposed) { await _stopDirect(); return; }
+      if (!_directMode) await _openMic();
+      await _converse();
     }());
-    unawaited(_converse());
   }
 
   /// สายจบแล้ว — เก็บของให้ครบ
@@ -407,6 +411,7 @@ class CallSession extends ChangeNotifier {
     _notify();
     // ปิดไมค์จริง ไม่ใช่แค่เลิกฟัง · เจ้าของคุยเองแล้ว ไม่ใช่สิ่งที่เธอควรอัดต่อ
     _endRealtime();
+    if (_directMode) await _takeOverDirect();
     await _invoke('liveAudioStop');
     await _closeMic();
     await _invoke('callStopSpeak');
@@ -489,7 +494,7 @@ class CallSession extends ChangeNotifier {
   /// (เน็ตหลุดตอนขับรถ) และตอนนั้นเจ้าของต้องเห็นว่าเกิดอะไรขึ้น
   Future<void> _converse() async {
     try {
-      await _awaitSpeaker();
+      if (!_directMode) await _awaitSpeaker();
       // คุยสด (OpenAI Realtime) ก่อน ถ้าตั้งไว้ · ต่อไม่ได้ = ทางเดิม · หลุดกลางสาย =
       // ทางเดิมต่อจากที่ค้าง (ไม่ทักซ้ำ)
       var greeted = false;
@@ -499,7 +504,14 @@ class CallSession extends ChangeNotifier {
         greeted = r != _RtResult.couldNotStart;
         done = r == _RtResult.ended;
       }
-      if (!done && _live && _mind && !_disposed) await _talk(greet: !greeted);
+      if (!done && _live && _mind && !_disposed) {
+        if (_directMode) {
+          await _stopDirect();
+          await _invoke('callSpeakerOn');
+          await _openMic();
+        }
+        await _talk(greet: !greeted);
+      }
     } on OpenAiFailure catch (e) {
       _error = e.message;
     } on Object catch (e) {
@@ -555,6 +567,7 @@ class CallSession extends ChangeNotifier {
   Future<_RtResult> _talkRealtime() async {
     final outgoing = _outgoingCall;
     final rt = _state.openRealtimeCall(outgoing: outgoing);
+    rt.fullDuplex = _directMode;
     final ended = Completer<void>();
     var dropped = false;
     _rt = rt;
@@ -565,7 +578,19 @@ class CallSession extends ChangeNotifier {
 
     rt.onAudio = (pcm) {
       _rtAudioBytes += pcm.length;
-      unawaited(_invoke('liveAudioWrite', {'pcm': pcm}));
+      if (!_mind || !_live) return;
+      if (_directMode) {
+        unawaited(_direct.write(pcm));
+      } else {
+        unawaited(_invoke('liveAudioWrite', {'pcm': pcm}));
+      }
+    };
+    rt.onInterruption = () async {
+      final cleared = await _direct.clear();
+      if (cleared == null) return 0;
+      _directMixer?.discardAfter(source: 'assistant', timeUs: cleared.timeUs);
+      _rtResponding = false;
+      return cleared.pendingMs;
     };
     rt.onResponseStart = () {
       _rtResponding = true;
@@ -598,7 +623,7 @@ class CallSession extends ChangeNotifier {
     rt.onEndCall = () => hangWhenQuiet = true;
     rt.onAlertOwner = (reason) => unawaited(_state.alertOwner(who: _who, reason: reason));
 
-    if (await _invoke<bool>('liveAudioStart', {'stream': _state.callStream}) != true) {
+    if (!_directMode && await _invoke<bool>('liveAudioStart', {'stream': _state.callStream}) != true) {
       _rt = null;
       return _RtResult.couldNotStart;
     }
@@ -614,7 +639,7 @@ class CallSession extends ChangeNotifier {
 
     _rounds = 1;
     final started = DateTime.now();
-    if (!await _openMic()) _markDeaf();
+    if (!_directMode && !await _openMic()) _markDeaf();
     // โทรออกแล้วปลายสายเงียบ (บางคนรอให้คนโทรพูดก่อน) → เธอเริ่มเองหลังสองวินาทีครึ่ง
     if (outgoing) {
       unawaited(Future<void>.delayed(const Duration(milliseconds: 2500), () {
@@ -623,7 +648,7 @@ class CallSession extends ChangeNotifier {
     }
     _onChunk = (chunk, level) {
       _micLevel = level;
-      if (!_rtGated) rt.sendMic(chunk);
+      if (_directMode || !_rtGated) rt.sendMic(chunk);
     };
     _turn = CallTurn.talking;
     _notify();
@@ -634,7 +659,7 @@ class CallSession extends ChangeNotifier {
       if (busy || ended.isCompleted) return;
       busy = true;
       try {
-        final pending = await _invoke<int>('liveAudioPending') ?? 0;
+        final pending = _directMode ? await _direct.pending() : await _invoke<int>('liveAudioPending') ?? 0;
         _herPlaying = pending > 0;
         if (_herPlaying) _herSpoke = true;
         final now = DateTime.now();
@@ -681,7 +706,74 @@ class CallSession extends ChangeNotifier {
     await rt.close();
     if (identical(_rt, rt)) _rt = null;
     await _invoke('liveAudioStop');
-    return dropped && _live && _mind && !_disposed ? _RtResult.dropped : _RtResult.ended;
+    return (dropped || _directFailed) && _live && _mind && !_disposed ? _RtResult.dropped : _RtResult.ended;
+  }
+
+  final _direct = DirectAudio();
+  bool _directMode = false;
+  bool _directFailed = false;
+  String _audioPath = 'speaker';
+  DirectRecordingMixer? _directMixer;
+  int _directClockUs = 0;
+
+  Future<void> _startDirect() async {
+    _directFailed = false;
+    _directClockUs = 0;
+    if (_recSink != null) _directMixer = DirectRecordingMixer();
+    _direct.onAudio = (source, at, rate, pcm) {
+      if (!_live) return;
+      try {
+        _directMixer?.add(source: source == 'her' ? 'assistant' : source,
+            timeUs: at, pcm: pcm, sampleRate: rate);
+        if (source != 'her') {
+          _directClockUs = math.max(_directClockUs, at + pcm.length * 1000000 ~/ (rate * 2));
+          _drainDirect(math.max(0, _directClockUs - 200000));
+        }
+      } on RangeError {
+        _rtError = 'direct_recording_overrun';
+      }
+      if (source == 'down' && _mind) {
+        final level = levelOf(pcm);
+        _peakEver = math.max(_peakEver, level);
+        _onChunk?.call(pcm, level);
+      }
+    };
+    _direct.onLost = () {
+      _directFailed = true;
+      _rtError = 'direct_lost';
+      _endRealtime();
+    };
+    _directMode = await _direct.start(record: _state.recordCalls);
+    if (_directMode) {
+      _audioPath = _direct.path;
+    } else {
+      _directMixer = null;
+    }
+  }
+
+  void _drainDirect(int throughUs) {
+    final pcm = _directMixer?.drain(throughUs: throughUs);
+    if (pcm != null && pcm.isNotEmpty && _recSink != null) {
+      _recSink!.add(pcm);
+      _recBytes += pcm.length;
+    }
+  }
+
+  Future<void> _takeOverDirect() async {
+    final result = await _direct.takeover();
+    final at = int.tryParse(result.split(':').last) ?? _directClockUs;
+    _directMixer?.discardAfter(source: 'assistant', timeUs: at);
+    if (_state.recordCalls && !result.startsWith('recording_owner')) {
+      _rtError = 'direct_owner_capture_unavailable';
+    }
+  }
+
+  Future<void> _stopDirect() async {
+    if (!_directMode && _directMixer == null) return;
+    await _direct.stop();
+    _drainDirect(_directClockUs);
+    _directMixer = null;
+    _directMode = false;
   }
 
   Future<void> _talk({bool greet = true}) async {
@@ -1206,6 +1298,7 @@ class CallSession extends ChangeNotifier {
 
   /// ปิดไฟล์ แก้ขนาดในหัวไฟล์ · คืนไฟล์ หรือ null ถ้าสั้นเกินจะมีความหมาย
   Future<File?> _finishRecording() async {
+    await _stopDirect();
     final sink = _recSink;
     final file = _recFile;
     final bytes = _recBytes;
@@ -1288,7 +1381,7 @@ class CallSession extends ChangeNotifier {
         'peak=${_peakEver.toStringAsFixed(3)} echo=${_echoPeak.toStringAsFixed(3)} '
         'deaf=$_deaf mute=$_mute spkLost=$_speakerLost silenced=$_micBlockedSeen a11y=$a11y '
         'stream=${_state.callStream} rtAudioMs=${_rtAudioBytes ~/ 48} rtErr=${_rtError ?? '-'} '
-        'rtLang=$_rtLangReminders';
+        'rtLang=$_rtLangReminders audioPath=$_audioPath';
     debugPrint(line);
     if (_deaf || _mute || _speakerLost || _micBlockedSeen || herQuiet || _rtLangReminders > 0 ||
         (_rounds > 0 && _heardRounds == 0)) {

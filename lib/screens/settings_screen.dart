@@ -363,7 +363,16 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             _memoryCard(context, state, mode, t),
           ],
-        SettingsSection.calls => [_callCard(state, mode)],
+        SettingsSection.calls => [
+            _callCard(state, mode),
+            ListTile(
+              leading: const Icon(Icons.settings_phone_rounded),
+              title: Text(t.directCallSetup),
+              subtitle: Text(t.directCallSetupHint),
+              onTap: () => unawaited(const MethodChannel('giggok/direct_setup')
+                  .invokeMethod<void>('open').catchError((Object _) {})),
+            ),
+          ],
         SettingsSection.general => [
             _languageCard(state, mode, t),
             _permissionCard(context, mode, t),

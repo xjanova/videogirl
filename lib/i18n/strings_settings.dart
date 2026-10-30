@@ -2,6 +2,8 @@ import 'strings.dart';
 
 /// ข้อความของหน้าตั้งค่าแบบแบ่งหมวด · ไลเซนส์ · สถานะจริงของสมองในเครื่อง
 extension SettingsStrings on S {
+  String get directCallSetup => pick('ตั้งค่าเสียงตรงในสาย', 'Set up direct call audio');
+  String get directCallSetupHint => pick('เชื่อมต่อกับเครื่องนี้เพื่อให้คู่สายได้ยินชัดขึ้น', 'Connect to this phone for clearer call audio');
   // ── หมวด ──
   String get settingsMenuTitle => pick('ตั้งค่า', 'Settings');
   String get settingsBack => pick('กลับไปหน้าตั้งค่า', 'Back to settings');

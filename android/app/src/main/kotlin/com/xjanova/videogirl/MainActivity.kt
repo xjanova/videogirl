@@ -104,6 +104,7 @@ class MainActivity : FlutterActivity() {
         bridge = b
         speech.attach(messenger)
         studio.attach(messenger)
+        com.xjanova.videogirl.direct.setup.DirectAudioSetup.attach(applicationContext, messenger)
         channel = MethodChannel(messenger, CHANNEL)
         channel!!.setMethodCallHandler { call, result ->
                 when (call.method) {

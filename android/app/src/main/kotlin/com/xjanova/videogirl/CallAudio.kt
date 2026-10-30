@@ -169,6 +169,7 @@ object CallAudio {
      * จะไปโผล่ที่หูฟังตอนเจ้าของเพิ่งยกขึ้นแนบหู ซึ่งดังมากและงงมาก
      */
     fun handOver(context: Context) {
+        DirectAudioClient.handOver()
         stop()
         liveStop()
         restore(context)
@@ -179,6 +180,7 @@ object CallAudio {
 
     /** จบสาย หรือเลิกให้เธอพูด — คืนระดับเสียงเดิมทุกครั้ง */
     fun close(context: Context) {
+        DirectAudioClient.closeCall()
         stop()
         liveStop()
         restore(context)

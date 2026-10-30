@@ -84,6 +84,15 @@ class RealtimeCall {
   final String languageReminder;
   final RtConnect _connect;
 
+  /// Enabled only for an isolated downlink, never for the acoustic speaker path.
+  bool fullDuplex = false;
+  /// Flush playback and return how much of the current item's audio was still queued.
+  Future<int> Function()? onInterruption;
+  String? _audioItem;
+  int _audioContentIndex = 0;
+  int _itemAudioBytes = 0;
+  final _interruptedItems = <String>{};
+
   /// เสียงเธอ PCM 16 บิต 24 kHz · ส่งต่อให้ลำโพงทันที
   void Function(Uint8List pcm24k)? onAudio;
 
@@ -151,7 +160,7 @@ class RealtimeCall {
               'prefix_padding_ms': 300,
               'silence_duration_ms': 600,
               'create_response': true,
-              'interrupt_response': false,
+              'interrupt_response': fullDuplex,
             },
           },
           'output': {
@@ -252,12 +261,25 @@ class RealtimeCall {
     switch (e['type']) {
       case 'response.created':
         _herText.clear();
+        _audioItem = null;
+        _itemAudioBytes = 0;
         onResponseStart?.call();
+      case 'input_audio_buffer.speech_started':
+        if (fullDuplex) unawaited(_interruptPlayback());
       case 'response.output_audio.delta':
+        final item = e['item_id'] as String?;
+        if (item != null && _interruptedItems.contains(item)) return;
+        if (item != null && item != _audioItem) {
+          _audioItem = item;
+          _itemAudioBytes = 0;
+        }
+        _audioContentIndex = e['content_index'] as int? ?? 0;
         final b64 = e['delta'];
         if (b64 is String && b64.isNotEmpty) {
           try {
-            onAudio?.call(base64Decode(b64));
+            final pcm = base64Decode(b64);
+            _itemAudioBytes += pcm.length;
+            onAudio?.call(pcm);
           } on FormatException {
             // ชิ้นเสีย ข้ามไป · ดีกว่าหยุดทั้งประโยค
           }
@@ -290,6 +312,24 @@ class RealtimeCall {
         debugPrint('realtime: $msg');
         onError?.call(msg);
     }
+  }
+
+  Future<void> _interruptPlayback() async {
+    final item = _audioItem;
+    if (item == null || _interruptedItems.contains(item)) return;
+    _interruptedItems.add(item);
+    // Bound retained IDs even on exceptionally long calls.
+    if (_interruptedItems.length > 64) _interruptedItems.remove(_interruptedItems.first);
+    final contentIndex = _audioContentIndex;
+    final totalMs = _itemAudioBytes ~/ 48;
+    final pendingMs = await onInterruption?.call() ?? totalMs;
+    if (!connected) return;
+    _send({
+      'type': 'conversation.item.truncate',
+      'item_id': item,
+      'content_index': contentIndex,
+      'audio_end_ms': (totalMs - pendingMs).clamp(0, totalMs),
+    });
   }
 
   // ── ตัวกันหลุดภาษา ─────────────────────────────────────
