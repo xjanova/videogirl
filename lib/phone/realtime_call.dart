@@ -59,6 +59,8 @@ class RealtimeCall {
     this.model = defaultModel,
     this.voice = 'marin',
     this.language = 'th',
+    this.transcriptionHint = '',
+    this.languageReminder = '',
     RtConnect? connect,
   }) : _connect = connect ?? _ioConnect;
 
@@ -74,6 +76,12 @@ class RealtimeCall {
   final String model;
   final String voice;
   final String language;
+
+  /// บริบทให้ตัวถอดเสียงคู่สาย (MindPersona.callTranscriptionHint) · ว่าง = ไม่ส่ง
+  final String transcriptionHint;
+
+  /// ข้อความเตือนเมื่อเธอหลุดภาษา (MindPersona.callLanguageReminder) · ว่าง = ไม่เตือน
+  final String languageReminder;
   final RtConnect _connect;
 
   /// เสียงเธอ PCM 16 บิต 24 kHz · ส่งต่อให้ลำโพงทันที
@@ -130,7 +138,11 @@ class RealtimeCall {
         'audio': {
           'input': {
             'format': {'type': 'audio/pcm', 'rate': 24000},
-            'transcription': {'model': 'gpt-4o-mini-transcribe', 'language': language},
+            'transcription': {
+              'model': 'gpt-4o-mini-transcribe',
+              'language': language,
+              if (transcriptionHint.isNotEmpty) 'prompt': transcriptionHint,
+            },
             // เสียงจากลำโพงมือถือมีเสียงห้องปน · เกณฑ์สูงกว่าค่าตั้งต้นเล็กน้อย
             // หยุด 600 มิลลิวินาที = จบตา · ตอบไวแต่ไม่ตัดคนหยุดหายใจ
             'turn_detection': {
@@ -256,10 +268,17 @@ class RealtimeCall {
       case 'response.output_audio_transcript.done':
         final t = (e['transcript'] as String?)?.trim() ?? _herText.toString().trim();
         _herText.clear();
-        if (t.isNotEmpty) onHerText?.call(t);
+        if (t.isNotEmpty) {
+          _holdLanguage(t);
+          onHerText?.call(t);
+        }
       case 'conversation.item.input_audio_transcription.completed':
         final t = (e['transcript'] as String?)?.trim() ?? '';
-        if (t.isNotEmpty) onCallerText?.call(t);
+        if (t.isNotEmpty) {
+          _lastCaller = t;
+          _remindedThisTurn = false;
+          onCallerText?.call(t);
+        }
       case 'response.output_item.done':
         final item = e['item'];
         if (item is Map && item['type'] == 'function_call') _onTool(item.cast<String, Object?>());
@@ -271,6 +290,47 @@ class RealtimeCall {
         debugPrint('realtime: $msg');
         onError?.call(msg);
     }
+  }
+
+  // ── ตัวกันหลุดภาษา ─────────────────────────────────────
+  //
+  // 🔴 สายจริง 2026-10-07 (vivo): คู่สายพูดไทย ("ครับ") เธอตอบอังกฤษต่อกันห้าตา ·
+  // prompt ห้ามสลับเพราะคำเดียวแล้ว แต่เสียงไม่ชัดโมเดลยังหลุดได้ · ตาที่พูดไปแล้วแก้ไม่ได้
+  // ที่ทำได้คือบอกเซสชันทันทีว่าคู่สายพูดไทย ตาถัดไปจะได้กลับมา
+
+  static final _thaiChar = RegExp(r'[\u0E00-\u0E7F]');
+  static final _latinChar = RegExp(r'[A-Za-z]');
+
+  /// เตือนได้ไม่เกินกี่ครั้งต่อสาย · คนโทรภาษาอื่นจริงแต่บทถูกถอดเป็นอักษรไทย = ไม่เถียงกันทั้งสาย
+  static const maxLanguageReminders = 3;
+
+  String _lastCaller = '';
+  bool _remindedThisTurn = false;
+  int _languageReminders = 0;
+
+  /// เตือนไปกี่ครั้งในสายนี้ · ลงรายงานสาย
+  int get languageReminders => _languageReminders;
+
+  void _holdLanguage(String her) {
+    if (languageReminder.isEmpty || _remindedThisTurn) return;
+    if (_languageReminders >= maxLanguageReminders) return;
+    // คู่สายพูดไทย = บทมีอักษรไทยและไม่มีอักษรอังกฤษ · ยังไม่ได้ยินเขาเลย (คำทัก) = ไม่ตัดสิน
+    final caller = _lastCaller;
+    if (!_thaiChar.hasMatch(caller) || _latinChar.hasMatch(caller)) return;
+    final latin = _latinChar.allMatches(her).length;
+    if (latin < 3 || latin <= _thaiChar.allMatches(her).length) return;
+    _remindedThisTurn = true;
+    _languageReminders++;
+    _send({
+      'type': 'conversation.item.create',
+      'item': {
+        'type': 'message',
+        'role': 'system',
+        'content': [
+          {'type': 'input_text', 'text': languageReminder},
+        ],
+      },
+    });
   }
 
   bool _alerted = false;

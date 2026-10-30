@@ -1625,13 +1625,16 @@ class MindState extends ChangeNotifier {
   ///
   /// [outgoing] = สายที่น้องมายโทรออก · ไม่มีคำทักตายตัว (รอปลายสายพูด "ฮัลโหล" ก่อน)
   RealtimeCall openRealtimeCall({bool outgoing = false}) {
+    final greeting = outgoing ? '' : callGreeting();
     return RealtimeCall(
       apiKey: effectiveOpenAiKey,
       instructions: callPrompt(live: true, outgoing: outgoing),
-      greeting: outgoing ? '' : callGreeting(),
+      greeting: greeting,
       // เสียงที่ตั้งไว้ให้ "ตอบรับสาย" · ไม่ใช่เสียงที่ Realtime รู้จัก = marin
       voice: voiceFor(VoiceChannel.answer).voice,
       language: _sttLang,
+      transcriptionHint: MindPersona.callTranscriptionHint(_lang, greeting: greeting),
+      languageReminder: MindPersona.callLanguageReminder(_lang),
       connect: debugRealtimeConnect,
     );
   }

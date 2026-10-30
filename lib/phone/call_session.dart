@@ -196,6 +196,9 @@ class CallSession extends ChangeNotifier {
   /// รหัสข้อผิดพลาดล่าสุดจากเซสชันคุยสด · null = ไม่มี
   String? _rtError;
 
+  /// คุยสดหลุดไปพูดภาษาอื่นทั้งที่คู่สายพูดไทย กี่ครั้ง ([RealtimeCall.languageReminders]) · ลงรายงาน
+  int _rtLangReminders = 0;
+
   String? _error;
   String? get error => _error;
 
@@ -674,6 +677,7 @@ class CallSession extends ChangeNotifier {
       _rtLips = false;
       unawaited(_lips?.setBabble(false));
     }
+    _rtLangReminders += rt.languageReminders;
     await rt.close();
     if (identical(_rt, rt)) _rt = null;
     await _invoke('liveAudioStop');
@@ -1283,9 +1287,11 @@ class CallSession extends ChangeNotifier {
     final line = 'call: rounds=$_rounds heard=$_heardRounds '
         'peak=${_peakEver.toStringAsFixed(3)} echo=${_echoPeak.toStringAsFixed(3)} '
         'deaf=$_deaf mute=$_mute spkLost=$_speakerLost silenced=$_micBlockedSeen a11y=$a11y '
-        'stream=${_state.callStream} rtAudioMs=${_rtAudioBytes ~/ 48} rtErr=${_rtError ?? '-'}';
+        'stream=${_state.callStream} rtAudioMs=${_rtAudioBytes ~/ 48} rtErr=${_rtError ?? '-'} '
+        'rtLang=$_rtLangReminders';
     debugPrint(line);
-    if (_deaf || _mute || _speakerLost || _micBlockedSeen || herQuiet || (_rounds > 0 && _heardRounds == 0)) {
+    if (_deaf || _mute || _speakerLost || _micBlockedSeen || herQuiet || _rtLangReminders > 0 ||
+        (_rounds > 0 && _heardRounds == 0)) {
       _state.noteIncident(line);
     }
     _rounds = 0;
@@ -1297,6 +1303,7 @@ class CallSession extends ChangeNotifier {
     _micBlockedSeen = false;
     _rtAudioBytes = 0;
     _rtError = null;
+    _rtLangReminders = 0;
     _levelFailed = false;
   }
 

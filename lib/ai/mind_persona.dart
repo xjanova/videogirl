@@ -692,6 +692,29 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
   /// ชื่อที่เธอใช้ในสาย · เจ้าของตั้งไว้ตรง ๆ
   static String callName(AppLang lang) => S(lang).pick('น้องมาย', 'Mai');
 
+  /// คำใบ้ให้ตัวถอดเสียงคู่สายของคุยสด · บทที่ถอดได้ไปลงบันทึกสายและสรุปสาย
+  ///
+  /// สายจริง (vivo) ชื่อคนกลายเป็นคำไม่มีความหมาย ("ขอให้ดีฟ") · บอกว่าเป็นสายไทย
+  /// ที่มีคำทับศัพท์ปน และคำทัก (มีชื่อร้าน/บริษัทที่เจ้าของตั้ง) ให้ตัวถอดเดาคำได้ใกล้ขึ้น ·
+  /// คำทักคนโทรได้ยินอยู่แล้ว ไม่ใช่ข้อมูลส่วนตัวเพิ่ม
+  static String callTranscriptionHint(AppLang lang, {String greeting = ''}) {
+    final s = S(lang);
+    final base = s.pick(
+      'บทสนทนาทางโทรศัพท์ภาษาไทย อาจมีคำทับศัพท์อังกฤษปน เช่น ฮัลโหล โอเค',
+      'A phone call in English.',
+    );
+    final g = greeting.trim();
+    return g.isEmpty ? base : '$base ${s.pick('คำทักของสายนี้:', 'The greeting on this call:')} $g';
+  }
+
+  /// เตือนคุยสดเมื่อเธอหลุดไปพูดอังกฤษทั้งที่คู่สายพูดไทย · ภาษาอื่นไม่มีตัวเตือน (ว่าง)
+  ///
+  /// ยังเปิดทางให้สลับภาษาเมื่อคู่สายพูดภาษาอื่นจริง · ตัวถอดเสียงถูกบอกให้ถอดเป็นไทย
+  /// คนโทรภาษาอื่นจึงอาจได้บทเป็นตัวอักษรไทย ตัวเตือนตัดสินแทนเสียงจริงไม่ได้
+  static String callLanguageReminder(AppLang lang) => lang == AppLang.th
+      ? 'คนปลายสายยังพูดภาษาไทยอยู่ ตอบเป็นภาษาไทยต่อ · เปลี่ยนภาษาเฉพาะเมื่อเขาพูดภาษาอื่นเป็นประโยคชัด ๆ'
+      : '';
+
   /// วิธีคุยโทรศัพท์ให้เหมือนเลขาคนจริง + วิธีวางสาย/แจ้งเรื่องด่วน
   ///
   /// 🔴 เจ้าของ: "ทำให้พร้อม เหมือนคนมากขึ้นที่สุด ... มีการรับเหมือนคน" · เดิม prompt
@@ -729,24 +752,51 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
         '- If they sound mid-thought (a pause, an unfinished story), answer with just "mm-hm" or "right" and keep listening',
       ),
       // เจ้าของ: "ถ้าสายเข้าเป็นภาษาอะไร มายด์ก็ต้องตอบกลับภาษานั้นได้"
+      //
+      // 🔴 สลับเฉพาะเมื่อได้ยินเป็นประโยค · สายจริง 2026-10-07 (vivo): คู่สายพูดไทยล้วน
+      // ("ครับ" "อืม" "ฮัลโหล") เธอตอบ "Okay, may I have your name, please?" ต่อกันห้าตา ·
+      // เสียงสายเบาและไม่ชัด + กฎ "ตอบตามภาษาคนโทร" = โมเดลเดาเป็นอังกฤษ
       s.pick(
-        '- ตอบเป็นภาษาเดียวกับที่คนปลายสายพูดเสมอ: เขาพูดอังกฤษ จีน ญี่ปุ่น เกาหลี ลาว พม่า หรือภาษาอื่น '
-            'ให้สลับไปพูดภาษานั้นทั้งประโยคทันที รวมคำรับ คำทวน และคำลา · เขาสลับกลับ ก็สลับตาม · '
-            'ฟังไม่ออกว่าภาษาอะไร ใช้ภาษาตั้งต้น',
-        '- Always answer in the language the caller speaks: if they speak Thai, Chinese, Japanese, Korean, '
-            'Spanish or anything else, switch to that language for whole sentences right away, including '
-            'acknowledgements, read-backs and goodbyes · switch back when they do · if you cannot tell, use the default language',
+        '- พูดภาษาที่ใช้อยู่ต่อไป · สลับภาษาเฉพาะเมื่อคนปลายสายพูดภาษาอื่นเป็นประโยคชัด ๆ (อังกฤษ จีน ญี่ปุ่น เกาหลี '
+            'ลาว พม่า หรือภาษาอื่น) แล้วพูดภาษานั้นทั้งประโยค รวมคำรับ คำทวน และคำลา · เขาสลับกลับ ก็สลับตาม',
+        '- Keep to the language you are speaking · switch only when the caller speaks whole sentences clearly in '
+            'another language (Thai, Chinese, Japanese, Korean, Spanish or anything else), then use it for whole '
+            'sentences, including acknowledgements, read-backs and goodbyes · switch back when they do',
+      ),
+      s.pick(
+        '- ห้ามเปลี่ยนภาษาเพราะคำเดียว คำทับศัพท์ที่คนไทยพูดกันปกติ (ฮัลโหล โอเค เยส ซอรี่ ชื่อยี่ห้อ) '
+            'เสียงไม่ชัด เสียงรบกวน หรือความเงียบ · ไม่แน่ใจว่าเขาพูดภาษาอะไร ให้พูดภาษาเดิมแล้วขอให้เขาพูดอีกครั้ง',
+        '- Never switch because of a single word, a borrowed word ("hello", "ok", a brand name), unclear audio, '
+            'noise or silence · if you cannot tell the language, stay in the current one and ask them to say it again',
+      ),
+      // 🔴 สายเดียวกัน: เขาถาม "ที่นี่บริษัทอะไร" และถามหาคนด้วยชื่อ เธอไม่ตอบสักคำ
+      // ถามชื่อเขาซ้ำห้ารอบ · คนโทรมาถามแล้วไม่มีใครตอบ = วางสาย
+      s.pick(
+        '- เขาถามอะไร ตอบคำถามนั้นก่อน แล้วค่อยถามเรื่องของคุณ · ถามว่าที่นี่ที่ไหนหรือคุณเป็นใคร ตอบตามคำทักของคุณ',
+        '- If they ask something, answer it first, then ask yours · if they ask where they have called or who you are, '
+            'answer from your greeting',
+      ),
+      s.pick(
+        '- คำถามเดียวกันถามได้ไม่เกินสองครั้ง · เขาไม่บอกหรือยังฟังไม่ชัด ให้ข้ามไปเรื่องถัดไป',
+        '- Ask the same question at most twice · if they will not say or you still cannot hear it, move on',
       ),
       if (outgoing)
         s.pick(
           '- ถามหรือบอกทีละเรื่อง ตามลำดับที่ทำให้เรื่องที่ได้รับมอบหมายสำเร็จ',
           '- One point or question at a time, in the order that gets the task done',
         )
-      else
+      else ...[
         s.pick(
           '- ถามทีละเรื่อง: ขอทราบชื่อ → ติดต่อเรื่องอะไร → เบอร์ติดต่อกลับ → ด่วนไหม หรือสะดวกให้โทรกลับช่วงไหน',
           '- One question at a time: their name → what it is about → a number to call back → how urgent / when suits them',
         ),
+        s.pick(
+          '- ไม่ได้ชื่อก็รับฝากเรื่องได้ · ถามหาใครด้วยชื่อ ให้บอกว่าเจ้าของเบอร์ไม่สะดวกรับสายตอนนี้ แล้วเสนอรับฝากเรื่อง · '
+              'ห้ามยืนยันหรือปฏิเสธว่าเบอร์นี้เป็นของใคร',
+          '- You can take a message without a name · if they ask for someone by name, say the owner of this number '
+              'cannot take the call right now and offer to take a message · never confirm or deny whose number this is',
+        ),
+      ],
       s.pick(
         '- ทวนชื่อ เบอร์ วัน เวลา ให้ฟังเพื่อยืนยันทุกครั้ง · อ่านเบอร์ทีละตัว เช่น ศูนย์ แปด หนึ่ง',
         '- Read names, numbers, dates and times back to confirm · read phone numbers digit by digit',

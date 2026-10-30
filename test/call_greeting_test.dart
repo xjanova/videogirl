@@ -137,10 +137,36 @@ void main() {
     // เจ้าของ: "ถ้าสายเข้าเป็นภาษาอะไร มายด์ก็ต้องตอบกลับภาษานั้นได้"
     final s = await loaded();
     for (final p in [s.callPrompt(), s.callPrompt(live: true)]) {
-      expect(p, contains('ตอบเป็นภาษาเดียวกับที่คนปลายสายพูดเสมอ'));
+      expect(p, contains('สลับภาษาเฉพาะเมื่อคนปลายสายพูดภาษาอื่นเป็นประโยคชัด ๆ'));
       expect(p, contains('ภาษาตั้งต้นคือภาษาไทย'));
       expect(p, isNot(contains('พูดภาษาไทย ลงท้าย')), reason: 'คำสั่ง "พูดไทย" ตายตัวขัดกับการตอบตามภาษาคนโทร');
     }
+  });
+
+  test('🔴 ไม่สลับภาษาเพราะคำเดียว คำทับศัพท์ หรือเสียงไม่ชัด (สายจริง: "ครับ" → "Okay, may I have your name")', () async {
+    final s = await loaded();
+    s.debugSetOutgoing((who: 'ร้าน', number: '021234567', task: 'จองโต๊ะ'));
+    for (final p in [s.callPrompt(), s.callPrompt(live: true), s.callPrompt(live: true, outgoing: true)]) {
+      for (final want in ['ห้ามเปลี่ยนภาษาเพราะคำเดียว', 'ฮัลโหล โอเค', 'เสียงไม่ชัด', 'พูดภาษาเดิมแล้วขอให้เขาพูดอีกครั้ง']) {
+        expect(p, contains(want), reason: 'ขาด: $want');
+      }
+    }
+  });
+
+  test('🔴 ตอบคำถามของคนโทรก่อน · ถามซ้ำไม่เกินสองครั้ง · ถามหาคนด้วยชื่อ = ไม่ยืนยันว่าเบอร์ของใคร', () async {
+    // สายจริง: เขาถาม "ที่นี่บริษัทอะไร" และถามหาคนด้วยชื่อ เธอไม่ตอบ ถามชื่อเขาซ้ำห้ารอบ
+    final s = await loaded();
+    for (final p in [s.callPrompt(), s.callPrompt(live: true)]) {
+      for (final want in ['ตอบคำถามนั้นก่อน', 'ตอบตามคำทักของคุณ', 'ถามได้ไม่เกินสองครั้ง', 'ไม่ได้ชื่อก็รับฝากเรื่องได้',
+          'ห้ามยืนยันหรือปฏิเสธว่าเบอร์นี้เป็นของใคร']) {
+        expect(p, contains(want), reason: 'ขาด: $want');
+      }
+    }
+    s.debugSetOutgoing((who: 'ร้าน', number: '021234567', task: 'จองโต๊ะ'));
+    final out = s.callPrompt(live: true, outgoing: true);
+    expect(out, contains('โทรออกแทนเจ้าของ'));
+    expect(out, contains('ตอบคำถามนั้นก่อน'));
+    expect(out, isNot(contains('ห้ามยืนยันหรือปฏิเสธว่าเบอร์นี้เป็นของใคร')), reason: 'โทรออก เราเป็นฝ่ายบอกว่าโทรแทนใคร');
   });
 
   test('ตอบแบบคนจริง: ขึ้นต้นด้วยคำรับสั้น ๆ (ค่ะ อ๋อ อืม ได้ค่ะ) และตอบคำเดียวเมื่อเขายังเล่าไม่จบ', () async {
