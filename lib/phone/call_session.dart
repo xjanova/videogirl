@@ -620,7 +620,11 @@ class CallSession extends ChangeNotifier {
     };
     // ลากันแล้ว = วางสายเมื่อเสียงลาของเธอออกลำโพงหมด (ดูนาฬิกาข้างล่าง)
     var hangWhenQuiet = false;
-    rt.onEndCall = () => hangWhenQuiet = true;
+    rt.onEndCall = () {
+      // ลงบันทึกทุกครั้ง · ของเดิมเงียบ ตรวจไม่ได้ว่าเธอไม่ขอวาง หรือขอแล้วแต่ไม่วาง
+      debugPrint('call: เธอขอวางสาย (end_call) · รอเสียงลาจบ');
+      hangWhenQuiet = true;
+    };
     rt.onAlertOwner = (reason) => unawaited(_state.alertOwner(who: _who, reason: reason));
 
     if (!_directMode && await _invoke<bool>('liveAudioStart', {'stream': _state.callStream}) != true) {
@@ -670,6 +674,7 @@ class CallSession extends ChangeNotifier {
         // เธอขอวางสายแล้ว และประโยคลาพูดจบแล้ว · กันไว้ห้าวินาทีแรก (โมเดลเรียกพลาดตอนทัก)
         if (hangWhenQuiet && !speaking && now.difference(started) > const Duration(seconds: 5)) {
           hangWhenQuiet = false;
+          debugPrint('call: เสียงลาจบแล้ว เธอวางสาย');
           unawaited(hangUp());
           return;
         }

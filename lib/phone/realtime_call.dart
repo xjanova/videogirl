@@ -173,7 +173,7 @@ class RealtimeCall {
           {
             'type': 'function',
             'name': 'end_call',
-            'description': 'Hang up the phone call. Only after you and the caller have both said goodbye.',
+            'description': 'Hang up the phone call. Call it in the same reply as your goodbye, once the caller is done.',
             'parameters': {'type': 'object', 'properties': <String, Object?>{}, 'required': <String>[]},
           },
           {

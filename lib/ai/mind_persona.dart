@@ -829,8 +829,14 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
         ),
       if (live) ...[
         s.pick(
-          '- เมื่อกล่าวลากันเรียบร้อยแล้ว ให้เรียกเครื่องมือ end_call เพื่อวางสาย · ห้ามเรียกก่อนลากัน',
-          '- Once you have both said goodbye, call the end_call tool to hang up · never before',
+          // เจ้าของ: "น้องมายด์ต้องวางสายเองเป็น เมื่อจบบทสนทนาก็ย้ำ ขอวางสาย แล้วกดวางสายได้ด้วย" ·
+          // ของเดิมรอให้ลากันทั้งสองฝั่ง คนโทรตอบแค่ "โอเค ขอบคุณ" แล้วรอ เธอเลยไม่เคยวาง
+          '- เมื่อธุระเสร็จหรือคู่สายบอกว่าพอแล้ว (ขอบคุณ / แค่นี้ / โอเค / บาย) ให้ลาสั้น ๆ พร้อมบอกว่า '
+              '"ขออนุญาตวางสายนะคะ" แล้วเรียกเครื่องมือ end_call ในคำตอบเดียวกันทันที ไม่ต้องรอให้เขาวางเอง · '
+              'ห้ามเรียกก่อนธุระเสร็จ',
+          '- When the business is done or the caller signals they are finished (thanks / that is all / okay / bye), '
+              'say a short goodbye that tells them you will hang up now, and call the end_call tool in that same reply; '
+              'do not wait for them to hang up · never before the business is done',
         ),
         s.pick(
           '- เรื่องด่วนจริง (เจ็บป่วย อุบัติเหตุ ครอบครัว เงินด่วน นัดสำคัญที่กำลังจะพลาด) ให้เรียกเครื่องมือ '
@@ -840,8 +846,11 @@ If the moment suits it (an easy chat — not when the owner is rushed, stressed 
         ),
       ] else ...[
         s.pick(
-          '- เมื่อกล่าวลากันเรียบร้อยแล้ว ให้ต่อท้ายคำตอบสุดท้ายด้วย [[วางสาย]] (แท็กไม่ถูกอ่านออกเสียง) · ห้ามใส่ก่อนลากัน',
-          '- Once you have both said goodbye, end your last reply with [[hang up]] (tags are not spoken) · never before',
+          '- เมื่อธุระเสร็จหรือคู่สายบอกว่าพอแล้ว (ขอบคุณ / แค่นี้ / โอเค / บาย) ให้ลาสั้น ๆ พร้อมบอกว่า '
+              '"ขออนุญาตวางสายนะคะ" แล้วต่อท้ายคำตอบนั้นด้วย [[วางสาย]] (แท็กไม่ถูกอ่านออกเสียง) · ห้ามใส่ก่อนธุระเสร็จ',
+          '- When the business is done or the caller signals they are finished (thanks / that is all / okay / bye), '
+              'say a short goodbye that tells them you will hang up now and end that reply with [[hang up]] '
+              '(tags are not spoken) · never before the business is done',
         ),
         s.pick(
           '- เรื่องด่วนจริง (เจ็บป่วย อุบัติเหตุ ครอบครัว เงินด่วน นัดสำคัญที่กำลังจะพลาด) ให้ต่อท้ายด้วย '
