@@ -193,6 +193,8 @@ void main() {
     // สิทธิ์ที่ระบบให้เองตอนติดตั้ง ไม่ต้องมีโค้ดขอ
     const installTime = {
       'INTERNET',
+      // ConnectivityManager เช็ค Wi-Fi ให้เสียงตรง — เป็นสิทธิ์ normal ไม่มีชื่อโผล่ในโค้ด
+      'ACCESS_NETWORK_STATE',
       'FOREGROUND_SERVICE',
       'FOREGROUND_SERVICE_DATA_SYNC',
       // บริการเฝ้างาน (flutter_background_service) ใช้ประเภทนี้ — ดู manifest

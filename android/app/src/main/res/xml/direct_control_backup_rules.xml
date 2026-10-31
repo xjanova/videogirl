@@ -1,0 +1,4 @@
+<full-backup-content>
+    <exclude domain="sharedpref" path="giggok_direct_control.xml" />
+    <exclude domain="sharedpref" path="giggok_hands.xml" />
+</full-backup-content>

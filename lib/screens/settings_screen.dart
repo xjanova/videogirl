@@ -21,8 +21,10 @@ import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
 import '../background/mind_watch.dart';
 import 'call_knowledge_panel.dart';
+import 'call_lessons_panel.dart';
 import 'call_personality_panel.dart';
 import 'direct_call_panel.dart';
+import 'phone_control_panel.dart';
 import 'shop_screen.dart';
 import '../memory/mind_memory.dart';
 import '../system/permissions.dart';
@@ -39,6 +41,7 @@ import '../widgets/liquid_background.dart';
 import '../widgets/screen_header.dart';
 import '../ai/openai_client.dart';
 import '../i18n/strings_settings.dart';
+import '../i18n/strings_hands.dart';
 import '../phone/call_session.dart';
 import '../studio/mind_studio.dart';
 import '../system/app_life.dart';
@@ -369,13 +372,19 @@ class _SettingsScreenState extends State<SettingsScreen>
         SettingsSection.calls => [
             // เจ้าของ: "อยากให้หน้าต่อสายตรง โดดเด่นในการตั้งค่า และสถานะชัดเจนเมื่อต่อติด"
             _card(mode: mode, label: t.directCallSetupHint, child: DirectCallPanel(accent: mode.accent)),
+            // คุยสดแสดงเสมอ ไม่ขึ้นกับรับสายอัตโนมัติ
+            _liveTalkCard(state, mode),
             // เจ้าของ: "เราต้องการให้เธอรู้เรื่องที่เราเปิดไว้ให้ไปดึงมาตอบได้ ทำหน้าตั้งค่านั้นให้ดี"
             _card(mode: mode, label: t.kbCard, child: CallKnowledgePanel(accent: mode.accent)),
             _card(mode: mode, label: t.cpCard, child: CallPersonalityPanel(accent: mode.accent)),
+            // เจ้าของ: "ยิ่งคุย ยิ่งเจอ ยิ่งสั่ง ก็ยิ่งเก่ง" · "หลอกถามให้พูดไม่ได้ ยกเว้น คนมีโค๊ดลับ"
+            _card(mode: mode, label: t.clCard, child: CallLessonsPanel(accent: mode.accent)),
             _callCard(state, mode),
           ],
         SettingsSection.general => [
             _languageCard(state, mode, t),
+            // เจ้าของ: "ต้องทำให้ มายด์ คอนโทรลเครื่องได้หมด เปิดได้ได้ทุกแอพ ทำแทนเราได้"
+            _card(mode: mode, label: t.handsCard, child: PhoneControlPanel(accent: mode.accent)),
             _permissionCard(context, mode, t),
             _watchCard(context, mode, t),
             _exitCard(state, mode, t),
@@ -3224,6 +3233,84 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  // ── คุยสดในสาย (Realtime + GPT-Live) ─────────────────────
+  //
+  // 🔴 ของเดิมซ่อนอยู่ใต้ "รับสายอัตโนมัติ" · ปิดรับสายเอง = หาสวิตช์สองตัวนี้ไม่เจอ
+  // ทั้งที่มันใช้กับสายที่เจ้าของรับเอง/โทรออกด้วย · แยกการ์ดให้เห็นเสมอ
+  Widget _liveTalkCard(MindState state, MindMode mode) {
+    final s = S.of(context);
+    // GPT-Live ต้องมี Realtime เปิดอยู่ด้วย ([MindState.callLiveReady]) · อ่านว่าเปิดเมื่อครบทั้งคู่
+    final liveOn = state.liveCalls && state.realtimeCalls;
+    return _card(
+      mode: mode,
+      label: s.liveTalkCard,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // คุยสด (OpenAI Realtime) · เจ้าของ: "ต้องทำ real time พูดคุยเลย ถ้าตั้งค่าเป็น open ai"
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 3,
+                  children: [
+                    Text(s.realtimeCalls,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    Text(s.realtimeCallsHint,
+                        style: const TextStyle(
+                            fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                    if (state.realtimeCalls && !state.realtimeCallsReady)
+                      Text(s.realtimeNeedsOpenAi,
+                          style: const TextStyle(
+                              fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
+                  ],
+                ),
+              ),
+              _toggle(
+                on: state.realtimeCalls,
+                mode: mode,
+                onTap: () => state.setRealtimeCalls(!state.realtimeCalls),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // แสดงเสมอ · กดเปิดตอน Realtime ปิด = เปิดให้ทั้งคู่ ไม่ต้องไล่หาอีกสวิตช์
+          // · กดปิด = ปิดแค่ GPT-Live ส่วน Realtime ยังเปิดอยู่
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 3,
+                  children: [
+                    Text(s.liveCalls,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    Text(s.liveCallsHint,
+                        style: const TextStyle(
+                            fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                  ],
+                ),
+              ),
+              _toggle(
+                on: liveOn,
+                mode: mode,
+                onTap: () {
+                  if (liveOn) {
+                    state.setLiveCalls(false);
+                  } else {
+                    state.setRealtimeCalls(true);
+                    state.setLiveCalls(true);
+                  }
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── รับสายอัตโนมัติ ─────────────────────────────────────
   Widget _callCard(MindState state, MindMode mode) {
     return _card(
@@ -3390,34 +3477,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             ),
             const SizedBox(height: 10),
-            // คุยสด (OpenAI Realtime) · เจ้าของ: "ต้องทำ real time พูดคุยเลย ถ้าตั้งค่าเป็น open ai"
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    spacing: 3,
-                    children: [
-                      Text(S.of(context).realtimeCalls,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                      Text(S.of(context).realtimeCallsHint,
-                          style: const TextStyle(
-                              fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
-                      if (state.realtimeCalls && !state.realtimeCallsReady)
-                        Text(S.of(context).realtimeNeedsOpenAi,
-                            style: const TextStyle(
-                                fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
-                    ],
-                  ),
-                ),
-                _toggle(
-                  on: state.realtimeCalls,
-                  mode: mode,
-                  onTap: () => state.setRealtimeCalls(!state.realtimeCalls),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -3516,82 +3575,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                   fontSize: 10.5, height: 1.5, color: MindColors.ink55),
             ),
           ],
-
-          // ── ทางที่เสียงเธอวิ่งเข้าสาย ──────────────────────
-          //
-          // 🔴 สวิตช์นี้มีอยู่เพราะ**ผลต่างกันตามเครื่อง และไม่มีทางรู้
-          // ล่วงหน้าว่าเครื่องนี้ทางไหนรอด** ไม่ใช่ตัวเลือกเพื่อความยืดหยุ่น
-          // เจ้าของที่เจอ "ปลายสายไม่ได้ยิน" ต้องมีอะไรให้กดลองทันที
-          // ไม่ใช่รอรุ่นหน้า · ดู android CallAudio.kt
-          const SizedBox(height: 16),
-          Text(S.of(context).callStreamTitle,
-              style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
-          const SizedBox(height: 8),
-          Row(
-            spacing: 7,
-            children: [
-              for (final choice in const [
-                MindState.callStreamCall,
-                MindState.callStreamMedia,
-              ])
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => state.setCallStream(choice),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 9),
-                      decoration: BoxDecoration(
-                        gradient:
-                            state.callStream == choice ? mode.gradient : null,
-                        color: state.callStream == choice
-                            ? null
-                            : MindColors.glass80,
-                        borderRadius: BorderRadius.circular(MindRadius.control),
-                        border:
-                            Border.all(color: MindColors.glassBorder, width: 1),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        spacing: 2,
-                        children: [
-                          Text(
-                            choice == MindState.callStreamCall
-                                ? S.of(context).callStreamCall
-                                : S.of(context).callStreamMedia,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: state.callStream == choice
-                                  ? Colors.white
-                                  : MindColors.ink60,
-                            ),
-                          ),
-                          Text(
-                            choice == MindState.callStreamCall
-                                ? S.of(context).callStreamCallHint
-                                : S.of(context).callStreamMediaHint,
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              height: 1.4,
-                              color: state.callStream == choice
-                                  ? const Color(0xE6FFFFFF)
-                                  : MindColors.ink45,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            S.of(context).callStreamWhy,
-            style: const TextStyle(
-                fontSize: 10.5, height: 1.5, color: MindColors.ink55),
-          ),
         ],
       ),
     );

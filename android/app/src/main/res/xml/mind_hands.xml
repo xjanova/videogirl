@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  บริการ "ให้มายด์ใช้เครื่องแทน" ของ GigGok · ดู hands/MindHands.kt
+  อ่านหน้าจอเป็นตัวหนังสือ (canRetrieveWindowContent) และกด/ปัดแทน (canPerformGestures)
+  เฉพาะตอนเธอทำงานที่เจ้าของสั่ง · แอปเปิดตอนเริ่มงานและปิดเองหลังว่าง (hands/HandsSwitch.kt)
+  · คนละตัวกับ mind_accessibility.xml ซึ่งไม่อ่านหน้าจอ
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/hands_desc"
+    android:summary="@string/hands_summary"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewClicked|typeViewLongClicked|typeViewTextChanged|typeViewScrolled"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
+    android:notificationTimeout="100"
+    android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true" />

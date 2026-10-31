@@ -38,6 +38,11 @@ class _CallPanelState extends State<CallPanel> {
     final text = _draft.text.trim();
     if (text.isEmpty) return;
     _draft.clear();
+    // เธอถามอยู่ = สิ่งที่พิมพ์คือคำตอบให้เธอ ไม่ใช่ประโยคให้พูดเข้าสายคำต่อคำ
+    if (widget.session.ownerQuestion != null) {
+      widget.session.answerOwner(text);
+      return;
+    }
     await widget.session.say(text);
   }
 
@@ -66,9 +71,20 @@ class _CallPanelState extends State<CallPanel> {
           else if (call.deaf) _warn(t.callDeaf, const Color(0xFFB07A16)),
           if (call.error != null) _warn(call.error!, const Color(0xFFD93A5B)),
           if (call.lines.isNotEmpty) _transcript(call, mode),
+          if (call.ownerQuestion != null && call.turn != CallTurn.handedOver) _question(t, call, mode)
+          // สายงานที่เธอถามได้ · เจ้าของสลับกลางสายได้ว่าจะให้ถามไหม
+          else if (call.canAskOwner && call.turn != CallTurn.handedOver) _askSwitch(t, call, mode),
           // เจ้าของแทรกสายไปแล้ว = เขาคุยเอง · ช่องพิมพ์ตอนนั้นเป็นปุ่มที่
           // กดแล้วไม่มีใครได้ยิน เพราะเสียงกลับเข้าหูฟังไปแล้ว
           if (call.turn != CallTurn.handedOver) _composer(t, mode),
+          if (call.directMode && call.turn != CallTurn.handedOver)
+            _pill(
+              label: t.callUseSpeaker,
+              icon: Icons.volume_up_rounded,
+              colour: mode.accent,
+              filled: false,
+              onTap: call.speakerOn,
+            ),
           _buttons(t, call, mode),
         ],
       ),
@@ -224,6 +240,68 @@ class _CallPanelState extends State<CallPanel> {
     );
   }
 
+  // ── เธอถามเจ้าของกลางสาย ──────────────────────────────────
+  //
+  // ปลายสายถือสายรออยู่ · ปุ่มตอบเร็วสำหรับคำถามแบบได้/ไม่ได้ ที่เหลือพิมพ์ในช่องข้างล่าง
+  Widget _question(S t, CallSession call, MindMode mode) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: mode.accent.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(MindRadius.control),
+        border: Border.all(color: mode.accent.withValues(alpha: .40), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 6,
+        children: [
+          Text(t.callAskOwnerHead,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mode.accent)),
+          Text(call.ownerQuestion ?? '',
+              style: const TextStyle(fontSize: 13, height: 1.5, color: MindColors.ink)),
+          // ปลายสายไม่ได้ยินเจ้าของระหว่างรอ · บอกให้รู้ว่าพูดตอบได้โดยไม่หลุดเข้าสาย
+          Text(t.callAskOwnerMuted, style: const TextStyle(fontSize: 10.5, height: 1.45, color: MindColors.ink55)),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final c in t.callAskOwnerChoices)
+                ActionChip(
+                  label: Text(c, style: const TextStyle(fontSize: 12)),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => call.answerOwner(c),
+                ),
+              // ไม่ว่าง = เธอเลิกรอ ไม่ถามอีกทั้งสาย ใช้ไหวพริบเอง
+              ActionChip(
+                label: Text(t.callAskOwnerBusy, style: const TextStyle(fontSize: 12)),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => call.setOwnerAway(true),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _askSwitch(S t, CallSession call, MindMode mode) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            call.ownerAway ? t.callAskOwnerAllowOff : t.callAskOwnerAllow,
+            style: const TextStyle(fontSize: 11.5, height: 1.4, color: MindColors.ink55),
+          ),
+        ),
+        Switch.adaptive(
+          value: !call.ownerAway,
+          activeTrackColor: mode.accent,
+          onChanged: (v) => call.setOwnerAway(!v),
+        ),
+      ],
+    );
+  }
+
   // ── พิมพ์ให้เธอพูด ──────────────────────────────────────
   //
   // อยู่ตรงนี้เสมอ ไม่ใช่โผล่มาตอนพัง · เป็นทางเดียวที่ทำงานได้แน่นอน
@@ -243,7 +321,7 @@ class _CallPanelState extends State<CallPanel> {
               style: const TextStyle(fontSize: 12.5, color: MindColors.ink),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: t.callSayHint,
+                hintText: widget.session.ownerQuestion != null ? t.callAskOwnerHint : t.callSayHint,
                 hintStyle:
                     const TextStyle(fontSize: 12.5, color: MindColors.ink45),
                 filled: true,

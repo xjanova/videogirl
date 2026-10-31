@@ -31,9 +31,9 @@ object MindPrefs {
     /// ต้องตรงกับคีย์ใน lib/state/mind_state.dart
     const val KEY_AUTO_ANSWER = "autoAnswer"
     const val KEY_RING_SECONDS = "ringSeconds"
-    const val KEY_CALL_STREAM = "callStream"
     const val KEY_CONTACTS_ONLY = "autoAnswerContactsOnly"
     const val KEY_SHOW_ON_CALL = "showMindOnCall"
+    const val KEY_BRAIN = "brain"
 
     /// เขียนฝั่งนี้ อ่านฝั่ง Dart (ผ่านช่อง `lastAutoAnswer` ไม่ใช่ shared_preferences
     /// ซึ่งจำค่าเก่าไว้ในหน่วยความจำ) · "เหตุผล|เวลา"
@@ -41,6 +41,16 @@ object MindPrefs {
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    /**
+     * สมองที่เลือกต้องออกอินเทอร์เน็ต (หลังบ้าน / คีย์ OpenAI) · ค่าตั้งต้นฝั่ง Dart = ในเครื่อง ·
+     * เซิร์ฟเวอร์ในบ้านอยู่ใน LAN ไม่ต้องมีเน็ตนอก จึงไม่นับ (ชื่อตรงกับ BrainProvider.name)
+     */
+    fun brainNeedsInternet(context: Context): Boolean = try {
+        prefs(context).getString(PREFIX + KEY_BRAIN, "onDevice") in setOf("mindProxy", "openai")
+    } catch (e: ClassCastException) {
+        false
+    }
 
     /** ให้เธอรับสายเองไหม · ค่าตั้งต้นต้องตรงกับฝั่ง Dart */
     fun autoAnswer(context: Context): Boolean = try {
@@ -100,13 +110,5 @@ object MindPrefs {
         prefs(context).getString(PREFIX + LAST_AUTO, null)
     } catch (e: ClassCastException) {
         null
-    }
-
-    /** ช่องเสียงที่ใช้ส่งเสียงเธอเข้าสาย · ดู [CallAudio] */
-    fun callStream(context: Context): String = try {
-        prefs(context).getString(PREFIX + KEY_CALL_STREAM, CallAudio.STREAM_CALL)
-            ?: CallAudio.STREAM_CALL
-    } catch (e: ClassCastException) {
-        CallAudio.STREAM_CALL
     }
 }

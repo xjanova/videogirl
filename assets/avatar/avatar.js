@@ -284,9 +284,13 @@ export class Avatar {
      */
     setBabble(on) {
         this.lip.babble = !!on;
+        if (!on) this.lip.liveLevelAt = 0;
         this.speaking = !!on;
-        this.motion?.setTalking(!!on);
+        // Keep the phone pose while the live waveform drives her mouth.
+        this.motion?.setTalking(!!on && this.mood !== 'calling');
     }
+
+    setLiveLevel(level) { this.lip.setLiveLevel(level); }
 
     stop() {
         this.lip.stop();

@@ -362,6 +362,7 @@ class _MindBootstrapState extends State<MindBootstrap>
     );
 
     await _calls.start();
+    _showCallOnStage();
 
     // 🔴 ถามฝั่งเนทีฟทันทีว่ามีสายที่เธอถืออยู่หรือเปล่า
     //
@@ -388,15 +389,17 @@ class _MindBootstrapState extends State<MindBootstrap>
   /// อารมณ์ที่ดันไปให้อวาตาร์ล่าสุด — กันการยิงซ้ำทุกครั้งที่ CallWatch ขยับ
   MindMood? _stageMood;
 
-  /// มีสายอยู่ = เธอต้องยกโทรศัพท์ ไม่ใช่ยืนเฉยเหมือนไม่มีอะไรเกิดขึ้น
+  /// กริ่งดัง = รับรู้สาย; รับแล้ว = เปลี่ยนเข้าคลิปถือโทรศัพท์
   ///
   /// พอสายจบคืนเป็น neutral ไม่ใช่คืนอารมณ์ก่อนหน้า — อารมณ์ก่อนหน้าเป็นของ
   /// บทสนทนาที่จบไปแล้วก่อนสายเข้า จำไว้แล้วคืนทีหลังจะได้สีหน้าที่ค้าง
   /// มาจากเรื่องที่ผ่านไปนานแล้ว
   void _showCallOnStage() {
-    final want = _calls.state == CallState.idle
-        ? MindMood.neutral
-        : MindMood.calling;
+    final want = switch (_calls.state) {
+      CallState.idle => MindMood.neutral,
+      CallState.ringing => MindMood.alert,
+      CallState.offHook => MindMood.calling,
+    };
     if (want == _stageMood) return;
     _stageMood = want;
     unawaited(_avatar.setMood(want));

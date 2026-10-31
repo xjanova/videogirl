@@ -32,6 +32,12 @@ abstract final class SecretStore {
   /// เองเมื่อ token ถูกเพิกถอน ไม่ต้องให้ผู้ใช้ทำอะไร
   static const kBrainXKey = 'brainx_cloud_key';
 
+  /// โค้ดลับที่เจ้าของตั้งให้คนที่ไว้ใจ · บอกถูกในสาย = ได้ฟังความจำของเธอเรื่องเจ้าของ (OwnerGate)
+  static const kCallCode = 'call_secret_code';
+
+  /// คำถามยืนยันตัวตนกับคำตอบที่เจ้าของตั้ง (JSON ของ IdentityQuiz) · ตอบถูกครบในสาย = สั่งให้เธอใช้เครื่องได้
+  static const kCallQuestions = 'call_identity_questions';
+
   /// token `bxc_…` ของเครื่องนี้ที่คลาวด์ออกให้
   static const kBrainXToken = 'brainx_cloud_token';
 

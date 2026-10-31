@@ -56,6 +56,22 @@ abstract final class OutgoingRules {
   static bool looksLikeNumber(String raw) =>
       RegExp(r'^[+0-9\s\-().]+$').hasMatch(raw.trim()) && normalize(raw) != null;
 
+  /// เจ้าของสั่งในเรื่องที่ให้โทรว่าไม่ต้องถามกลางสาย ("ห้ามถามฉัน รับเรื่องไว้") ·
+  /// ใช้ตั้งค่าเริ่มของสวิตช์ในกล่องยืนยัน เจ้าของเห็นและเปลี่ยนได้ก่อนกดโทร
+  ///
+  /// ต้องมีคำที่หมายถึงเจ้าของด้วย · "ไม่ต้องถามเขาเรื่องราคา" คือสั่งเรื่องปลายสาย ไม่ใช่ห้ามถามเจ้าของ
+  static bool noAsking(String task) => _noAsk.any((r) => r.hasMatch(task));
+
+  static final _noAsk = [
+    RegExp('(\u0e2b\u0e49\u0e32\u0e21|\u0e44\u0e21\u0e48\u0e15\u0e49\u0e2d\u0e07|\u0e2d\u0e22\u0e48\u0e32|\u0e07\u0e14)'
+        '\\s*(\u0e21\u0e32|\u0e42\u0e17\u0e23)*\\s*(\u0e16\u0e32\u0e21|\u0e1b\u0e23\u0e36\u0e01\u0e29\u0e32|\u0e23\u0e1a\u0e01\u0e27\u0e19|\u0e01\u0e27\u0e19)'
+        '\\s*(\u0e09\u0e31\u0e19|\u0e40\u0e23\u0e32|\u0e1c\u0e21|\u0e1e\u0e35\u0e48|\u0e40\u0e08\u0e49\u0e32\u0e19\u0e32\u0e22|\u0e40\u0e08\u0e49\u0e32\u0e02\u0e2d\u0e07|\u0e23\u0e30\u0e2b\u0e27\u0e48\u0e32\u0e07\u0e2a\u0e32\u0e22)'),
+    RegExp('(\u0e09\u0e31\u0e19|\u0e40\u0e23\u0e32|\u0e1c\u0e21)\\s*\u0e44\u0e21\u0e48(\u0e2d\u0e22\u0e39\u0e48|\u0e27\u0e48\u0e32\u0e07)'),
+    RegExp(r"\b(don'?t|do not|never|no need to)\s+(ask|bother|check with|disturb)\s+(me|the owner|your boss)\b",
+        caseSensitive: false),
+    RegExp(r"\bi('m| am)\s+(away|busy|not available|unavailable)\b", caseSensitive: false),
+  ];
+
   static bool blocked(String number) {
     final d = (normalize(number) ?? number).replaceFirst('+', '');
     return emergency.contains(d) || d.startsWith('1900');

@@ -25,6 +25,7 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.xjanova.videogirl.direct.setup.DirectAudioSetup
 import java.io.File
 
 /**
@@ -71,6 +72,9 @@ class InCallActivity : Activity() {
     /// นาฬิกาปล่อยกริ่งก่อนเธอรับ · ต้องยกเลิกได้ทุกทางที่สายจบ
     private var autoAnswer: Runnable? = null
     private var autoArmed = false
+
+    /** ตัวช่วยเสียงตรงหายไหม · null = ยังถามไม่เสร็จ · ดู [armAutoAnswer] */
+    private var directDown: Boolean? = null
 
     /// เวลาที่เธอจะรับ (uptime) · ใช้นับถอยหลังบนจอ
     private var autoAt = 0L
@@ -330,18 +334,42 @@ class InCallActivity : Activity() {
         // ทิ้งโดยที่เขาไม่ได้กดอะไรเลย · ปล่อยให้เขาตัดสินใจเอง
         if (MindInCallService.hasOtherCall()) return skip("other_call", R.string.call_auto_other_call)
 
+        // 🔴 เครื่องที่ตั้งเสียงตรงไว้ แปลว่าทางลำโพงใช้ไม่ได้ (AEC ลบเสียงเธอทิ้ง) · ตัวช่วยหายไป
+        // (รีบูต/อัปเดตแอป) แล้วยังรับ = คู่สายได้ยินความเงียบ · ปล่อยกริ่งดังให้เจ้าของรับเองดีกว่า
+        directDown = null
+        DirectAudioSetup.helperDown(this) { directDown = it }
+
         val delay = MindPrefs.ringSeconds(this) * 1000L
-        val task = Runnable {
-            autoAnswer = null
-            if (MindInCallService.stateOf(MindInCallService.current) != Call.STATE_RINGING) return@Runnable
-            // 🔴 รับแล้วต้องมีคนคุยจริง · บทสนทนาอยู่ฝั่ง Dart ทั้งหมด · ปลุกไม่ขึ้น
-            // แล้วยังรับ = ลำโพงเปิด ปลายสายได้ยินเสียงในห้องเจ้าของโดยไม่มีใครรู้
-            if (!mindAwake()) {
-                skip("no_mind", R.string.call_auto_no_mind)
-                return@Runnable
+        val task = object : Runnable {
+            override fun run() {
+                autoAnswer = null
+                if (MindInCallService.stateOf(MindInCallService.current) != Call.STATE_RINGING) return
+                // ถามตัวช่วยยังไม่เสร็จ (ตั้งให้รับทันที) · ไม่ตอบเกินสามวิ = ไม่รู้ ไม่ขวางเธอ
+                val waited = android.os.SystemClock.uptimeMillis() - autoAt
+                if (directDown == null && waited < 3000) {
+                    autoAnswer = this
+                    ui.postDelayed(this, 100)
+                    return
+                }
+                if (directDown == true) {
+                    skip("direct_offline", R.string.call_auto_no_direct)
+                    return
+                }
+                // 🔴 ไม่มีเน็ตแต่สมองต้องใช้เน็ต = รับไปแล้วทักได้คำเดียวแล้วเงียบ · ให้กริ่งดังให้เจ้าของรับเอง
+                // · เน็ตมือถือที่ใช้ได้ผ่านด่านนี้เหมือน Wi-Fi (ดูแค่ว่าออกเน็ตได้จริง ไม่ดูชนิด)
+                if (MindPrefs.brainNeedsInternet(this@InCallActivity) && !online()) {
+                    skip("no_internet", R.string.call_auto_no_net)
+                    return
+                }
+                // 🔴 รับแล้วต้องมีคนคุยจริง · บทสนทนาอยู่ฝั่ง Dart ทั้งหมด · ปลุกไม่ขึ้น
+                // แล้วยังรับ = ลำโพงเปิด ปลายสายได้ยินเสียงในห้องเจ้าของโดยไม่มีใครรู้
+                if (!mindAwake()) {
+                    skip("no_mind", R.string.call_auto_no_mind)
+                    return
+                }
+                MindPrefs.noteAutoAnswer(this@InCallActivity, "answered")
+                letMindAnswer()
             }
-            MindPrefs.noteAutoAnswer(this, "answered")
-            letMindAnswer()
         }
         autoAnswer = task
         autoAt = android.os.SystemClock.uptimeMillis() + delay
@@ -351,6 +379,18 @@ class InCallActivity : Activity() {
         // ปลุกตัวเธอ**ตอนนี้** ไม่ใช่ตอนรับ · Dart เปิดตัว (ค่าตั้ง สมอง) ระหว่างกริ่งดัง
         // · ทำหลังจอสายวาดเสร็จ การสร้าง engine กินเธรดหลักชั่วครู่
         ui.post { mindAwake() }
+    }
+
+    /// มีเครือข่ายที่ระบบตรวจแล้วว่าออกอินเทอร์เน็ตได้จริง (Wi-Fi หรือเน็ตมือถือ) · ถามไม่ได้ = ไม่ขวางเธอ
+    private fun online(): Boolean {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return true
+        return try {
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        } catch (e: SecurityException) {
+            true
+        }
     }
 
     /// ตัวเธอ (Dart) ตื่นอยู่ หรือปลุกขึ้นได้ตอนนี้ไหม · ดู [MindEngine]
@@ -384,7 +424,7 @@ class InCallActivity : Activity() {
         autoHint.text = ""
         // เจ้าของกด "ให้มายด์รับ" เองตอนแอปปิด = ปลุกเธอด้วย ไม่งั้นรับแล้วเงียบ
         mindAwake()
-        val ok = MindInCallService.mindAnswer(this, MindPrefs.callStream(this))
+        val ok = MindInCallService.mindAnswer(this)
         if (!ok) {
             // รับไปแล้วแต่เปิดลำโพงไม่ได้ = ปลายสายจะไม่ได้ยินเธอเลย
             // ต้องบอก ไม่ใช่ปล่อยให้เห็นว่า "กำลังคุย" แล้วสงสัยเองว่าทำไมเงียบ
