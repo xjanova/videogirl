@@ -314,6 +314,7 @@ class MainActivity : FlutterActivity() {
     /// ขึ้นมาบนจอระหว่างสายที่เธอถืออยู่แล้ว (จอสายส่งต่อมา) · ติดจอค้างให้ทันที · ดู [CallScreen]
     override fun onResume() {
         super.onResume()
+        com.xjanova.videogirl.direct.setup.DirectAudioMonitorService.start(this)
         CallScreen.apply(this)
     }
 

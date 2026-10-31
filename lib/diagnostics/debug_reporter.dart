@@ -171,7 +171,7 @@ class DebugReporter extends ChangeNotifier {
         'autoAnswer': state.autoAnswer,
         'contactsOnly': state.contactsOnly,
         'showOnCall': state.showOnCall,
-        'callStream': state.callStream,
+        'liveCalls': state.liveCalls,
         'bubbleSeconds': state.bubbleSeconds,
       },
 
@@ -244,6 +244,10 @@ class DebugReporter extends ChangeNotifier {
       secrets: [
         state.effectiveOpenAiKey,
         state.licenseKey,
+        // คนโทรพูดโค้ดลับในสาย · log หรือข้อความที่ติดมาต้องไม่มีโค้ดหลุดไปกับรายงาน
+        state.callCodeForReport,
+        // คำตอบยืนยันตัวตนที่คนโทรพูดในสาย · เหตุผลเดียวกับโค้ด (ตัวลบข้ามค่าที่สั้นกว่า 8 ตัว · คำตอบไม่เคยลง log อยู่แล้ว)
+        ...state.callAnswersForReport,
       ].where((s) => s.trim().isNotEmpty),
     );
 
@@ -474,6 +478,14 @@ class DebugReporter extends ChangeNotifier {
   Timer? _debounce;
   String? _lastSeenError;
 
+  /// งานส่งเองที่วิ่งล่าสุด · ให้เทสต์รอจนจบจริง ไม่ต้องเดาเวลา
+  /// (ตอนรันเทสต์ทั้งชุด เครื่องโหลดหนักจนส่งช้ากว่าเวลาที่เผื่อไว้ แล้วนับได้ไม่ครบ)
+  Future<void>? _autoSending;
+  @visibleForTesting
+  Future<void>? get autoSending => _autoSending;
+
+  void _fireAutoSend(String what) => _autoSending = _autoSend(what);
+
   /// เวลาที่ส่งเองสำเร็จล่าสุด — หน้าตั้งค่าเอาไปโชว์ว่ามันทำงานอยู่จริง
   DateTime? _autoSentAt;
   DateTime? get autoSentAt => _autoSentAt;
@@ -586,7 +598,7 @@ class DebugReporter extends ChangeNotifier {
     final last = _sentAt[what];
     if (last != null && DateTime.now().difference(last) < repeatAfter) return;
     _debounce?.cancel();
-    _debounce = Timer(settle, () => unawaited(_autoSend(what)));
+    _debounce = Timer(settle, () => _fireAutoSend(what));
   }
 
   /// เหตุการณ์ฝั่ง state ที่เห็นแล้ว (สมองคิดไม่หยุด · เสียงค้าง) · ดู [MindState.incidents]
@@ -605,7 +617,7 @@ class DebugReporter extends ChangeNotifier {
         final last = _sentAt[what];
         if (last == null || DateTime.now().difference(last) >= repeatAfter) {
           _debounce?.cancel();
-          _debounce = Timer(settle, () => unawaited(_autoSend(what)));
+          _debounce = Timer(settle, () => _fireAutoSend(what));
         }
       }
     }
@@ -626,7 +638,7 @@ class DebugReporter extends ChangeNotifier {
     if (last != null && DateTime.now().difference(last) < repeatAfter) return;
 
     _debounce?.cancel();
-    _debounce = Timer(settle, () => unawaited(_autoSend(err)));
+    _debounce = Timer(settle, () => _fireAutoSend(err));
   }
 
   /// ยิงเงียบ ๆ · **ห้ามรบกวนผู้ใช้ไม่ว่าจะสำเร็จหรือล้ม**

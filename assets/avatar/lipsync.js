@@ -80,6 +80,8 @@ export class LipSync {
         // และเปิดเฉพาะช่วงที่เธอพูด ไม่ใช่ทั้งสาย — ของเดิมเปิดทั้งสาย
         // ปากจึงขยับอยู่ตลอดแม้ตอนที่คู่สายพูดและเธอควรเงียบฟัง
         this.babble = false;
+        this.liveLevel = 0;
+        this.liveLevelAt = 0;
         this._bT = 0;
         this._bOn = false;
         this._bUntil = 0;
@@ -359,6 +361,12 @@ export class LipSync {
         this._tailUntil = 0;
         try { this.audio?.pause(); } catch {}
         this.speaking = false;
+        this.liveLevelAt = 0;
+    }
+
+    setLiveLevel(level) {
+        this.liveLevel = Math.min(1, Math.max(0, Number(level) || 0));
+        this.liveLevelAt = performance.now();
     }
 
     /**
@@ -388,6 +396,10 @@ export class LipSync {
             this.analyser.getByteFrequencyData(this.freq);
             const lo = band(this.freq, LOW), mid = band(this.freq, MID), hi = band(this.freq, HIGH);
             spread = Math.min(1, Math.max(0, hi * 2.4 + mid * 0.7 - lo * 0.6));
+        } else if (this.babble && this.liveLevelAt > 0 && performance.now() - this.liveLevelAt < 250) {
+            open = Math.min(1, Math.max(0, (this.liveLevel - 0.012) * 6.2));
+            spread = Math.min(1, this.liveLevel * 3.2);
+            this.level = Math.min(1, this.liveLevel * 3.6);
         } else if (this.babble) {
             const b = this._babbleShape(dt);
             open = b.open;

@@ -60,6 +60,7 @@ class MindInCallService : InCallService() {
             CallAudio.close(this)
             mindHandling = false
             mindOutgoing = false
+            OwnerAsk.clear(this)
             // จอกลับไปดับตามเวลาพักจอปกติ · ดู [CallScreen]
             MainActivity.syncCallScreen()
             service = null
@@ -94,7 +95,7 @@ class MindInCallService : InCallService() {
      * เพราะบาง ROM สลับเส้นทางหลังสายติดไปแล้วโดยไม่บอก
      */
     private fun onMindCallActive() {
-        if (!CallAudio.open) CallAudio.open(this, MindPrefs.callStream(this))
+        if (!CallAudio.open) CallAudio.open(this)
         CallAudio.keepSpeaker(this)
         val ui = Handler(Looper.getMainLooper())
         for (delay in longArrayOf(800L, 2500L)) {
@@ -256,7 +257,9 @@ class MindInCallService : InCallService() {
                 "micSilenced" to CallAudio.micSilenced(context),
                 "number" to number,
                 "name" to CallBridge(context).nameFor(number),
-                "outgoing" to (state == Call.STATE_DIALING || state == Call.STATE_CONNECTING)
+                "outgoing" to (state == Call.STATE_DIALING || state == Call.STATE_CONNECTING),
+                // เจ้าของตอบคำถามกลางสายจากแถบแจ้งเตือน · ส่งครั้งเดียว ([OwnerAsk])
+                "ownerReply" to OwnerAsk.take()
             ) + (SimInfo.of(context, call)?.toMap() ?: emptyMap())
         }
 
@@ -271,14 +274,14 @@ class MindInCallService : InCallService() {
          * เธอเลย** ผู้เรียกต้องบอกผู้ใช้ ไม่ใช่ทำเหมือนสำเร็จ
          */
         @JvmStatic
-        fun mindAnswer(context: android.content.Context, stream: String): Boolean {
+        fun mindAnswer(context: android.content.Context): Boolean {
             val call = current ?: return false
             mindHandling = true
             if (stateOf(call) == Call.STATE_RINGING) {
                 call.answer(VideoProfile.STATE_AUDIO_ONLY)
                 watchForSilence(context.applicationContext, call)
             }
-            val ok = CallAudio.open(context, stream)
+            val ok = CallAudio.open(context)
             // สายที่ต่อติดอยู่แล้ว (เจ้าของส่งคืนให้เธอ) ไม่มีสถานะเปลี่ยนมาเรียก [notifyChanged]
             MainActivity.syncCallScreen()
             return ok

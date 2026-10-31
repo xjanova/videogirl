@@ -95,8 +95,8 @@ void main() {
       expect(src, contains('stopGeneration()'),
           reason: 'เลิกฟังอย่างเดียว เนทีฟยังคิดต่อจนเครื่องร้อน');
       final state = File('lib/state/mind_state.dart').readAsStringSync();
-      expect(RegExp(r'cap: ReplyCap\.background').allMatches(state).length, 2,
-          reason: 'สกัดความจำ + สรุปสาย = งานเบื้องหลังสองงาน');
+      expect(RegExp(r'cap: ReplyCap\.background').allMatches(state).length, 4,
+          reason: 'สกัดความจำ + สรุปสาย + สรุปบทเรียนหลังจบสาย + ใช้เครื่องแทน = งานเบื้องหลังสี่งาน');
       expect(state, contains('cap: ReplyCap.call'));
     });
   });
@@ -223,6 +223,23 @@ void main() {
       expect(view, contains("if (_asleep) unawaited(_call('window.minde.sleep(true)'))"));
       final home = File('lib/screens/home_screen.dart').readAsStringSync();
       expect(home, contains('setAsleep(_hidden || !widget.active)'));
+    });
+  });
+
+  // 2026-10-31: mood() returned the whole Avatar; Android converted it to JSON
+  // for the unused result, the stage thread spun for minutes at 5 GB and died.
+  group('🔴 คำสั่งเข้าเวทีไม่คืนออบเจกต์ใหญ่ข้ามสะพาน', () {
+    test('_call ทิ้งค่าคืนเสมอ', () {
+      final view = File('lib/avatar/avatar_view.dart').readAsStringSync();
+      expect(view, contains(r"evaluateJavascript(source: '$js\n;null')"));
+    });
+
+    test('mood และ frame ใน index.html ไม่คืน avatar/framing', () {
+      final html = File('assets/avatar/index.html').readAsStringSync();
+      expect(html, contains('mood:  (m)   => { avatar?.setMood(m); },'));
+      expect(html, contains('frame: (n)   => { avatar?.framing?.set(n); },'));
+      expect(html, isNot(contains('=> avatar?.setMood(')));
+      expect(html, isNot(contains('=> avatar?.framing?.set(')));
     });
   });
 }

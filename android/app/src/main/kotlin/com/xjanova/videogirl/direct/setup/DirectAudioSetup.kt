@@ -4,11 +4,19 @@ import android.app.*
 import android.content.*
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.content.pm.PackageManager
 import android.os.*
 import android.provider.Settings
+import android.telecom.TelecomManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
 import com.xjanova.videogirl.direct.AudioProtocol
+import com.xjanova.videogirl.R
+import com.xjanova.videogirl.MindInCallService
+import io.github.muntashirakon.adb.AdbAuthenticationFailedException
+import io.github.muntashirakon.adb.AdbPairingRequiredException
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.io.BufferedInputStream
@@ -24,7 +32,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** User-initiated setup only. Never turns debugging on/off or reboots the phone silently. */
+/** Pairing is user-initiated. Recovery briefly enables only Wireless debugging, then restores it. */
 object DirectAudioSetup {
     private const val CHANNEL = "giggok_direct_pairing"
     private const val NOTIFICATION = 7041
@@ -34,6 +42,7 @@ object DirectAudioSetup {
     @Volatile var status = "not_started"
         private set
     @Volatile private var busy = false
+    @Volatile private var lastGrantAttempt = 0L
     /** Why the last setup failed, in step + class words only. vivo drops app logcat, so this rides on the
      *  card's extras where `adb shell dumpsys notification --noredact` shows it; the card text stays Thai. */
     @Volatile private var diag = ""
@@ -47,6 +56,14 @@ object DirectAudioSetup {
                     result.success(true)
                 }
                 "reconnect" -> { reconnect(context.applicationContext); result.success(true) }
+                "pauseStatus" -> work.execute {
+                    BankingPause.tick(context.applicationContext)
+                    val answer = BankingPause.status(context.applicationContext)
+                    main.post { result.success(answer) }
+                }
+                "pause" -> pause(context, call.argument<Int>("minutes") ?: 5) { result.success(it) }
+                "extendPause" -> extendPause(context) { result.success(it) }
+                "restorePause" -> restorePause(context) { result.success(it) }
                 "live" -> work.execute {
                     val answer = live(context.applicationContext)
                     main.post { result.success(answer) }
@@ -66,7 +83,7 @@ object DirectAudioSetup {
 
     fun pair(context: Context, code: String, complete: () -> Unit = {}) {
         if (!code.matches(Regex("[0-9]{6}"))) { status = "invalid_code"; notify(context, "กรอกรหัสจับคู่ 6 หลักจากหน้าตั้งค่า", true); complete(); return }
-        submit(context, complete) {
+        submit(context, complete, pairing = true) {
             status = "finding_pairing_port"
             LocalAdbIdentity(context).use { adb ->
                 val port = discover(context, "_adb-tls-pairing._tcp.")
@@ -81,32 +98,133 @@ object DirectAudioSetup {
         LocalAdbIdentity(context).use { launch(context, it) }
     }
 
-    private fun submit(context: Context, complete: () -> Unit = {}, job: () -> Unit) {
+    fun pause(context: Context, minutes: Int, complete: (Boolean) -> Unit) = control(context,
+        { BankingPause.pause(it, minutes) }, complete)
+
+    fun extendPause(context: Context, complete: (Boolean) -> Unit) = control(context,
+        { BankingPause.extend(it) }, complete)
+
+    fun restorePause(context: Context, complete: (Boolean) -> Unit) = control(context,
+        { BankingPause.restore(it) }, complete)
+
+    private fun control(context: Context, action: (Context) -> Boolean, complete: (Boolean) -> Unit) {
+        val app = context.applicationContext
+        work.execute {
+            val answer = try { action(app) } catch (_: Exception) { false }
+            DirectAudioMonitorService.start(app)
+            main.post { complete(answer) }
+        }
+    }
+
+    /** Serialized with pairing and manual reconnect. Reports only fixed states to the status service. */
+    fun monitor(context: Context, recover: Boolean, update: (String) -> Unit) {
+        val app = context.applicationContext
+        work.execute {
+            try { if (!restorePendingWireless(app)) { main.post { update("offline") }; return@execute } }
+            catch (_: Exception) { main.post { update("offline") }; return@execute }
+            var state = live(app)
+            if (state == "ready" &&
+                app.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED &&
+                wifiAvailable(app) && !phoneBusy(app) &&
+                Settings.Global.getInt(app.contentResolver, "adb_wifi_enabled", 0) == 1 &&
+                (lastGrantAttempt == 0L || SystemClock.elapsedRealtime() - lastGrantAttempt > 300_000L)) {
+                lastGrantAttempt = SystemClock.elapsedRealtime()
+                try {
+                    LocalAdbIdentity(app).use { adb ->
+                        val port = discover(app, "_adb-tls-connect._tcp.")
+                        if (adb.connect("127.0.0.1", port) || adb.isConnected) grantSettings(app, adb)
+                    }
+                } catch (_: Exception) { /* Do not replace a running helper to grant the permission. */ }
+            }
+            if (recover && state == "offline" && !busy && wifiAvailable(app) && !phoneBusy(app)) {
+                main.post { update("connecting") }
+                busy = true
+                var changed = false
+                try {
+                    val before = Settings.Global.getInt(app.contentResolver, "adb_wifi_enabled", 0)
+                    if (before == 0) {
+                        if (app.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) {
+                            throw IllegalStateException("secure_settings_unavailable")
+                        }
+                        val prefs = app.getSharedPreferences("giggok_direct_control", Context.MODE_PRIVATE)
+                        check(prefs.edit().putInt("wifi_previous", before).putBoolean("wifi_restore_pending", true).commit())
+                        check(Settings.Global.putInt(app.contentResolver, "adb_wifi_enabled", 1))
+                        changed = true
+                    }
+                    LocalAdbIdentity(app).use { launch(app, it) }
+                    state = if (probe(app)) "ready" else "unsupported"
+                } catch (e: Exception) {
+                    state = if (e is AdbAuthenticationFailedException || e is AdbPairingRequiredException) "key_rejected" else "offline"
+                    status = state
+                } finally {
+                    if (changed) {
+                        try { if (!restorePendingWireless(app)) state = "offline" }
+                        catch (_: Exception) { state = "offline" }
+                    }
+                    busy = false
+                }
+                // A ROM can kill the helper when Wireless debugging returns to its previous state.
+                if (state == "ready") state = live(app)
+            }
+            main.post { update(state) }
+        }
+    }
+
+    private fun wifiAvailable(context: Context): Boolean {
+        val manager = context.getSystemService(ConnectivityManager::class.java)
+        return manager.allNetworks.any { network ->
+            manager.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+    }
+
+    private fun phoneBusy(context: Context): Boolean {
+        if (MindInCallService.current != null) return true
+        return try { context.getSystemService(TelecomManager::class.java).isInCall }
+        catch (_: RuntimeException) { true }
+    }
+
+    /** A killed process must not leave the debugging switch that we enabled behind. */
+    internal fun restorePendingWireless(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("giggok_direct_control", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("wifi_restore_pending", false)) return true
+        if (context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return false
+        val previous = prefs.getInt("wifi_previous", 0)
+        val current = Settings.Global.getInt(context.contentResolver, "adb_wifi_enabled", previous)
+        if (current == 1 && !Settings.Global.putInt(context.contentResolver, "adb_wifi_enabled", previous)) return false
+        return prefs.edit().remove("wifi_previous").remove("wifi_restore_pending").commit()
+    }
+
+    private fun submit(context: Context, complete: () -> Unit = {}, pairing: Boolean = false, job: () -> Unit) {
         synchronized(this) { if (busy) { complete(); return }; busy = true }
         diag = ""
         status = "connecting"
         work.execute {
             try {
-                check(context.getSystemService(android.media.AudioManager::class.java).mode != android.media.AudioManager.MODE_IN_CALL) { "call_in_progress" }
+                check(!phoneBusy(context)) { "call_in_progress" }
+                check(!BankingPause.isPaused(context)) { "pause_active" }
                 job()
                 val ready = probe(context)
                 status = if (ready) "helper_started" else "device_unsupported"
-                notify(context, if (ready) "เปิดทางเสียงตรงแล้ว กลับไปที่ GigGok ได้" else "รุ่นนี้ยังไม่รองรับทางเสียงตรง จะใช้ทางลำโพงเดิม", false)
+                notify(context, if (ready) "เปิดทางเสียงตรงแล้ว กลับไปที่ GigGok ได้" else "รุ่นนี้ยังไม่รองรับทางเสียงตรง", false)
             }
             catch (e: Exception) {
                 // Do not log a pairing code, key, token, shell output or exception message.
-                status = "setup_failed"
-                // Our own check() reasons are fixed words; anything else is reduced to its class name.
-                val reason = e.message?.takeIf { e is IllegalStateException && it.matches(Regex("[a-z_]{1,40}")) }
-                if (diag.isEmpty()) diag = "setup: ${e.javaClass.simpleName}" + (reason?.let { " $it" } ?: "")
-                notify(context, "ยังเชื่อมต่อไม่ได้ เปิด Wi-Fi และ Wireless debugging แล้วลองรหัสใหม่", true)
+                val keyRejected = e is AdbAuthenticationFailedException || e is AdbPairingRequiredException
+                status = if (!pairing && keyRejected) "key_rejected" else "setup_failed"
+                if (diag.isEmpty()) diag = "setup: ${e.javaClass.simpleName}"
+                notify(context,
+                    context.getString(if (pairing) R.string.direct_pairing_failed
+                        else if (keyRejected) R.string.direct_pair_again else R.string.direct_reconnect_failed),
+                    pairing || keyRejected)
             } finally { busy = false; complete() }
         }
     }
 
     private fun launch(context: Context, adb: LocalAdbIdentity) {
         val port = discover(context, "_adb-tls-connect._tcp.")
+        check(!phoneBusy(context)) { "call_in_progress" }
         check(adb.connect("127.0.0.1", port) || adb.isConnected) { "connect_failed" }
+        grantSettings(context, adb)
         val prefs = context.getSharedPreferences("giggok_direct_audio", Context.MODE_PRIVATE)
         val random = SecureRandom()
         val token = prefs.getString("token", null) ?: ByteArray(32).also(random::nextBytes).joinToString("") { "%02x".format(it.toInt() and 255) }
@@ -127,10 +245,21 @@ object DirectAudioSetup {
             "pkill -f '^app_process / com[.]xjanova[.]videogirl[.]direct[.]DirectAudioServer ' 2>/dev/null && sleep 1; " +
             "S=; command -v setsid >/dev/null 2>&1 && S=setsid; " +
             "printf '%s\\n' \"\$secret\" | \$S nohup env CLASSPATH=${quote(apk)} app_process / com.xjanova.videogirl.direct.DirectAudioServer $helperPort ${context.applicationInfo.uid} >/dev/null 2>>/data/local/tmp/giggok-helper.log &"
+        check(!phoneBusy(context)) { "call_in_progress" }
         adb.openStream("shell:sh -c ${quote(script)}").use { stream ->
             stream.openOutputStream().apply { write((token + "\n").toByteArray(Charsets.US_ASCII)); flush() }
             // Keep transport alive briefly so nohup has consumed stdin before adb closes.
             Thread.sleep(800)
+        }
+    }
+
+    private fun grantSettings(context: Context, adb: LocalAdbIdentity) {
+        // One fixed command, only after authenticated local adb connect. Failure leaves manual setup usable.
+        if (context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) {
+            try {
+                adb.openStream("shell:pm grant com.xjanova.videogirl android.permission.WRITE_SECURE_SETTINGS")
+                    .use { it.openInputStream().readBytes() }
+            } catch (_: Exception) { /* Some ROMs refuse the development permission. */ }
         }
     }
 
@@ -159,8 +288,18 @@ object DirectAudioSetup {
         } catch (e: Exception) { socket.close(); throw e }
     }
 
-    /** What the settings card shows: asked of the helper now, because a reboot or an update ends it
-     *  even though setup once succeeded. Runs on [work], so never alongside a setup probe. */
+    /** Asked while it rings. On a phone set up for direct audio a helper that is gone
+     *  means she would answer and the caller would hear nothing. Answers on the main thread. */
+    fun helperDown(context: Context, answer: (Boolean) -> Unit) {
+        val app = context.applicationContext
+        work.execute {
+            val down = live(app) == "offline"
+            main.post { answer(down) }
+        }
+    }
+
+    /** What the settings card shows: asked of the helper now, not remembered from an earlier setup.
+     *  Runs on [work], so never alongside a setup probe. */
     private fun live(context: Context): String {
         val prefs = context.getSharedPreferences("giggok_direct_audio", Context.MODE_PRIVATE)
         if (prefs.getString("token", null) == null) return "not_paired"
@@ -198,9 +337,8 @@ object DirectAudioSetup {
                 break
             } catch (e: Exception) { last = e; Thread.sleep(200) }
         }
-        // Stage + errno text only (e.g. "Connection refused"): never the token.
-        diag = "probe failed at $stage: ${last?.javaClass?.simpleName}" +
-            if (stage == "connect" || stage == "auth") " ${last?.message?.take(60)}" else ""
+        // Exception text can contain connection details or credentials; log class and fixed stage only.
+        diag = "probe failed at $stage: ${last?.javaClass?.simpleName}"
         android.util.Log.w("GigGokDirect", diag)
         throw last ?: IllegalStateException("helper_unavailable")
     }

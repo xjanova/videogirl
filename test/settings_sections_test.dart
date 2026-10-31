@@ -196,6 +196,67 @@ void main() {
     state.dispose();
   });
 
+  // ── คุยสดในสาย ─────────────────────────────────────────
+  //
+  // 🔴 ของเดิมสวิตช์ Realtime / GPT-Live อยู่ใต้ "รับสายอัตโนมัติ" · ปิดรับสายเอง
+  // = หาไม่เจอ ทั้งที่ใช้กับสายที่เจ้าของรับเองด้วย
+
+  /// สวิตช์ในแถวเดียวกับข้อความ [label] (แถวที่ใกล้ที่สุด)
+  Finder toggleOf(String label) => find
+      .descendant(
+        of: find.ancestor(of: find.text(label), matching: find.byType(Row)).first,
+        matching: find.byType(GestureDetector),
+      )
+      .first;
+
+  testWidgets('🔴 ปิดรับสายอัตโนมัติ ยังเห็นสวิตช์ Realtime และ GPT-Live', (t) async {
+    final (state, section) = await _mount(t);
+    state.setAutoAnswer(false);
+    section.value = SettingsSection.calls;
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pump(const Duration(milliseconds: 300));
+
+    final s = _s(t);
+    await t.scrollUntilVisible(find.text(s.realtimeCalls), 300);
+    expect(find.text(s.realtimeCalls), findsOneWidget);
+    await t.scrollUntilVisible(find.text(s.liveCalls), 300);
+    expect(find.text(s.liveCalls), findsOneWidget);
+    expect(t.takeException(), isNull);
+
+    await t.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
+  testWidgets('กด GPT-Live ตอน Realtime ปิด = เปิดทั้งคู่ · กดอีกที ปิดแค่ GPT-Live', (t) async {
+    final (state, section) = await _mount(t);
+    state
+      ..setRealtimeCalls(false)
+      ..setLiveCalls(false);
+    section.value = SettingsSection.calls;
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pump(const Duration(milliseconds: 300));
+
+    final s = _s(t);
+    await t.scrollUntilVisible(find.text(s.liveCalls), 300);
+    // ให้สวิตช์อยู่ในจอทั้งตัว ไม่ใช่แค่ข้อความ
+    await t.ensureVisible(toggleOf(s.liveCalls));
+    await t.pump();
+
+    await t.tap(toggleOf(s.liveCalls));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(state.realtimeCalls, isTrue, reason: 'GPT-Live ต้องมี Realtime เปิดด้วย');
+    expect(state.liveCalls, isTrue);
+
+    await t.tap(toggleOf(s.liveCalls));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(state.liveCalls, isFalse);
+    expect(state.realtimeCalls, isTrue, reason: 'ปิด GPT-Live ต้องไม่ปิด Realtime ไปด้วย');
+    expect(t.takeException(), isNull);
+
+    await t.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
   group('log ที่ไปกับรายงานบั๊กต้องไม่มีบทสนทนา', () {
     test('คำที่สตรีมทีละคำ ถูกทิ้งทั้งบรรทัด', () {
       expect(MindLog.scrub('InferenceChat: Received filtered token: "สวัสดี"'), isNull);

@@ -35,9 +35,45 @@
     <string name="call_auto_off">ไม่ได้เปิดให้มายด์รับสายเอง</string>
     <string name="call_auto_not_contact">มายด์ไม่รับเอง: เบอร์นี้ไม่อยู่ในสมุดโทรศัพท์</string>
     <string name="call_auto_other_call">มายด์ไม่รับเอง: กำลังมีอีกสายอยู่</string>
+    <string name="call_auto_no_direct">มายด์ไม่รับเอง: ยังไม่ได้ต่อสายตรง รับไปคู่สายจะไม่ได้ยินเธอ</string>
+    <string name="call_auto_no_net">มายด์ไม่รับเอง: ไม่มีอินเทอร์เน็ต สมองที่เลือกไว้คิดไม่ได้</string>
     <string name="call_auto_no_mind">มายด์ไม่รับเอง: ปลุกตัวเธอไม่ขึ้น ลองเปิดแอปค้างไว้</string>
     <!-- หน้าการช่วยเหลือพิเศษของระบบ · บอกตรง ๆ ว่าใช้ทำอะไร และไม่ทำอะไร -->
     <string name="a11y_label">GigGok — ให้มายด์ได้ยินสาย</string>
     <string name="a11y_summary">ให้มายด์ได้ยินคนที่โทรมาตอนเธอรับสายแทน</string>
     <string name="a11y_desc">Android ไม่ให้แอปได้ยินเสียงระหว่างมีสาย ยกเว้นแอปที่เปิดบริการนี้ไว้ · GigGok ใช้เพื่อให้มายด์ฟังคนที่โทรมาตอนเธอรับสายแทนคุณเท่านั้น · ไม่อ่านหน้าจอ ไม่กดอะไรแทนคุณ และไม่ส่งข้อมูลจากบริการนี้ไปไหน</string>
+    <string name="direct_pair_again">กุญแจเชื่อมต่อใช้ไม่ได้แล้ว เปิด Wireless debugging เพื่อจับคู่ใหม่</string>
+    <string name="direct_pairing_failed">จับคู่ไม่สำเร็จ ตรวจรหัสและลองอีกครั้ง</string>
+    <string name="direct_reconnect_failed">ยังเชื่อมต่อเสียงตรงไม่ได้ จะลองอีกครั้งเมื่อ Wi-Fi พร้อม</string>
+    <string name="direct_status_channel">สถานะเสียงตรงในสาย</string>
+    <string name="direct_status_title">GigGok · เสียงตรงในสาย</string>
+    <string name="direct_status_ready">เชื่อมต่อแล้ว</string>
+    <string name="direct_status_in_call">กำลังใช้เสียงตรงในสาย</string>
+    <string name="direct_status_working">กำลังเชื่อมต่อ</string>
+    <string name="direct_status_key_rejected">กุญแจถูกปฏิเสธ ต้องจับคู่ใหม่</string>
+    <string name="direct_status_not_paired">ยังไม่ได้จับคู่</string>
+    <string name="direct_status_offline">ยังไม่เชื่อมต่อ จะลองอีกเมื่อ Wi-Fi พร้อม</string>
+    <string name="direct_status_retry">ลองเชื่อมต่อ</string>
+    <string name="direct_status_paused">พักชั่วคราว · คืนค่าใน %1$d นาที</string>
+    <string name="direct_status_paused_wait">พักชั่วคราว · รอจบสายเพื่อคืนค่า</string>
+    <string name="direct_status_pause">พัก 5 นาที</string>
+    <string name="direct_status_extend">เพิ่ม 5 นาที</string>
+    <string name="direct_status_restore">คืนค่าตอนนี้</string>
+    <string name="direct_setup_auto_reconnect_hint">หลังรีสตาร์ตหรืออัปเดต GigGok จะลองต่อเสียงตรงเองเมื่อ Wi-Fi พร้อม ถ้ากุญแจเดิมถูกปฏิเสธจริง จึงค่อยจับคู่ใหม่</string>
+    <!-- ให้มายด์ใช้เครื่องแทน (hands/MindHands.kt) · บอกตรง ๆ ว่าอ่านอะไร ทำอะไร และไม่แตะอะไร -->
+    <string name="hands_label">GigGok — ให้มายด์ใช้เครื่องแทน</string>
+    <string name="hands_summary">ให้มายด์อ่านหน้าจอ กด และพิมพ์แทนคุณ เฉพาะตอนทำงานที่คุณสั่ง</string>
+    <string name="hands_desc">มายด์อ่านหน้าจอเป็นตัวหนังสือ แล้วกด พิมพ์ เลื่อน หรือเปิดแอปแทนคุณ เฉพาะตอนทำงานที่คุณสั่งเท่านั้น · ถ้ามีสิทธิ์ GigGok จะเปิดบริการนี้ตอนเริ่มงานและปิดเองหลังทำเสร็จ · ไม่เปิดและไม่แตะแอปธนาคาร การเงิน หรือกระเป๋าเงิน ไม่แตะช่องรหัสผ่าน และไม่แตะหน้าติดตั้งแอปหรือหน้าขอสิทธิ์ · ถามคุณก่อนส่ง จ่าย ซื้อ หรือลบ · กดหยุดได้ทุกเมื่อจากแจ้งเตือน</string>
+    <string name="hands_channel">มายด์กำลังใช้เครื่องแทน</string>
+    <string name="hands_ask_channel">มายด์ขออนุญาตก่อนทำ</string>
+    <string name="hands_stop">หยุด</string>
+    <string name="hands_stopping">กำลังหยุด…</string>
+    <string name="hands_allow">ทำเลย</string>
+    <string name="hands_deny">ไม่ต้อง</string>
+    <string name="hands_record_body">ทำให้ดูได้เลย เสร็จแล้วกด จำแล้ว</string>
+    <string name="hands_record_done">จำแล้ว</string>
+    <string name="hands_record_cancel">ยกเลิก</string>
+    <!-- สิ่งที่จอล็อกเห็น · ไม่มีเป้าหมายงาน ความคืบหน้า หรือคำถาม (มีชื่อคน ชื่อปุ่ม ข้อความแชท) -->
+    <string name="hands_public_working">มายด์กำลังทำงานในเครื่อง</string>
+    <string name="hands_public_ask">มายด์ขออนุญาตก่อนทำขั้นต่อไป</string>
 </resources>

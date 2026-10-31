@@ -277,7 +277,9 @@ async function snapshotFace(px) {
 window.minde = {
   headRect,
   snapshotFace,
-  mood:  (m)   => avatar?.setMood(m),
+  // 🔴 ห้ามคืน avatar/framing ข้ามสะพาน — ตัวแปลงค่าคืนของ WebView ไล่ทั้งฉาก
+  // จนเธรดเวทีค้างและ renderer ตาย (ดู _call ใน avatar_view.dart)
+  mood:  (m)   => { avatar?.setMood(m); },
   speak: (url) => avatar?.speak(url),
   speakBytes,
   stop:  ()    => avatar?.stop(),
@@ -286,7 +288,7 @@ window.minde = {
   sit:   ()    => avatar?.sit(),
   stand: ()    => avatar?.stand(),
   /** 'bust' ตอนคุย · 'full' ตอนยืนเฉย ๆ (คำขอของตัวจัดฉาก · ช็อตที่เจ้าของล็อกไว้ชนะ) */
-  frame: (n)   => avatar?.framing?.set(n),
+  frame: (n)   => { avatar?.framing?.set(n); },
   /** ช็อตที่เจ้าของเลือกสำหรับเวทีปกติ — 'auto' | 'face' | 'bust' | 'full' */
   stageShot:  (n) => avatar?.setStageShot(n) ?? null,
   /** ความสูงเวทีตอนนี้ ÷ ตอนพัก · เวทีหดเพราะแชท/คีย์บอร์ด = ครอปล่าง ไม่ย่อตัวเธอ */
@@ -298,6 +300,7 @@ window.minde = {
   lipsRest,
   /** ปากประมาณตอนเสียงเล่นทางเครื่องเล่นของ Android */
   babble: (on) => avatar?.setBabble(on),
+  liveLevel: (level) => avatar?.setLiveLevel(level),
 
   // ── สตูดิโอ ──
   /** null = พื้นโปร่ง · '#rrggbb' = ฉากสีทึบ (ฉากเขียว ฉากฟ้า ฯลฯ) */

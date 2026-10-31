@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.widget.*
+import com.xjanova.videogirl.R
 
 /** Small native guide so entering the code never closes Android's pairing sheet. */
 class DirectAudioSetupActivity : Activity() {
@@ -20,9 +21,10 @@ class DirectAudioSetupActivity : Activity() {
                 "waiting_for_code" -> "รอรหัสจากการแจ้งเตือน — อย่าปิดหน้ารหัสจับคู่"
                 "connecting", "finding_pairing_port", "paired_connecting" -> "กำลังเชื่อมต่อกับเครื่องนี้…"
                 "setup_failed" -> "ยังไม่สำเร็จ ตรวจ Wi-Fi และ Wireless debugging แล้วลองใหม่"
+                "key_rejected" -> getString(R.string.direct_pair_again)
                 "notifications_required" -> "ต้องเปิดการแจ้งเตือนเพื่อกรอกรหัสขณะหน้าตั้งค่าเปิดอยู่"
                 "requires_android_11" -> "ทางเสียงตรงต้องใช้ Android 11 ขึ้นไป"
-                "device_unsupported" -> "รุ่นนี้ยังไม่รองรับทางเสียงตรง จะใช้ทางลำโพงเดิม"
+                "device_unsupported" -> "รุ่นนี้ยังไม่รองรับทางเสียงตรง"
                 "invalid_code" -> "รหัสต้องเป็นตัวเลข 6 หลัก"
                 else -> "ยังไม่ได้เชื่อมต่อ"
             }
@@ -39,7 +41,7 @@ class DirectAudioSetupActivity : Activity() {
             this.text = value; textSize = size; setPadding(0, 10, 0, 16)
         }
         content.addView(text("เสียงตรงในสาย", 24f))
-        content.addView(text("ให้คู่สายได้ยินน้องมายชัดขึ้น โดยไม่ต้องลงแอปเสริม\n\n1. ต่อ Wi-Fi และเปิดตัวเลือกนักพัฒนา\n2. เปิด Wireless debugging แล้วเลือกจับคู่อุปกรณ์ด้วยรหัส\n3. คงหน้ารหัสไว้ เปิดแถบแจ้งเตือน แล้วกดกรอกรหัส 6 หลักของ GigGok\n\nหลังเชื่อมต่อ ระบบจะตรวจว่ารุ่นนี้รองรับหรือไม่ ถ้าไม่รองรับจะใช้ทางลำโพงเดิม"))
+        content.addView(text("ให้คู่สายได้ยินน้องมายชัดขึ้น โดยไม่ต้องลงแอปเสริม\n\n1. ต่อ Wi-Fi และเปิดตัวเลือกนักพัฒนา\n2. เปิด Wireless debugging แล้วเลือกจับคู่อุปกรณ์ด้วยรหัส\n3. คงหน้ารหัสไว้ เปิดแถบแจ้งเตือน แล้วกดกรอกรหัส 6 หลักของ GigGok\n\nหลังเชื่อมต่อ ระบบจะตรวจว่ารุ่นนี้รองรับหรือไม่"))
         status = text(""); content.addView(status)
         content.addView(Button(this).apply {
             text = "เริ่มตั้งค่า"
@@ -50,7 +52,7 @@ class DirectAudioSetupActivity : Activity() {
             }
         })
         content.addView(Button(this).apply { text = "เคยจับคู่แล้ว — เชื่อมต่ออีกครั้ง"; setOnClickListener { DirectAudioSetup.reconnect(applicationContext) } })
-        content.addView(text("รีสตาร์ตเครื่องหรืออัปเดตแอปแล้ว ให้เปิด Wireless debugging แล้วกด \"เคยจับคู่แล้ว — เชื่อมต่ออีกครั้ง\"", 14f))
+        content.addView(text(getString(R.string.direct_setup_auto_reconnect_hint), 14f))
         content.addView(Button(this).apply { text = "กลับ"; setOnClickListener { finish() } })
         setContentView(ScrollView(this).apply { addView(content) })
     }

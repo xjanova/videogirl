@@ -11,7 +11,11 @@ class DirectAudio {
   String path = 'speaker';
   bool active = false;
 
+  /// Set up on this phone but out of reach: on such a phone the speaker path is not heard.
+  bool unreachable = false;
+
   Future<bool> start({required bool record}) async {
+    unreachable = false;
     try {
       _sub ??= _events.receiveBroadcastStream().listen((dynamic event) {
         if (event is! Map) return;
@@ -25,7 +29,8 @@ class DirectAudio {
       path = active ? result! : 'speaker';
       if (!active) { await _sub?.cancel(); _sub = null; }
       return active;
-    } on Exception {
+    } on Exception catch (e) {
+      unreachable = !(e is PlatformException && e.message == 'not_configured');
       await _sub?.cancel(); _sub = null;
       active = false;
       return false;

@@ -101,7 +101,8 @@ object DirectAudioClient {
                     main.post { if (answer == null) result.notImplemented() else result.success(answer) }
                 } catch (e: Exception) {
                     disconnect()
-                    main.post { result.error("direct_unavailable", e.javaClass.simpleName, null) }
+                    val reason = e.message.takeIf { it == "not_configured" } ?: e.javaClass.simpleName
+                    main.post { result.error("direct_unavailable", reason, null) }
                 }
             }
         }

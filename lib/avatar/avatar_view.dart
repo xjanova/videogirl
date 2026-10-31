@@ -138,6 +138,7 @@ class MindAvatarController extends ChangeNotifier
     implements MindLips, StudioStage {
   InAppWebViewController? _web;
   bool _ready = false;
+  MindMood _mood = MindMood.neutral;
   String? _error;
 
   /// โมเดลโหลดขึ้นเวทีแล้วหรือยัง (รวมคลิปท่าทางครบแล้ว)
@@ -173,6 +174,7 @@ class MindAvatarController extends ChangeNotifier
     // ช็อตที่เจ้าของเลือก + ขนาดเวทีตอนนี้ · ส่งก่อนเวทีพร้อมจะหายไปเงียบ ๆ (ดู _call)
     unawaited(_call("window.minde.stageShot('${_stageShot.name}')"));
     unawaited(_call('window.minde.stageScale(${_stageK.toStringAsFixed(3)})'));
+    unawaited(_call("window.minde.mood('${_mood.name}')"));
     notifyListeners();
   }
 
@@ -287,6 +289,10 @@ class MindAvatarController extends ChangeNotifier
   @override
   Future<void> setBabble(bool on) => _call('window.minde.babble($on)');
 
+  @override
+  Future<void> setLiveLevel(double level) =>
+      _call('window.minde.liveLevel(${level.clamp(0.0, 1.0).toStringAsFixed(4)})');
+
   /// renderer ของ WebView ตาย (ส่วนใหญ่ระบบฆ่าทิ้งตอนหน่วยความจำไม่พอ ·
   /// สมองในเครื่องกินเป็น GB) · ไม่ใช่ "หาตัวเธอไม่เจอ" จึงไม่ขึ้น error
   /// แค่ถือว่าเวทียังไม่พร้อม (เสียงไปทางสำรอง) แล้วโหลดหน้าเวทีใหม่
@@ -312,7 +318,10 @@ class MindAvatarController extends ChangeNotifier
     }));
   }
 
-  Future<void> setMood(MindMood mood) => _call("window.minde.mood('${mood.name}')");
+  Future<void> setMood(MindMood mood) {
+    _mood = mood;
+    return _call("window.minde.mood('${mood.name}')");
+  }
 
   /// เล่นไฟล์เสียงพร้อมขยับปาก — url ต้องเข้าถึงได้จากฝั่ง WebView
   Future<void> speak(String url) =>
@@ -702,11 +711,16 @@ class MindAvatarController extends ChangeNotifier
     await _call('window.minde.stageScale(${v.toStringAsFixed(3)})');
   }
 
+  /// 🔴 **ต่อท้าย `;null` เสมอ** · evaluateJavascript ของ Android แปลงค่าที่
+  /// คำสั่งคืนเป็น JSON ทุกครั้งแม้เราไม่อ่าน · `mood()` เคยคืนตัว Avatar ทั้งตัว
+  /// (ฉาก three.js ที่อ้างกันไปมา) ตัวแปลงไล่ซ้ำทุกทางจนเธรดเวทีค้างหลายนาที
+  /// กินแรม 5 GB แล้ว renderer ตาย (วัดบนเครื่องจริง 2026-10-31) · เธอนิ่งทั้งตัว
+  /// เสียงที่ส่งเข้าเวทีก็ไม่จบ
   Future<void> _call(String js) async {
     final web = _web;
     if (web == null || !_ready) return;
     try {
-      await web.evaluateJavascript(source: js);
+      await web.evaluateJavascript(source: '$js\n;null');
     } catch (e) {
       debugPrint('avatar: สั่ง "$js" ไม่สำเร็จ — $e');
     }

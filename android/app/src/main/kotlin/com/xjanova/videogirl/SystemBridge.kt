@@ -51,6 +51,9 @@ class SystemBridge(context: Context) {
     /** ผูกกับ engine · ตั้ง handler ของตัวเองด้วย (ใช้ตอนไม่มี Activity) */
     fun attach(messenger: BinaryMessenger) {
         DirectAudioClient.attach(context, messenger)
+        // ให้มายด์ใช้เครื่องแทน (giggok/hands) · ต้องอยู่ที่นี่ ไม่ใช่ MainActivity · สายเข้าตอนแอปปิด
+        // engine ที่ปลุกเธอมีแค่ตัวนี้ ไม่มี Activity · งานที่คนในสายสั่งจะได้ไม่ตอบ unsupported
+        com.xjanova.videogirl.hands.HandsBridge.attach(context, messenger)
         channel = MethodChannel(messenger, CHANNEL).also { ch ->
             ch.setMethodCallHandler { call, result ->
                 if (!handle(call, result)) result.notImplemented()
@@ -96,10 +99,7 @@ class SystemBridge(context: Context) {
             "isDefaultDialer" -> result.success(isDefaultDialer(context))
             "callInfo" -> result.success(MindInCallService.callInfo(context))
             "mindAnswer" -> result.success(
-                MindInCallService.mindAnswer(
-                    context,
-                    call.argument<String>("stream") ?: CallAudio.STREAM_CALL
-                )
+                MindInCallService.mindAnswer(context)
             )
             "mindHandOver" -> {
                 MindInCallService.handOver(context)
@@ -131,6 +131,25 @@ class SystemBridge(context: Context) {
             "notifyCallNote" -> result.success(
                 notifyCallNote(call.argument<String>("title"), call.argument<String>("body"))
             )
+            // น้องมายถามเจ้าของกลางสาย · คำตอบกลับมาทาง callInfo ([OwnerAsk])
+            "askOwner" -> result.success(
+                OwnerAsk.post(
+                    context,
+                    call.argument<Int>("id") ?: 0,
+                    call.argument<String>("title").orEmpty(),
+                    call.argument<String>("body").orEmpty(),
+                    call.argument<String>("label").orEmpty(),
+                    call.argument<List<String>>("choices") ?: emptyList(),
+                )
+            )
+            "askOwnerDone" -> {
+                OwnerAsk.cancel(context)
+                result.success(true)
+            }
+            // พักสายถามเจ้าของ · ปิดไมค์ของสายให้ปลายสายไม่ได้ยินเจ้าของ ([CallAudio.hold])
+            "callHold" -> result.success(CallAudio.hold(call.argument<Boolean>("on") == true))
+            // จอติดและไม่ได้ล็อก = เจ้าของน่าจะถือเครื่องอยู่ · จอดับ/ล็อก = ไม่พักสายรอคนที่ไม่ได้ดูจอ
+            "ownerPresent" -> result.success(ownerPresent())
             "canInstall" -> result.success(canInstall())
             // ตอนนี้มีจอให้คนเห็นไหม · ไม่มี = ตัวเธอถูกปลุกมาคุยในสายเบื้องหลัง
             "hasScreen" -> result.success(false)
@@ -142,16 +161,14 @@ class SystemBridge(context: Context) {
             )
             "findContacts" -> result.success(calls.findContacts(call.argument<String>("name") ?: ""))
             // ── เสียงสดของเธอ (OpenAI Realtime) · ดู CallAudio.liveStart ──
-            "liveAudioStart" -> result.success(
-                CallAudio.liveStart(call.argument<String>("stream") ?: CallAudio.STREAM_CALL)
-            )
+            "liveAudioStart" -> result.success(CallAudio.liveStart())
             "liveAudioWrite" -> {
                 call.argument<ByteArray>("pcm")?.let { CallAudio.liveWrite(it) }
                 result.success(true)
             }
             "liveAudioPending" -> result.success(CallAudio.livePendingMs())
             "liveAudioClear" -> {
-                CallAudio.liveClear(call.argument<String>("stream") ?: CallAudio.STREAM_CALL)
+                CallAudio.liveClear()
                 result.success(true)
             }
             "liveAudioStop" -> {
@@ -281,6 +298,13 @@ class SystemBridge(context: Context) {
      * 🔴 ถ้าไม่ได้ auto-update จะโหลดไฟล์จนจบ (หลายร้อยเมก) แล้วค่อยล้ม
      * ตรงขั้นสุดท้าย · ต้องเช็ค**ก่อน**เริ่มโหลด ไม่ใช่ค้นพบตอนจบ
      */
+    /** จอติดและปลดล็อกอยู่ · ใช้เดาว่าเจ้าของถือเครื่องอยู่ไหม ก่อนให้เธอพักสายถาม */
+    private fun ownerPresent(): Boolean {
+        val power = context.getSystemService(PowerManager::class.java) ?: return true
+        val lock = context.getSystemService(android.app.KeyguardManager::class.java)
+        return power.isInteractive && lock?.isKeyguardLocked != true
+    }
+
     fun canInstall(): Boolean =
         if (Build.VERSION.SDK_INT >= 26) context.packageManager.canRequestPackageInstalls() else true
 

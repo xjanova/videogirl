@@ -3,6 +3,9 @@
 
     <!-- WebView โหลดเวทีอวาตาร์จาก localhost — ต้องมี INTERNET แม้ไม่ออกเน็ตจริง -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <!-- อัปเดตตัวเองจาก GitHub Releases ต้องขอสิทธิ์เปิดตัวติดตั้ง -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
@@ -63,6 +66,10 @@
          และสิทธิ์ที่ขอไปโดยไม่ได้ใช้คือสิ่งที่ผู้ใช้จำได้ตอนกดปฏิเสธ -->
     <uses-permission android:name="android.permission.READ_CALENDAR"/>
 
+    <!-- ตั้งปลุกให้เจ้าของตอนสั่ง "ปลุกตอนหกโมง" (hands/HandsBridge.kt) · สิทธิ์ปกติ ระบบให้ตั้งแต่ติดตั้ง
+         แอปนาฬิกาบังคับสิทธิ์นี้กับ ACTION_SET_ALARM · ไม่ประกาศ = เปิดไม่ได้ (SecurityException) -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>
+
     <!-- ═══ สายโทรเข้า ═══════════════════════════════════════
          เธอเป็นเลขา ต้องรู้ว่าใครโทรมาถึงจะช่วยอะไรได้
 
@@ -103,15 +110,30 @@
         android:label="GigGok"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:fullBackupContent="@xml/direct_control_backup_rules"
+        android:dataExtractionRules="@xml/direct_control_data_extraction_rules"
         android:networkSecurityConfig="@xml/network_security_config">
         <activity android:name=".direct.setup.DirectAudioSetupActivity"
             android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <receiver android:name=".direct.setup.DirectPairingReceiver" android:exported="false" />
+        <!-- The owner answers Mai's mid-call question from the notification (OwnerAsk). -->
+        <receiver android:name=".OwnerReplyReceiver" android:exported="false" />
         <service android:name=".direct.setup.DirectPairingService" android:exported="false"
             android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-requested local wireless debugging pairing for call audio; ends after pairing" />
         </service>
+        <service android:name=".direct.setup.DirectAudioMonitorService" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Owner-visible call audio connection status and recovery" />
+        </service>
+        <receiver android:name=".direct.setup.DirectAudioBootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -209,6 +231,31 @@
                 android:resource="@xml/mind_accessibility"/>
         </service>
 
+        <!-- ═══ ให้มายด์ใช้เครื่องแทน ═══════════════════════════════
+             อ่านหน้าจอเป็นตัวหนังสือ กด พิมพ์ เลื่อน เปิดแอปแทนเจ้าของ (ดู hands/MindHands.kt)
+             🔴 แยกจาก MindAccessibility โดยตั้งใจ · ตัวนั้นสัญญาว่าไม่อ่านหน้าจอ ตัวนี้อ่าน
+             แอปเปิดตอนเริ่มงานแล้วปิดเองหลังว่าง เพราะแอปธนาคารตรวจเจอบริการที่เปิดค้าง
+             · แอปธนาคาร/การเงิน ตัวติดตั้งแอป หน้าขอสิทธิ์ ถูกกันในโค้ด (hands/HandsPolicy.kt)
+             exported เพราะระบบเป็นคนผูก · BIND_ACCESSIBILITY_SERVICE มีแต่ระบบถือ -->
+        <service
+            android:name=".hands.MindHands"
+            android:label="@string/hands_label"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/mind_hands"/>
+        </service>
+        <!-- แจ้งเตือนค้างพร้อมปุ่มหยุด ตลอดที่เธอใช้เครื่องแทน (ดู hands/HandsService.kt) -->
+        <service android:name=".hands.HandsService" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Owner-requested on-device task the assistant performs, with a stop button" />
+        </service>
+
         <!-- ประเภทของ foreground service ต้องประกาศใน manifest
              ประกาศแค่ตอนเรียก startForeground ไม่พอ — Android ปฏิเสธ
              ปลั๊กอินประกาศ <service> มาให้แล้ว เราเติมแค่ประเภทเข้าไป -->
@@ -287,6 +334,14 @@
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
+        </intent>
+
+        <!-- เปิดแอปตามชื่อที่เจ้าของพูด (hands/HandsBridge.kt openApp)
+             🔴 Android 11+ ไม่ประกาศ = เห็นแค่แอปตัวเอง แล้วหาแอปไหนก็ "ไม่เจอ" เงียบ ๆ
+             ขอเฉพาะแอปที่มีไอคอนบนหน้าแอป ไม่ใช่ QUERY_ALL_PACKAGES -->
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
         </intent>
     </queries>
 </manifest>

@@ -28,6 +28,9 @@ abstract interface class MindLips {
   /// ปากขยับแบบประมาณ — เสียงสด (Realtime) มาเป็นชิ้น ไม่มีไฟล์ทั้งประโยคให้อ่านคลื่น
   /// · ขยับตอนเสียงเธอยังออกลำโพง หยุดตอนเงียบ
   Future<void> setBabble(bool on);
+
+  /// Waveform level for the audio frame currently leaving the call output.
+  Future<void> setLiveLevel(double level);
 }
 
 /// สิ่งที่สตูดิโอสั่งเวที — แยกเป็น interface ให้ [MindStudio] เทสต์ได้โดยไม่มี WebView

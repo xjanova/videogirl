@@ -28,8 +28,7 @@ import android.telecom.CallAudioState
  * AEC มีหน้าที่ลบสิ่งที่ลำโพงเล่นออกจากสัญญาณไมค์พอดี ๆ ซึ่งคือสิ่งที่เรา
  * กำลังทำ · บางชิปอ้างอิงเฉพาะเสียงขาลงของสาย (เสียงเธอรอด) บางชิปอ้างอิง
  * เสียงลำโพงทั้งหมด (เสียงเธอโดนลบ) **ต่างกันตามชิปและตาม ROM
- * อ่านจากโค้ดไม่ได้ ต้องลองกับเครื่องจริงเท่านั้น** — [play] จึงเลือก
- * ช่องเสียงได้สองทาง ให้เจ้าของลองว่าเครื่องนี้ทางไหนรอด
+ * อ่านจากโค้ดไม่ได้** · เครื่องที่โดนลบต้องใช้ต่อสายตรง (DirectAudioClient)
  *
  * **สาม — ต้องเป็นแอปโทรศัพท์หลัก** การบังคับเส้นทางเสียงของสายทำได้ผ่าน
  * [android.telecom.InCallService.setAudioRoute] เท่านั้น ซึ่งมีก็ต่อเมื่อ
@@ -44,7 +43,7 @@ import android.telecom.CallAudioState
  */
 object CallAudio {
 
-    /** ช่องเสียงที่ใช้เล่นเสียงเธอ · ดูเหตุผลที่มีสองทางในหัวไฟล์ */
+    /** ในสายใช้ช่องสายเสมอ · ช่องสื่อมีไว้ให้เธอคุยในแอป (MindAudio) ไม่เกี่ยวกับสาย */
     const val STREAM_CALL = "call"
     const val STREAM_MEDIA = "media"
 
@@ -58,10 +57,9 @@ object CallAudio {
     /// **Future ฝั่ง Dart จะรอประโยคที่จบไปแล้วตลอดกาล แล้วบทสนทนาค้างทั้งสาย**
     private var pendingDone: ((Boolean) -> Unit)? = null
 
-    /// ระดับเสียงเดิมของแต่ละช่อง — ต้องคืนให้เสมอ ไม่งั้นเจ้าของจะเจอสาย
+    /// ระดับเสียงเดิมของช่องสาย — ต้องคืนให้เสมอ ไม่งั้นเจ้าของจะเจอสาย
     /// ถัดไปดังสุดโดยไม่รู้ว่าใครไปเร่งไว้
     private var savedCallVolume: Int? = null
-    private var savedMediaVolume: Int? = null
 
     /// เปิดลำโพงให้เธอไปแล้วหรือยัง
     var open = false
@@ -71,7 +69,11 @@ object CallAudio {
     @Volatile
     var ownerRouted = false
 
-    private var openStream = STREAM_CALL
+    /// เธอพักสายถามเจ้าของ · ไมค์ของสายปิดไว้ ปลายสายไม่ได้ยินเจ้าของ ([hold]) · [keepSpeaker] ไม่เปิดคืน
+    @Volatile
+    var holdMuted = false
+        private set
+
     private var reasserts = 0
     private var raisedOnSpeaker = false
 
@@ -88,16 +90,15 @@ object CallAudio {
      * แล้วหลายเครื่องตั้งเส้นทางเสียงใหม่เป็นหูฟังตอนสายต่อติด · เสียงเธอไปออกหูฟังเบา ๆ
      * ไมค์ไม่ได้ยิน ปลายสายไม่ได้ยิน · [keepSpeaker] คอยเปิดคืนตลอดสาย
      */
-    fun open(context: Context, stream: String): Boolean {
+    fun open(context: Context): Boolean {
         val service = MindInCallService.service ?: return false
 
-        openStream = stream
         ownerRouted = false
         reasserts = 0
         raisedOnSpeaker = false
         open = true
         service.setAudioRoute(CallAudioState.ROUTE_SPEAKER)
-        raise(context, stream)
+        raise(context)
         return true
     }
 
@@ -114,7 +115,8 @@ object CallAudio {
         val state = service.callAudioState ?: return
         // ไมค์ของสายถูกปิด = ไม่มีเสียงอะไรขึ้นสายเลย · แอปเราไม่มีปุ่มปิดไมค์ ที่ปิดมาจากที่อื่น
         // (ปุ่มบนหูฟังบลูทูธ / สายก่อนหน้า) · ตอนเธอถือสายไม่มีใครตั้งใจให้ปิด
-        if (state.isMuted && reasserts < MAX_REASSERTS) {
+        // ยกเว้นตอนเธอพักสายถามเจ้าของ ([hold]) · ที่ปิดนั้นตั้งใจ
+        if (state.isMuted && !holdMuted && reasserts < MAX_REASSERTS) {
             reasserts++
             service.setMuted(false)
         }
@@ -123,7 +125,7 @@ object CallAudio {
             // ระดับเสียงสายแยกตามอุปกรณ์ · ที่เร่งไว้ตอนกริ่งดังอาจเป็นของหูฟัง
             if (!raisedOnSpeaker) {
                 raisedOnSpeaker = true
-                raise(context, openStream)
+                raise(context)
             }
             return
         }
@@ -168,7 +170,30 @@ object CallAudio {
      * หยุดเสียงเธอ**ก่อน**เปลี่ยนเส้นทาง ไม่ใช่หลัง · ไม่งั้นประโยคที่ค้างอยู่
      * จะไปโผล่ที่หูฟังตอนเจ้าของเพิ่งยกขึ้นแนบหู ซึ่งดังมากและงงมาก
      */
+    /**
+     * พักสายถามเจ้าของ: ปิด/เปิดไมค์ของสาย · ปลายสายไม่ได้ยินเจ้าของพูดหรือพิมพ์เสียงตอบ
+     *
+     * Dart เปิดคืนทุกครั้งที่เธอพูดกับปลายสาย (ทางลำโพง เสียงเธอขึ้นสายผ่านไมค์นี้) ·
+     * false = ไม่ได้ถือสายอยู่ ไม่แตะไมค์ของเจ้าของ
+     */
+    fun hold(on: Boolean): Boolean {
+        val service = MindInCallService.service ?: return false
+        if (on && !open) return false
+        if (!on && !holdMuted) return true
+        holdMuted = on
+        service.setMuted(on)
+        return true
+    }
+
+    /** ปล่อยไมค์ที่พักไว้ · เจ้าของแทรกสาย/สายจบต้องได้ไมค์คืนเสมอ */
+    private fun releaseHold() {
+        if (!holdMuted) return
+        holdMuted = false
+        MindInCallService.service?.setMuted(false)
+    }
+
     fun handOver(context: Context) {
+        releaseHold()
         DirectAudioClient.handOver()
         stop()
         liveStop()
@@ -180,6 +205,7 @@ object CallAudio {
 
     /** จบสาย หรือเลิกให้เธอพูด — คืนระดับเสียงเดิมทุกครั้ง */
     fun close(context: Context) {
+        releaseHold()
         DirectAudioClient.closeCall()
         stop()
         liveStop()
@@ -282,26 +308,18 @@ object CallAudio {
      * ไม่เร่ง = เครื่องที่เจ้าของหรี่เสียงสายไว้จะเล่นเสียงเธอเบาจนไมค์
      * แทบไม่ได้ยิน ซึ่งอ่านออกมาเป็น "ปลายสายไม่ได้ยิน" ทั้งที่กลไกทำงานครบ
      */
-    private fun raise(context: Context, stream: String) {
+    private fun raise(context: Context) {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
-        // ระหว่างสาย ระบบกดเสียงสื่อไม่ให้ดังเกินเสียงสาย · เลือกช่องสื่อก็ต้องเร่งช่องสายด้วย
-        raiseOne(am, STREAM_CALL)
-        if (stream == STREAM_MEDIA) raiseOne(am, STREAM_MEDIA)
-    }
-
-    private fun raiseOne(am: AudioManager, stream: String) {
-        val type = streamType(stream)
-        val saved = if (stream == STREAM_MEDIA) savedMediaVolume else savedCallVolume
+        val type = AudioManager.STREAM_VOICE_CALL
 
         // จำค่าเดิมครั้งแรกครั้งเดียว · เร่งซ้ำแล้วจำใหม่ = จำค่าที่เราเร่งเอง
         // แล้วคืนค่าจริงไม่ได้อีกเลย
-        if (saved == null) {
-            val now = try {
+        if (savedCallVolume == null) {
+            savedCallVolume = try {
                 am.getStreamVolume(type)
             } catch (e: Exception) {
                 return
             }
-            if (stream == STREAM_MEDIA) savedMediaVolume = now else savedCallVolume = now
         }
 
         try {
@@ -315,9 +333,7 @@ object CallAudio {
     private fun restore(context: Context) {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
         savedCallVolume?.let { restoreOne(am, AudioManager.STREAM_VOICE_CALL, it) }
-        savedMediaVolume?.let { restoreOne(am, AudioManager.STREAM_MUSIC, it) }
         savedCallVolume = null
-        savedMediaVolume = null
     }
 
     private fun restoreOne(am: AudioManager, type: Int, level: Int) {
@@ -327,9 +343,6 @@ object CallAudio {
             // คืนไม่ได้ก็ปล่อย — เจ้าของปรับเองได้ ไม่คุ้มที่จะล้มทั้งสาย
         }
     }
-
-    private fun streamType(stream: String) =
-        if (stream == STREAM_MEDIA) AudioManager.STREAM_MUSIC else AudioManager.STREAM_VOICE_CALL
 
     // ── เสียงสด (OpenAI Realtime) ─────────────────────────────────────
     //
@@ -367,14 +380,9 @@ object CallAudio {
     private var live: Live? = null
 
     /** เริ่มช่องเสียงสด · ทุกครั้งที่เรียกได้ช่องใหม่สะอาด (ทิ้งเสียงที่ค้างอยู่) */
-    fun liveStart(stream: String, rate: Int = 24000): Boolean {
+    fun liveStart(rate: Int = 24000): Boolean {
         liveStop()
         return try {
-            val usage = if (stream == STREAM_MEDIA) {
-                AudioAttributes.USAGE_MEDIA
-            } else {
-                AudioAttributes.USAGE_VOICE_COMMUNICATION
-            }
             val min = android.media.AudioTrack.getMinBufferSize(
                 rate,
                 android.media.AudioFormat.CHANNEL_OUT_MONO,
@@ -383,7 +391,7 @@ object CallAudio {
             val track = android.media.AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(usage)
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -424,9 +432,9 @@ object CallAudio {
     }
 
     /** ทิ้งเสียงที่ค้างอยู่ทันที (เจ้าของแทรกสาย / ยกเลิกคำตอบ) แล้วพร้อมเล่นต่อ */
-    fun liveClear(stream: String) {
+    fun liveClear() {
         val rate = live?.rate ?: return
-        liveStart(stream, rate)
+        liveStart(rate)
     }
 
     fun liveStop() {

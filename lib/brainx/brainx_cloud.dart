@@ -40,6 +40,9 @@ abstract final class MindPaths {
   /// ความสัมพันธ์ (ความผูกพัน คบกันไหม งอนอยู่ไหม ชื่อที่ตั้งให้เธอ)
   static const phoneSoul = 'Mind/Phone/relationship.md';
 
+  /// สิ่งที่เธอเรียนรู้จากสายโทรศัพท์และที่เจ้าของสั่งเรื่องการคุยโทรศัพท์ (CallLessons)
+  static const phoneCallLessons = 'Mind/Phone/call-lessons.md';
+
   /// บทสนทนาบนมือถือ วันละไฟล์
   static String phoneDay(DateTime d) => 'Mind/Conversations/${day(d)} phone.md';
 

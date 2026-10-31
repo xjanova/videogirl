@@ -236,7 +236,7 @@ void main() {
         await caller(t);
         await her('Got it, please tell me your name first.');
       }
-      expect(reminders(), hasLength(RealtimeCall.maxLanguageReminders));
+      expect(reminders(), hasLength(VoiceSession.maxLanguageReminders));
     });
 
     test('ไม่เตือนเมื่อเธอตอบไทย (มีคำอังกฤษปนได้) · ตอนทักก่อนได้ยินคู่สาย · หรือคู่สายพูดอังกฤษ', () async {

@@ -9,6 +9,7 @@ import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
 import '../persona/mind_soul.dart';
 import '../phone/call_session.dart';
+import '../phone/call_watch.dart';
 import '../state/mind_state.dart';
 import '../studio/mind_studio.dart';
 import '../studio/studio_overlay.dart';
@@ -231,12 +232,16 @@ class _HomeScreenState extends State<HomeScreen>
 
     // เธอหันมาใกล้ ๆ ตอนคุย แล้วถอยกลับเป็นเต็มตัวเมื่อจบ
     await widget.avatar.setFraming(MindFraming.bust);
-    await widget.avatar.setMood(MindMood.thinking);
+    if (mounted && context.read<CallWatch>().state == CallState.idle) {
+      await widget.avatar.setMood(MindMood.thinking);
+    }
 
     await sending;
     if (!mounted) return;
 
-    await widget.avatar.setMood(state.mode.isWork ? MindMood.pleased : MindMood.happy);
+    if (context.read<CallWatch>().state == CallState.idle) {
+      await widget.avatar.setMood(state.mode.isWork ? MindMood.pleased : MindMood.happy);
+    }
     if (!mounted) return;
     await widget.avatar.setFraming(MindFraming.full);
   }

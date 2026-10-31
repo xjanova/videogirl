@@ -293,12 +293,12 @@ class S {
   /// และต้องบอกด้วยว่าสิ่งที่คนคาดหวังที่สุด (เธอคุยแทน) ยังทำไม่ได้
   String get permDialerWhy => _(
         'ทุกสายของเครื่องจะผ่านแอปนี้ — จอสายเป็นของมายด์ รับ วาง ปิดไมค์ '
-        'สลับลำโพงได้ · เธอพูดเข้าสายผ่านลำโพง (Android ไม่ให้แอปส่งเสียงเข้าสายตรง ๆ) '
+        'สลับลำโพงได้ · เธอพูดเข้าสายด้วยการต่อสายตรงในหน้าตั้งค่า · '
         'ถอนคืนได้ตลอดจากหน้าตั้งค่าของเครื่อง',
         'Every call on this phone goes through this app — Mind owns the call '
         'screen and can answer, hang up, mute and switch to speaker. She talks '
-        'into the call through the speaker (Android lets no app put audio into a call directly). '
-        'Reversible any time from system settings.',
+        'into the call through direct call audio in Settings. '
+        'You can undo this any time in the phone settings.',
       );
   String get permA11y => _('ให้มายด์ได้ยินสาย (การช่วยเหลือพิเศษ)', 'Let Mind hear calls (Accessibility)');
 
@@ -815,10 +815,10 @@ class S {
         'See her talk and the live transcript, even on the lock screen · only the call screen opens, and it goes back behind the lock the moment the call ends',
       );
   String get callSpeakerNote => _(
-        'ระหว่างเธอคุย เครื่องเปิดลำโพงเสมอ คุณจึงได้ยินทั้งสองฝ่าย · ปิดลำโพงไม่ได้ เพราะ Android ไม่ให้แอปส่งเสียงเข้าสายตรง ๆ '
-            'เสียงเธอต้องออกลำโพงให้ไมค์รับเข้าสาย และเธอฟังปลายสายผ่านลำโพงเหมือนกัน · อยากให้เงียบ กด "แทรกสาย" แล้วคุยเองได้ทุกเมื่อ',
-        'While she talks the phone is always on speaker, so you hear both sides · it cannot be turned off: Android does not let apps put audio into a call, '
-            'so her voice has to go out of the speaker into the mic, and she hears the caller through the speaker too · tap "Take over" any time to talk yourself',
+        'ต่อสายตรงอยู่ = เสียงเธอเข้าสายตรง เครื่องไม่เปิดลำโพง · ยังไม่ต่อ = เครื่องเปิดลำโพงให้ไมค์รับเสียงเธอแทน '
+            'ซึ่งหลายเครื่องตัดเสียงเธอทิ้งจนคู่สายไม่ได้ยิน · กด "แทรกสาย" แล้วคุยเองได้ทุกเมื่อ',
+        'With direct call audio connected, her voice goes straight into the call and the speaker stays off · without it the phone '
+            'uses the speaker and mic instead, which many phones cancel so the caller hears nothing · tap "Take over" any time to talk yourself',
       );
   String get dialerRestrictedHint => _(
         'ถ้าขึ้นว่า "แอปถูกปฏิเสธไม่ให้เข้าถึงเพื่อเป็นแอปโทรศัพท์เริ่มต้น" (Android 13 ขึ้นไปกันแอปที่ไม่ได้ลงจาก Play Store): '
@@ -844,6 +844,12 @@ class S {
             'She skipped the last call: number not in your contacts'),
         'other_call' => _('สายล่าสุดเธอไม่รับ เพราะกำลังมีอีกสายอยู่',
             'She skipped the last call: you were on another call'),
+        'direct_offline' => _('สายล่าสุดเธอไม่รับ เพราะยังไม่ได้ต่อสายตรง รับไปคู่สายจะไม่ได้ยินเธอ · กด "ต่อสายตรง" ในหน้าตั้งค่า',
+            'She skipped the last call: direct call audio was not connected, so the caller would not have heard her · tap Connect in Settings'),
+        'no_internet' => _('สายล่าสุดเธอไม่รับ เพราะเครื่องไม่มีอินเทอร์เน็ต และสมองที่เลือกต้องใช้เน็ต · '
+                'อยากให้รับได้ตอนไม่มีเน็ต เลือกสมองในเครื่อง',
+            'She skipped the last call: no internet, and the brain you chose needs it · '
+                'to answer offline, choose the on-device brain'),
         'no_mind' || 'no_service' => _(
             'สายล่าสุดเธอไม่รับ เพราะปลุกตัวเธอไม่ขึ้น · เปิด "เฝ้างาน" และยกเว้นแบตให้แอปนี้',
             'She skipped the last call: she could not be woken · turn on "Keep watch" and exempt the app from battery limits'),
@@ -881,10 +887,18 @@ class S {
   String callOutTo(String who, String number) =>
       who == number ? _('ถึง $number', 'To $number') : _('ถึง $who · $number', 'To $who · $number');
   String get callOutTaskLabel => _('เรื่องที่จะคุย', 'What she will say');
-  String get callOutConfirmNote => _(
-        'น้องมายจะบอกปลายสายว่าเป็นเลขา AI ที่โทรแทนคุณ · คิดค่าโทรตามปกติของซิม · คุยจบแล้วจะมารายงานในแชท',
-        'Mai will tell them she is your AI secretary calling for you · normal call charges apply · she reports back in chat',
-      );
+  /// [canAsk] = คุยสด (Realtime/GPT-Live) · ทางเดิมไม่มีเครื่องมือถามเจ้าของ อย่าสัญญา
+  String callOutConfirmNote({bool canAsk = false}) => canAsk
+      ? _(
+          'น้องมายจะบอกปลายสายว่าเป็นเลขา AI ที่โทรแทนคุณ · มีเรื่องที่ต้องให้คุณตัดสินใจ เธอจะถามผ่านแจ้งเตือนระหว่างสาย · '
+              'คิดค่าโทรตามปกติของซิม · คุยจบแล้วจะมารายงานในแชท',
+          'Mai will tell them she is your AI secretary calling for you · if something needs your decision she asks you by '
+              'notification during the call · normal call charges apply · she reports back in chat',
+        )
+      : _(
+          'น้องมายจะบอกปลายสายว่าเป็นเลขา AI ที่โทรแทนคุณ · คิดค่าโทรตามปกติของซิม · คุยจบแล้วจะมารายงานในแชท',
+          'Mai will tell them she is your AI secretary calling for you · normal call charges apply · she reports back in chat',
+        );
   String get callOutGo => _('โทรเลย', 'Call now');
   String get callOutAck => _('ได้เลยค่ะ', 'Sure.');
   String get callOutCancel => _('ยังไม่โทร', 'Not now');
@@ -924,6 +938,50 @@ class S {
   String get callOutKickoff => _(
         'ปลายสายรับสายแล้ว ทักทาย แนะนำตัว และบอกว่าโทรมาเรื่องอะไร',
         'They have picked up. Greet them, introduce yourself, and say why you are calling.',
+      );
+  String get callOutEditHint => _(
+        'แก้ได้ก่อนกดโทร · บอกให้ครบว่าต้องการอะไร ยอมได้แค่ไหน และอยากได้อะไรกลับมา',
+        'You can edit this before calling · say what you want, how flexible she can be, and what to bring back',
+      );
+  // ── น้องมายถามเจ้าของกลางสาย (ask_owner) ──
+  String callAskOwnerTitle(String who) =>
+      _('น้องมายถามเรื่องสายกับ $who', 'Mai has a question about the call with $who');
+  String get callAskOwnerReply => _('ตอบน้องมาย', 'Reply to Mai');
+  List<String> get callAskOwnerChoices => [
+        _('ได้ ตกลงตามนั้น', 'Yes, that works'),
+        _('ไม่ได้', 'No'),
+        _('บอกว่าจะติดต่อกลับ', 'Say I will get back to them'),
+      ];
+  String get callAskOwnerHead => _('น้องมายถามคุณ · ปลายสายรออยู่', 'Mai is asking you · they are holding');
+  String get callAskOwnerHint => _('พิมพ์คำตอบให้น้องมาย', 'Type your answer for Mai');
+  String get callAskOwnerMuted => _(
+        'ปิดไมค์ฝั่งคุณอยู่ ปลายสายไม่ได้ยินคุณ (เปิดเฉพาะตอนน้องมายพูดกับเขา) · พิมพ์ หรือกดไมค์บนคีย์บอร์ดพูดตอบได้',
+        'Your side is muted, they cannot hear you (it opens only while Mai talks to them) · type, or use the '
+            'keyboard mic to speak your answer',
+      );
+  String get callAskOwnerBusy => _('ไม่ว่าง ให้เธอจัดการเอง', 'Busy, let her handle it');
+
+  /// เน็ตหลุดกลางสาย · เธอพูดประโยคนี้ด้วยเสียงในเครื่องแล้ววางสาย ไม่ปล่อยปลายสายเงียบ
+  String callNetLost({required bool outgoing}) => outgoing
+      ? _('ขออภัยค่ะ ตอนนี้สัญญาณทางนี้ขัดข้อง เดี๋ยวจะติดต่อกลับมาใหม่นะคะ ขออนุญาตวางสายก่อนค่ะ',
+          'Sorry, our line is having trouble right now. We will call you back shortly. I will hang up now.')
+      : _('ขออภัยค่ะ ตอนนี้สัญญาณทางนี้ขัดข้อง เดี๋ยวเจ้าของจะติดต่อกลับนะคะ ขออนุญาตวางสายก่อนค่ะ',
+          'Sorry, our line is having trouble right now. The owner will call you back. I will hang up now.');
+  String get callNetLostWarn => _(
+        'เน็ตหลุด เธอบอกปลายสายว่าจะติดต่อกลับแล้ววางสาย',
+        'The internet dropped. She told them you will call back, then hung up.',
+      );
+  String get callAskOwnerAllow => _('ถามฉันได้ระหว่างสาย', 'She may ask me during the call');
+  String get callAskOwnerAllowOn => _(
+        'ถามเฉพาะเรื่องที่ตัดสินแทนไม่ได้จริง ๆ · ระหว่างรอ ปิดไมค์ฝั่งคุณ ปลายสายไม่ได้ยิน · ไม่ตอบใน 45 วินาที = '
+            'ถือว่าคุณไม่อยู่ เธอรับเรื่องไว้เองทั้งสาย',
+        'Only for a decision she really cannot make · while she waits your side is muted · no answer in 45 seconds = '
+            'you are away, and she handles the rest of the call herself',
+      );
+  String get callAskOwnerAllowOff => _(
+        'เธอไม่พักสายมาถามคุณ · ตกลงเท่าที่สั่ง ที่เหลือรับเรื่องไว้พร้อมรายละเอียด แล้วนัดเวลาติดต่อกลับ',
+        'She will not put them on hold to ask you · she agrees only what you allowed, takes the rest as a detailed '
+            'message, and sets a time to get back',
       );
   String get callGreetingLabel => _('คำทักตอนรับสาย', 'What she says when she answers');
   String get callGreetingHint => _(
@@ -990,16 +1048,14 @@ class S {
             'keep her screen on, stay in the app, and turn on "Let Mind hear calls" in Accessibility',
       );
   String get callMuteWarn => _(
-        'เปิดลำโพงเข้าสายไม่ได้ ปลายสายจะไม่ได้ยินเธอ ลองสลับช่องเสียงในหน้าตั้งค่า',
-        'Speakerphone was refused — the caller will not hear her. '
-            'Try the other audio path in Settings.',
+        'เสียงเธอไปไม่ถึงปลายสาย · กดแทรกสายแล้วคุยเอง และกด "ต่อสายตรง" ในหน้าตั้งค่าก่อนสายถัดไป',
+        'Her voice is not reaching the caller · tap Take over to talk yourself, and connect direct call audio in Settings before the next call.',
       );
   String get callSpeakerOff => _(
-        'ลำโพงปิดอยู่ ปลายสายจะไม่ได้ยินเธอ · แตะตรงนี้เพื่อเปิดลำโพง '
-            'ถ้าเปิดแล้วยังไม่ได้ยิน ลองสลับช่องเสียงในหน้าตั้งค่า',
-        'The speaker is off — the caller cannot hear her. Tap here to turn it on; '
-            'if they still cannot hear her, try the other audio path in Settings.',
+        'ลำโพงปิดอยู่ ปลายสายจะไม่ได้ยินเธอ · แตะตรงนี้เพื่อเปิดลำโพง',
+        'The speaker is off — the caller cannot hear her. Tap here to turn it on.',
       );
+  String get callUseSpeaker => _('เปิดเสียงออกลำโพง', 'Use phone speaker');
 
   // ═══ ตัวตนของเธอ ════════════════════════════════════════
   String get sectionSoul => _('ตัวตนของเธอ', 'Who she is');
@@ -1127,25 +1183,6 @@ class S {
   String get moodFond => _('อารมณ์ดี', 'In good spirits');
   String get moodWarm => _('ใจดีเป็นพิเศษ', 'Especially warm');
   String get moodCalm => _('ปกติ', 'Normal');
-
-  // ═══ ช่องเสียงเข้าสาย ═══════════════════════════════════
-  String get callStreamTitle => _('ทางที่เสียงเธอวิ่งเข้าสาย', 'How her voice reaches the call');
-  String get callStreamWhy => _(
-        'เธอพูดออกลำโพงแล้วให้ไมค์ของเครื่องรับเข้าไปในสาย เพราะ Android '
-            'ไม่มีทางป้อนเสียงเข้าสายตรง ๆ · บางเครื่องตัดเสียงก้องแรงจนลบเสียงเธอทิ้ง '
-            'ถ้าปลายสายไม่ได้ยิน ให้สลับมาอีกทางแล้วลองใหม่',
-        'She speaks out the loudspeaker and the phone mic carries it into the call — '
-            'Android has no way to inject audio directly. Some phones cancel it as echo. '
-            'If the caller cannot hear her, switch to the other path and try again.',
-      );
-  String get callStreamCall => _('ช่องเสียงสาย', 'Call stream');
-  String get callStreamCallHint =>
-      _('ค่าตั้งต้น · ดังตามระดับเสียงสาย', 'Default — follows the in-call volume');
-  String get callStreamMedia => _('ช่องเสียงสื่อ', 'Media stream');
-  String get callStreamMediaHint => _(
-        'ลองทางนี้ถ้าปลายสายไม่ได้ยิน',
-        'Try this one if the caller hears nothing',
-      );
 
   // ═══ อัปเดต ════════════════════════════════════════════
   String get updateChecking => _('กำลังเช็ครุ่นใหม่…', 'Checking for updates…');

@@ -54,6 +54,9 @@ typedef BrainXBackup = ({
   List<CloudFact> facts,
   Map<String, Object?>? soul,
   List<DayLine> lines,
+
+  /// `Mind/Phone/call-lessons.md` ดิบ · ผู้กู้แยกเอง (CallLessons.parseMarkdown) · ว่าง = ไม่มี
+  String lessons,
 });
 
 class BrainXLink extends ChangeNotifier {
@@ -420,6 +423,7 @@ class BrainXLink extends ChangeNotifier {
       final want = [
         if (all.contains(MindPaths.phoneMemory)) MindPaths.phoneMemory,
         if (all.contains(MindPaths.phoneSoul)) MindPaths.phoneSoul,
+        if (all.contains(MindPaths.phoneCallLessons)) MindPaths.phoneCallLessons,
         ...dayFiles,
       ];
       final got = <String, String>{};
@@ -435,6 +439,7 @@ class BrainXLink extends ChangeNotifier {
         facts: parseMemory(got[MindPaths.phoneMemory] ?? ''),
         soul: parseSoul(got[MindPaths.phoneSoul] ?? ''),
         lines: lines,
+        lessons: got[MindPaths.phoneCallLessons] ?? '',
       );
     });
   }

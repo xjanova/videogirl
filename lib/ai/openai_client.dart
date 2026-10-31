@@ -11,10 +11,14 @@ import 'openai_config.dart';
 /// ข้อผิดพลาดที่เอาไปโชว์ผู้ใช้ได้เลย — ไม่มี stack trace ไม่มีคำว่า Exception
 /// และไม่มีคีย์หลุดออกมา
 class OpenAiFailure implements Exception {
-  const OpenAiFailure(this.message, {this.status, this.code});
+  const OpenAiFailure(this.message, {this.status, this.code, this.offline = false});
 
   final String message;
   final int? status;
+
+  /// ส่งไม่ถึงเซิร์ฟเวอร์เลย (ไม่มีเน็ต / หมดเวลา) · ไม่ใช่เซิร์ฟเวอร์ตอบว่าผิด ·
+  /// สายใช้แยก "เน็ตหลุด" ออกจาก "เครื่องไม่ให้ฟัง" (CallSession._netLost)
+  final bool offline;
 
   /// รหัสเหตุผลจากพร็อกซีของเรา (`insufficient_credit` · `not_linked` ·
   /// `daily_cap` · `wallet_inactive`) · หน้าจอใช้เลือกปุ่มที่ต้องโชว์ (เติมเงิน/ผูกบัญชี)
@@ -283,7 +287,7 @@ class OpenAiClient {
         await _http.send(req).timeout(_timeout),
       );
     } on Exception {
-      throw OpenAiFailure(_s().errOffline);
+      throw OpenAiFailure(_s().errOffline, offline: true);
     }
 
     if (res.statusCode >= 400) {
@@ -306,7 +310,7 @@ class OpenAiClient {
           .timeout(_timeout);
     } on Exception {
       // ไม่ส่ง exception ดิบขึ้นไป มันมี URL และบางทีมี header ติดไปด้วย
-      throw OpenAiFailure(_s().errOffline);
+      throw OpenAiFailure(_s().errOffline, offline: true);
     }
 
     if (res.statusCode >= 400) {

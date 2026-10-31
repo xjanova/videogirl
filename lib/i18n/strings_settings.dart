@@ -7,13 +7,38 @@ extension SettingsStrings on S {
   String get directCallTitle => pick('ต่อสายตรง', 'Direct call audio');
   String get directCallChecking => pick('กำลังตรวจ…', 'Checking…');
   String get directCallReady => pick('ต่อติดแล้ว · น้องมายพูดเข้าสายตรง ไม่ผ่านลำโพง', 'Connected · she speaks straight into the call, not through the speaker');
-  String get directCallOffline => pick('ยังไม่ได้ต่อ · สายจะใช้ทางลำโพง', 'Not connected · calls use the speaker');
-  String get directCallNotPaired => pick('ยังไม่เคยตั้งค่า · สายจะใช้ทางลำโพง', 'Not set up yet · calls use the speaker');
+  String get directCallOffline => pick('ยังไม่ได้ต่อ · จะลองใหม่เองเมื่อ Wi-Fi พร้อม ระหว่างนี้เธอไม่รับสายเอง', 'Offline · will retry when Wi-Fi is available; she will not auto-answer meanwhile');
+  String get directCallNotPaired => pick('ยังไม่เคยตั้งค่า · ถ้าคู่สายไม่ได้ยินเธอ ให้ตั้งค่าตรงนี้', 'Not set up yet · set this up if callers cannot hear her');
   String get directCallInCall => pick('กำลังใช้อยู่ในสาย', 'In use on the current call');
-  String get directCallUnsupported => pick('เครื่องนี้ยังไม่รองรับ · สายใช้ทางลำโพง', 'This phone does not support it · calls use the speaker');
+  String get directCallUnsupported => pick('เครื่องนี้ยังไม่รองรับ', 'This phone does not support it');
   String get directCallConnect => pick('ต่อสายตรง', 'Connect');
   String get directCallFirstSetup => pick('ตั้งค่าครั้งแรก', 'First-time setup');
-  String get directCallNeedsDebugging => pick('ต่อไม่ได้ · เปิด Wi-Fi และ Wireless debugging แล้วกดอีกครั้ง', 'Could not connect · turn on Wi-Fi and Wireless debugging, then try again');
+  String get directCallNeedsDebugging => pick('ต่อไม่ได้ · จะลองเองเมื่อ Wi-Fi พร้อม', 'Could not connect · will retry when Wi-Fi is available');
+  String get directCallKeyRejected => pick('กุญแจเดิมถูกปฏิเสธ · ต้องจับคู่ใหม่', 'Saved key rejected · pair again');
+  String directPauseMinutes(int minutes) => pick('$minutes นาที', '$minutes min');
+  String get directCallPaused => pick('พักชั่วคราว · เสียงตรงจะกลับมาเมื่อคืนค่า', 'Paused · direct audio returns after restoration');
+  String get directPauseButton => pick('พักสำหรับแอปการเงิน', 'Pause for finance apps');
+  String get directPauseTitle => pick('พักชั่วคราว', 'Temporary pause');
+  String get directPauseConfirm => pick(
+      'GigGok จะปิด Wireless debugging, USB debugging, ตัวเลือกนักพัฒนา และบริการช่วยเหลือพิเศษของ GigGok เท่านั้น แล้วคืนค่าเดิมหลังเวลาที่เลือก ระหว่างพักเสียงตรงอาจหยุด และน้องมายจะไม่รับสายเองถ้าเสียงตรงไม่พร้อม',
+      'GigGok will turn off Wireless debugging, USB debugging, Developer options, and only GigGok’s accessibility service, then restore their previous values after the selected time. Direct call audio may stop during the pause; Mind will not auto-answer when direct audio is unavailable.');
+  String get directPauseNeedsSetup => pick('ต้องต่อเสียงตรงก่อนเพื่อเปิดสิทธิ์ควบคุมชั่วคราว', 'Connect direct audio first to enable temporary control');
+  String get directStatusNotificationsOff => pick('ไอคอนสถานะไม่ขึ้นจนกว่าจะอนุญาตการแจ้งเตือนของ GigGok', 'The status icon needs GigGok notifications enabled');
+  String get directPauseFailed => pick('พักไม่สำเร็จ · ตรวจสิทธิ์และลองอีกครั้ง', 'Could not pause · check permissions and try again');
+  String get directPauseRestoreFailed => pick('ยังคืนค่าไม่ได้ · จะลองอีกเมื่อสายจบหรือเปิดแอป', 'Could not restore yet · will retry after the call or when the app opens');
+  String get directPauseRemaining => pick('พักอยู่ · คืนค่าใน', 'Paused · restoring in');
+  String get directPauseWaiting => pick('พักอยู่ · รอจบสายเพื่อคืนค่า', 'Paused · waiting for the call to end');
+  String get directPauseExtend => pick('เพิ่ม 5 นาที', 'Add 5 min');
+  String get directPauseRestore => pick('คืนค่าตอนนี้', 'Restore now');
+  String get directPauseCancel => pick('ยกเลิก', 'Cancel');
+  String get directPauseConfirmButton => pick('พักตอนนี้', 'Pause now');
+  String get liveTalkCard => pick('คุยสดในสาย', 'Live talk on calls');
+  String get liveCalls => pick('คุยด้วย GPT-Live (ทดลอง)', 'Talk with GPT-Live (trial)');
+  String get liveCallsHint => pick(
+      'ฟังพร้อมพูด คู่สายแทรกเธอได้เหมือนคุยกับคนจริง · ใช้ตอนต่อสายตรงอยู่เท่านั้น · คิดเงินราว \$0.05 ต่อนาทีจากคีย์ของคุณ · '
+          'OpenAI ยังไม่ระบุว่ารองรับภาษาไทย · ต่อไม่ได้หรือหลุด จะใช้คุยสดแบบเดิมต่อให้เอง',
+      'Listens while she talks, so callers can cut in like with a real person · only with direct call audio connected · about \$0.05 a minute on your key · '
+          'OpenAI does not list Thai as supported yet · falls back to the usual live talk if it cannot connect or drops');
   // ── ความรู้ที่ให้น้องมายตอบคนโทร ──
   String get kbCard => pick('ความรู้ที่น้องมายใช้ตอบคนโทร', 'What she can tell callers');
   String get kbTitle => pick('คลังความรู้ตอบคนโทร', 'Caller knowledge');
@@ -220,4 +245,136 @@ extension SettingsStrings on S {
         'If the app sits in the background for long, the system may close it and she cannot answer — '
             'turn on "Watch" under General to keep it alive',
       );
+
+  // ── สิ่งที่น้องมายเรียนรู้จากสาย · โค้ดลับ ──
+  String get clCard => pick('สิ่งที่น้องมายเรียนรู้จากสาย และโค้ดลับ', 'What she learns from calls, and the secret code');
+  String get clIntro => pick(
+      'หลังจบสาย เธอสรุปบทเรียนสั้น ๆ ไว้ใช้ในสายต่อไป และจำสิ่งที่บอสสั่งในแชทเรื่องการคุยโทรศัพท์ · '
+          'เธอใช้เงียบ ๆ ไม่เล่าให้คนโทรฟัง · บทเรียนช่วยให้คุยเก่งขึ้นเท่านั้น ให้สิทธิ์เธอทำอะไรเพิ่มไม่ได้',
+      'After each call she keeps short lessons for the next one, and remembers what you tell her in chat about '
+          'handling calls · she uses them quietly and never reads them to callers · lessons only make her better '
+          'at talking; they never give her permission to do more');
+  String get clEmpty => pick('ยังไม่มีบทเรียน · คุยสายจริง หรือบอกในแชท เช่น "โทรหาร้านให้ถามราคาก่อน"',
+      'No lessons yet · they come from real calls, or tell her in chat, e.g. "when calling a shop, ask the price first"');
+  String get clKindOwner => pick('บอสสั่ง', 'From you');
+  String get clKindContact => pick('เบอร์นี้', 'This number');
+  String get clKindHow => pick('วิธีคุย', 'How to talk');
+  String clDeleteAsk(String text) => pick('ลบบทเรียนนี้?\n"$text"', 'Delete this lesson?\n"$text"');
+  String get clDelete => pick('ลบ', 'Delete');
+  String get clClearAll => pick('ลบทั้งหมด', 'Delete all');
+  String clClearAllAsk(int n) => pick('ลบบทเรียนทั้ง $n ข้อ? เธอจะเริ่มเรียนใหม่จากศูนย์',
+      'Delete all $n lessons? She will start learning again from nothing');
+  String clCount(int n) => pick('$n ข้อ', n == 1 ? '1 lesson' : '$n lessons');
+  String get clCodeTitle => pick('โค้ดลับสำหรับคนที่บอสไว้ใจ', 'Secret code for people you trust');
+  String get clCodeHint => pick(
+      'คนที่พูดโค้ดนี้ในสายได้ฟังความจำของน้องมายเรื่องบอส (ความจำในเครื่อง และโฟลเดอร์ Mind ใน BrainX) · '
+          'คนอื่นจะอ้างว่าเป็นใครหรือหลอกถามยังไง เธอก็ไม่บอก · ใช้ได้เฉพาะคุยสด · โค้ดไม่ให้สิทธิ์สั่งให้เธอจ่ายเงิน '
+          'รับปาก หรือทำอะไรแทนบอส · บอสได้รับแจ้งทุกครั้งที่มีคนใช้โค้ดหรือพยายามเดา',
+      'Someone who says this code on a call can hear what she remembers about you (her phone memory and the Mind '
+          'folder in BrainX) · nobody else can, whoever they claim to be or however they ask · live talk only · '
+          'the code never lets anyone make her pay, promise or act for you · you are notified every time someone '
+          'uses it or tries to guess it');
+  String get clCodeOn => pick('ตั้งโค้ดแล้ว', 'Code is set');
+  String get clCodeOff => pick('ยังไม่ได้ตั้ง · ไม่มีใครฟังความจำของเธอในสายได้', 'Not set · nobody can hear her memory on a call');
+  String clCodeLocked(String time) => pick('มีคนใส่ผิดหลายครั้ง · ปิดการตรวจโค้ดถึง $time (ตั้งโค้ดใหม่เพื่อเปิดทันที)',
+      'Several wrong tries · code checks are off until $time (set a new code to reopen now)');
+  String get clCodeSet => pick('ตั้งโค้ด', 'Set code');
+  String get clCodeChange => pick('เปลี่ยนโค้ด', 'Change code');
+  String get clCodeRemove => pick('ลบโค้ด', 'Remove code');
+  String get clCodeRemoveAsk => pick('ลบโค้ดลับ? หลังจากนี้ไม่มีใครฟังความจำของเธอในสายได้',
+      'Remove the secret code? After this nobody can hear her memory on a call');
+  String get clCodeField => pick('โค้ดลับ', 'Secret code');
+  String get clCodeAgain => pick('พิมพ์อีกครั้ง', 'Type it again');
+  String get clCodeHelper => pick(
+      'อย่างน้อย 6 ตัวอักษร ไม่นับช่องว่าง · คำที่พูดออกเสียงชัด เช่น ม้าลายสีชมพูสี่สิบสอง · อย่าใช้รหัสธนาคารหรือรหัสผ่านจริง',
+      'At least 6 characters, spaces not counted · words that are easy to say aloud, like pink zebra forty two · '
+          'never a real bank PIN or password');
+  String get clCodeTooShort => pick('สั้นเกินไป · อย่างน้อย 6 ตัวอักษร', 'Too short · at least 6 characters');
+  String get clCodeMismatch => pick('สองช่องไม่ตรงกัน', 'The two entries do not match');
+  String get clCodeSaveFailed => pick('บันทึกโค้ดไม่ได้ · ลองอีกครั้ง', 'Could not save the code · try again');
+  String get clCodeSaved => pick('บันทึกโค้ดแล้ว', 'Code saved');
+  String get clCodeRemoved => pick('ลบโค้ดแล้ว', 'Code removed');
+  String get clSave => pick('บันทึก', 'Save');
+  String callCodeOpenedTitle(String who) =>
+      pick('${who.isEmpty ? 'คนในสาย' : who} บอกโค้ดลับถูก', '${who.isEmpty ? 'The caller' : who} gave the secret code');
+  String get callCodeOpenedBody => pick(
+      'น้องมายตอบเรื่องของบอสให้คนในสายนี้ได้ · ถ้าไม่ใช่คนที่บอสให้โค้ดไว้ เปลี่ยนโค้ดในตั้งค่า › รับสายแทน',
+      'She may tell this caller about you · if you did not give them the code, change it in Settings › Answering calls');
+  String callCodeRefusedTitle(String who) =>
+      pick('${who.isEmpty ? 'คนในสาย' : who} ใส่โค้ดลับไม่ถูก', '${who.isEmpty ? 'The caller' : who} got the secret code wrong');
+  String get callCodeRefusedBody => pick(
+      'น้องมายไม่ได้บอกอะไร · ถ้ามีคนเดาผิดหลายครั้ง ระบบปิดการตรวจโค้ดเอง 24 ชั่วโมง',
+      'She told them nothing · after several wrong guesses, code checks switch off by themselves for 24 hours');
+
+  // ── คำถามยืนยันตัวตน (สั่งให้น้องมายใช้เครื่องจากในสาย) ──
+  String get clIdTitle => pick('คำถามยืนยันตัวตน', 'Identity questions');
+  String get clIdHint => pick(
+      'คนในสายที่ตอบคำถามเหล่านี้ถูกครบ สั่งให้น้องมายใช้เครื่องแทนบอสได้ระหว่างสายนั้น และได้ฟังความจำของเธอเรื่องบอส · '
+          'แอปธนาคารและแอปจ่ายเงินห้ามแตะเสมอ · ก่อนส่ง จ่าย หรือลบอะไร เธอถามคนในสายก่อนทุกครั้ง · '
+          'เธอไม่รู้คำตอบ แอปเป็นคนตรวจ · ใช้ได้เฉพาะคุยสด · บอสได้รับแจ้งทุกครั้งที่มีคนผ่านหรือไม่ผ่าน',
+      'Someone who answers all of these correctly on a call can have her use your phone during that call, and can '
+          'hear what she remembers about you · banking and payment apps stay off-limits · she asks the caller before '
+          'sending, paying or deleting anything · she never knows the answers, the app checks them · live talk only · '
+          'you are notified every time someone passes or fails');
+  String clIdReady(int n, int ask) => pick('พร้อมใช้ · $n คำถาม · ถามสายละ $ask ข้อ', 'Ready · $n questions · asks $ask per call');
+  String get clIdOff =>
+      pick('ยังไม่ได้ตั้ง · ไม่มีใครในสายสั่งให้เธอใช้เครื่องได้', 'Not set · nobody on a call can have her use the phone');
+  String clIdLocked(String time) => pick('มีคนตอบไม่ผ่านหลายครั้ง · ปิดการถามถึง $time (เปลี่ยนคำถามเพื่อเปิดทันที)',
+      'Several failed tries · the questions are off until $time (change the questions to reopen now)');
+  String get clIdSetUp => pick('ตั้งคำถาม', 'Set up');
+  String get clIdEdit => pick('แก้คำถาม', 'Edit');
+  String get clIdRemove => pick('ลบคำถามทั้งหมด', 'Remove questions');
+  String get clIdRemoveAsk => pick('ลบคำถามยืนยันตัวตนทั้งหมด? หลังจากนี้ไม่มีใครในสายสั่งให้เธอใช้เครื่องได้',
+      'Remove all identity questions? After this nobody on a call can have her use the phone');
+  String clIdQuestion(int n) => pick('คำถามที่ $n', 'Question $n');
+  String get clIdAnswer => pick('คำตอบที่ถูก', 'Expected answer');
+  String get clIdShowAnswers => pick('แสดงคำตอบ', 'Show answers');
+  String get clIdHideAnswers => pick('ซ่อนคำตอบ', 'Hide answers');
+  String get clIdAdd => pick('เพิ่มคำถาม', 'Add question');
+  String get clIdRemoveOne => pick('เอาข้อนี้ออก', 'Remove this question');
+  String get clIdAskLabel => pick('ถามสายละ', 'Ask per call');
+  String clIdAskCount(int n) => pick('$n ข้อ', '$n questions');
+  String get clIdHelper => pick(
+      'ตั้งคำถามที่คนนอกเดาไม่ได้ และคำตอบสั้น พูดง่าย ฟังชัด เช่น ชื่อเล่นของคนในบ้าน · อย่าใช้รหัสผ่านหรือข้อมูลธนาคาร · '
+          'เธอสุ่มถามทีละข้อ ผิดข้อเดียวก็ไม่ผ่าน และไม่บอกว่าข้อไหนผิด · ตอบไม่ผ่าน 3 ครั้งใน 24 ชั่วโมง ปิดการถามเอง',
+      'Pick questions outsiders cannot guess, with short answers that are easy to say and hear, like a family '
+          'nickname · never a password or bank detail · she asks them one at a time in random order; one wrong answer '
+          'fails, and she never says which one · 3 failed tries in 24 hours switch the questions off');
+  String get clIdReplaceNote => pick('บันทึกแล้วจะแทนชุดเดิมทั้งหมด', 'Saving replaces the current questions');
+  String get clIdTooFew => pick('ต้องมีอย่างน้อย 3 คำถาม', 'At least 3 questions are needed');
+  String get clIdTooMany => pick('ได้ไม่เกิน 10 คำถาม', 'No more than 10 questions');
+  String get clIdEmptyQuestion => pick('มีคำถามที่ยังว่าง', 'A question is empty');
+  String get clIdTooLong => pick('คำถามหรือคำตอบยาวเกินไป', 'A question or answer is too long');
+  String get clIdAnswerShort => pick('คำตอบสั้นเกินไป · อย่างน้อย 2 ตัวอักษร ไม่นับช่องว่าง',
+      'An answer is too short · at least 2 characters, spaces not counted');
+  String get clIdDuplicate => pick('มีคำถามซ้ำกัน', 'Two questions are the same');
+  String get clIdAnswerInQuestion => pick('มีคำถามที่มีคำตอบอยู่ในตัว · คนโทรได้ยินคำถาม จึงรู้คำตอบไปด้วย',
+      'A question contains an answer · callers hear the questions, so they would hear the answer too');
+  String get clIdAskRange => pick('จำนวนข้อที่ถามต้องอยู่ระหว่าง 3 ถึงจำนวนคำถาม',
+      'Questions asked per call must be between 3 and the number of questions');
+  String get clIdSaved => pick('บันทึกคำถามแล้ว', 'Questions saved');
+  String get clIdRemoved => pick('ลบคำถามแล้ว', 'Questions removed');
+  String get clIdSaveFailed => pick('บันทึกคำถามไม่ได้ · ลองอีกครั้ง', 'Could not save the questions · try again');
+  String callIdPassedTitle(String who) => pick('${who.isEmpty ? 'คนในสาย' : who} ตอบคำถามยืนยันตัวตนผ่าน',
+      '${who.isEmpty ? 'The caller' : who} passed the identity questions');
+  String callIdPassedBody({required bool phone}) => phone
+      ? pick(
+          'ระหว่างสายนี้ เขาสั่งให้น้องมายใช้เครื่องแทนบอสได้ และฟังเรื่องของบอสได้ · ถ้าไม่ใช่คนที่บอสไว้ใจ '
+              'หยุดงานในแอป แล้วเปลี่ยนคำถามในตั้งค่า › รับสายแทน',
+          'During this call they may have her use your phone and hear about you · if this is not someone you trust, '
+              'stop the task in the app and change the questions in Settings › Answering calls')
+      : pick(
+          'ระหว่างสายนี้ น้องมายตอบเรื่องของบอสให้เขาได้ · ถ้าไม่ใช่คนที่บอสไว้ใจ เปลี่ยนคำถามในตั้งค่า › รับสายแทน',
+          'During this call she may tell them about you · if this is not someone you trust, change the questions in '
+              'Settings › Answering calls');
+  String callIdRefusedTitle(String who) => pick('${who.isEmpty ? 'คนในสาย' : who} ตอบคำถามยืนยันตัวตนไม่ผ่าน',
+      '${who.isEmpty ? 'The caller' : who} did not pass the identity questions');
+  String get callIdRefusedBody => pick(
+      'น้องมายไม่ได้ทำอะไรให้ และไม่ได้บอกว่าข้อไหนผิด · ไม่ผ่าน 3 ครั้งใน 24 ชั่วโมง ระบบปิดการถามเอง',
+      'She did nothing for them and did not say which answer was wrong · after 3 failed tries in 24 hours the '
+          'questions switch off by themselves');
+  String callIdLockedBody(String time) => pick(
+      'น้องมายไม่ได้ทำอะไรให้ · ไม่ผ่านหลายครั้ง ปิดการถามยืนยันตัวตนถึง $time (เปลี่ยนคำถามเพื่อเปิดทันที)',
+      'She did nothing for them · after several failed tries the identity questions are off until $time (change the '
+          'questions to reopen now)');
 }

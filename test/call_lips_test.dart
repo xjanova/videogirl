@@ -50,6 +50,9 @@ class _Lips implements MindLips {
 
   @override
   Future<void> setBabble(bool on) async => log.add('babble:$on');
+
+  @override
+  Future<void> setLiveLevel(double level) async => log.add('level:$level');
 }
 
 const _record = MethodChannel('com.llfbandit.record/messages');

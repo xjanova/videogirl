@@ -294,6 +294,9 @@ void _autoSendGroup() {
     Future<void> letItSend() async {
       await Future<void>.delayed(
           reporter.settle + const Duration(milliseconds: 120));
+      // ตัวจับเวลา settle ครบก่อนตัวรอข้างบนเสมอ จึงมีงานส่งให้รอแล้ว ·
+      // รันทั้งชุดเครื่องโหลดหนักจนส่งเกิน 120 ms ได้ (นับได้ 1 จาก 2 มาแล้ว)
+      await reporter.autoSending;
     }
 
     tearDown(() {
