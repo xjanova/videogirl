@@ -176,6 +176,9 @@ class _MindBootstrapState extends State<MindBootstrap>
   /// วิดีโอเล่นจบ (หรือถูกแตะข้าม) แล้วหรือยัง
   bool _splashDone = false;
 
+  /// ค่าเดียวกับ [_splashDone] สำหรับเชลล์ · เชลล์เป็น const จึงรับผ่าน provider
+  final _splashGate = SplashGate();
+
   /// ผลตรวจสเปคเครื่อง — null คือยังตรวจไม่เสร็จ ยังไม่ตัดสินอะไร
   DeviceVerdict? _device;
 
@@ -387,6 +390,7 @@ class _MindBootstrapState extends State<MindBootstrap>
     _avatar.dispose();
     _state.dispose();
     _pack.dispose();
+    _splashGate.dispose();
     super.dispose();
   }
 
@@ -425,6 +429,7 @@ class _MindBootstrapState extends State<MindBootstrap>
           ),
         ),
         ChangeNotifierProvider(create: (_) => MindWatch()..refresh()),
+        ChangeNotifierProvider.value(value: _splashGate),
         ChangeNotifierProvider.value(value: _perms..refresh()),
         ChangeNotifierProvider.value(value: _calendar),
         ChangeNotifierProvider.value(value: _journal),
@@ -482,7 +487,10 @@ class _MindBootstrapState extends State<MindBootstrap>
                         builder: (context, avatar, _) => MindSplash(
                           appReady: avatar.visible || avatar.error != null,
                           loadPercent: avatar.loadPercent,
-                          onDone: () => setState(() => _splashDone = true),
+                          onDone: () {
+                            setState(() => _splashDone = true);
+                            _splashGate.value = true;
+                          },
                         ),
                       ),
                   ],

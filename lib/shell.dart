@@ -9,11 +9,14 @@ import 'calendar/device_calendar.dart';
 import 'hands/phone_task.dart';
 import 'phone/call_session.dart';
 import 'phone/call_target.dart';
+import 'phone/call_watch.dart';
+import 'phone/dialer.dart';
 import 'phone/outgoing_call.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/mail_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/splash_screen.dart';
 import 'screens/timeline_screen.dart';
 import 'state/mind_state.dart';
 import 'studio/mind_studio.dart';
@@ -22,7 +25,11 @@ import 'i18n/strings.dart';
 import 'i18n/strings_ai.dart';
 import 'i18n/strings_hands.dart';
 import 'theme/tokens.dart';
+import 'update/update_prompt.dart';
+import 'update/updater.dart';
 import 'widgets/mind_nav_bar.dart';
+import 'widgets/segment_switch.dart';
+import 'widgets/update_sheet.dart';
 
 /// แถบนำทาง — หมายเหตุ: artboard ไม่มีแถบนี้ (แต่ละหน้าจอเป็น artboard แยกกัน)
 /// เพิ่มเข้ามาเพราะแอปจริงต้องเดินไปมาได้ ถ้าอยากได้แบบอื่นให้กลับไปวางใน
@@ -74,11 +81,32 @@ class _MindShellState extends State<MindShell> {
             label: s.tabSettings,
             icon: Icons.tune_rounded,
             asset: 'assets/brand/nav/settings.png'),
+        // ไม่มีหน้าใน IndexedStack · แตะแล้วเปิดแป้นโทร (ดู _select)
+        MindNavItem(
+            index: _phoneTab,
+            label: s.tabPhone,
+            icon: Icons.call_rounded,
+            asset: 'assets/brand/nav/phone.png'),
       ];
 
-  /// ลำดับที่เห็นบนแถบ — มายด์ย้ายไปกลาง อีกสี่อันคงลำดับสัมพัทธ์เดิมไว้ทุกตัว
-  /// (เมล ก่อน ปฏิทิน, ไทม์ไลน์ ก่อน ตั้งค่า) คนที่ใช้อยู่แล้วต้องจำใหม่แค่ที่เดียว
-  static const _order = <int>[1, 2, 0, 3, 4];
+  /// ลำดับที่เห็นบนแถบ — มายด์อยู่กลาง
+  ///
+  /// เจ้าของใช้ GigGok เป็นแอปโทรศัพท์หลัก (2026-11-01: "ต้องมีปุ่มกดโทรสิจะเข้ายังไง")
+  /// · โทรศัพท์จึงอยู่ซ้ายสุด · แถบต้องเป็นเลขคี่ ไทม์ไลน์จึงย้ายไปเป็นปุ่มสลับ
+  /// ในแท็บปฏิทินแทน (เจ้าของเลือกเอง) · ยังอยู่ใน IndexedStack ที่ตำแหน่งเดิม
+  static const _order = <int>[_phoneTab, 1, 0, 2, 4];
+
+  static const _calendarTab = 2;
+  static const _timelineTab = 3;
+
+  /// แท็บที่ไม่ใช่หน้า · เลขต่อท้ายรายการใน [_tabsFor] ห้ามชนกับหน้าใน IndexedStack
+  static const _phoneTab = 5;
+
+  /// แท็บปฏิทินเปิดหน้าที่ดูค้างไว้ล่าสุด (ปฏิทิน หรือ ไทม์ไลน์)
+  int _timeTab = _calendarTab;
+
+  /// กันแตะรัว · ฝั่งเนทีฟก็ไม่เปิดซ้อนอยู่แล้ว (singleTop) แต่ไม่ต้องยิงซ้ำ
+  bool _dialing = false;
 
   /// หน้าของเธอ — ไฟล์ภาพนิ่งใน assets/brand/ (pubspec ประกาศทั้งโฟลเดอร์ไว้แล้ว)
   /// ถ้ายังไม่มีไฟล์ ปุ่มจะตกไปใช้ไอคอนแทนเอง ไม่พัง
@@ -112,8 +140,94 @@ class _MindShellState extends State<MindShell> {
       ));
   }
 
+  /// เด้งบอกเองเมื่อมีรุ่นใหม่ · ความถี่และ "ไว้ทีหลัง" อยู่ใน [UpdatePrompt]
+  final _updates = UpdatePrompt();
+  AppLifecycleListener? _life;
+  SplashGate? _splash;
+  CallWatch? _calls;
+
+  /// รุ่นใหม่ที่เจอแล้วแต่ยังเด้งไม่ได้ (มีสาย / สตูดิโอ / กล่องอื่นเปิดอยู่)
+  UpdateInfo? _updateWaiting;
+
+  /// กำลังถามหลังบ้าน หรือกล่องเปิดอยู่ · กลับเข้าแอปรัว ๆ ต้องไม่เด้งซ้อน
+  bool _updateBusy = false;
+
+  void _onSplashGone() {
+    if (_splash?.value != true) return;
+    _splash?.removeListener(_onSplashGone);
+    unawaited(_checkUpdate());
+  }
+
+  /// ถามหลังบ้านว่ามีรุ่นใหม่ไหม แล้วเด้งกล่องเมื่อว่าง · ไม่มีหรือถามไม่ได้ = เงียบ
+  Future<void> _checkUpdate() async {
+    if (!mounted || _updateBusy || _splash?.value == false) return;
+    if (_updateWaiting != null) {
+      _showUpdateIfFree();
+      return;
+    }
+    final up = context.read<Updater>();
+    // กำลังโหลดจากการ์ดในหน้าตั้งค่าอยู่ = เจ้าของลงมือเองแล้ว ไม่ต้องถาม
+    if (up.stage == UpdateStage.downloading || up.stage == UpdateStage.verifying) return;
+    _updateBusy = true;
+    try {
+      if (!await _updates.due()) return;
+      final info = await up.check();
+      await _updates.markChecked();
+      if (info == null || !mounted) return;
+      if (await _updates.snoozed(info.version)) return;
+      _updateWaiting = info;
+    } finally {
+      _updateBusy = false;
+    }
+    _showUpdateIfFree();
+  }
+
+  /// เด้งไม่ได้ตอนนี้ · กล่องรุ่นใหม่ไม่ด่วน ห้ามขวางสาย งานในเครื่อง
+  /// หรือกล่องที่เจ้าของกำลังตอบอยู่
+  bool get _updateBlocked {
+    final life = WidgetsBinding.instance.lifecycleState;
+    return (life != null && life != AppLifecycleState.resumed) ||
+        (_calls?.state ?? CallState.idle) != CallState.idle ||
+        context.read<CallSession>().onStage ||
+        context.read<MindStudio>().active ||
+        _state?.phoneTask != null ||
+        !(ModalRoute.of(context)?.isCurrent ?? true);
+  }
+
+  /// เรียกซ้ำได้ทุกเมื่อ (ฟังสายด้วย · สายจบ = ลองอีกที)
+  void _showUpdateIfFree() {
+    final info = _updateWaiting;
+    if (info == null || _updateBusy || !mounted || _updateBlocked) return;
+    _updateBusy = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_showUpdate(info)));
+  }
+
+  Future<void> _showUpdate(UpdateInfo info) async {
+    try {
+      // ระหว่างรอเฟรม สายอาจเข้ามาแล้ว · เก็บรุ่นนี้ไว้รอรอบหน้า
+      if (!mounted || _updateBlocked) return;
+      _updateWaiting = null;
+      final up = context.read<Updater>();
+      final tapped = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (ctx) => UpdateSheet(info: info, mode: ctx.read<MindState>().mode),
+      );
+      // ปิดโดยไม่ได้กดอัปเดต = ไว้ทีหลัง · กดแล้วพังไม่นับ ให้ถามใหม่รอบหน้า
+      final idle = up.stage == UpdateStage.available || up.stage == UpdateStage.ready;
+      if (tapped != true && idle) await _updates.snooze(info.version);
+    } finally {
+      _updateBusy = false;
+    }
+  }
+
   @override
   void dispose() {
+    _life?.dispose();
+    _splash?.removeListener(_onSplashGone);
+    _calls?.removeListener(_showUpdateIfFree);
     _state?.removeListener(_onPendingCall);
     _state?.removeListener(_onCallChoice);
     _state?.removeListener(_onPhoneAsk);
@@ -165,6 +279,17 @@ class _MindShellState extends State<MindShell> {
     state.addListener(_onCallChoice);
     state.addListener(_onPhoneAsk);
     _state = state;
+
+    // รุ่นใหม่ · เช็คหลังหน้าเปิดแอปหาย และทุกครั้งที่กลับเข้าแอป
+    _life = AppLifecycleListener(onResume: () => unawaited(_checkUpdate()));
+    _calls = context.read<CallWatch>()..addListener(_showUpdateIfFree);
+    final gate = context.read<SplashGate?>();
+    _splash = gate;
+    if (gate == null || gate.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_checkUpdate()));
+    } else {
+      gate.addListener(_onSplashGone);
+    }
   }
 
   /// คำถาม "ให้ทำขั้นนี้ไหม" ที่โชว์กล่องไปแล้ว
@@ -257,6 +382,13 @@ class _MindShellState extends State<MindShell> {
   }
 
   void _select(int i) {
+    if (i == _phoneTab) {
+      unawaited(_openDialer());
+      return;
+    }
+    // แท็บปฏิทินบนแถบ = หน้าที่ดูค้างไว้ในแท็บนั้น
+    if (i == _calendarTab && _tab != _timelineTab) i = _timeTab;
+    if (i == _calendarTab || i == _timelineTab) _timeTab = i;
     setState(() => _tab = i);
     // แท็บปฏิทินอ่านของใหม่ทุกครั้งที่เปิด ถ้าของเดิมเก่าแล้ว · ไม่งั้นนัดที่เพิ่ง
     // เพิ่ง หรือสิทธิ์ที่เพิ่งให้ จะไม่โผล่จนกว่าจะปิดเปิดแอป
@@ -264,6 +396,29 @@ class _MindShellState extends State<MindShell> {
     // แท็บเมลถามเครื่องใหม่ · เจ้าของเพิ่งลง Gmail/Outlook ก็เห็นปุ่มทันที ไม่ต้องปิดเปิดแอป
     if (i == 1) unawaited(context.read<MindState>().refreshMailApps());
   }
+
+  Future<void> _openDialer() async {
+    if (_dialing) return;
+    _dialing = true;
+    try {
+      final ok = await PhoneDialer.open();
+      if (!ok && mounted) {
+        ScaffoldMessenger.maybeOf(context)
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(S.of(context).phoneOpenFailed)));
+      }
+    } finally {
+      _dialing = false;
+    }
+  }
+
+  /// ปุ่มสลับ ปฏิทิน | ไทม์ไลน์ · ช่องที่ 0 = ปฏิทิน · 1 = ไทม์ไลน์
+  Widget _timeSwitch(MindMode mode, S t) => MindSegmentSwitch(
+        labels: [t.tabCalendar, t.tabTimeline],
+        selected: _tab == _timelineTab ? 1 : 0,
+        mode: mode,
+        onSelect: (i) => _select(i == 1 ? _timelineTab : _calendarTab),
+      );
 
   /// ปุ่ม Back ของ Android
   ///
@@ -336,8 +491,8 @@ class _MindShellState extends State<MindShell> {
               children: [
                 HomeScreen(avatar: _avatar, active: onCall || studio || _tab == 0),
                 const MailScreen(),
-                const CalendarScreen(),
-                const TimelineScreen(),
+                CalendarScreen(switcher: _timeSwitch(mode, S.of(context))),
+                TimelineScreen(switcher: _timeSwitch(mode, S.of(context))),
                 SettingsScreen(section: _settingsSection),
               ],
             ),
@@ -352,7 +507,8 @@ class _MindShellState extends State<MindShell> {
               listenable: _avatar,
               builder: (context, _) => MindNavBar(
                 items: [for (final i in _order) _tabsFor(S.of(context))[i]],
-                current: _tab,
+                // ไทม์ไลน์อยู่ในแท็บปฏิทิน · ให้แท็บปฏิทินสว่างอยู่
+                current: _tab == _timelineTab ? _calendarTab : _tab,
                 centerIndex: 0,
                 mode: mode,
                 // ที่เปลี่ยนชุดหรือทรงผม · null = ปุ่มใช้ไอคอนสำรอง

@@ -55,7 +55,11 @@ pattern นี้เคยทำแล้วใน `aixman` (`resolveUserId()` �
   ([network_security_config.xml](../android/app/src/main/res/xml/network_security_config.xml))
   ถ้าเปิดทั้งแอปเพื่อความสะดวก ทุก endpoint จะโดนดักกลางทางได้
 - **ตรวจ SHA-256 ก่อนติดตั้งอัปเดตเสมอ** ไม่มีแฮช = ไม่ติดตั้ง
-  ([updater.dart](../lib/update/updater.dart))
+  ([updater.dart](../lib/update/updater.dart)) · กดยกเลิกที่หน้าติดตั้งแล้วกดใหม่
+  ใช้ไฟล์เดิมได้ แต่ตรวจแฮชซ้ำก่อนเปิดทุกครั้ง
+- **กล่องรุ่นใหม่เด้งเอง แต่ไม่โหลดหรือติดตั้งเอง** ต้องกด "อัปเดตเลย" ในกล่อง แล้วกด
+  ติดตั้งในหน้าของ Android อีกชั้น · ไม่เด้งระหว่างสายหรือตอนเธอทำงานในเครื่อง
+  ([update_prompt.dart](../lib/update/update_prompt.dart))
 - **ข้อความ error ไม่พ่นของดิบให้ผู้ใช้** — ไม่มี URL ไม่มี header ไม่มี stack trace
   ([openai_client.dart](../lib/ai/openai_client.dart))
 - **escape ก่อนยัดค่าเข้า JS** และส่ง base64 ผ่าน `arguments` ไม่ใช่ต่อสตริง

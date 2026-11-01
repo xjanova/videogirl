@@ -28,7 +28,10 @@ import '../widgets/screen_header.dart';
 /// ตอนนี้อ่านจาก [MindJournal] ที่เธอเขียนจริง · ตัวเลขบนสุดนับของวันนี้จริง
 /// และช่อง "นัด" มาจากปฏิทินของเครื่อง ไม่ใช่จากสมุด
 class TimelineScreen extends StatefulWidget {
-  const TimelineScreen({super.key});
+  const TimelineScreen({super.key, this.switcher});
+
+  /// ปุ่มสลับ ปฏิทิน | ไทม์ไลน์ ใต้หัวจอ · shell เป็นเจ้าของ (สองหน้าอยู่แท็บเดียวกัน)
+  final Widget? switcher;
 
   @override
   State<TimelineScreen> createState() => _TimelineScreenState();
@@ -68,6 +71,12 @@ class _TimelineScreenState extends State<TimelineScreen> {
                       onTap: () => _confirmClear(journal, t),
                     ),
             ),
+            if (widget.switcher != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    MindSpace.lg, 0, MindSpace.lg, MindSpace.md),
+                child: widget.switcher,
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MindSpace.lg),
               child: Row(

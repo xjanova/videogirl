@@ -162,6 +162,19 @@ class MainActivity : FlutterActivity() {
                         requestDefaultDialer()
                         result.success(true)
                     }
+                    // แท็บ "โทรศัพท์" ในแถบล่าง · แป้นโทรเป็นงานของมันเอง (taskAffinity แยก)
+                    // แตะซ้ำไม่ซ้อน: singleTop + NEW_TASK พางานเดิมขึ้นมาแทนการสร้างใหม่
+                    "openDialer" -> result.success(
+                        try {
+                            startActivity(
+                                Intent(this, DialerActivity::class.java)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                            true
+                        } catch (e: Exception) {
+                            false
+                        }
+                    )
 
                     // ปุ่มย้อนกลับที่หน้าแรก = พักแอปไว้เบื้องหลัง ไม่ใช่ปิด
                     "moveToBack" -> result.success(moveTaskToBack(true))

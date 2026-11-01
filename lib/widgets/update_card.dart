@@ -97,7 +97,10 @@ class _UpdateCardState extends State<UpdateCard> {
               style: const TextStyle(fontSize: 10.5, color: MindColors.ink55),
             ),
           ],
-          if (up.stage == UpdateStage.available && up.pending != null) ...[
+          // ready = เคยกดยกเลิกที่หน้าติดตั้ง · ต้องมีปุ่มให้กดใหม่ ไม่งั้นค้างจนปิดแอป
+          if ((up.stage == UpdateStage.available ||
+                  up.stage == UpdateStage.ready) &&
+              up.pending != null) ...[
             const SizedBox(height: 12),
             _releaseNotes(up.pending!),
             const SizedBox(height: 12),
@@ -116,7 +119,10 @@ class _UpdateCardState extends State<UpdateCard> {
                         offset: const Offset(0, 8)),
                   ],
                 ),
-                child: Text(S.of(context).updateInstall(up.pending!.sizeLabel),
+                child: Text(
+                    up.stage == UpdateStage.ready
+                        ? S.of(context).updateInstallNow
+                        : S.of(context).updateInstall(up.pending!.sizeLabel),
                     style: const TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,

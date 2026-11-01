@@ -21,7 +21,10 @@ import '../widgets/screen_header.dart';
 /// ส่งคำเชิญ หาเวลาที่ทุกคนว่าง) **เอาปุ่มออกแล้ว** ปุ่มที่กดแล้วบอกว่า
 /// "นี่คือตัวอย่าง" แย่กว่าไม่มีปุ่ม เพราะมันสัญญาสิ่งที่แอปทำไม่ได้
 class CalendarScreen extends StatefulWidget {
-  const CalendarScreen({super.key});
+  const CalendarScreen({super.key, this.switcher});
+
+  /// ปุ่มสลับ ปฏิทิน | ไทม์ไลน์ ใต้หัวจอ · shell เป็นเจ้าของ (สองหน้าอยู่แท็บเดียวกัน)
+  final Widget? switcher;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -58,6 +61,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
               title: t.dayLabel(DateTime.now()),
               subtitle: _subtitle(cal, t),
             ),
+            if (widget.switcher != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    MindSpace.lg, 0, MindSpace.lg, MindSpace.md),
+                child: widget.switcher,
+              ),
             Expanded(child: _body(context, cal, mode, t)),
           ],
         ),

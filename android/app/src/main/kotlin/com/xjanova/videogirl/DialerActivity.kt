@@ -321,10 +321,12 @@ class DialerActivity : Activity() {
                 setOnClickListener { showPage(i) }
             }
             tab.addView(PhoneUi.icon(this, item.first, PhoneUi.INK55, 22))
+            // ไม่ใส่ขนาด = แนวตั้งให้กว้างเต็มช่อง ข้อความชิดซ้าย เยื้องจากไอคอน (0.1.53 บนเครื่องจริง)
             tab.addView(PhoneUi.text(this, 11f, PhoneUi.INK55, bold = true).apply {
                 setText(item.second)
+                maxLines = 1
                 setPadding(0, dp(this@DialerActivity, 3), 0, 0)
-            })
+            }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
             tabs.add(tab)
             bar.addView(tab, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
         }
