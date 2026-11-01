@@ -69,6 +69,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// แตะไมค์ = คุยต่อเนื่องด้วยเสียง (มือว่าง · ขับรถ) · กดค้าง = [_voice] พูดลงช่องพิมพ์แบบเดิม
   late final VoiceChat _chat;
+  late final bool _ownsChat;
 
   @override
   void initState() {
@@ -99,15 +100,21 @@ class _HomeScreenState extends State<HomeScreen>
       // มาก · ต้องลงช่องพิมพ์ทางเดียวกับตอนกดหยุดเอง ไม่ใช่หายไปเฉย ๆ
       ..onHeard = _fillDraft;
 
-    _chat = VoiceChat(
-      state: state,
-      // ทางส่งเดียวกับการพิมพ์ · เธอหันมา ทำหน้าคิด แล้วตอบด้วยเสียง (จบเมื่อพูดจบ)
-      sendTurn: (t) => _sendText(state, t),
-      ensureMic: ensureMic,
-      lips: widget.avatar,
-      keepAwake: _keepAwake,
-      callActive: () => _call.onStage,
-    );
+    // ตัวคุมอยู่ระดับแอป (main.dart · อยู่ต่อหลังจอตาย) · หน้านี้แค่เสียบทางส่งของมันเอง
+    // ไม่มีผู้ให้ (เทสต์หน้าเดียว) = สร้างเอง
+    final shared = context.read<VoiceChat?>();
+    _ownsChat = shared == null;
+    _chat = shared ??
+        VoiceChat(
+          state: state,
+          sendTurn: state.send,
+          ensureMic: ensureMic,
+          lips: widget.avatar,
+          keepAwake: _keepAwake,
+          callActive: () => _call.onStage,
+        );
+    // ทางส่งเดียวกับการพิมพ์ · เธอหันมา ทำหน้าคิด แล้วตอบด้วยเสียง (จบเมื่อพูดจบ)
+    _chat.sendTurn = (t) => _sendText(state, t);
 
     // แผงแชทพับเองเมื่อเงียบ — แต่ต้องไม่พับตอนคนกำลังพิมพ์ค้างอยู่
     // ซึ่งเป็นสิ่งที่แย่ที่สุดที่จะเกิดขึ้นได้ · ช่องพิมพ์เป็นคนบอก state
@@ -148,8 +155,14 @@ class _HomeScreenState extends State<HomeScreen>
     if (s == AppLifecycleState.paused && _voice.busy) {
       unawaited(_voice.cancel());
     }
-    // ไม่มีไมค์เบื้องหลัง (ต้องมีบริการไมค์แบบ foreground) · ไมค์ที่ฟังต่อตอนแอปหายไปจากจอ = แอบฟัง
-    if (s == AppLifecycleState.paused && _chat.active) unawaited(_chat.stop());
+    // บริการไมค์ถืออยู่ = คุยต่อขณะเธอเปิดแอปอื่น (มีแจ้งเตือนค้างพร้อมปุ่มปิด) ·
+    // ไมค์ที่อยู่ได้เฉพาะบนจอ (บริการไม่ขึ้น · ถอดเสียงในเครื่อง) ฟังต่อตอนแอปหายไปจากจอ = แอบฟัง
+    if (s == AppLifecycleState.paused &&
+        _chat.active &&
+        _chat.phase != VoiceChatPhase.opening &&
+        !_chat.survivesBackground) {
+      unawaited(_chat.stop());
+    }
     // จอลอย (PiP) = inactive ไม่ใช่ paused · เธอยังอยู่บนจอ ต้องวาดต่อ
     _hidden = s == AppLifecycleState.paused || s == AppLifecycleState.hidden;
     _applySleep();
@@ -170,7 +183,8 @@ class _HomeScreenState extends State<HomeScreen>
     if (old.active != widget.active) _applySleep();
     if (old.active && !widget.active) {
       if (_voice.busy) unawaited(_voice.cancel());
-      if (_chat.active) unawaited(_chat.stop());
+      // ไปดูแท็บอื่นระหว่างคุยได้ · แจ้งเตือนค้างบอกว่าไมค์เปิดอยู่
+      if (_chat.active && !_chat.survivesBackground) unawaited(_chat.stop());
       if (widget.avatar.mocapPhase != MindMocapPhase.off) {
         unawaited(widget.avatar.stopMocap());
       }
@@ -256,7 +270,12 @@ class _HomeScreenState extends State<HomeScreen>
     _ring.dispose();
     // ไมค์ที่ยังเปิดค้างหลังออกจากหน้าจอ = เครื่องอัดเสียงในห้องต่อไปเงียบ ๆ
     _voice.dispose();
-    _chat.dispose();
+    if (_ownsChat) {
+      _chat.dispose();
+    } else {
+      // หน้าแชทหายไปกับจอ แต่เธอยังคุยอยู่ได้ · ทางส่งเดิมอ้างถึงหน้านี้
+      _chat.sendTurn = context.read<MindState>().send;
+    }
     super.dispose();
   }
 

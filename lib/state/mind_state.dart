@@ -396,7 +396,7 @@ class MindState extends ChangeNotifier {
       final yes = CallReply.confirm(text);
       // คุยต่อเนื่องด้วยเสียง = ต้องมีคำว่า "โทร" ชัด ๆ (ดู CallReply.saysCall) · "ใช่" เฉย ๆ ให้สมองตอบตามบริบท
       if (yes == true && (!_handsFree || CallReply.saysCall(text))) {
-        await confirmPendingCall();
+        if (!await _voiceBarred()) await confirmPendingCall();
         return '';
       }
       if (yes == false) {
@@ -606,6 +606,32 @@ class MindState extends ChangeNotifier {
     if (a != null && !a.isCompleted) a.complete(allow);
   }
 
+  /// เจ้าของพูดตอบ "ให้ทำขั้นนี้ไหม" · true = เป็นคำตอบ (ใช้แล้ว ไม่ต้องส่งต่อ)
+  ///
+  /// 🔴 ตัดสินจาก**คำพูดของเจ้าของเอง** ในเครื่อง · โมเดลไม่มีเครื่องมือกดยืนยัน ([CallReply.stepConfirm])
+  Future<bool> answerPhoneAskByVoice(String text) async {
+    final id = _askId;
+    if (id == null) return false;
+    final yes = CallReply.stepConfirm(text);
+    if (yes == null) return false;
+    if (yes && await _voiceBarred()) return true;
+    answerPhoneAsk(id, yes);
+    return true;
+  }
+
+  /// เครื่องล็อกอยู่ไหม · main ต่อกับ Android · null (เทสต์) = ไม่ล็อก
+  Future<bool> Function()? phoneLocked;
+
+  /// 🔴 คำเรียกไม่ใช่การยืนยันตัวตน · คนอื่นพูดคำเดียวกันใส่เครื่องที่ล็อกอยู่ได้ · คุยได้ แต่โทรออกและขั้นที่ย้อนไม่ได้
+  /// ต้องปลดล็อกก่อน · การยกเลิกทำได้เสมอ (ไม่ทำ = ปลอดภัย)
+  Future<bool> _voiceBarred() async {
+    if (!_handsFree || !(await phoneLocked?.call() ?? false)) return false;
+    onHerNotice?.call(s.wakeUnlockFirst);
+    return true;
+  }
+
+  static String _clip(String text, int max) => text.length <= max ? text : '${text.substring(0, max)}…';
+
   /// เธอเขียน `[[ทำในเครื่อง: …]]` ในแชท → ทำ → บอกผลในแชท
   Future<void> _phoneTaskFromChat(String goal, {PhoneMacro? routine}) async {
     // ให้คำตอบของเธอขึ้นจอก่อน แล้วค่อยผลของงาน
@@ -750,6 +776,8 @@ class MindState extends ChangeNotifier {
       s.handsAskGoal(ask.goal),
     ].join('\n');
     unawaited(hands.askConfirm(id: ask.id, title: s.handsAskTitle, body: body));
+    // คุยด้วยเสียงอยู่ = เจ้าของอาจไม่ได้มองจอ (ขับรถ · เธออยู่ในแอปอื่น) · ถามออกเสียง ตอบด้วยเสียงได้
+    if (_handsFree) onHerNotice?.call(s.handsAskVoice(_clip(ask.action, 80), _clip(ask.app, 40)));
     try {
       final rounds = phoneAskWait.inMilliseconds ~/ _phoneAskPoll.inMilliseconds;
       for (var i = 0; i < rounds && !answer.isCompleted; i++) {
@@ -934,6 +962,22 @@ class MindState extends ChangeNotifier {
   /// คืน false = ไม่มีทางไหนเล่นได้เลย · state เป็นคนตัดสินว่าจะบอกผู้ใช้
   /// ไหม เพราะมีแต่ state ที่รู้ว่าเสียงนั้นถูก [hush] สั่งตัดไปเองหรือเปล่า
   Future<bool> Function(Utterance)? speaker;
+
+  /// ทางออกเสียงตอนเวทีไม่อยู่บนจอ · WebView ถูกพักเสียงตามแอป และหลังจอตายไม่มีเวทีเลย
+  /// (คุยด้วยเสียงต่อจากแอปอื่น · listen/ListenService.kt)
+  Future<bool> Function(Utterance)? speakerOffScreen;
+
+  /// แอปอยู่บนจอไหม · จอลอย (PiP) = inactive นับว่าอยู่ · ยังไม่มีข้อมูล (เทสต์) = นับว่าอยู่
+  bool get _onScreen {
+    try {
+      final life = WidgetsBinding.instance.lifecycleState;
+      return life != AppLifecycleState.paused &&
+          life != AppLifecycleState.hidden &&
+          life != AppLifecycleState.detached;
+    } on Object {
+      return true;
+    }
+  }
 
   /// หยุดเสียงที่กำลังเล่นอยู่ทันที — shell ต่อเข้ากับเวทีและทางสำรอง
   Future<void> Function()? silencer;
@@ -2696,6 +2740,21 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
+  /// เสียงขานรับเมื่อถูกเรียกชื่อ · สังเคราะห์ล่วงหน้าด้วยเสียงแชทของเธอ ขานได้ทันทีโดยไม่รอเน็ต ·
+  /// ทางไหนล้มก็ตกไปเสียงเครื่องเหมือนการพูดปกติ · ได้ไม่ครบ = คืนเท่าที่ได้
+  Future<List<Utterance>> renderWakeReplies() async {
+    final profile = voiceFor(VoiceChannel.chat);
+    final out = <Utterance>[];
+    for (final word in s.wakeReplyWords) {
+      try {
+        out.add(await synthesizeWithFallback(word, profile));
+      } on Object catch (e) {
+        debugPrint('เสียงขาน: สังเคราะห์ไม่สำเร็จ — ${e.runtimeType}');
+      }
+    }
+    return out;
+  }
+
   /// เจ้าของพูดตอบกล่องยืนยันการโทรระหว่างคุยสด · true = ตัดสินแล้ว (โทร/ไม่โทร)
   ///
   /// 🔴 ตัดสินจาก**คำพูดของเจ้าของเอง** ในเครื่อง ไม่ใช่จากที่โมเดลเข้าใจ · โมเดลไม่มีเครื่องมือกดยืนยันเอง
@@ -2707,6 +2766,7 @@ class MindState extends ChangeNotifier {
     // ด้วยเสียง "ใช่" "โอเค" อาจตอบคำถามอื่นของเธอ · กดโทรเมื่อพูดว่าโทรชัด ๆ เท่านั้น
     if (yes && !CallReply.saysCall(text)) return false;
     if (yes) {
+      if (await _voiceBarred()) return false;
       await confirmPendingCall();
     } else {
       cancelPendingCall(id: p.id);
@@ -3325,7 +3385,7 @@ class MindState extends ChangeNotifier {
 
   Future<void> _speakIfEnabled(String text,
       {VoiceChannel channel = VoiceChannel.chat}) async {
-    final out = speaker;
+    final out = (_onScreen ? null : speakerOffScreen) ?? speaker;
     // คุยต่อเนื่องด้วยเสียง (มือว่าง ขับรถ) = เจ้าของเปิดไมค์คุยเอง ต้องได้ยินคำตอบแม้ปิดเสียงไว้
     if (!_voiceOut) {
       debugPrint('เสียง: ปิดอยู่ในหน้าตั้งค่า');

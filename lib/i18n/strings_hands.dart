@@ -27,6 +27,10 @@ extension HandsStrings on S {
   String get handsAskTitle => pick('ให้ทำขั้นนี้ไหมคะ?', 'OK to do this?');
   String handsAskBody(String action, String app) =>
       pick('$action ใน $app', '$action in $app');
+  String handsAskVoice(String action, String app) => pick(
+        'ขอถามก่อนนะคะ จะ$action ใน $app ให้ทำไหมคะ พูดว่า ทำเลย หรือ ยกเลิก',
+        'Before I go on: $action in $app. Should I? Say "do it" or "cancel".',
+      );
   String handsAskWhy(String why) => pick('เหตุผล: $why', 'Why: $why');
   String handsAskGoal(String goal) => pick('งานที่สั่ง: $goal', 'Task: $goal');
   String get handsAllow => pick('ทำเลย', 'Do it');

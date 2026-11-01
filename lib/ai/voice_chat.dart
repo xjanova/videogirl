@@ -22,8 +22,14 @@
 ///
 /// ## 🔴 ปิดเอง
 ///
-/// เงียบนาน · สายเข้า · แอปลงเบื้องหลัง · ออกจากแท็บ · เข้าสตูดิโอ · เจ้าของพูด "พอแล้ว" · เธอลาแล้ว (live) ·
+/// เงียบนาน · สายเข้า · เข้าสตูดิโอ · เจ้าของพูด "พอแล้ว" · เธอลาแล้ว (live) ·
 /// ไมค์ที่เปิดค้างโดยไม่มีใครคุยคือเครื่องอัดเสียงในรถ/ในห้อง
+///
+/// ## เบื้องหลัง
+///
+/// เจ้าของ: "เธออาจไปเปิดเมลหรือเปิดเว็บให้เรา เสียงโต้ตอบต้องคงได้ยินและยังรับฟังเราได้อยู่" ·
+/// ไมค์อยู่ที่บริการ foreground ([ServiceChatMic]) ออกจากแอปแล้วคุยต่อได้ มีแจ้งเตือนค้างพร้อมปุ่มปิด ·
+/// บริการไม่ขึ้น / ถอดเสียงในเครื่อง = [survivesBackground] เป็น false แล้วหน้าแชทปิดไมค์ตามเดิมตอนแอปลงเบื้องหลัง
 library;
 
 import 'dart:async';
@@ -41,6 +47,7 @@ import '../phone/call_target.dart';
 import '../state/mind_state.dart';
 import '../system/permissions.dart';
 import 'device_speech.dart';
+import 'mind_listen.dart';
 import 'openai_client.dart';
 import 'realtime_chat.dart';
 import 'turn_taking.dart';
@@ -73,12 +80,18 @@ abstract interface class ChatMic {
   Future<Stream<Uint8List>> open();
   Future<void> close();
   void dispose();
+
+  /// ฟังต่อได้ตอนแอปไม่อยู่บนจอ
+  bool get survivesBackground;
 }
 
 class RecordChatMic implements ChatMic {
   /// สร้างตอนใช้จริงเท่านั้น · AudioRecorder ผูก MethodChannel ตั้งแต่ constructor
   AudioRecorder? _rec;
   AudioRecorder get _r => _rec ??= AudioRecorder();
+
+  @override
+  bool get survivesBackground => false;
 
   @override
   Future<Stream<Uint8List>> open() => _r.startStream(
@@ -130,14 +143,15 @@ class VoiceChat extends ChangeNotifier {
     MethodChannel? channel,
     DateTime Function()? clock,
   })  : _transcribeWav = transcribe ?? state.transcribeChat,
-        _mic = mic ?? RecordChatMic(),
+        _mic = mic ?? ServiceChatMic(),
         _ch = channel ?? kSystemChannel,
         _clock = clock ?? DateTime.now;
 
   final MindState state;
 
-  /// ส่งหนึ่งตาเข้าแชท ทางเดียวกับการพิมพ์ (หน้าแชท `_sendText`) · จบเมื่อเธอตอบและพูดจบแล้ว
-  final Future<void> Function(String text) sendTurn;
+  /// ส่งหนึ่งตาเข้าแชท ทางเดียวกับการพิมพ์ (หน้าแชท `_sendText`) · จบเมื่อเธอตอบและพูดจบแล้ว ·
+  /// เปลี่ยนได้: ตัวคุมอยู่ระดับแอป (อยู่ต่อหลังจอตาย) หน้าแชทมาเสียบทางของมันเองตอนมีจอ
+  Future<void> Function(String text) sendTurn;
 
   /// ขอสิทธิ์ไมค์ · true = ใช้ได้
   final Future<bool> Function() ensureMic;
@@ -169,6 +183,10 @@ class VoiceChat extends ChangeNotifier {
   static const idleLive = Duration(minutes: 2);
   static const idleTurns = Duration(minutes: 4);
 
+  /// ถูกปลุกด้วยคำเรียกแล้วไม่มีใครสั่งอะไร = เรียกผิด (ได้ยินเพี้ยน) · ปิดเร็ว ·
+  /// เสียงรอบข้างออกนอกเครื่องได้ไม่เกินนี้ · ต้องตรงกับที่บอกเจ้าของใน [wakePrivacy]
+  static const wakeWait = Duration(seconds: 20);
+
   /// ถอดเสียงล้มติดกันเท่านี้ = ปิด (คีย์ผิด เน็ตหลุด) · ไม่วนส่งเสียงไปล้มซ้ำทั้งทาง
   static const maxFailures = 3;
 
@@ -178,6 +196,16 @@ class VoiceChat extends ChangeNotifier {
   VoiceChatPhase _phase = VoiceChatPhase.off;
   VoiceChatPhase get phase => _phase;
   bool get active => _phase != VoiceChatPhase.off;
+
+  /// คุยต่อได้ตอนแอปไม่อยู่บนจอ · หน้าแชทดูตัวนี้ก่อนปิดไมค์
+  bool get survivesBackground => _woke || _mic.survivesBackground;
+
+  /// รอบนี้เกิดจากคำเรียก · บริการถือไมค์อยู่แล้ว
+  bool _woke = false;
+
+  /// เจ้าของพูดอะไรแล้วหรือยังในรอบที่ถูกปลุก
+  bool _ownerTalked = false;
+  DateTime _wokeAt = DateTime(0);
 
   VoiceChatEngine? _engine;
   VoiceChatEngine? get engine => _engine;
@@ -230,17 +258,22 @@ class VoiceChat extends ChangeNotifier {
 
   void _activity() => _lastActivity = _clock();
 
-  /// เปิดโหมดคุยต่อเนื่อง · เปิดไม่ได้ = เหตุผลขึ้นแถบเดียวกับข้อผิดพลาดอื่น ([MindState.reportError])
-  Future<void> start() async {
+  /// เปิดโหมดคุยต่อเนื่อง · เปิดไม่ได้ = เหตุผลขึ้นแถบเดียวกับข้อผิดพลาดอื่น ([MindState.reportError]) ·
+  /// [woke] = ถูกเรียกชื่อ · บริการขานรับไปแล้ว ไมค์เปิดอยู่แล้ว เจ้าของอาจไม่ได้อยู่ในแอป
+  Future<void> start({bool woke = false}) async {
     if (active || _disposed) return;
     final seq = ++_seq;
+    _woke = woke;
+    _ownerTalked = false;
+    _wokeAt = _clock();
     _set(VoiceChatPhase.opening);
     final live = state.voiceChatLiveReady;
     if (!live && !state.canTranscribe) {
       await stop(why: state.whyNoMic);
       return;
     }
-    if (!await ensureMic()) {
+    // กล่องขอสิทธิ์ขึ้นไม่ได้ตอนไม่มีจอ · ไมค์ของบริการทำงานอยู่ = มีสิทธิ์แล้ว
+    if (!woke && !await ensureMic()) {
       if (seq == _seq) await stop(why: state.s.micDenied);
       return;
     }
@@ -268,6 +301,8 @@ class VoiceChat extends ChangeNotifier {
 
   Future<void> _startTurnTaking(int seq) async {
     if (state.transcribesOnDevice) {
+      // ตัวถอดเสียงของเครื่องใช้ไมค์เอง · ปล่อยไมค์ของบริการที่ถืออยู่ตั้งแต่ถูกเรียก
+      if (_woke) await _mic.close();
       unawaited(_deviceLoop(seq));
       return;
     }
@@ -281,6 +316,7 @@ class VoiceChat extends ChangeNotifier {
       return;
     }
     _seq++;
+    _woke = false;
     final engine = _engine;
     _engine = null;
     _tick?.cancel();
@@ -411,11 +447,13 @@ class VoiceChat extends ChangeNotifier {
   /// เจ้าของพูดจบหนึ่งตา (บทจากเซิร์ฟเวอร์)
   Future<void> _ownerSaid(RealtimeChat rt, String text) async {
     _activity();
+    _ownerTalked = true;
     state.noteVoiceLine(fromHer: false, text: text);
     if (VoiceStop.matches(text)) {
       await stop();
       return;
     }
+    if (await state.answerPhoneAskByVoice(text)) return;
     // 🔴 "โทรเลย" / "ยกเลิก" ตัดสินจากคำของเจ้าของเองในเครื่อง ไม่ใช่จากที่โมเดลเข้าใจ
     if (state.pendingCall == null) return;
     final yes = CallReply.confirm(text);
@@ -566,8 +604,13 @@ class VoiceChat extends ChangeNotifier {
   Future<void> _deliver(int seq, String text) async {
     if (seq != _seq) return;
     _activity();
+    _ownerTalked = true;
     if (VoiceStop.matches(text)) {
       await stop();
+      return;
+    }
+    if (await state.answerPhoneAskByVoice(text)) {
+      _resetTurn();
       return;
     }
     _delivering = true;
@@ -689,6 +732,8 @@ class VoiceChat extends ChangeNotifier {
         },
         cancelOnError: true,
       );
+      // บริการไม่ขึ้น ไมค์ตัวสำรองอยู่ได้เฉพาะบนจอ · ไม่บอก = เจ้าของออกจากแอปแล้วเธอหูหนวกเงียบ ๆ
+      if (!_mic.survivesBackground) state.reportError(state.s.wakeBackgroundOff);
       return true;
     } on Object catch (e) {
       debugPrint('voice chat: เปิดไมค์ไม่สำเร็จ — ${e.runtimeType}');
@@ -768,7 +813,13 @@ class VoiceChat extends ChangeNotifier {
         speaking = audible || _notices > 0;
       }
       final now = _clock();
-      if (speaking || _toolsRunning > 0 || _delivering) _activity();
+      if (_woke && !_ownerTalked && now.difference(_wokeAt) > wakeWait) {
+        debugPrint('voice chat: ถูกเรียกแล้วไม่มีคำสั่ง ปิดไมค์');
+        await stop();
+        return;
+      }
+      // งานในเครื่องทำนานได้ · เจ้าของรอผลอยู่ ไมค์ต้องไม่ปิดเองกลางงาน
+      if (speaking || _toolsRunning > 0 || _delivering || state.phoneTask != null) _activity();
       if (speaking) _openAt = now.add(echoTail);
       _gated = speaking || now.isBefore(_openAt);
 

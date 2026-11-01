@@ -75,7 +75,8 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Activity ตาย → engine ตายด้วย **เหมือนเดิม** ยกเว้นตอนมีสายอยู่
+     * Activity ตาย → engine ตายด้วย **เหมือนเดิม** ยกเว้นตอนมีสายอยู่ หรือไมค์เบื้องหลังทำงานอยู่
+     * (ปัดแอปทิ้งจากรายการล่าสุดระหว่างคุยกับเธอ / รอคำเรียก · ดู ListenService)
      *
      * 🔴 engine ที่อยู่ต่อหลัง Activity ตาย = เวที (WebView) ของ Activity เก่าถูกทิ้ง
      * แต่ฝั่ง Dart ยังคิดว่ามีอยู่ · เปิดแอปใหม่แล้วตัวเธอไม่ขึ้น · เก็บ engine ไว้
@@ -86,7 +87,7 @@ class MainActivity : FlutterActivity() {
         val e = engine ?: return super.shouldDestroyEngineWithHost()
         // engine ที่ไม่ได้มาจาก MindEngine = ของ Activity นี้เอง · ทำแบบเดิม
         if (MindEngine.bridgeOf(e) == null) return super.shouldDestroyEngineWithHost()
-        return MindInCallService.service == null
+        return MindInCallService.service == null && !com.xjanova.videogirl.listen.ListenService.running
     }
 
     /// ช่องส่วนที่ไม่ต้องมีจอ · ของ engine ก้อนนี้ (อยู่ต่อหลัง Activity ตาย)
@@ -370,6 +371,7 @@ class MainActivity : FlutterActivity() {
     /// ทันก่อน (ไม่งั้นช่องสื่อสารค้างครึ่งทาง)
     private fun exitApp() {
         dartAlive = false
+        com.xjanova.videogirl.listen.ListenService.shutdown()
         finishAndRemoveTask()
         android.os.Handler(mainLooper).postDelayed({
             android.os.Process.killProcess(android.os.Process.myPid())

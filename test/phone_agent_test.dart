@@ -18,6 +18,7 @@ import 'package:videogirl/hands/phone_macro.dart';
 import 'package:videogirl/hands/phone_policy.dart';
 import 'package:videogirl/hands/phone_task.dart';
 import 'package:videogirl/i18n/strings.dart';
+import 'package:videogirl/i18n/strings_ai.dart';
 import 'package:videogirl/state/mind_state.dart';
 import 'package:videogirl/system/permissions.dart';
 import 'package:videogirl/theme/tokens.dart';
@@ -555,6 +556,80 @@ void main() {
       expect(h.acts, ['tap:2']);
       expect(h.done, contains(ask.id), reason: 'ปิดแจ้งเตือนถามเมื่อตอบแล้ว');
       expect(s.messages.last.text, 'ส่งแล้วค่ะ');
+    });
+
+    test('🔴 คุยด้วยเสียง: เธอถามออกเสียง · "ใช่" ไม่นับ · "ทำเลย" จากปากเจ้าของ = ทำ', () async {
+      final (s, h, _) = await chatWith('ได้ค่ะ [[ทำในเครื่อง: ส่งหาแม่]]',
+          ['{"do":"tap","id":2}', '{"do":"done","summary":"ส่งแล้วค่ะ"}'], [chat, chat]);
+      final heard = <String>[];
+      s.onHerNotice = heard.add;
+      s.setHandsFree(true);
+      expect(await s.answerPhoneAskByVoice('ทำเลยค่ะ'), isFalse, reason: 'ยังไม่มีคำถาม');
+      await s.send('ส่งหาแม่ว่าถึงบ้านแล้ว');
+      for (var i = 0; i < 50 && s.phoneTask?.asking == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(heard, hasLength(1));
+      expect(await s.answerPhoneAskByVoice('ใช่ค่ะ'), isFalse);
+      expect(await s.answerPhoneAskByVoice('โอเค'), isFalse);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(h.acts, isEmpty, reason: 'คำกำกวมต้องไม่ไปกดขั้นที่ย้อนไม่ได้');
+      expect(await s.answerPhoneAskByVoice('ทำเลยค่ะ'), isTrue);
+      await settle(s);
+      expect(h.acts, ['tap:2']);
+    });
+
+    test('🔴 เครื่องล็อก: คำเรียกไม่ใช่การยืนยันตัวตน · "ทำเลย" ไม่กด · ปลดล็อกแล้วจึงตอบได้', () async {
+      final (s, h, _) = await chatWith('ได้ค่ะ [[ทำในเครื่อง: ส่งหาแม่]]',
+          ['{"do":"tap","id":2}', '{"do":"done","summary":"ส่งแล้วค่ะ"}'], [chat, chat]);
+      final heard = <String>[];
+      var locked = true;
+      s.onHerNotice = heard.add;
+      s.phoneLocked = () async => locked;
+      s.setHandsFree(true);
+      await s.send('ส่งหาแม่');
+      for (var i = 0; i < 50 && s.phoneTask?.asking == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(await s.answerPhoneAskByVoice('ทำเลยค่ะ'), isTrue, reason: 'เป็นคำตอบ · ไม่ส่งต่อเข้าแชท');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(h.acts, isEmpty);
+      expect(heard.last, s.s.wakeUnlockFirst);
+      expect(s.phoneTask?.asking, isNotNull, reason: 'ยังรอคำตอบ · ปลดล็อกแล้วตอบต่อได้');
+      locked = false;
+      expect(await s.answerPhoneAskByVoice('ทำเลยค่ะ'), isTrue);
+      await settle(s);
+      expect(h.acts, ['tap:2']);
+    });
+
+    test('เครื่องล็อก: ยกเลิกด้วยเสียงได้เสมอ', () async {
+      final (s, h, _) = await chatWith('ได้ค่ะ [[ทำในเครื่อง: ส่งหาแม่]]', ['{"do":"tap","id":2}'], [chat]);
+      s.phoneLocked = () async => true;
+      s.setHandsFree(true);
+      await s.send('ส่งหาแม่');
+      for (var i = 0; i < 50 && s.phoneTask?.asking == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(await s.answerPhoneAskByVoice('ไม่ต้องค่ะ'), isTrue);
+      for (var i = 0; i < 100 && s.phoneTask != null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(h.acts, isEmpty);
+      expect(s.phoneTask, isNull);
+    });
+
+    test('คุยด้วยเสียง: "ไม่ต้องค่ะ" = ไม่กด', () async {
+      final (s, h, _) = await chatWith('ได้ค่ะ [[ทำในเครื่อง: ส่งหาแม่]]', ['{"do":"tap","id":2}'], [chat]);
+      s.setHandsFree(true);
+      await s.send('ส่งหาแม่');
+      for (var i = 0; i < 50 && s.phoneTask?.asking == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(await s.answerPhoneAskByVoice('ไม่ต้องค่ะ'), isTrue);
+      for (var i = 0; i < 100 && s.phoneTask != null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(h.acts, isEmpty);
     });
 
     test('ตอบจากแจ้งเตือน "ไม่ต้อง" = ไม่กด', () async {

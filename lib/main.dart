@@ -20,6 +20,9 @@ import 'background/mind_watch.dart';
 import 'system/permissions.dart';
 import 'ai/device_capability.dart';
 import 'ai/device_speech.dart';
+import 'ai/mind_audio.dart';
+import 'ai/mind_listen.dart';
+import 'ai/voice_chat.dart';
 import 'screens/splash_screen.dart';
 import 'diagnostics/debug_reporter.dart';
 import 'diagnostics/mind_log.dart';
@@ -29,6 +32,7 @@ import 'studio/mind_studio.dart';
 import 'screens/unsupported_screen.dart';
 import 'shell.dart';
 import 'i18n/strings.dart';
+import 'i18n/strings_ai.dart';
 import 'state/mind_state.dart';
 import 'update/updater.dart';
 import 'theme/app_theme.dart';
@@ -159,6 +163,45 @@ class _MindBootstrapState extends State<MindBootstrap>
   /// ความคืบหน้าการโหลด VRM มาโชว์เป็นเปอร์เซ็นต์จริง
   final MindAvatarController _avatar = MindAvatarController();
 
+  /// คุยต่อเนื่องด้วยเสียง · อยู่ที่นี่ ไม่ใช่ในหน้าแชท เพราะต้องอยู่ต่อหลังจอตาย
+  /// (ปัดแอปทิ้งระหว่างคุย · ถูกเรียกชื่อตอนไม่มีจอ) ซึ่ง [_hasView] ทิ้งเชลล์ทั้งก้อน
+  late final VoiceChat _voiceChat = VoiceChat(
+    state: _state,
+    sendTurn: _state.send,
+    ensureMic: _ensureMic,
+    lips: _avatar,
+    keepAwake: _keepAwake,
+    callActive: () => _session.onStage,
+  );
+
+  Future<bool> _ensureMic() async {
+    if (_perms.of(MindPermission.mic)) return true;
+    await _perms.request(MindPermission.mic);
+    return _perms.of(MindPermission.mic);
+  }
+
+  /// จอค้างระหว่างคุยต่อเนื่อง · ไม่มีจอแล้ว (ช่องของสตูดิโอหายไปกับ Activity) = ไม่ต้องทำอะไร
+  Future<void> _keepAwake(bool on) async {
+    // สตูดิโอถือจอค้างของตัวเองอยู่ · ปิดตอนนี้ = จอดับกลางอัด
+    if (!on && _studio.active) return;
+    try {
+      await MethodChannelStudio().keepScreenOn(on);
+    } on Object catch (e) {
+      debugPrint('จอค้าง: สั่งไม่ได้ — ${e.runtimeType}');
+    }
+  }
+
+  /// ถูกเรียกชื่อ · บริการขานไปแล้ว · ติดสาย = ไม่รับ (ไมค์เป็นของสาย)
+  void _onWake() {
+    final listen = MindListen.instance;
+    if (_voiceChat.active || _session.onStage || _calls.state != CallState.idle) {
+      unawaited(listen.close());
+      return;
+    }
+    unawaited(listen.claim());
+    unawaited(_voiceChat.start(woke: true));
+  }
+
   /// สตูดิโอ — เวทีเต็มจอสำหรับแชร์หน้าจอเข้าวิดีโอคอล ไลฟ์ฉากเขียว และอัดคลิป
   late final MindStudio _studio = MindStudio(
     stage: _avatar,
@@ -225,6 +268,14 @@ class _MindBootstrapState extends State<MindBootstrap>
       if (call.method == 'viewGone' && mounted) setState(() => _hasView = false);
       return null;
     });
+    _state.speakerOffScreen = (u) => MindAudio.play(u.bytes, mime: u.mime);
+    final listen = MindListen.instance;
+    listen.onWake = _onWake;
+    listen.onStop = () => unawaited(_voiceChat.stop());
+    listen.onMicLost = () {
+      if (_voiceChat.active) unawaited(_voiceChat.stop(why: _state.s.micFailed));
+    };
+    _state.phoneLocked = listen.locked;
     _boot();
   }
 
@@ -244,6 +295,8 @@ class _MindBootstrapState extends State<MindBootstrap>
     // กลับเข้าแอป — ผู้ใช้อาจเพิ่งไปโหลดชุดภาษาสำหรับถอดเสียงในเครื่องมา
     // ถ้าจำคำตอบเก่าไว้ ปุ่มไมค์จะยังใช้ไม่ได้จนกว่าจะปิดเปิดแอป
     if (state == AppLifecycleState.resumed) {
+      // รีสตาร์ตเครื่อง/อัปเดตแอป/ถูกระบบปิด · ไมค์เริ่มเองไม่ได้ ต้องเริ่มตอนแอปอยู่บนจอ
+      unawaited(MindListen.instance.sync());
       unawaited(_state.refreshDeviceStt(forget: true));
       // อาจเพิ่งไปให้สิทธิ์ปฏิทิน เพิ่มนัด หรือข้ามวันมาแล้ว · เธอตอบเรื่อง
       // ตารางจากก้อนนี้ ถ้าไม่อ่านใหม่จะตอบจากของเมื่อวาน
@@ -320,6 +373,7 @@ class _MindBootstrapState extends State<MindBootstrap>
     }
     if (!mounted) return;
     setState(() => _canBuildShell = true);
+    if (_hasView) unawaited(MindListen.instance.sync());
 
     // ── รอบสอง: ของที่รอได้ ทำหลังเชลล์เริ่มโหลด VRM ไปแล้ว ──
     try {
@@ -436,6 +490,7 @@ class _MindBootstrapState extends State<MindBootstrap>
         ChangeNotifierProvider.value(value: _callNotes),
         ChangeNotifierProvider.value(value: _calls),
         ChangeNotifierProvider.value(value: _session),
+        ChangeNotifierProvider.value(value: _voiceChat),
         ChangeNotifierProvider.value(value: _studio),
         ChangeNotifierProvider.value(value: _soul),
         ChangeNotifierProvider.value(value: _vault),

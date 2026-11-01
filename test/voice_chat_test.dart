@@ -55,6 +55,8 @@ class _Mic implements ChatMic {
   StreamController<Uint8List>? ctl;
   int opened = 0, closed = 0;
   @override
+  bool survivesBackground = true;
+  @override
   Future<Stream<Uint8List>> open() async {
     opened++;
     ctl = StreamController<Uint8List>();
@@ -379,6 +381,97 @@ void main() {
       expect(c.active, isFalse);
       expect(s.handsFree, isFalse);
       expect(mic.closed, 1);
+    });
+
+    test('🔴 ถูกเรียกชื่อ: ไม่ถามสิทธิ์ไมค์ (ไม่มีจอให้กล่องขึ้น) · ไมค์ของบริการรับช่วงต่อ', () async {
+      final s = await mind();
+      s.setVoiceChatLive(false);
+      var askedPermission = 0;
+      final c = VoiceChat(
+        state: s,
+        sendTurn: (t) async => sent.add(t),
+        ensureMic: () async {
+          askedPermission++;
+          return false;
+        },
+        mic: mic,
+        transcribe: (_) async => 'เปิดเมลให้หน่อยค่ะ',
+        clock: () => now,
+      );
+      addTearDown(c.dispose);
+      await c.start(woke: true);
+      expect(askedPermission, 0);
+      expect(c.active, isTrue);
+      expect(c.survivesBackground, isTrue);
+      await feed(.004, 5);
+      await feed(.1, 10);
+      await feed(.004, 9);
+      expect(sent, ['เปิดเมลให้หน่อยค่ะ']);
+      await c.stop();
+      expect(c.active, isFalse);
+    });
+
+    test('แตะไมค์เอง: ไม่ได้สิทธิ์ = ไม่เปิด', () async {
+      final s = await mind();
+      s.setVoiceChatLive(false);
+      final c = VoiceChat(state: s, sendTurn: (t) async {}, ensureMic: () async => false, mic: mic, clock: () => now);
+      addTearDown(c.dispose);
+      await c.start();
+      expect(c.active, isFalse);
+      expect(s.lastError, s.s.micDenied);
+    });
+
+    test('🔴 เรียกแล้วไม่สั่งอะไร 20 วินาที = ปิดไมค์ · ไม่ฟังบ้านต่อไปเรื่อย ๆ ตามที่บอกเจ้าของไว้', () async {
+      final s = await mind();
+      s.setVoiceChatLive(false);
+      final c = chatFor(s, transcribe: (_) async => '');
+      await c.start(woke: true);
+      expect(c.active, isTrue);
+      now = now.add(VoiceChat.wakeWait - const Duration(seconds: 1));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(c.active, isTrue, reason: 'ยังไม่ครบ · เจ้าของอาจกำลังคิดคำสั่ง');
+      now = now.add(const Duration(seconds: 2));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(c.active, isFalse);
+      expect(mic.closed, 1, reason: 'ต้องคืนไมค์ให้บริการ');
+    });
+
+    test('แตะไมค์เอง: เงียบ 20 วินาทีไม่ปิด (กฎนี้ใช้กับรอบที่ถูกเรียกเท่านั้น)', () async {
+      final s = await mind();
+      s.setVoiceChatLive(false);
+      final c = chatFor(s, transcribe: (_) async => '');
+      await c.start();
+      now = now.add(VoiceChat.wakeWait + const Duration(seconds: 5));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(c.active, isTrue);
+      await c.stop();
+    });
+
+    test('เจ้าของพูดแล้ว กฎ 20 วินาทีเลิกนับ · คุยกันต่อได้ยาว', () async {
+      final s = await mind();
+      s.setVoiceChatLive(false);
+      final c = chatFor(s, transcribe: (_) async => 'เปิดเมลให้หน่อยค่ะ');
+      await c.start(woke: true);
+      await feed(.004, 5);
+      await feed(.1, 10);
+      await feed(.004, 9);
+      expect(sent, hasLength(1));
+      now = now.add(VoiceChat.wakeWait + const Duration(seconds: 5));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(c.active, isTrue);
+      await c.stop();
+    });
+
+    test('🔴 ไมค์ตัวสำรอง (บริการไม่ขึ้น) = บอกเจ้าของว่าออกจากแอปแล้วไมค์จะปิด', () async {
+      final s = await mind();
+      s.setVoiceChatLive(false);
+      mic.survivesBackground = false;
+      final c = chatFor(s, transcribe: (_) async => '');
+      await c.start();
+      expect(c.active, isTrue);
+      expect(c.survivesBackground, isFalse);
+      expect(s.lastError, s.s.wakeBackgroundOff);
+      await c.stop();
     });
 
     test('🔴 หยุดคิดกลางประโยค ("แล้วก็") = รอฟังต่อ ยังไม่ส่ง · เงียบครบ 2.2 วิ ค่อยส่ง', () async {

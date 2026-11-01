@@ -130,4 +130,15 @@
     <!-- สิ่งที่จอล็อกเห็น · ไม่มีเป้าหมายงาน ความคืบหน้า หรือคำถาม (มีชื่อคน ชื่อปุ่ม ข้อความแชท) -->
     <string name="hands_public_working">มายด์กำลังทำงานในเครื่อง</string>
     <string name="hands_public_ask">มายด์ขออนุญาตก่อนทำขั้นต่อไป</string>
+    <!-- ไมค์ของมายด์ตอนแอปไม่อยู่บนจอ (listen/ListenService.kt) -->
+    <string name="listen_channel">มายด์ฟังอยู่</string>
+    <string name="listen_watch_title">มายด์รอฟังชื่อเธออยู่</string>
+    <string name="listen_watch_text">เรียก «%1$s» ได้เลย · เสียงไม่ออกจากเครื่องจนกว่าจะเรียก</string>
+    <string name="listen_default_word">น้องมายด์</string>
+    <string name="listen_talking_title">มายด์กำลังคุยกับคุณ</string>
+    <string name="listen_talking_text">ไมค์เปิดอยู่ · พูด "พอแล้ว" หรือกดปิดไมค์</string>
+    <string name="listen_stop_watch">หยุดรอฟัง</string>
+    <string name="listen_stop_talk">ปิดไมค์</string>
+    <string name="listen_resume_title">มายด์ยังไม่ได้ฟังชื่อเธอ</string>
+    <string name="listen_resume_text">แตะเพื่อให้กลับมารอฟัง</string>
 </resources>

@@ -667,6 +667,22 @@ abstract final class CallReply {
   };
   static const _polite = ['ครับผม', 'ค่ะ', 'คะ', 'ค่า', 'ครับ', 'คับ', 'จ้ะ', 'จ้า', 'จ๊ะ', 'น่ะ', 'นะ', 'please'];
 
+  static const _stepYes = {
+    'ทำเลย', 'ทำได้', 'ทำได้เลย', 'ทำต่อ', 'ทำต่อเลย', 'ทำไปเลย', 'ส่งเลย', 'ส่งได้', 'ส่งได้เลย', 'ยืนยัน', 'ตกลงทำเลย',
+    'โอเคทำเลย', 'ใช่ทำเลย', 'อนุญาต', 'goahead', 'doit', 'sendit', 'confirm', 'allow',
+  };
+
+  /// ตอบ "ให้ทำขั้นนี้ไหม" ด้วยเสียง (งานที่เธอทำในเครื่อง) · true = ทำ · false = ไม่ทำ · null = ไม่ใช่คำตอบ
+  ///
+  /// 🔴 ขั้นเหล่านี้ย้อนกลับไม่ได้ (ส่ง ซื้อ ลบ) · "ใช่" "โอเค" "ได้" เฉย ๆ ไม่นับ เธอถามเรื่องอื่นต่อได้
+  /// และเสียงรอบข้างในรถพูดคำพวกนี้ได้ · คำปฏิเสธใช้ชุดเดิม (ไม่ทำ = ปลอดภัย)
+  static bool? stepConfirm(String text) {
+    final t = _bare(text);
+    if (_stepYes.contains(t)) return true;
+    if (_no.contains(t)) return false;
+    return null;
+  }
+
   /// ตอบ "โทร" ชัด ๆ ("โทรเลย" "call now" "ยืนยัน") · คุยด้วยเสียงต้องใช้ตัวนี้ ไม่ใช่แค่ "ได้" "โอเค" "ใช่"
   ///
   /// 🔴 คุยด้วยเสียง เธอถามเรื่องอื่นต่อได้ขณะกล่องยืนยันยังเปิดอยู่ ("บอกเขาว่าบ่ายสองใช่ไหมคะ") แล้วเจ้าของ
@@ -678,6 +694,14 @@ abstract final class CallReply {
   ///
   /// 🔴 ทั้งประโยคต้องเป็นคำตอบ ไม่ใช่แค่มีคำว่า "ได้" อยู่ข้างใน · "ได้ยินไหม" "ไม่รู้สิ" ต้องไม่โทร
   static bool? confirm(String text) {
+    final t = _bare(text);
+    if (_yes.contains(t)) return true;
+    if (_no.contains(t)) return false;
+    return null;
+  }
+
+  /// ตัดช่องว่าง เครื่องหมาย และคำลงท้าย
+  static String _bare(String text) {
     var t = text.toLowerCase().replaceAll(RegExp(r"[\s.,!?'’\-]+"), '');
     for (var guard = 0; guard < 3; guard++) {
       final before = t;
@@ -686,8 +710,6 @@ abstract final class CallReply {
       }
       if (t == before) break;
     }
-    if (_yes.contains(t)) return true;
-    if (_no.contains(t)) return false;
-    return null;
+    return t;
   }
 }

@@ -55,6 +55,8 @@ class SystemBridge(context: Context) {
         // ให้มายด์ใช้เครื่องแทน (giggok/hands) · ต้องอยู่ที่นี่ ไม่ใช่ MainActivity · สายเข้าตอนแอปปิด
         // engine ที่ปลุกเธอมีแค่ตัวนี้ ไม่มี Activity · งานที่คนในสายสั่งจะได้ไม่ตอบ unsupported
         com.xjanova.videogirl.hands.HandsBridge.attach(context, messenger)
+        // ไมค์เบื้องหลัง · อยู่ที่นี่เหตุผลเดียวกับ HandsBridge
+        com.xjanova.videogirl.listen.ListenBridge.attach(context, messenger)
         channel = MethodChannel(messenger, CHANNEL).also { ch ->
             ch.setMethodCallHandler { call, result ->
                 if (!handle(call, result)) result.notImplemented()
