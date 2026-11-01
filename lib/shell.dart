@@ -227,6 +227,8 @@ class _MindShellState extends State<MindShell> {
     // แท็บปฏิทินอ่านของใหม่ทุกครั้งที่เปิด ถ้าของเดิมเก่าแล้ว · ไม่งั้นนัดที่เพิ่ง
     // เพิ่ง หรือสิทธิ์ที่เพิ่งให้ จะไม่โผล่จนกว่าจะปิดเปิดแอป
     if (i == 2) unawaited(context.read<DeviceCalendar>().refreshIfStale());
+    // แท็บเมลถามเครื่องใหม่ · เจ้าของเพิ่งลง Gmail/Outlook ก็เห็นปุ่มทันที ไม่ต้องปิดเปิดแอป
+    if (i == 1) unawaited(context.read<MindState>().refreshMailApps());
   }
 
   /// ปุ่ม Back ของ Android

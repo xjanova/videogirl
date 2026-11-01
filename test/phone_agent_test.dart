@@ -46,9 +46,13 @@ class FakeHands implements Hands {
   @override
   Future<HandsStatus> status() async => const HandsStatus(supported: true, enabled: true);
 
+  /// งานที่ส่งมาให้ทำ (ตามลำดับ)
+  final goals = <String>[];
+
   @override
   Future<HandsReply> begin({required String title, required String goal, bool inCall = false}) async {
     began++;
+    goals.add(goal);
     if (beginError != null) return HandsReply(false, error: beginError);
     return const HandsReply(true);
   }
@@ -631,6 +635,28 @@ void main() {
       s.deleteMacro('ส่งหาแม่');
       expect(s.phoneMacros, isEmpty);
     }, timeout: const Timeout(Duration(seconds: 20)));
+
+    test('ปุ่มเช็กเมล: กดรัว ๆ = เริ่มงานเดียว · งานบอกชื่อแอป · ผลขึ้นแชท', () async {
+      final (s, h, _) = await chatWith('ได้ค่ะ', ['{"do":"done","summary":"มีเมลใหม่ 2 ฉบับค่ะ"}'], [home]);
+      final a = s.checkMail('Gmail');
+      final b = s.checkMail('Gmail');
+      expect(s.mailBusy, isTrue, reason: 'ปุ่มต้องกดไม่ได้ทันทีที่กดครั้งแรก');
+      await Future.wait([a, b]);
+      await settle(s);
+      expect(h.began, 1);
+      expect(h.goals.single, contains('Gmail'));
+      expect(s.messages.last.text, 'มีเมลใหม่ 2 ฉบับค่ะ');
+      expect(s.mailBusy, isFalse);
+    });
+
+    test('ปุ่มเช็กเมลตอนปิดมือ = ไม่เริ่มงาน บอกเหตุในแชท', () async {
+      final (s, h, _) = await chatWith('ได้ค่ะ', const [], [home]);
+      s.setPhoneControl(false);
+      await s.checkMail('Gmail');
+      await settle(s);
+      expect(h.began, 0);
+      expect(s.mailBusy, isFalse);
+    });
 
     test('prompt แชทสอนแท็ก · prompt ในสายไม่สอน', () {
       final chatPrompt = MindPersona.system(

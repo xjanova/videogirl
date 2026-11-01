@@ -530,7 +530,7 @@ Steps:
 - {"do":"add_event","title":"...","start":"YYYY-MM-DD HH:MM","end":"YYYY-MM-DD HH:MM","location":"..."}  (opens the calendar's add screen; then tap its save button)
 - {"do":"email","to":"a@b.com","subject":"...","body":"..."}  (opens a draft; then tap send)
 - {"do":"ask_owner","question":"..."}  (you need something only the owner knows: who exactly, which one, the exact words)
-$taught- {"do":"done","summary":"..."}  (the task is finished; one or two sentences on what you did)
+$taught- {"do":"done","summary":"..."}  (the task is finished; one or two sentences on what you did · if the task asked you to read, check or find something, the summary IS the answer: list what you found, up to 8 short lines, e.g. for each email "sender — subject — what it needs")
 - {"do":"fail","summary":"..."}  (it cannot be done; say why in one sentence)
 Add "risky": true to any step that sends, posts, shares, pays, buys, orders, books, deletes, calls someone, changes a security setting, or cannot be undone. The app will ask the owner first.
 

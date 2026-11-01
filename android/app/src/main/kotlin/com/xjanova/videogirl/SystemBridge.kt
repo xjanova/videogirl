@@ -42,6 +42,7 @@ class SystemBridge(context: Context) {
 
     private val context: Context = context.applicationContext
     private val calls = CallBridge(this.context)
+    private val phoneData = PhoneData(this.context, calls)
     private val main = Handler(Looper.getMainLooper())
 
     /// ช่องสำหรับ **ยิงกลับ** หา Dart ตอนสถานะสายเปลี่ยน
@@ -160,6 +161,15 @@ class SystemBridge(context: Context) {
                 MindInCallService.placeMindCall(context, call.argument<String>("number") ?: "")
             )
             "findContacts" -> result.success(calls.findContacts(call.argument<String>("name") ?: ""))
+            // ── ของในเครื่องที่เธอเปิดดูตอนเจ้าของถามในแชท (ดู PhoneData) ──
+            "smsGranted" -> result.success(phoneData.canReadSms())
+            "searchContacts" -> offMain(result) {
+                phoneData.contacts(call.argument<String>("query") ?: "", call.argument<Int>("limit") ?: 12)
+            }
+            "recentSms" -> offMain(result) {
+                phoneData.sms(call.argument<String>("query") ?: "", call.argument<Int>("limit") ?: 10)
+            }
+            "mailApps" -> offMain(result) { phoneData.mailApps() }
             // ── เสียงสดของเธอ (OpenAI Realtime) · ดู CallAudio.liveStart ──
             "liveAudioStart" -> result.success(CallAudio.liveStart())
             "liveAudioWrite" -> {
@@ -186,6 +196,22 @@ class SystemBridge(context: Context) {
             else -> return false
         }
         return true
+    }
+
+    /**
+     * อ่าน provider นอกเธรดหลัก แล้วตอบบนเธรดหลัก · พังกลางทาง = null ("อ่านไม่ได้")
+     *
+     * สมุดโทรศัพท์ใหญ่หรือ SMS หลายพันข้อความช้าได้จริง · MethodChannel เรียกบนเธรด UI
+     */
+    private fun offMain(result: MethodChannel.Result, work: () -> Any?) {
+        Thread {
+            val out = try {
+                work()
+            } catch (e: Exception) {
+                null
+            }
+            main.post { result.success(out) }
+        }.start()
     }
 
     /**

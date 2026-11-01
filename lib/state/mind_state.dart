@@ -42,6 +42,7 @@ import '../ai/proxy_account.dart';
 import '../ai/web_tools.dart';
 import '../phone/call_tags.dart';
 import '../phone/outgoing_call.dart';
+import '../phone/phone_lookup.dart';
 import '../phone/call_knowledge.dart';
 import '../phone/call_lessons.dart';
 import '../phone/owner_gate.dart';
@@ -139,6 +140,31 @@ class MindState extends ChangeNotifier {
   MindJournal? _journal;
 
   void attachJournal(MindJournal j) => _journal = j;
+
+  /// สิทธิ์ของทั้งแอป (ตัวเดียวกับการ์ดสิทธิ์) · ให้เธอขอสิทธิ์ตอนเปิดดูของในเครื่องครั้งแรก
+  MindPermissions? _perms;
+
+  void attachPermissions(MindPermissions p) => _perms = p;
+
+  // ═══ สมุดโทรศัพท์ ประวัติการโทร SMS (ดู PhoneLookup) ════════════════
+  //
+  // เจ้าของ: "ตอนนี้เธอไม่เห็นสมุดโทรศัพท์ ไม่เห็นสายโทรเข้าออกล่าสุด หรือ sms ต้องทำให้เธอรับรู้ได้"
+
+  PhoneLookup? _lazyPhoneLookup;
+  PhoneLookup get phoneLookup => _lazyPhoneLookup ??= PhoneLookup(askPermission: _askPhonePermission);
+
+  @visibleForTesting
+  set debugPhoneLookup(PhoneLookup l) => _lazyPhoneLookup = l;
+
+  /// ขอสิทธิ์ตอนเธอเปิดดูครั้งแรก · เจ้าของถามเองในแชทอยู่แล้ว กล่องขอจึงตรงเรื่องที่ถาม ·
+  /// แอปไม่อยู่หน้าจอ / ปฏิเสธถาวรไปแล้ว = ไม่ขอ (กล่องไม่ขึ้น เธอบอกทางไปเปิดเอง)
+  Future<bool> _askPhonePermission(MindPermission p) async {
+    final perms = _perms;
+    if (perms == null || _disposed || !_appVisible || perms.isBlocked(p)) return false;
+    // กล่องขอค้าง (Activity ถูกทำลายกลางกล่อง แล้วไม่มีใครตอบ) ต้องไม่ทำให้แชทรอตลอดกาล
+    await perms.request(p).timeout(const Duration(seconds: 90), onTimeout: () {});
+    return !_disposed && perms.of(p);
+  }
 
   /// สายโทรเข้า — ให้เธอตอบได้ว่าใครโทรมาบ้างวันนี้
   CallWatch? _calls;
@@ -312,6 +338,60 @@ class MindState extends ChangeNotifier {
 
   /// งานที่เธอทำอยู่ในเครื่อง (null = ไม่มี)
   PhoneTaskView? get phoneTask => _phoneTask;
+
+  // ── เมล — ผ่านแอปเมลในเครื่อง ──
+  //
+  // เจ้าของ: "เชื่อมต่อกับแอพในเครื่องเลยได้ไหม เช่น google mail hotmail" · "อยากให้คอนโทรลเครื่อง
+  // แล้วกดเปิดพวกมันขึ้นมาเธอใช้มันได้เลย" · ไม่มีรหัสผ่านเมล ไม่มี OAuth · เธอใช้มือเปิดแอปเมลเอง
+
+  /// แอปเมลที่เปิดได้ในเครื่อง (PhoneData.mailApps) · null = ยังไม่ได้ถามเครื่อง
+  List<({String name, String package})>? _mailApps;
+  List<({String name, String package})> get mailApps => _mailApps ?? const [];
+
+  /// ถามเครื่องแล้ว (ได้คำตอบ หรือถามไม่สำเร็จ) · หน้าเมลเลิกขึ้น "กำลังดู…" ·
+  /// ถามไม่สำเร็จ prompt ยังเห็น null (บอกแบบกลาง ๆ ว่า Gmail หรือ Outlook) ไม่ใช่ "ไม่มีแอปเมล"
+  bool _mailAppsAsked = false;
+  bool get mailAppsKnown => _mailApps != null || _mailAppsAsked;
+
+  /// ถามเครื่องว่ามีแอปเมลอะไร · ตอนเปิดแอปและตอนเปิดแท็บเมล (ลงแอปเมลเพิ่มทีหลังได้)
+  Future<void> refreshMailApps() async {
+    try {
+      final raw = await kSystemChannel.invokeMethod<List<Object?>>('mailApps');
+      if (_disposed) return;
+      if (raw != null) {
+        _mailApps = [
+          for (final m in raw.whereType<Map>())
+            if (m['name'] is String && m['package'] is String)
+              (name: m['name'] as String, package: m['package'] as String),
+        ];
+      }
+    } on Object catch (e) {
+      debugPrint('mail: หาแอปเมลไม่ได้ — ${e.runtimeType}');
+    }
+    if (_disposed) return;
+    _mailAppsAsked = true;
+    _notify();
+  }
+
+  bool _mailChecking = false;
+
+  /// ปุ่มเช็กเมลกดไม่ได้ตอนนี้ (กำลังเช็ก หรือเธอทำงานอื่นในเครื่องอยู่)
+  bool get mailBusy => _mailChecking || _agent != null || _teaching != null;
+
+  /// ปุ่ม "ให้เธอเช็กเมล" ในหน้าเมล · เธอเปิดแอปเมลอ่านแล้วสรุปในแชท (แจ้งเตือนด้วยถ้าแอปไม่อยู่หน้าจอ) ·
+  /// กดรัว ๆ = เริ่มครั้งเดียว
+  Future<void> checkMail(String app) async {
+    if (_mailChecking || _disposed) return;
+    _mailChecking = true;
+    _notify();
+    try {
+      _say(s.mailCheckAck(app));
+      await _phoneTaskFromChat(s.mailCheckGoal(app));
+    } finally {
+      _mailChecking = false;
+      if (!_disposed) _notify();
+    }
+  }
 
   /// ให้เธอทำงานในเครื่องจนจบ · [confirm] ถามก่อนขั้นที่ย้อนกลับไม่ได้ (ในแชท = เจ้าของ ·
   /// ในสาย = คนที่ยืนยันตัวแล้ว) · [inCall] = สั่งมาจากสาย · [routine] = เริ่มด้วยขั้นตอนที่สอนไว้
@@ -3057,6 +3137,8 @@ class MindState extends ChangeNotifier {
       callOut: true,
       phoneControl: _phoneControl,
       routines: [for (final m in _macros) m.name],
+      phoneData: true,
+      mailApps: _mailApps == null ? null : [for (final a in _mailApps!) a.name],
       pcProfile: linked ? brainx.ownerProfile : '',
       nudge: nudge
           ? MindPersona.cloudNudgeBlock(_lang,
@@ -3072,38 +3154,50 @@ class MindState extends ChangeNotifier {
     var answer = await _askBrain(system, history, onPartial: _showPartial, recall: recall);
     if (nudge) _noteNudge(answer);
 
-    // เธอขอข้อมูล (แท็ก [[ค้นหา: …]]) → ไปหาให้ → แนบผลแล้วให้ตอบอีกรอบ
+    // เธอขอข้อมูล (แท็ก [[ค้นหา: …]] / [[ประวัติโทร: …]]) → ไปหาให้ → แนบผลแล้วให้ตอบอีกรอบ
     //
     // 🔴 ตาของเธอที่ขอค้นใส่เป็น**คำตอบดิบทั้งก้อน** ไม่ใช่แท็กที่สร้างใหม่ ·
     // สมองในเครื่องจำสิ่งที่มันพูดไว้ตรงตัวอักษร ถ้าไม่ตรง session ต่อไม่ได้
     // ต้องอ่านทั้งบทใหม่ (ช้า) · บทที่ขอค้นกับผลไม่ลงความจำ/หน้าจอ เห็นแค่คำตอบสุดท้าย
-    if (tools) {
-      var turns = history;
-      for (var round = 1; round <= maxLookups; round++) {
-        final call = WebTools.parse(answer);
-        if (call == null || _disposed) break;
-        _partial = s.lookingUp(call.arg);
-        _notify();
-        final result = await webTools.run(call, last: round == maxLookups, web: web);
-        turns = [
-          ...turns,
-          (fromHer: true, text: answer.trim()),
-          (fromHer: false, text: result),
-        ];
-        answer = await _askBrain(
-          system,
-          turns,
-          onPartial: _showPartial,
-          // สมองทางเน็ตไม่จำอะไร ต้องแนบบันทึกช่วยจำซ้ำ · สมองในเครื่องจำไว้แล้วใน session
-          recall: _brain == BrainProvider.onDevice ? '' : recall,
-        );
-      }
+    //
+    // ของในเครื่อง (สมุดโทรศัพท์ สาย SMS) ไม่ขึ้นกับสวิตช์ค้นเว็บ · ไม่ได้ออกเน็ตไปหาที่ไหน
+    var turns = history;
+    for (var round = 1; round <= maxLookups; round++) {
+      if (_disposed) break;
+      final webCall = tools ? WebTools.parse(answer) : null;
+      final phoneCall = webCall == null ? PhoneLookup.parse(answer) : null;
+      if (webCall == null && phoneCall == null) break;
+      _partial = webCall != null
+          ? s.lookingUp(webCall.arg)
+          : switch (phoneCall!.kind) {
+              PhoneLookupKind.contacts => s.lookingContacts,
+              PhoneLookupKind.calls => s.lookingCalls,
+              PhoneLookupKind.sms => s.lookingSms,
+            };
+      _notify();
+      final last = round == maxLookups;
+      final result = webCall != null
+          ? await webTools.run(webCall, last: last, web: web)
+          : await phoneLookup.run(phoneCall!, last: last);
+      if (_disposed) break;
+      turns = [
+        ...turns,
+        (fromHer: true, text: answer.trim()),
+        (fromHer: false, text: result),
+      ];
+      answer = await _askBrain(
+        system,
+        turns,
+        onPartial: _showPartial,
+        // สมองทางเน็ตไม่จำอะไร ต้องแนบบันทึกช่วยจำซ้ำ · สมองในเครื่องจำไว้แล้วใน session
+        recall: _brain == BrainProvider.onDevice ? '' : recall,
+      );
     }
     // 🔴 แท็กสั่งงาน (โทรออก / ทำในเครื่อง) อ่านเสมอ แม้ปิดค้นเว็บ · เดิม `if (!tools) return answer;`
     // อยู่ก่อนตรงนี้ ปิดสวิตช์ค้นเว็บแล้วแท็ก [[โทร: …]] ที่ยังสอนอยู่หลุดขึ้นจอและถูกอ่านออกเสียง
     //
     // สั่งให้โทรออก → ขอเจ้าของยืนยันก่อน (ไม่โทรเอง) · แท็กไม่ขึ้นจอ ไม่อ่านออกเสียง
-    final out = CallOutTag.parse(WebTools.strip(answer));
+    final out = CallOutTag.parse(PhoneLookup.strip(WebTools.strip(answer)));
     if (out.target != null) unawaited(_proposeCall(out.target!, out.task!));
     // สั่งให้ทำในเครื่อง → เธอทำเอง ถามเจ้าของเฉพาะขั้นที่ย้อนกลับไม่ได้ (PhonePolicy)
     final hand = HandsTag.parse(out.text);

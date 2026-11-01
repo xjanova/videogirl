@@ -143,6 +143,9 @@ extension AiStrings on S {
       );
   String get lookingUpGeneric => pick('กำลังหาข้อมูล…', 'Looking it up…');
   String lookingUp(String what) => pick('กำลังหาข้อมูล: $what…', 'Looking up: $what…');
+  String get lookingContacts => pick('กำลังเปิดสมุดโทรศัพท์…', 'Opening your contacts…');
+  String get lookingCalls => pick('กำลังดูประวัติการโทร…', 'Checking your call log…');
+  String get lookingSms => pick('กำลังอ่าน SMS…', 'Reading your texts…');
 
   // ── เครดิตของ "ผ่านบริการเรา" ──
   String get proxyCreditTitle => pick('เครดิตคงเหลือ', 'Credit left');

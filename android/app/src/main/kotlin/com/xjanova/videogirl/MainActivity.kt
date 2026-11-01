@@ -136,6 +136,8 @@ class MainActivity : FlutterActivity() {
                     )
                     "requestContacts" ->
                         ask(Manifest.permission.READ_CONTACTS, REQ_CONTACTS, result)
+                    "requestSms" ->
+                        ask(Manifest.permission.READ_SMS, REQ_SMS, result)
                     "requestAnswer" -> askMany(
                         arrayOf(Manifest.permission.ANSWER_PHONE_CALLS),
                         REQ_ANSWER, result
@@ -681,6 +683,7 @@ class MainActivity : FlutterActivity() {
         private const val REQ_CONTACTS = 8752
         private const val REQ_ANSWER = 8753
         private const val REQ_DIALER_ROLE = 8754
+        private const val REQ_SMS = 8755
         private const val REQ_PICK_FILE = 8757
 
         /// เท่ากับเพดานไฟล์ฝั่ง Dart (CallKnowledge.addFile) · ไฟล์ข้อความใหญ่กว่านี้ไม่ใช่เอกสารที่คนเขียน
@@ -691,7 +694,7 @@ class MainActivity : FlutterActivity() {
         /// ต้องครบ ไม่งั้นคำขอที่หายไปจะไม่มีใครตอบ แล้วปุ่มขอสิทธิ์
         /// ทั้งแอปค้างทั้งเซสชัน · ดู onRequestPermissionsResult
         private val KNOWN_REQUESTS = setOf(
-            REQ_CAMERA, REQ_MIC, REQ_CALENDAR, REQ_CALL, REQ_CONTACTS, REQ_ANSWER
+            REQ_CAMERA, REQ_MIC, REQ_CALENDAR, REQ_CALL, REQ_CONTACTS, REQ_ANSWER, REQ_SMS
         )
 
         /// ต้องตรงกับ kMindChannelId ใน lib/background/mind_background.dart

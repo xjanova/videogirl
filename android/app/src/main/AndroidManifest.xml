@@ -83,6 +83,10 @@
     <!-- เบอร์อย่างเดียวช่วยอะไรไม่ได้ ต้องรู้ว่าเป็นใคร -->
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
 
+    <!-- SMS ที่เข้ามา/ส่งออก ให้เธอเล่าได้ตอนเจ้าของถามในแชท (PhoneData.kt) · อ่านอย่างเดียว
+         แอปนี้แจก APK เอง จึงไม่ติดนโยบาย SMS ของ Play Store · ยังเป็นสิทธิ์ที่เจ้าของต้องกดให้เอง -->
+    <uses-permission android:name="android.permission.READ_SMS"/>
+
     <!-- รับสายแทน · ดู CallBridge.kt ว่าทำได้แค่ไหนและติดตรงไหน -->
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS"/>
 
@@ -342,6 +346,13 @@
         <intent>
             <action android:name="android.intent.action.MAIN"/>
             <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
+
+        <!-- หาแอปเมลในเครื่อง (PhoneData.mailApps) ให้เธอเปิดอ่านเมลแทนเจ้าของ
+             · ไม่ประกาศ = Android 11+ ตอบว่าไม่มีแอปไหนรับ mailto: เลย -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="mailto"/>
         </intent>
     </queries>
 </manifest>
