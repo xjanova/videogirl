@@ -323,6 +323,9 @@ class MindAvatarController extends ChangeNotifier
     return _call("window.minde.mood('${mood.name}')");
   }
 
+  /// สะดุ้ง · ทับท่าที่กำลังทำอยู่ ไม่ต้องรอให้จบ และไม่เปลี่ยนอารมณ์ที่ตั้งไว้
+  Future<void> startle() => _call('window.minde.startle()');
+
   /// เล่นไฟล์เสียงพร้อมขยับปาก — url ต้องเข้าถึงได้จากฝั่ง WebView
   Future<void> speak(String url) =>
       _call("window.minde.speak(${_jsString(url)})");

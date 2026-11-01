@@ -57,6 +57,8 @@ class SystemBridge(context: Context) {
         com.xjanova.videogirl.hands.HandsBridge.attach(context, messenger)
         // ไมค์เบื้องหลัง · อยู่ที่นี่เหตุผลเดียวกับ HandsBridge
         com.xjanova.videogirl.listen.ListenBridge.attach(context, messenger)
+        // แจ้งเหตุฉุกเฉิน · อยู่ที่นี่เหตุผลเดียวกับ HandsBridge
+        com.xjanova.videogirl.sos.SosBridge.attach(context, messenger)
         channel = MethodChannel(messenger, CHANNEL).also { ch ->
             ch.setMethodCallHandler { call, result ->
                 if (!handle(call, result)) result.notImplemented()

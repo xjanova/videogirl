@@ -125,4 +125,37 @@
     <string name="listen_stop_talk">Mic off</string>
     <string name="listen_resume_title">Mind is not listening for her name</string>
     <string name="listen_resume_text">Tap to bring her back</string>
+
+    <string name="sos_channel_armed">Emergency watch is on</string>
+    <string name="sos_channel_alert">Emergency alert</string>
+    <string name="sos_armed_title">Mind is watching for emergencies</string>
+    <string name="sos_armed_body">Turn off in settings · Not guaranteed, and no replacement for emergency services</string>
+    <string name="sos_action_call">Get help</string>
+    <string name="sos_action_stop">Stop, I\'m fine</string>
+    <string name="sos_action_help">Help, alert now</string>
+    <string name="sos_alert_title">Are you okay?</string>
+    <string name="sos_alert_title_drill">Drill · Nothing real will be sent</string>
+    <string name="sos_alert_body">If you do not answer, Mind starts the alert when the time runs out</string>
+    <string name="sos_dispatching">Sending the alert</string>
+    <string name="sos_report_done">Alert sent</string>
+    <string name="sos_report_cancelled">Cancelled · Nothing was sent</string>
+    <string name="sos_report_cancelled_late">Stopped · Some of it had already gone out</string>
+    <string name="sos_report_rehearsal">Rehearsal · Nobody was alerted</string>
+    <string name="sos_report_failed">Nobody could be alerted · Call for help yourself now</string>
+    <string name="sos_line_unsure">Called %1$s, not sure anyone answered</string>
+    <string name="sos_line_hang_up">The call to %1$s may still be live · Hang up on the phone call screen</string>
+    <string name="sos_line_not_dialer">Could not call %1$s · Set this as the default phone app</string>
+    <string name="sos_silent_report">New entry in Settings</string>
+    <string name="sos_report_counts">Messages %1$d · Calls reached %2$d</string>
+    <string name="sos_share_location">Share location</string>
+    <string name="sos_line_sms">Text sent to %1$d</string>
+    <string name="sos_line_sms_failed">Text failed for %1$d</string>
+    <string name="sos_line_contact">Emergency contact</string>
+    <string name="sos_line_reached">Call reached %1$s</string>
+    <string name="sos_line_would_call">A real incident would call %1$s</string>
+    <string name="sos_line_no_answer">Could not reach %1$s</string>
+    <string name="sos_line_call_back">If nothing happened, please call back and tell them · Hang up on the phone\'s own call screen</string>
+    <string name="sos_line_no_voice">This phone cannot speak into the call · Carrying on with messages</string>
+    <string name="sos_stopped_title">Emergency watch stopped</string>
+    <string name="sos_stopped_body">Tap to open Mind and bring it back</string>
 </resources>

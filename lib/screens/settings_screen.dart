@@ -25,6 +25,7 @@ import 'call_lessons_panel.dart';
 import 'call_personality_panel.dart';
 import 'direct_call_panel.dart';
 import 'phone_control_panel.dart';
+import 'sos_panel.dart';
 import 'wake_word_panel.dart';
 import 'shop_screen.dart';
 import '../memory/mind_memory.dart';
@@ -43,6 +44,7 @@ import '../widgets/screen_header.dart';
 import '../ai/openai_client.dart';
 import '../i18n/strings_settings.dart';
 import '../i18n/strings_hands.dart';
+import '../i18n/strings_sos.dart';
 import '../phone/call_session.dart';
 import '../studio/mind_studio.dart';
 import '../system/app_life.dart';
@@ -60,7 +62,7 @@ import 'text_editor_screen.dart';
 /// 🔴 ของเดิมเป็นการ์ดเรียงยาวสิบเจ็ดใบในหน้าเดียว · คนที่อยากรู้ว่า "ซีเรียล
 /// อยู่ไหน" หรือ "ใช้โมเดลไหน" ต้องเลื่อนหาเอง แล้วหาไม่เจอ (ซีเรียลเคยโผล่
 /// เฉพาะตอนเลือกสมองแบบพร็อกซีด้วยซ้ำ)
-enum SettingsSection { account, her, brain, you, calls, general, data }
+enum SettingsSection { account, her, brain, you, calls, sos, general, data }
 
 /// ตั้งค่า — หน้าแรกเป็นเมนูหมวด แตะแล้วเข้าไปดูการ์ดของหมวดนั้น
 class SettingsScreen extends StatefulWidget {
@@ -216,6 +218,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         SettingsSection.brain => Icons.psychology_rounded,
         SettingsSection.you => Icons.person_rounded,
         SettingsSection.calls => Icons.call_rounded,
+        SettingsSection.sos => Icons.sos_rounded,
         SettingsSection.general => Icons.tune_rounded,
         SettingsSection.data => Icons.shield_outlined,
       };
@@ -226,6 +229,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         SettingsSection.brain => t.settingsSecBrain,
         SettingsSection.you => t.settingsSecYou,
         SettingsSection.calls => t.settingsSecCalls,
+        SettingsSection.sos => t.sosSection,
         SettingsSection.general => t.settingsSecGeneral,
         SettingsSection.data => t.settingsSecData,
       };
@@ -259,6 +263,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         return (t.settingsSecYouHint, false);
       case SettingsSection.calls:
         return (t.settingsSecCallsHint, false);
+      case SettingsSection.sos:
+        return (t.sosSectionHint, false);
       case SettingsSection.general:
         return (t.settingsSecGeneralHint, false);
       case SettingsSection.data:
@@ -391,6 +397,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             _permissionCard(context, mode, t),
             _watchCard(context, mode, t),
             _exitCard(state, mode, t),
+          ],
+        SettingsSection.sos => [
+            _card(mode: mode, label: t.sosSection, child: SosPanel(accent: mode.accent)),
           ],
         SettingsSection.data => [
             _dataCard(context, state, mode, t),

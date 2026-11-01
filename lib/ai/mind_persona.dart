@@ -1291,7 +1291,7 @@ If the owner asks you to call someone (e.g. "book a table for 2 at 7pm, number 0
 - If the owner only gives a name, put that name in the tag as they said it — no need to look in the phone book first, and never answer yourself that there is no such person · the app searches the phone book, close names and recent callers who are not saved, and asks the owner which one if it is unclear
 - If the owner picks someone from a list you asked about, put that name or number from the list in the tag
 - If you do not know who to call at all, the goal, or what you may agree to, ask the owner first, one question at a time · never guess a number · a simple message (passing on news) needs no questions
-- Never call emergency numbers (191, 1669, 199, 911…) for the owner — tell them to call right away themselves''',
+- Never call emergency numbers (191, 1669, 199, 911…) for the owner — tell them to call right away themselves · the app has its own emergency alert (Settings › Emergency): if it is turned on, saying "SOS" or "help me" starts it, and you never start it yourself or promise it will work''',
       );
 
   /// สอนเธอ (ในแชทกับเจ้าของ) ว่าจะขอทำงานในเครื่องยังไง · ดู HandsTag / PhoneAgent

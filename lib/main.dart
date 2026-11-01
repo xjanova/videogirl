@@ -24,6 +24,7 @@ import 'ai/mind_audio.dart';
 import 'ai/mind_listen.dart';
 import 'ai/voice_chat.dart';
 import 'screens/splash_screen.dart';
+import 'sos/mind_sos.dart';
 import 'diagnostics/debug_reporter.dart';
 import 'diagnostics/mind_log.dart';
 import 'store/mind_store.dart';
@@ -167,7 +168,7 @@ class _MindBootstrapState extends State<MindBootstrap>
   /// (ปัดแอปทิ้งระหว่างคุย · ถูกเรียกชื่อตอนไม่มีจอ) ซึ่ง [_hasView] ทิ้งเชลล์ทั้งก้อน
   late final VoiceChat _voiceChat = VoiceChat(
     state: _state,
-    sendTurn: _state.send,
+    sendTurn: MindSos.instance.guarded(_state.send),
     ensureMic: _ensureMic,
     lips: _avatar,
     keepAwake: _keepAwake,
@@ -297,6 +298,7 @@ class _MindBootstrapState extends State<MindBootstrap>
     if (state == AppLifecycleState.resumed) {
       // รีสตาร์ตเครื่อง/อัปเดตแอป/ถูกระบบปิด · ไมค์เริ่มเองไม่ได้ ต้องเริ่มตอนแอปอยู่บนจอ
       unawaited(MindListen.instance.sync());
+      unawaited(MindSos.instance.sync());
       unawaited(_state.refreshDeviceStt(forget: true));
       // อาจเพิ่งไปให้สิทธิ์ปฏิทิน เพิ่มนัด หรือข้ามวันมาแล้ว · เธอตอบเรื่อง
       // ตารางจากก้อนนี้ ถ้าไม่อ่านใหม่จะตอบจากของเมื่อวาน
@@ -374,6 +376,8 @@ class _MindBootstrapState extends State<MindBootstrap>
     if (!mounted) return;
     setState(() => _canBuildShell = true);
     if (_hasView) unawaited(MindListen.instance.sync());
+    MindSos.instance.onAlert = _avatar.startle;
+    unawaited(MindSos.instance.sync());
 
     // ── รอบสอง: ของที่รอได้ ทำหลังเชลล์เริ่มโหลด VRM ไปแล้ว ──
     try {

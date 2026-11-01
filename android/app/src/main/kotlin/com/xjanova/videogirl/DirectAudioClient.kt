@@ -176,4 +176,22 @@ object DirectAudioClient {
         if (!active) return
         work.execute { try { request(P.STOP) } catch (_: Exception) {} finally { disconnect() } }
     }
+
+    // SOS speaks without Dart (the app may be closed). Blocking: call off the main thread.
+    fun sosStart(context: Context): Boolean = try {
+        connect(context)
+        active = request(P.START).startsWith("direct:")
+        acceptingAudio = active
+        if (active) main.post { main.removeCallbacks(keepAlive); main.postDelayed(keepAlive, 2000) }
+        active
+    } catch (_: Exception) {
+        disconnect()
+        false
+    }
+    fun sosWrite(pcm: ByteArray): Boolean = try {
+        acceptingAudio && request(P.WRITE, pcm) == "ok"
+    } catch (_: Exception) {
+        false
+    }
+    fun sosStop() = closeCall()
 }

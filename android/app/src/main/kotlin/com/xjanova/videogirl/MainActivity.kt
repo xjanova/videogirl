@@ -143,6 +143,23 @@ class MainActivity : FlutterActivity() {
                         arrayOf(Manifest.permission.ANSWER_PHONE_CALLS),
                         REQ_ANSWER, result
                     )
+                    // แจ้งเหตุ · ขอตอนเจ้าของเปิดระบบเอง ไม่อยู่ในชุดที่ถามตอนเริ่มแอป
+                    "requestSos" -> askMany(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                            Manifest.permission.SEND_SMS,
+                            Manifest.permission.CALL_PHONE,
+                            Manifest.permission.READ_PHONE_STATE,
+                            Manifest.permission.RECORD_AUDIO,
+                        ),
+                        REQ_SOS, result
+                    )
+                    // 🔴 แยกคำขอ · Android 11+ ปฏิเสธถ้าขอพร้อมตำแหน่งปกติ และต้องได้ตำแหน่งปกติก่อน
+                    "requestSosBackground" -> askMany(
+                        arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+                        REQ_SOS, result
+                    )
 
                     // ── ให้เธอได้ยินปลายสาย (การช่วยเหลือพิเศษ) ──
                     // เปิดตรงไปที่บริการของเราไม่ได้ทุกเครื่อง · พาไปหน้ารวมของระบบ
@@ -372,6 +389,8 @@ class MainActivity : FlutterActivity() {
     private fun exitApp() {
         dartAlive = false
         com.xjanova.videogirl.listen.ListenService.shutdown()
+        // จบโปรเซส = ตัวจับเหตุหยุดด้วย · ต้องบอก ไม่ใช่ปล่อยให้เจ้าของเข้าใจว่ายังเฝ้าอยู่
+        com.xjanova.videogirl.sos.SosService.warnStopped(this)
         finishAndRemoveTask()
         android.os.Handler(mainLooper).postDelayed({
             android.os.Process.killProcess(android.os.Process.myPid())
@@ -700,6 +719,7 @@ class MainActivity : FlutterActivity() {
         private const val REQ_DIALER_ROLE = 8754
         private const val REQ_SMS = 8755
         private const val REQ_PICK_FILE = 8757
+        private const val REQ_SOS = 8771
 
         /// เท่ากับเพดานไฟล์ฝั่ง Dart (CallKnowledge.addFile) · ไฟล์ข้อความใหญ่กว่านี้ไม่ใช่เอกสารที่คนเขียน
         private const val MAX_PICK_BYTES = 12 * 1024 * 1024
@@ -709,7 +729,7 @@ class MainActivity : FlutterActivity() {
         /// ต้องครบ ไม่งั้นคำขอที่หายไปจะไม่มีใครตอบ แล้วปุ่มขอสิทธิ์
         /// ทั้งแอปค้างทั้งเซสชัน · ดู onRequestPermissionsResult
         private val KNOWN_REQUESTS = setOf(
-            REQ_CAMERA, REQ_MIC, REQ_CALENDAR, REQ_CALL, REQ_CONTACTS, REQ_ANSWER, REQ_SMS
+            REQ_CAMERA, REQ_MIC, REQ_CALENDAR, REQ_CALL, REQ_CONTACTS, REQ_ANSWER, REQ_SMS, REQ_SOS
         )
 
         /// ต้องตรงกับ kMindChannelId ใน lib/background/mind_background.dart
