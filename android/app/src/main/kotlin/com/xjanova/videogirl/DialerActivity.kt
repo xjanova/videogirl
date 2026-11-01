@@ -1,6 +1,8 @@
 package com.xjanova.videogirl
 
 import android.Manifest
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.ClipData
@@ -125,6 +127,11 @@ class DialerActivity : Activity() {
     private var pendingCall: Pair<String, PhoneAccountHandle?>? = null
     private val deniedForever = HashSet<String>()
 
+    /** ความสูงที่วางของได้จริง · จอเตี้ย (ต่ำกว่า 640dp) ย่อหัว กรอบเบอร์ และแถบล่าง */
+    private var usableDp = 780f
+    private var compact = false
+    private var resumed = false
+
     private lateinit var callBanner: LinearLayout
     private lateinit var callBannerText: TextView
     private lateinit var pageViews: Array<View>
@@ -132,6 +139,10 @@ class DialerActivity : Activity() {
     private lateinit var display: TextView
     private lateinit var displayName: TextView
     private lateinit var backspace: FrameLayout
+
+    /** ขีดกะพริบในกรอบเบอร์ · กะพริบเฉพาะตอนเห็นแป้น (ซ่อนอยู่ก็ยังกินเฟรม) */
+    private lateinit var caret: View
+    private var caretAnim: ObjectAnimator? = null
     private lateinit var callRow: LinearLayout
     private lateinit var recentsList: ListView
     private lateinit var recentsEmpty: LinearLayout
@@ -156,6 +167,8 @@ class DialerActivity : Activity() {
         super.onCreate(savedInstanceState)
         feedback = PhoneUi.KeyFeedback(this)
         iso = PhoneUi.countryIso(this)
+        usableDp = PhoneUi.usableHeightDp(this)
+        compact = usableDp < 640f
         takeNumber(intent)
         setContentView(buildUi())
         renderDigits()
@@ -201,19 +214,25 @@ class DialerActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        resumed = true
         feedback.start()
         renderBanner()
         renderCallRow()
+        syncCaret()
         // กลับจากสาย = มีสายใหม่ในประวัติ · โหลดใหม่ทุกครั้งที่กลับมา
         load()
     }
 
     override fun onPause() {
+        resumed = false
         feedback.stop()
+        syncCaret()
         super.onPause()
     }
 
     override fun onDestroy() {
+        caretAnim?.cancel()
+        caretAnim = null
         loadSeq++
         io.shutdownNow()
         ui.removeCallbacksAndMessages(null)
@@ -230,7 +249,10 @@ class DialerActivity : Activity() {
         }
         PhoneUi.edgeToEdge(this, root, lightBars = true)
 
-        root.addView(topBar(), LinearLayout.LayoutParams(MATCH_PARENT, dp(this, 52)))
+        // ไม่ล็อกความสูง · หัวข้อไทยมีสระบนล่าง ล็อกไว้ = ตัวหนังสือโดนตัดตอนตั้งตัวอักษรใหญ่
+        root.addView(topBar(), LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).also {
+            it.bottomMargin = dp(this, 6)
+        })
         callBanner = banner()
         root.addView(callBanner, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).also {
             it.bottomMargin = dp(this, 8)
@@ -240,41 +262,100 @@ class DialerActivity : Activity() {
         pageViews = arrayOf(keypadPage(), recentsPage(), contactsPage())
         for (p in pageViews) pages.addView(p, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         root.addView(pages, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
-        root.addView(tabBar(), LinearLayout.LayoutParams(MATCH_PARENT, dp(this, 62)).also {
+        root.addView(tabBar(), LinearLayout.LayoutParams(MATCH_PARENT, dp(this, if (compact) 56 else 62)).also {
             it.topMargin = dp(this, 8)
         })
         return root
     }
 
+    /** ✦ GigGok · หัวข้อ "โทรศัพท์" กับเส้นโค้งใต้ · หน้าเธอในวงแหวนไล่สี มีป้ายชื่อห้อยใต้ */
     private fun topBar(): View {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(this@DialerActivity, 4), 0, 0, 0)
+            setPadding(dp(this@DialerActivity, 4), dp(this@DialerActivity, 4), 0, 0)
         }
-        bar.addView(PhoneUi.text(this, 26f, PhoneUi.INK, bold = true).apply {
+        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val brand = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        brand.addView(
+            PhoneUi.icon(this, R.drawable.ic_ph_sparkle, PhoneUi.VIOLET, 12),
+            LinearLayout.LayoutParams(dp(this, 12), dp(this, 12))
+        )
+        brand.addView(PhoneUi.text(this, 13f, PhoneUi.VIOLET).apply {
+            setText(R.string.dial_brand)
+            typeface = PhoneUi.weight(700)
+        }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).also { it.leftMargin = dp(this, 4) })
+        titles.addView(brand)
+        titles.addView(PhoneUi.text(this, if (compact) 26f else 30f, PhoneUi.INK).apply {
             setText(R.string.dial_app_label)
-        }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            typeface = PhoneUi.weight(800)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).also { it.topMargin = dp(this, 2) })
+        titles.addView(View(this).apply {
+            background = PhoneUi.Swoosh(intArrayOf(PhoneUi.PINK, PhoneUi.VIOLET), dp(this@DialerActivity, 3).toFloat())
+        }, LinearLayout.LayoutParams(dp(this, 64), dp(this, 8)).also { it.topMargin = dp(this, 1) })
+        bar.addView(titles, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).also { it.rightMargin = dp(this, 12) })
+        bar.addView(mindButton(if (compact) 48 else 60))
+        return bar
+    }
 
-        // หน้าเธอ — แตะแล้วไปหาเธอในแอป (สั่งโทรด้วยเสียง ถามว่าใครโทรมา)
-        val face = PhoneUi.mindFace(this, dp(this, 80))
-        val mind = FrameLayout(this).apply {
+    /** หน้าเธอ — แตะแล้วไปหาเธอในแอป (สั่งโทรด้วยเสียง ถามว่าใครโทรมา) */
+    private fun mindButton(sizeDp: Int): View {
+        val wrap = FrameLayout(this).apply {
+            clipChildren = false
             contentDescription = getString(R.string.dial_open_mind)
             isClickable = true
-            foreground = PhoneUi.ripple(ColorDrawable(Color.TRANSPARENT), 0x337C6CFF, PhoneUi.oval(Color.WHITE))
             setOnClickListener { openMind() }
             PhoneUi.pressScale(this)
         }
-        if (face != null) {
-            PhoneUi.bindAvatar(mind, null, null, face, 40)
-            mind.setPadding(dp(this, 2), dp(this, 2), dp(this, 2), dp(this, 2))
-            mind.background = PhoneUi.ovalGradient(intArrayOf(PhoneUi.PINK, PhoneUi.VIOLET))
-        } else {
-            mind.background = PhoneUi.ovalGradient(intArrayOf(PhoneUi.PINK, PhoneUi.VIOLET))
-            mind.addView(PhoneUi.icon(this, R.drawable.ic_ph_sparkle, Color.WHITE, 22))
+        // วงแหวนไล่สี 3dp · ขอบขาว 2dp · หน้าเธอ
+        val ring = FrameLayout(this).apply {
+            background = PhoneUi.ovalGradient(intArrayOf(PhoneUi.PINK, PhoneUi.VIOLET, PhoneUi.TEAL))
+            val p = dp(this@DialerActivity, 3)
+            setPadding(p, p, p, p)
+            elevation = dp(this@DialerActivity, 4).toFloat()
+            PhoneUi.tintShadow(this, 0x99FF6FAE.toInt())
         }
-        bar.addView(mind, LinearLayout.LayoutParams(dp(this, 42), dp(this, 42)))
-        return bar
+        val inner = FrameLayout(this).apply {
+            background = PhoneUi.oval(Color.WHITE)
+            val p = dp(this@DialerActivity, 2)
+            setPadding(p, p, p, p)
+        }
+        val pic = FrameLayout(this)
+        val face = PhoneUi.mindFace(this, dp(this, sizeDp * 2))
+        if (face != null) {
+            PhoneUi.bindAvatar(pic, null, null, face, sizeDp)
+        } else {
+            pic.background = PhoneUi.ovalGradient(intArrayOf(PhoneUi.PINK, PhoneUi.VIOLET))
+            pic.addView(PhoneUi.icon(this, R.drawable.ic_ph_sparkle, Color.WHITE, sizeDp / 2))
+        }
+        inner.addView(pic, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        ring.addView(inner, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        wrap.addView(ring, FrameLayout.LayoutParams(dp(this, sizeDp), dp(this, sizeDp), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+
+        val badge = PhoneUi.text(this, 10.5f, Color.WHITE).apply {
+            setText(R.string.dial_mind_badge)
+            typeface = PhoneUi.weight(700)
+            gravity = Gravity.CENTER
+            setPadding(dp(this@DialerActivity, 9), dp(this@DialerActivity, 2), dp(this@DialerActivity, 9), dp(this@DialerActivity, 3))
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(PhoneUi.VIOLET, 0xFF9B5CFF.toInt())
+            ).apply {
+                cornerRadius = dp(this@DialerActivity, 10).toFloat()
+                setStroke(dp(this@DialerActivity, 1.5f), Color.WHITE)
+            }
+            // ลอยเหนือวงแหวน (เงา 4dp) ไม่งั้นป้ายจมหายใต้รูป
+            elevation = dp(this@DialerActivity, 5).toFloat()
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        wrap.addView(badge, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
+        wrap.layoutParams = LinearLayout.LayoutParams(dp(this, sizeDp + 8), dp(this, sizeDp + 9))
+        return wrap
     }
 
     private fun banner(): LinearLayout {
@@ -303,9 +384,11 @@ class DialerActivity : Activity() {
     private fun tabBar(): View {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(this@DialerActivity, 5), dp(this@DialerActivity, 5), dp(this@DialerActivity, 5), dp(this@DialerActivity, 5))
-            background = PhoneUi.rounded(0xB8FFFFFF.toInt(), dp(this@DialerActivity, 31).toFloat(), dp(this@DialerActivity, 1), PhoneUi.GLASS_BORDER)
+            val p = dp(this@DialerActivity, 6)
+            setPadding(p, p, p, p)
+            background = PhoneUi.rounded(0xC7FFFFFF.toInt(), dp(this@DialerActivity, 31).toFloat(), dp(this@DialerActivity, 1), PhoneUi.GLASS_BORDER)
             elevation = dp(this@DialerActivity, 3).toFloat()
+            PhoneUi.tintShadow(this, 0x667C6CFF)
         }
         val items = listOf(
             R.drawable.ic_ph_dialpad to R.string.dial_tab_keypad,
@@ -320,11 +403,13 @@ class DialerActivity : Activity() {
                 contentDescription = getString(item.second)
                 setOnClickListener { showPage(i) }
             }
-            tab.addView(PhoneUi.icon(this, item.first, PhoneUi.INK55, 22))
+            tab.addView(PhoneUi.icon(this, item.first, TAB_IDLE, 22))
             // ไม่ใส่ขนาด = แนวตั้งให้กว้างเต็มช่อง ข้อความชิดซ้าย เยื้องจากไอคอน (0.1.53 บนเครื่องจริง)
-            tab.addView(PhoneUi.text(this, 11f, PhoneUi.INK55, bold = true).apply {
+            tab.addView(PhoneUi.text(this, 12f, TAB_IDLE).apply {
                 setText(item.second)
+                typeface = PhoneUi.weight(700)
                 maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
                 setPadding(0, dp(this@DialerActivity, 3), 0, 0)
             }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
             tabs.add(tab)
@@ -338,44 +423,118 @@ class DialerActivity : Activity() {
         for ((k, v) in pageViews.withIndex()) v.visibility = if (k == i) View.VISIBLE else View.GONE
         for ((k, tab) in tabs.withIndex()) {
             val on = k == i
-            tab.background = if (on) PhoneUi.roundedGradient(intArrayOf(PhoneUi.PINK, PhoneUi.VIOLET), dp(this, 26).toFloat())
-            else PhoneUi.ripple(ColorDrawable(Color.TRANSPARENT), 0x267C6CFF, PhoneUi.rounded(Color.WHITE, dp(this, 26).toFloat()))
-            val tint = if (on) Color.WHITE else PhoneUi.INK55
+            // แท็บที่เลือก = ม่วงอ่อน ตัวม่วงเข้ม (เดิมไล่ชมพูม่วงเต็มช่อง แย่งสายตาจากแป้น)
+            tab.background = if (on) PhoneUi.rounded(PhoneUi.LAVENDER, dp(this, 25).toFloat())
+            else PhoneUi.ripple(ColorDrawable(Color.TRANSPARENT), 0x267C6CFF, PhoneUi.rounded(Color.WHITE, dp(this, 25).toFloat()))
+            val tint = if (on) PhoneUi.VIOLET_DEEP else TAB_IDLE
             (tab.getChildAt(0) as ImageView).imageTintList = android.content.res.ColorStateList.valueOf(tint)
             (tab.getChildAt(1) as TextView).setTextColor(tint)
+            tab.isSelected = on
         }
         if (i != PAGE_CONTACTS) hideKeyboard()
+        syncCaret()
+    }
+
+    /** ขีดในกรอบเบอร์กะพริบเฉพาะตอนจอนี้อยู่หน้าสุดและเปิดแป้นอยู่ */
+    private fun syncCaret() {
+        if (!::caret.isInitialized) return
+        val run = resumed && page == PAGE_KEYPAD
+        if (run && caretAnim == null) {
+            caretAnim = ObjectAnimator.ofFloat(caret, View.ALPHA, 1f, .15f).apply {
+                duration = 900
+                repeatMode = ValueAnimator.REVERSE
+                repeatCount = ValueAnimator.INFINITE
+                start()
+            }
+        } else if (!run && caretAnim != null) {
+            caretAnim?.cancel()
+            caretAnim = null
+            caret.alpha = 1f
+        }
     }
 
     // ── แป้นกด ───────────────────────────────────────────────
 
+    /**
+     * แป้นกด — ออกแบบตามภาพที่ ChatGPT วาดให้ (2026-11-01): คำแนะนำ · กรอบเบอร์ขอบไล่สี ·
+     * แป้นกระจกฝ้า · ปุ่มโทรต่อซิมที่ไม่พูดซ้ำ
+     *
+     * 🔴 ไม่ล็อกความสูงของตัวหนังสือไทยที่ไหนเลย · เดิมชื่อใต้เบอร์สูงตายตัว 20dp
+     * ชื่อที่มีสระบนและล่าง (คุณแม่) โดนตัดหัวตัดท้าย
+     */
     private fun keypadPage(): View {
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
+            clipChildren = false
         }
-        suggestions = LinearLayout(this).apply {
+        // คำแนะนำล้นช่อง = ตัวบนสุดโดนตัดครึ่ง · ซ่อนตัวที่ไม่พอทั้งตัว (ตัวที่ใช่ที่สุดอยู่ล่างสุด ชิดเบอร์)
+        suggestions = object : LinearLayout(this) {
+            override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+                super.onLayout(changed, l, t, r, b)
+                for (k in 0 until childCount) {
+                    val c = getChildAt(k)
+                    val show = if (c.top < 0) View.INVISIBLE else View.VISIBLE
+                    if (c.visibility != show) c.visibility = show
+                }
+            }
+        }.apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.BOTTOM
+            setPadding(dp(this@DialerActivity, 8), 0, dp(this@DialerActivity, 8), dp(this@DialerActivity, 6))
         }
         col.addView(suggestions, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
 
-        val row = FrameLayout(this)
-        display = PhoneUi.text(this, 36f, PhoneUi.INK).apply {
+        // กรอบเบอร์ · ขีดกะพริบซ้าย · เบอร์ (ย่อเองเมื่อยาว) กับชื่อ · ปุ่มลบกลมขวา
+        val cardDp = if (compact) 64 else 76
+        val card = FrameLayout(this).apply {
+            background = PhoneUi.GlowCard(
+                0xD9FFFFFF.toInt(),
+                intArrayOf(0xB3FF6FAE.toInt(), 0xB37C6CFF.toInt()),
+                dp(this@DialerActivity, 1.5f).toFloat(),
+                dp(this@DialerActivity, cardDp / 2).toFloat(),
+            )
+        }
+        caret = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(PhoneUi.TEAL, PhoneUi.VIOLET)
+            ).apply { cornerRadius = dp(this@DialerActivity, 2).toFloat() }
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        card.addView(caret, FrameLayout.LayoutParams(dp(this, 3), dp(this, if (compact) 22 else 28), Gravity.START or Gravity.CENTER_VERTICAL).also {
+            it.leftMargin = dp(this, 20)
+        })
+        val texts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(this@DialerActivity, 5), 0, dp(this@DialerActivity, 6))
+        }
+        display = PhoneUi.text(this, 20f, PhoneUi.INK).apply {
             gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.START
-            setAutoSizeTextTypeUniformWithConfiguration(18, 38, 1, TypedValue.COMPLEX_UNIT_SP)
             setOnLongClickListener { paste(); true }
         }
-        row.addView(display, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT).also {
-            it.leftMargin = dp(this, 48)
-            it.rightMargin = dp(this, 48)
+        // เบอร์กินที่ที่เหลือจากชื่อ · ย่อขนาดเองให้พอดี (ชื่อยาว/ตัวอักษรใหญ่ เบอร์เล็กลง ไม่ล้น)
+        texts.addView(display, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+        displayName = PhoneUi.text(this, 14f, PhoneUi.VIOLET_DEEP).apply {
+            typeface = PhoneUi.weight(700)
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            visibility = View.GONE
+        }
+        texts.addView(displayName, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        // ซ้ายขวาเว้นเท่ากัน เบอร์ถึงอยู่กลางกรอบจริง ไม่เยื้องหนีปุ่มลบ
+        card.addView(texts, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT).also {
+            it.leftMargin = dp(this, 66)
+            it.rightMargin = dp(this, 66)
         })
         backspace = FrameLayout(this).apply {
             contentDescription = getString(R.string.dial_backspace)
-            background = PhoneUi.ripple(ColorDrawable(Color.TRANSPARENT), 0x267C6CFF, PhoneUi.oval(Color.WHITE))
-            addView(PhoneUi.icon(this@DialerActivity, R.drawable.ic_ph_backspace, PhoneUi.INK55, 24))
+            background = PhoneUi.ripple(PhoneUi.oval(PhoneUi.LAVENDER), 0x337C6CFF, PhoneUi.oval(Color.WHITE))
+            addView(PhoneUi.icon(this@DialerActivity, R.drawable.ic_ph_backspace, 0xCC23204A.toInt(), 22))
             isClickable = true
             setOnClickListener {
                 if (digits.isNotEmpty()) {
@@ -392,21 +551,20 @@ class DialerActivity : Activity() {
                 true
             }
         }
-        row.addView(backspace, FrameLayout.LayoutParams(dp(this, 46), dp(this, 46), Gravity.END or Gravity.CENTER_VERTICAL))
-        col.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, dp(this, 60)))
+        val bs = if (compact) 40 else 44
+        card.addView(backspace, FrameLayout.LayoutParams(dp(this, bs), dp(this, bs), Gravity.END or Gravity.CENTER_VERTICAL).also {
+            it.rightMargin = dp(this, if (compact) 12 else 16)
+        })
+        col.addView(card, LinearLayout.LayoutParams(MATCH_PARENT, dp(this, cardDp)))
 
-        displayName = PhoneUi.text(this, 14f, PhoneUi.VIOLET, bold = true).apply {
-            gravity = Gravity.CENTER
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-        }
-        col.addView(displayName, LinearLayout.LayoutParams(MATCH_PARENT, dp(this, 20)))
-
-        // แป้นใหญ่ที่สุดที่จอนี้รับไหว · จอเตี้ยต้องไม่ดันปุ่มโทรตกขอบ
-        val heightDp = resources.displayMetrics.heightPixels / resources.displayMetrics.density
-        val keyDp = ((heightDp - 430f) / 4.7f).toInt().coerceIn(54, 76)
+        // แป้นใหญ่ที่สุดที่จอนี้รับไหว โดยยังเหลือที่ให้คำแนะนำสองคน · จอเตี้ยต้องไม่ดันปุ่มโทรตกขอบ
+        // ส่วนที่ไม่ใช่แป้น (dp): หัว ~84 · กรอบเบอร์ 76 · ปุ่มโทร 64 · แถบล่าง 70 · ช่องไฟ ~56
+        val gapDp = if (compact) 9 else 12
+        val others = if (compact) 300f else 350f
+        val reserve = if (compact) 40f else 116f
+        val keyDp = ((usableDp - others - reserve - 3 * gapDp) / 4f).toInt().coerceIn(54, 80)
         val pad = PhoneUi.keypad(
-            this, dark = false, keyDp = keyDp, gapDp = 11,
+            this, dark = false, keyDp = keyDp, gapDp = gapDp,
             onDown = { k, v ->
                 feedback.press(v, k)
                 digits.append(k)
@@ -415,13 +573,20 @@ class DialerActivity : Activity() {
             onUp = { },
             onLong = { k -> longKey(k) },
         )
-        col.addView(pad, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).also { it.topMargin = dp(this, 10) })
+        col.addView(pad, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).also {
+            it.topMargin = dp(this, if (compact) 10 else 16)
+        })
 
+        // เว้นขอบในแถว ให้เงาเขียวของปุ่มโทรไม่โดนตัดที่ขอบจอ (0.1.53 เงาขาดเป็นเส้นตรง)
         callRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
+            setPadding(dp(this@DialerActivity, 8), 0, dp(this@DialerActivity, 8), 0)
+            clipChildren = false
         }
-        col.addView(callRow, LinearLayout.LayoutParams(MATCH_PARENT, dp(this, 76)).also { it.topMargin = dp(this, 14) })
+        col.addView(callRow, LinearLayout.LayoutParams(MATCH_PARENT, dp(this, 64)).also {
+            it.topMargin = dp(this, if (compact) 8 else 14)
+        })
         return col
     }
 
@@ -452,16 +617,26 @@ class DialerActivity : Activity() {
 
     private fun renderDigits() {
         if (digits.isEmpty()) {
+            // คำชวนกดตัวเล็กและจาง · เดิมตัวโตเท่าเบอร์ สีเทาก้อนใหญ่กลางจอ
+            display.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE)
+            display.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (compact) 17f else 19f)
+            display.typeface = PhoneUi.weight(500)
+            display.letterSpacing = 0f
             display.text = getString(R.string.dial_hint)
-            display.setTextColor(PhoneUi.INK22)
+            display.setTextColor(0x7323204A)
             backspace.visibility = View.INVISIBLE
         } else {
             val raw = digits.toString()
+            display.typeface = PhoneUi.weight(700)
+            display.letterSpacing = .02f
+            display.setAutoSizeTextTypeUniformWithConfiguration(16, if (compact) 28 else 34, 1, TypedValue.COMPLEX_UNIT_SP)
             display.text = if (raw.all { it.isDigit() || it == '+' }) PhoneUi.formatNumber(raw, iso) else raw
             display.setTextColor(PhoneUi.INK)
             backspace.visibility = View.VISIBLE
         }
-        displayName.text = nameFor(digits.toString()).orEmpty()
+        val name = nameFor(digits.toString())
+        displayName.text = name.orEmpty()
+        displayName.visibility = if (name == null) View.GONE else View.VISIBLE
         renderSuggestions()
     }
 
@@ -496,16 +671,20 @@ class DialerActivity : Activity() {
                 if (picked.size >= 3) break
             }
         }
-        for ((name, number, photo) in picked) suggestions.addView(suggestion(name, number, photo))
+        // ตัวที่ใช่ที่สุดอยู่ล่างสุด ชิดกรอบเบอร์ · ที่ไม่พอจะถูกซ่อนจากบนลงล่าง
+        for ((i, p) in picked.withIndex()) suggestions.addView(suggestion(p.first, p.second, p.third, best = i == 0), 0)
     }
 
-    private fun suggestion(name: String, number: String, photo: String?): View {
+    /** คนที่น่าจะใช่ · แตะแถว = ใส่เบอร์ในแป้น · แตะหูโทรศัพท์ = โทรเลย */
+    private fun suggestion(name: String, number: String, photo: String?, best: Boolean): View {
+        val r = dp(this, 26).toFloat()
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(this@DialerActivity, 10), dp(this@DialerActivity, 8), dp(this@DialerActivity, 12), dp(this@DialerActivity, 8))
+            setPadding(dp(this@DialerActivity, 7), dp(this@DialerActivity, 6), dp(this@DialerActivity, 8), dp(this@DialerActivity, 6))
             background = PhoneUi.ripple(
-                PhoneUi.rounded(0x99FFFFFF.toInt(), dp(this@DialerActivity, 18).toFloat(), dp(this@DialerActivity, 1), PhoneUi.GLASS_BORDER),
+                if (best) PhoneUi.rounded(0xE6F3EFFF.toInt(), r, dp(this@DialerActivity, 1.5f), 0x8C7C6CFF.toInt())
+                else PhoneUi.rounded(0xB3FFFFFF.toInt(), r, dp(this@DialerActivity, 1), PhoneUi.GLASS_BORDER),
                 0x267C6CFF, null
             )
             isClickable = true
@@ -518,28 +697,49 @@ class DialerActivity : Activity() {
         val avatar = PhoneUi.avatar(this, name, number, cachedPhoto(photo), 36)
         row.addView(avatar, LinearLayout.LayoutParams(dp(this, 36), dp(this, 36)))
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        texts.addView(PhoneUi.text(this, 14f, PhoneUi.INK, bold = true).apply {
+        texts.addView(PhoneUi.text(this, 15f, PhoneUi.INK).apply {
             text = name
+            typeface = PhoneUi.weight(700)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         })
-        texts.addView(PhoneUi.text(this, 12f, PhoneUi.INK55).apply {
+        texts.addView(PhoneUi.text(this, 12.5f, PhoneUi.INK55).apply {
             text = PhoneUi.formatNumber(number, iso)
-            setPadding(0, dp(this@DialerActivity, 3), 0, 0)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(0, dp(this@DialerActivity, 2), 0, 0)
         })
-        row.addView(texts, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).also { it.leftMargin = dp(this, 10) })
+        row.addView(texts, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).also {
+            it.leftMargin = dp(this, 11)
+            it.rightMargin = dp(this, 8)
+        })
+        val call = FrameLayout(this).apply {
+            background = PhoneUi.ripple(PhoneUi.oval(PhoneUi.LAVENDER), 0x337C6CFF, PhoneUi.oval(Color.WHITE))
+            addView(PhoneUi.icon(this@DialerActivity, R.drawable.ic_ph_call, PhoneUi.VIOLET, 18))
+            contentDescription = getString(R.string.dial_call_who, name)
+            isClickable = true
+            setOnClickListener { place(number, null) }
+        }
+        row.addView(call, LinearLayout.LayoutParams(dp(this, 36), dp(this, 36)))
         return FrameLayout(this).apply {
             setPadding(0, dp(this@DialerActivity, 3), 0, dp(this@DialerActivity, 3))
             addView(row)
         }
     }
 
-    /** ปุ่มโทร · เครื่องสองซิมมีปุ่มต่อซิม เจ้าของเลือกเบอร์ที่จะโทรออกได้ตั้งแต่ตรงนี้ */
+    /**
+     * ปุ่มโทร · เครื่องสองซิมมีปุ่มต่อซิม เจ้าของเลือกเบอร์ที่จะโทรออกได้ตั้งแต่ตรงนี้
+     *
+     * หัวปุ่มบอกช่อง ("ซิม 1") บรรทัดสองบอกค่าย ("DTAC") ไม่พูดช่องซ้ำ · ปุ่มเตี้ยกว่าแถว
+     * เหลือที่ให้เงาเขียว (0.1.54 ใต้ "ซิม 1" เขียน "SIM 1 DTAC" ซ้ำ และเงาขาดเป็นเส้นตรงที่ขอบจอ)
+     */
     private fun renderCallRow() {
         callRow.removeAllViews()
         val sims = simAccounts()
         if (sims.size < 2) {
-            val call = PhoneUi.bigRound(this, R.drawable.ic_ph_call, intArrayOf(PhoneUi.GREEN, PhoneUi.GREEN_DEEP), 70, 30, getString(R.string.dial_call))
+            val call = PhoneUi.bigRound(this, R.drawable.ic_ph_call, intArrayOf(PhoneUi.GREEN, PhoneUi.GREEN_DEEP), 58, 26, getString(R.string.dial_call))
+            call.elevation = dp(this, 4).toFloat()
+            PhoneUi.tintShadow(call, PhoneUi.GREEN_DEEP)
             call.setOnClickListener { onCallTap(null) }
             callRow.addView(call)
             return
@@ -549,32 +749,43 @@ class DialerActivity : Activity() {
             val pill = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                setPadding(dp(this@DialerActivity, 14), 0, dp(this@DialerActivity, 18), 0)
+                setPadding(dp(this@DialerActivity, 8), 0, dp(this@DialerActivity, 14), 0)
                 background = PhoneUi.ripple(
-                    PhoneUi.roundedGradient(intArrayOf(PhoneUi.GREEN, PhoneUi.GREEN_DEEP), dp(this@DialerActivity, 32).toFloat()),
+                    PhoneUi.roundedGradient(intArrayOf(PhoneUi.GREEN, PhoneUi.GREEN_DEEP), dp(this@DialerActivity, 27).toFloat()),
                     0x55FFFFFF, null
                 )
-                elevation = dp(this@DialerActivity, 5).toFloat()
+                elevation = dp(this@DialerActivity, 4).toFloat()
+                PhoneUi.tintShadow(this, PhoneUi.GREEN_DEEP)
                 isClickable = true
+                isFocusable = true
                 contentDescription = getString(R.string.dial_call_sim, slot)
                 setOnClickListener { onCallTap(s.first) }
                 PhoneUi.pressScale(this)
             }
-            pill.addView(PhoneUi.icon(this, R.drawable.ic_ph_call, Color.WHITE, 24))
+            // หูโทรศัพท์ในวงขาวจาง · เป็นจุดนำสายตาแบบเดียวกับปุ่มโทรกลม
+            pill.addView(FrameLayout(this).apply {
+                background = PhoneUi.oval(0x33FFFFFF)
+                addView(PhoneUi.icon(this@DialerActivity, R.drawable.ic_ph_call, Color.WHITE, 20))
+            }, LinearLayout.LayoutParams(dp(this, 38), dp(this, 38)))
             val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            texts.addView(PhoneUi.text(this, 15f, Color.WHITE, bold = true).apply {
+            texts.addView(PhoneUi.text(this, 16f, Color.WHITE).apply {
                 text = getString(R.string.dial_sim, slot)
+                typeface = PhoneUi.weight(700)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
             })
-            s.second?.label?.let { label ->
-                texts.addView(PhoneUi.text(this, 11f, 0xD9FFFFFF.toInt()).apply {
-                    text = label
+            s.second?.carrier(this)?.let { carrier ->
+                texts.addView(PhoneUi.text(this, 12f, 0xE6FFFFFF.toInt()).apply {
+                    text = carrier
+                    typeface = PhoneUi.weight(500)
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
-                    setPadding(0, dp(this@DialerActivity, 2), 0, 0)
+                    setPadding(0, dp(this@DialerActivity, 1), 0, 0)
                 })
             }
+            // WRAP_CONTENT ในแถวที่ไม่มี weight = วัดได้ไม่เกินที่เหลือในปุ่ม · ชื่อค่ายยาวขึ้น … ไม่ล้นปุ่ม
             pill.addView(texts, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).also { it.leftMargin = dp(this, 10) })
-            callRow.addView(pill, LinearLayout.LayoutParams(0, dp(this, 64), 1f).also {
+            callRow.addView(pill, LinearLayout.LayoutParams(0, dp(this, 54), 1f).also {
                 if (i > 0) it.leftMargin = dp(this, 12)
             })
         }
@@ -1264,6 +1475,9 @@ class DialerActivity : Activity() {
         private const val PAGE_KEYPAD = 0
         private const val PAGE_CONTACTS = 2
         private const val MAX_CONTACTS = 5000
+
+        /** ไอคอนกับป้ายแท็บที่ไม่ได้เลือก · เข้มกว่า INK55 พออ่านป้ายตัวเล็กบนกระจกออก */
+        private const val TAB_IDLE = 0xA623204A.toInt()
 
         /** อักขระที่โทรได้นอกจากตัวเลข: + ต่างประเทศ · * # รหัส · , ; หยุดรอกดต่อ */
         private const val DIAL_CHARS = "+*#,;"
