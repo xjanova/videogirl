@@ -99,6 +99,9 @@ class CallSession extends ChangeNotifier {
   }
 
   final CallWatch _watch;
+
+  /// ตัวเฝ้าสายตัวเดียวกับที่สายนี้ฟัง · หน้าแชทใช้ปิดไมค์คุยต่อเนื่องตอนสายเข้า (ยังไม่รับ)
+  CallWatch get watch => _watch;
   final MindState _state;
   final MethodChannel _ch;
   final MindPermissions _perms;

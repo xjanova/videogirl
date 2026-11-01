@@ -39,8 +39,10 @@ import '../ai/openai_config.dart';
 import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
 import '../ai/proxy_account.dart';
+import '../ai/realtime_chat.dart';
 import '../ai/web_tools.dart';
 import '../phone/call_tags.dart';
+import '../phone/call_target.dart';
 import '../phone/outgoing_call.dart';
 import '../phone/phone_lookup.dart';
 import '../phone/call_knowledge.dart';
@@ -151,7 +153,8 @@ class MindState extends ChangeNotifier {
   // เจ้าของ: "ตอนนี้เธอไม่เห็นสมุดโทรศัพท์ ไม่เห็นสายโทรเข้าออกล่าสุด หรือ sms ต้องทำให้เธอรับรู้ได้"
 
   PhoneLookup? _lazyPhoneLookup;
-  PhoneLookup get phoneLookup => _lazyPhoneLookup ??= PhoneLookup(askPermission: _askPhonePermission);
+  PhoneLookup get phoneLookup =>
+      _lazyPhoneLookup ??= PhoneLookup(askPermission: _askPhonePermission, targets: callTargets);
 
   @visibleForTesting
   set debugPhoneLookup(PhoneLookup l) => _lazyPhoneLookup = l;
@@ -228,35 +231,180 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
-  /// เธอเขียน `[[โทร: … | …]]` → หาเบอร์ (ชื่อ → สมุดโทรศัพท์) → ขึ้นกล่องยืนยัน
-  Future<void> _proposeCall(String target, String task) async {
-    // ให้คำตอบของเธอขึ้นจอก่อน แล้วค่อยกล่อง/ข้อความเรื่องโทร · ไม่งั้นลำดับกลับหัว
-    await Future<void>.delayed(Duration.zero);
-    String number;
-    String? name;
-    if (OutgoingRules.looksLikeNumber(target)) {
-      number = target.trim();
+  // ── หาว่าหมายถึงใคร ── (lib/phone/call_target.dart)
+  //
+  // เจ้าของ: "สั่งให้เธอโทรออกหาลูกค้าชื่อบัว เธอบอกไม่มี แทนที่จะค้นรายชื่อที่ใกล้เคียงมาและถามฉันก่อน
+  // ว่าคนไหน หรือเบอร์โทรเข้ามาล่าสุดที่ไม่ได้บันทึกไว้"
+
+  CallTargetResolver? _lazyCallTargets;
+  CallTargetResolver get callTargets =>
+      _lazyCallTargets ??= CallTargetResolver(clock: _clock, notes: () => _callNotes?.notes ?? const []);
+
+  @visibleForTesting
+  set debugCallTargets(CallTargetResolver r) => _lazyCallTargets = r;
+
+  /// คำถาม "หมายถึงคนไหน" ที่รอเจ้าของตอบ (พิมพ์ พูด หรือแตะในกล่อง) · null = ไม่มี
+  CallChoice? _callChoice;
+  CallChoice? get callChoice => _callChoice;
+
+  /// โหมดคุยต่อเนื่องด้วยเสียงเปิดอยู่ (ไมค์ในแชท · lib/ai/voice_chat.dart) · กล่องยืนยันบอกว่าพูดตอบได้
+  bool _handsFree = false;
+  bool get handsFree => _handsFree;
+
+  void setHandsFree(bool v) {
+    if (_handsFree == v) return;
+    _handsFree = v;
+    // แผงแชท (แถบสถานะ ปุ่มปิดไมค์) ต้องไม่พับหนีกลางบทสนทนา · ปิดโหมดแล้วค่อยนับถอยหลังตามปกติ
+    if (v) {
+      _chatOpen = true;
+      _chatTimer?.cancel();
     } else {
-      List<Object?>? found;
-      try {
-        found = await kSystemChannel.invokeMethod<List<Object?>>('findContacts', {'name': target});
-      } on Object {
-        found = null;
-      }
-      final first = found?.whereType<Map>().firstOrNull;
-      if (first == null || first['number'] is! String) {
-        _say(found == null ? s.callOutNeedContacts(target) : s.callOutNoContact(target));
-        return;
-      }
-      number = first['number'] as String;
-      name = '${first['name'] ?? target}';
+      _startChatCountdown();
     }
-    if (OutgoingRules.blocked(number)) {
-      _say(s.callOutBlocked);
-      return;
-    }
-    _pendingCall = PendingCall(number: number, name: name, task: task, id: ++_callSeq);
     _notify();
+  }
+
+  /// เธอพูดออกเสียงไหม · ปิดเสียงไว้แต่เปิดคุยต่อเนื่อง = พูด (เจ้าของเลือกคุยด้วยเสียงเอง)
+  bool get _voiceOut => _voiceEnabled || _handsFree;
+
+  /// พูดข้อความที่ขึ้นแชทเองโดยไม่ผ่านสมอง (ผลโทร ผลงานในเครื่อง) · คุยต่อเนื่องแบบทีละตาใช้
+  Future<void> speakNotice(String text) => _speakIfEnabled(text);
+
+  /// เธอเขียน `[[โทร: … | …]]` → หาว่าใคร → ชัด = กล่องยืนยัน · ไม่ชัด = ถามเจ้าของ
+  ///
+  /// คืนข้อความที่ใช้**แทน**คำตอบของเธอ (ถามว่าคนไหน / หาไม่เจอ / เบอร์ฉุกเฉิน) · null = ใช้คำตอบเดิม
+  /// ("ได้ค่ะ จะโทรให้") แล้วกล่องยืนยันขึ้นตามมา
+  Future<String?> _resolveCall(String target, String task) async {
+    // ถามไปแล้วว่าคนไหน แล้วเธอเขียนแท็กด้วยชื่อ/เลขท้ายจากรายการ = คนในรายการ ·
+    // ไม่ใช่ค้นใหม่ และไม่ใช่โทรเลขสี่ตัวนั้นตรง ๆ
+    final open = _callChoice;
+    if (open != null && !open.expired(_clock())) {
+      final i = CallReply.choice(target, open.choices);
+      if (i != null && i >= 0) return _pickChoice(open, i, task: task) ? null : s.callOutBlocked;
+    }
+    if (OutgoingRules.looksLikeNumber(target)) {
+      final number = target.trim();
+      if (OutgoingRules.blocked(number)) return s.callOutBlocked;
+      _offerCall(number: number, task: task);
+      return null;
+    }
+    final r = await callTargets.resolve(target);
+    if (_disposed) return null;
+    final pick = r.pick;
+    if (pick != null) {
+      if (OutgoingRules.blocked(pick.number)) return s.callOutBlocked;
+      _offerCall(number: pick.number, name: pick.name, task: task);
+      // ชื่อในสมุดไม่ตรงกับที่สั่ง ("บัว" → "บัวบาน") · บอกว่าเลือกใคร เจ้าของจะได้รู้ก่อนกด
+      return CallNameMatch.score(target, pick.who) >= .97
+          ? null
+          : s.callOutPicked(CallNameMatch.display(pick.who), pick.tail);
+    }
+    final core = CallNameMatch.core(target);
+    if (r.choices.isNotEmpty) {
+      _callChoice = CallChoice(target: core, task: task, choices: r.choices, id: ++_callSeq, at: _clock());
+      _notify();
+      return _choiceText(core, r.choices);
+    }
+    return r.noContacts ? s.callOutNeedContacts(core) : s.callOutNoContact(core);
+  }
+
+  /// รายการให้เจ้าของเลือก · เธอพูดออกเสียงด้วย จึงสั้น: ชื่อ + เลขท้าย / เบอร์ + เมื่อไหร่
+  String _choiceText(String target, List<CallCandidate> choices) {
+    final now = _clock();
+    final lines = [
+      for (var i = 0; i < choices.length; i++)
+        choices[i].unsaved
+            ? s.callChoiceUnsaved(
+                i + 1,
+                choices[i].number,
+                s.callChoiceWhen(choices[i].at ?? now, now),
+                missed: choices[i].missed,
+                calls: choices[i].calls,
+                said: choices[i].saidName ? CallNameMatch.display(target) : null,
+              )
+            : s.callChoiceContact(i + 1, CallNameMatch.display(choices[i].name!), choices[i].tail),
+    ];
+    final anyContact = choices.any((c) => !c.unsaved);
+    return s.callOutChoose(CallNameMatch.display(target), lines.join('\n'),
+        anyContact: anyContact, single: choices.length == 1);
+  }
+
+  /// เจ้าของเลือกคนที่ [index] · false = เบอร์ฉุกเฉิน/เก็บเงินพิเศษ ไม่ขึ้นกล่อง
+  bool _pickChoice(CallChoice choice, int index, {String? task}) {
+    final c = choice.choices[index];
+    _callChoice = null;
+    _notify();
+    if (OutgoingRules.blocked(c.number)) return false;
+    _offerCall(number: c.number, name: c.name, task: task ?? choice.task);
+    return true;
+  }
+
+  /// เจ้าของแตะเลือกในกล่อง · กล่องเก่าที่ค้างอยู่ (id ไม่ตรง) = ไม่ทำอะไร
+  void chooseCall(int id, int index) {
+    final c = _callChoice;
+    if (c == null || c.id != id || index < 0 || index >= c.choices.length) return;
+    if (!_pickChoice(c, index)) _say(s.callOutBlocked);
+  }
+
+  /// "ไม่ใช่ทั้งหมด" · [id] = ของกล่องที่กด (กล่องเก่ายกเลิกคำถามใหม่ไม่ได้)
+  void cancelCallChoice({int? id}) {
+    final c = _callChoice;
+    if (c == null || (id != null && c.id != id)) return;
+    _callChoice = null;
+    _say(s.callChoiceCancelled);
+  }
+
+  /// ตั้งกล่องยืนยัน · รอให้คำตอบของเธอขึ้นจอก่อน (ตาถัดไปของ event loop) ไม่งั้นลำดับกลับหัว
+  void _offerCall({required String number, String? name, required String task}) {
+    final p = PendingCall(number: number, name: name, task: task, id: ++_callSeq);
+    _callChoice = null;
+    unawaited(Future<void>(() {
+      if (_disposed) return;
+      _pendingCall = p;
+      _notify();
+    }));
+  }
+
+  /// คำตอบเรื่องโทรที่ตัดสินได้ในเครื่อง ไม่ต้องถามสมอง · null = ส่งให้สมองตามปกติ ·
+  /// '' = ทำแล้ว (ข้อความ "กำลังโทร" ขึ้นเองแล้ว) ไม่ต้องตอบซ้ำ
+  ///
+  /// เจ้าของ: "แอพนี้ใช้งานแม้ในขับรถได้" · ตอบด้วยเสียงว่า "คนที่สอง" / "ลงท้าย 4521" / "โทรเลย" /
+  /// "ยกเลิก" ต้องได้ผลทันที ไม่ต้องแตะจอ
+  Future<String?> _localReply(String text) async {
+    final choice = _callChoice;
+    if (choice != null) {
+      if (choice.expired(_clock())) {
+        _callChoice = null;
+      } else {
+        final i = CallReply.choice(text, choice.choices);
+        if (i == CallReply.cancel) {
+          _callChoice = null;
+          _notify();
+          return s.callChoiceCancelled;
+        }
+        if (i != null) {
+          final c = choice.choices[i];
+          return _pickChoice(choice, i)
+              ? s.callOutPicked(CallNameMatch.display(c.who), c.tail)
+              : s.callOutBlocked;
+        }
+      }
+    }
+    final p = _pendingCall;
+    if (p != null) {
+      // 🔴 ทั้งประโยคต้องเป็นคำตอบ ("โทรเลย" "ใช่" "ยกเลิก") · "ได้ยินไหม" ไม่ใช่การยืนยัน (ดู CallReply.confirm)
+      final yes = CallReply.confirm(text);
+      // คุยต่อเนื่องด้วยเสียง = ต้องมีคำว่า "โทร" ชัด ๆ (ดู CallReply.saysCall) · "ใช่" เฉย ๆ ให้สมองตอบตามบริบท
+      if (yes == true && (!_handsFree || CallReply.saysCall(text))) {
+        await confirmPendingCall();
+        return '';
+      }
+      if (yes == false) {
+        cancelPendingCall(id: p.id);
+        return s.callChoiceCancelled;
+      }
+    }
+    return null;
   }
 
   /// ข้อความจากเธอที่ไม่ได้มาจากสมอง (บอกผลการโทร) · ขึ้นจอ ลงบทสนทนา
@@ -264,10 +412,17 @@ class MindState extends ChangeNotifier {
     if (_disposed) return;
     _push(ChatMessage.her(text));
     _notify();
+    onHerNotice?.call(text);
   }
 
-  void cancelPendingCall() {
-    if (_pendingCall == null) return;
+  /// ข้อความจากเธอที่ไม่ได้มาจากสมอง (ผลงานในเครื่อง ผลการโทร) · ตอนคุยสดด้วยเสียง ตัวคุมเอาไปให้เธอพูด
+  /// (ไม่งั้นคนขับรถไม่รู้ว่างานเสร็จแล้ว) · null = ไม่มีใครฟัง
+  void Function(String text)? onHerNotice;
+
+  /// [id] = ของกล่องที่ปิด · กล่องเก่าที่ปิดตามหลัง (เจ้าของตอบด้วยเสียงไปแล้ว) ต้องไม่ยกเลิกคำขอใหม่
+  void cancelPendingCall({int? id}) {
+    final p = _pendingCall;
+    if (p == null || (id != null && p.id != id)) return;
     _pendingCall = null;
     _notify();
   }
@@ -924,6 +1079,7 @@ class MindState extends ChangeNotifier {
     _callerName = p.getString('callerName') ?? '';
     _callGreetingText = p.getString('callGreeting') ?? '';
     _realtimeCalls = p.getBool('realtimeCalls') ?? true;
+    _voiceChatLive = p.getBool('voiceChatLive') ?? true;
     _liveCalls = p.getBool('liveCalls') ?? false;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
 
@@ -2457,6 +2613,153 @@ class MindState extends ChangeNotifier {
     );
   }
 
+  // ═══ คุยต่อเนื่องด้วยเสียงในแชท ═══════════════════════════
+  //
+  // เจ้าของ: "การกดไมค์พูดกับเธอควรพูดโต้ตอบได้เรียลไทม์ เหมือนที่เราทำกับการรับสาย และต้องเข้าใจว่าบริบทไหน
+  // ที่เราหยุดให้เธอปฏิบัติได้ ... เพราะเราออกแบบให้แอพนี้ใช้งานแม้ในขับรถได้" · ตัวคุมอยู่ lib/ai/voice_chat.dart ·
+  // ตรงนี้คือส่วนที่ต้องรู้จักสมอง ความจำ และเครื่องมือของแชท
+
+  /// ใช้คุยสด (Realtime) ในโหมดคุยต่อเนื่องเมื่อทำได้ · ปิด = ทีละตา (ถอดเสียง → คิด → พูดด้วยเสียงที่เลือก)
+  bool _voiceChatLive = true;
+  bool get voiceChatLive => _voiceChatLive;
+
+  void setVoiceChatLive(bool v) {
+    if (_voiceChatLive == v) return;
+    _voiceChatLive = v;
+    _save('voiceChatLive', v);
+    _notify();
+  }
+
+  /// คุยสดได้ไหมตอนนี้ · OpenAI ด้วยคีย์ของเจ้าของเท่านั้น (เหมือนในสาย · ไม่ยืมคีย์ข้ามสมอง)
+  bool get voiceChatLiveReady => _voiceChatLive && _brain == BrainProvider.openai && hasOwnKey;
+
+  /// เสียงของเธอตอนคุยสด · เสียงแชทเป็นของ OpenAI และ Realtime รู้จัก = ใช้ · ไม่งั้นใช้เสียงที่ตั้งไว้รับสาย
+  String get _voiceChatVoice {
+    final chat = voiceFor(VoiceChannel.chat);
+    if (chat.engine == TtsEngine.openai && RealtimeCall.voices.contains(chat.voice)) return chat.voice;
+    return voiceFor(VoiceChannel.answer).voice;
+  }
+
+  RealtimeChat openVoiceChat({required ChatToolRunner tools}) => RealtimeChat(
+        apiKey: effectiveOpenAiKey,
+        instructions: voiceChatPrompt(),
+        tools: chatVoiceTools(web: _webSearch && _webSearcher() != null, phone: _phoneControl),
+        runChatTool: tools,
+        voice: _voiceChatVoice,
+        language: _sttLang,
+        connect: debugRealtimeConnect,
+      );
+
+  /// บุคลิกในแชทเดิมทั้งหมด (ความจำ ตาราง โปรไฟล์ สายวันนี้) ไม่มีแท็ก + วิธีคุยด้วยเสียงและเครื่องมือ
+  String voiceChatPrompt() {
+    final linked = _brainxSearch && brainx.connected;
+    final system = MindPersona.system(
+      lang: _lang,
+      mode: mode,
+      flirt: effectiveFlirt,
+      ownerProfile: _ownerProfile,
+      boundaries: _boundaries,
+      soul: _soul,
+      memories: memory.promptBlock(limit: coreMemories),
+      schedule: _calendar?.promptBlock() ?? '',
+      calls: _callsBlock,
+      now: _clock(),
+      pcProfile: linked ? brainx.ownerProfile : '',
+    );
+    final block = MindPersona.voiceChatBlock(
+      _lang,
+      web: _webSearch && _webSearcher() != null,
+      phone: _phoneControl,
+      mailApps: _mailApps == null ? null : [for (final a in _mailApps!) a.name],
+    );
+    return '$system\n$block';
+  }
+
+  /// บทล่าสุดในแชท ให้เซสชันเสียงรู้ว่าคุยอะไรกันอยู่ · ว่าง = ยังไม่ได้คุย
+  String voiceChatRecap({int turns = 8}) {
+    final recent = _context.length > turns ? _context.sublist(_context.length - turns) : _context;
+    if (recent.isEmpty) return '';
+    final lines = [
+      for (final m in recent)
+        '${m.fromHer ? 'You' : 'Owner'}: ${m.text.replaceAll(RegExp(r'\s+'), ' ').trim()}',
+    ];
+    return 'The chat so far, just before the owner switched to voice (for context; do not repeat it):\n'
+        '${lines.join('\n')}';
+  }
+
+  /// บทพูดของคุยสดลงแชท · ความจำ ไทม์ไลน์ และสมองบนคอมเห็นเหมือนคุยด้วยการพิมพ์
+  void noteVoiceLine({required bool fromHer, required String text}) {
+    final t = text.trim();
+    if (t.isEmpty || _disposed) return;
+    // ระหว่างคุยสด แผงแชทไม่ควรพับหนีกลางบทสนทนา
+    _push(fromHer ? ChatMessage.her(t) : ChatMessage.me(t));
+    _notify();
+  }
+
+  /// เจ้าของพูดตอบกล่องยืนยันการโทรระหว่างคุยสด · true = ตัดสินแล้ว (โทร/ไม่โทร)
+  ///
+  /// 🔴 ตัดสินจาก**คำพูดของเจ้าของเอง** ในเครื่อง ไม่ใช่จากที่โมเดลเข้าใจ · โมเดลไม่มีเครื่องมือกดยืนยันเอง
+  Future<bool> confirmCallByVoice(String text) async {
+    final p = _pendingCall;
+    if (p == null) return false;
+    final yes = CallReply.confirm(text);
+    if (yes == null) return false;
+    // ด้วยเสียง "ใช่" "โอเค" อาจตอบคำถามอื่นของเธอ · กดโทรเมื่อพูดว่าโทรชัด ๆ เท่านั้น
+    if (yes && !CallReply.saysCall(text)) return false;
+    if (yes) {
+      await confirmPendingCall();
+    } else {
+      cancelPendingCall(id: p.id);
+    }
+    return true;
+  }
+
+  /// เครื่องมือที่เธอเรียกระหว่างคุยสด · คืนผลเป็นข้อความให้เธอพูดต่อ (อังกฤษ · เธอแปลเองตอนพูด)
+  Future<String> runVoiceTool(String name, Map<String, Object?> args) async {
+    String arg(String k) => '${args[k] ?? ''}'.trim();
+    switch (name) {
+      case 'call_someone':
+        final who = arg('who');
+        final task = arg('task');
+        if (who.isEmpty) return 'Ask the owner who to call.';
+        final said = await _resolveCall(who, task.isEmpty ? who : task);
+        if (said == null) {
+          return 'A confirmation card is on the screen now. Tell the owner in one short sentence who you will call '
+              '(name and last four digits) and that they can say "call now" or "cancel". Do not say the call has '
+              'started.';
+        }
+        // ข้อความถาม/หาไม่เจอขึ้นแชทด้วย · เจ้าของที่มองจอได้แตะเลือกได้ · ไม่ผ่าน [_say]
+        // (onHerNotice จะสั่งให้เธอพูดซ้ำทั้งที่ผลนี้กลับไปให้เธอพูดอยู่แล้ว)
+        if (!_disposed) {
+          _push(ChatMessage.her(said));
+          _notify();
+        }
+        return 'Not dialed. What the app found (tell the owner briefly in your own spoken words; if it is a list, '
+            'read the names with the last four digits and ask which one, then call call_someone again with that '
+            'exact name or number):\n$said';
+      case 'phone_lookup':
+        final kind = switch (arg('kind')) {
+          'contacts' => PhoneLookupKind.contacts,
+          'sms' => PhoneLookupKind.sms,
+          _ => PhoneLookupKind.calls,
+        };
+        var q = arg('query');
+        if (q.length > PhoneLookup.argChars) q = q.substring(0, PhoneLookup.argChars);
+        return phoneLookup.run(PhoneLookupCall(kind, q), last: true);
+      case 'web_search':
+        final web = _webSearch ? _webSearcher() : null;
+        if (web == null) return 'Web search is not available right now. Say so briefly.';
+        return webTools.run(ToolCall(WebTool.search, arg('query')), last: true, web: web);
+      case 'phone_task':
+        if (!_phoneControl) return 'You are not allowed to use the phone right now (the owner turned it off).';
+        final goal = arg('goal');
+        if (goal.isEmpty) return 'Ask the owner what to do.';
+        unawaited(_phoneTaskFromChat(goal));
+        return 'Started. Tell the owner in one short sentence that you are doing it now; you will tell them the result.';
+    }
+    return 'Unknown tool.';
+  }
+
   /// ถอดเสียงปลายสายเป็นข้อความ
   ///
   /// อยู่ที่นี่เพราะ client กับคีย์อยู่ที่นี่ · คืนสตริงว่างเมื่อไม่ได้ยินอะไร
@@ -2757,7 +3060,8 @@ class MindState extends ChangeNotifier {
       // ตอบจากสมองจริง หรือเป็นประโยคบอกว่าคิดไม่ได้
       var failed = true;
       try {
-        reply = await _think();
+        // ตอบเรื่องโทรที่ค้างอยู่ ("คนที่สอง" "โทรเลย") ตัดสินในเครื่องก่อน · ไม่ใช่ = ถามสมอง
+        reply = await _localReply(text) ?? await _think();
         failed = false;
       } on OpenAiFailure catch (e) {
         _lastError = e.message;
@@ -2787,6 +3091,8 @@ class MindState extends ChangeNotifier {
       // และส่งกลับเข้าโมเดลในตาถัดไป · คีย์ผิดห้าครั้ง = ห้าบรรทัด
       // "ขอโทษค่ะ คิดไม่ได้" ที่โมเดลอ่านว่าเป็นสิ่งที่ตัวเองเคยพูด
       _partial = '';
+      // '' = เรื่องโทรที่ทำไปแล้ว (ข้อความ "กำลังโทร" ขึ้นเองแล้ว) · ไม่มีอะไรต้องตอบหรือพูดซ้ำ
+      if (reply.isEmpty) return;
       _push(ChatMessage.her(reply), ephemeral: failed);
       _sending = false;
       _notify();
@@ -2959,7 +3265,7 @@ class MindState extends ChangeNotifier {
   /// ระหว่างที่คนกำลังพิมพ์ค้างอยู่ ซึ่งเป็นสิ่งที่แย่ที่สุดที่จะเกิดขึ้นได้
   void _startChatCountdown() {
     _chatTimer?.cancel();
-    if (_speaking || _typing || !_chatOpen) return;
+    if (_speaking || _typing || !_chatOpen || _handsFree) return;
     _chatTimer = Timer(const Duration(seconds: chatIdleSeconds), () {
       _chatOpen = false;
       _notify();
@@ -3020,7 +3326,8 @@ class MindState extends ChangeNotifier {
   Future<void> _speakIfEnabled(String text,
       {VoiceChannel channel = VoiceChannel.chat}) async {
     final out = speaker;
-    if (!_voiceEnabled) {
+    // คุยต่อเนื่องด้วยเสียง (มือว่าง ขับรถ) = เจ้าของเปิดไมค์คุยเอง ต้องได้ยินคำตอบแม้ปิดเสียงไว้
+    if (!_voiceOut) {
       debugPrint('เสียง: ปิดอยู่ในหน้าตั้งค่า');
       return;
     }
@@ -3039,7 +3346,7 @@ class MindState extends ChangeNotifier {
 
       // 🔴 ระหว่างสังเคราะห์ (ครึ่งวิถึงหลายวิ) เจ้าของอาจกดปิดเสียง หรือพิมพ์
       // แทรกไปแล้ว · ไม่เช็กซ้ำตรงนี้ = เธอพูดขึ้นมาหลังถูกสั่งให้เงียบ
-      if (seq != _speechSeq || !_voiceEnabled) return;
+      if (seq != _speechSeq || !_voiceOut) return;
 
       debugPrint('เสียง: ได้ ${utterance.bytes.length} ไบต์ '
           '(${utterance.mime}) ส่งเข้าเวที');
@@ -3196,12 +3503,19 @@ class MindState extends ChangeNotifier {
     // 🔴 แท็กสั่งงาน (โทรออก / ทำในเครื่อง) อ่านเสมอ แม้ปิดค้นเว็บ · เดิม `if (!tools) return answer;`
     // อยู่ก่อนตรงนี้ ปิดสวิตช์ค้นเว็บแล้วแท็ก [[โทร: …]] ที่ยังสอนอยู่หลุดขึ้นจอและถูกอ่านออกเสียง
     //
-    // สั่งให้โทรออก → ขอเจ้าของยืนยันก่อน (ไม่โทรเอง) · แท็กไม่ขึ้นจอ ไม่อ่านออกเสียง
+    // สั่งให้โทรออก → หาว่าใคร → ขอเจ้าของยืนยันก่อน (ไม่โทรเอง) · แท็กไม่ขึ้นจอ ไม่อ่านออกเสียง ·
+    // หาก่อนตอบ (ในเครื่อง ไม่กี่ร้อยมิลลิวินาที) · ไม่ชัด/ไม่เจอ = คำถาม "คนไหนคะ" แทน "ได้ค่ะ จะโทรให้"
     final out = CallOutTag.parse(PhoneLookup.strip(WebTools.strip(answer)));
-    if (out.target != null) unawaited(_proposeCall(out.target!, out.task!));
+    String? callSaid;
+    if (out.target != null && !_disposed) {
+      _partial = s.lookingContacts;
+      _notify();
+      callSaid = await _resolveCall(out.target!, out.task!);
+    }
     // สั่งให้ทำในเครื่อง → เธอทำเอง ถามเจ้าของเฉพาะขั้นที่ย้อนกลับไม่ได้ (PhonePolicy)
     final hand = HandsTag.parse(out.text);
     if (hand.goal != null && _phoneControl) unawaited(_phoneTaskFromChat(hand.goal!));
+    if (callSaid != null) return callSaid;
     // เขียนแต่แท็กมา = อย่าให้เหลือฟองเปล่า
     if (hand.text.isEmpty) {
       if (out.target != null) return s.callOutAck;

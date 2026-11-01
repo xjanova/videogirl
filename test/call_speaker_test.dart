@@ -135,7 +135,8 @@ void main() {
     });
 
     test('เจ้าของปิดลำโพงเอง = ไม่เปิดทับ', () {
-      expect(src('InCallActivity.kt'), contains('CallAudio.ownerRouted = !on'));
+      expect(src('InCallActivity.kt'),
+          contains('CallAudio.ownerRouted = route != CallAudioState.ROUTE_SPEAKER'));
       expect(src('CallAudio.kt'), contains('if (!open || ownerRouted) return'));
     });
   });

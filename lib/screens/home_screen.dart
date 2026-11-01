@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../ai/voice_chat.dart';
 import '../ai/voice_input.dart';
 import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
@@ -18,6 +19,7 @@ import 'shop_screen.dart';
 import '../theme/app_theme.dart';
 import '../i18n/enum_labels.dart';
 import '../i18n/strings.dart';
+import '../i18n/strings_ai.dart';
 import '../i18n/strings_studio.dart';
 import '../theme/tokens.dart';
 import '../widgets/call_panel.dart';
@@ -65,6 +67,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// ออกจากหน้าไปแล้วต้องหยุดอัดทันที ไม่ใช่อัดต่อไปเงียบ ๆ
   late final VoiceInput _voice;
 
+  /// แตะไมค์ = คุยต่อเนื่องด้วยเสียง (มือว่าง · ขับรถ) · กดค้าง = [_voice] พูดลงช่องพิมพ์แบบเดิม
+  late final VoiceChat _chat;
+
   @override
   void initState() {
     super.initState();
@@ -73,14 +78,16 @@ class _HomeScreenState extends State<HomeScreen>
 
     final state = context.read<MindState>();
     final perms = context.read<MindPermissions>();
+    // ขอสิทธิ์ตอนกดจริงเท่านั้น · กล่องขอสิทธิ์ที่เด้งตอนเปิดแอปโดยที่
+    // ยังไม่มีใครจะใช้ไมค์ คือกล่องที่คนกดปฏิเสธเพราะไม่รู้ว่าขอไปทำไม
+    Future<bool> ensureMic() async {
+      if (perms.of(MindPermission.mic)) return true;
+      await perms.request(MindPermission.mic);
+      return perms.of(MindPermission.mic);
+    }
+
     _voice = VoiceInput(
-      // ขอสิทธิ์ตอนกดจริงเท่านั้น · กล่องขอสิทธิ์ที่เด้งตอนเปิดแอปโดยที่
-      // ยังไม่มีใครจะใช้ไมค์ คือกล่องที่คนกดปฏิเสธเพราะไม่รู้ว่าขอไปทำไม
-      ensureMic: () async {
-        if (perms.of(MindPermission.mic)) return true;
-        await perms.request(MindPermission.mic);
-        return perms.of(MindPermission.mic);
-      },
+      ensureMic: ensureMic,
       transcribe: state.transcribeChat,
       strings: () => state.s,
       device: state.deviceSpeech,
@@ -92,6 +99,16 @@ class _HomeScreenState extends State<HomeScreen>
       // มาก · ต้องลงช่องพิมพ์ทางเดียวกับตอนกดหยุดเอง ไม่ใช่หายไปเฉย ๆ
       ..onHeard = _fillDraft;
 
+    _chat = VoiceChat(
+      state: state,
+      // ทางส่งเดียวกับการพิมพ์ · เธอหันมา ทำหน้าคิด แล้วตอบด้วยเสียง (จบเมื่อพูดจบ)
+      sendTurn: (t) => _sendText(state, t),
+      ensureMic: ensureMic,
+      lips: widget.avatar,
+      keepAwake: _keepAwake,
+      callActive: () => _call.onStage,
+    );
+
     // แผงแชทพับเองเมื่อเงียบ — แต่ต้องไม่พับตอนคนกำลังพิมพ์ค้างอยู่
     // ซึ่งเป็นสิ่งที่แย่ที่สุดที่จะเกิดขึ้นได้ · ช่องพิมพ์เป็นคนบอก state
     _focus.addListener(_reportTyping);
@@ -102,13 +119,28 @@ class _HomeScreenState extends State<HomeScreen>
     // ไม่งั้นไมค์ของแชทอัดต่อเงียบ ๆ แย่งไมค์กับสาย แล้วเอาเสียงในสาย
     // มาหย่อนลงช่องพิมพ์
     _call = context.read<CallSession>()..addListener(_onCall);
+    // สายเข้า (ยังไม่รับ) = ปิดคุยต่อเนื่องทันที · เจ้าของต้องได้ยินเสียงเรียกเข้า และไมค์ต้องว่างให้สาย
+    _watch = _call.watch..addListener(_onRing);
     WidgetsBinding.instance.addObserver(this);
   }
 
   late final CallSession _call;
+  late final CallWatch _watch;
 
   void _onCall() {
     if (_call.onStage && _voice.busy) unawaited(_voice.cancel());
+    if (_call.onStage && _chat.active) unawaited(_chat.stop());
+  }
+
+  void _onRing() {
+    if (_watch.state != CallState.idle && _chat.active) unawaited(_chat.stop());
+  }
+
+  /// จอค้างระหว่างคุยต่อเนื่อง · จอดับ = แอปลงเบื้องหลัง = ไมค์ถูกปิด (ขับรถอยู่แตะจอไม่ได้)
+  Future<void> _keepAwake(bool on) async {
+    // สตูดิโอถือจอค้างของตัวเองอยู่ · ปิดตอนนี้ = จอดับกลางอัด
+    if (!on && mounted && context.read<MindStudio>().active) return;
+    await MethodChannelStudio().keepScreenOn(on);
   }
 
   @override
@@ -116,6 +148,8 @@ class _HomeScreenState extends State<HomeScreen>
     if (s == AppLifecycleState.paused && _voice.busy) {
       unawaited(_voice.cancel());
     }
+    // ไม่มีไมค์เบื้องหลัง (ต้องมีบริการไมค์แบบ foreground) · ไมค์ที่ฟังต่อตอนแอปหายไปจากจอ = แอบฟัง
+    if (s == AppLifecycleState.paused && _chat.active) unawaited(_chat.stop());
     // จอลอย (PiP) = inactive ไม่ใช่ paused · เธอยังอยู่บนจอ ต้องวาดต่อ
     _hidden = s == AppLifecycleState.paused || s == AppLifecycleState.hidden;
     _applySleep();
@@ -136,6 +170,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (old.active != widget.active) _applySleep();
     if (old.active && !widget.active) {
       if (_voice.busy) unawaited(_voice.cancel());
+      if (_chat.active) unawaited(_chat.stop());
       if (widget.avatar.mocapPhase != MindMocapPhase.off) {
         unawaited(widget.avatar.stopMocap());
       }
@@ -167,6 +202,30 @@ class _HomeScreenState extends State<HomeScreen>
     await _voice.start();
   }
 
+  /// แตะไมค์ — เปิด/ปิดคุยต่อเนื่องด้วยเสียง · พูดแล้วหยุด เธอตอบเอง ไม่ต้องกดส่ง
+  Future<void> _toggleChat(MindState state) async {
+    _voice.clearError();
+    if (_chat.active) {
+      await _chat.stop();
+      return;
+    }
+    // กดค้างพูดลงช่องพิมพ์อยู่ = แตะคือหยุดอันนั้น (แบบเดิม) · ไม่เปิดไมค์สองตัวซ้อน
+    if (_voice.busy) {
+      await _toggleMic(state);
+      return;
+    }
+    state.clearError();
+    _focus.unfocus();
+    await _chat.start();
+  }
+
+  /// กดค้างไมค์ — พูดลงช่องพิมพ์ให้ตรวจก่อนส่ง (ทางเดิม)
+  Future<void> _dictate(MindState state) async {
+    if (_chat.active) await _chat.stop();
+    if (!mounted) return;
+    await _toggleMic(state);
+  }
+
   /// เอาสิ่งที่ได้ยินลงช่องพิมพ์
   ///
   /// ต่อท้ายของที่พิมพ์ค้างไว้ ไม่ใช่เขียนทับ — คนพิมพ์ครึ่งประโยคแล้วพูด
@@ -188,6 +247,7 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _call.removeListener(_onCall);
+    _watch.removeListener(_onRing);
     _focus.removeListener(_reportTyping);
     _draft.removeListener(_reportTyping);
     _draft.dispose();
@@ -196,6 +256,7 @@ class _HomeScreenState extends State<HomeScreen>
     _ring.dispose();
     // ไมค์ที่ยังเปิดค้างหลังออกจากหน้าจอ = เครื่องอัดเสียงในห้องต่อไปเงียบ ๆ
     _voice.dispose();
+    _chat.dispose();
     super.dispose();
   }
 
@@ -318,6 +379,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// คือไมค์ที่เจ้าของมองไม่เห็นว่ายังเปิด
   Future<void> _openStudio(MindState state) async {
     if (_voice.busy) await _voice.cancel();
+    if (_chat.active) await _chat.stop();
     if (!mounted) return;
     if (state.chatOpen) state.collapseChat();
     _focus.unfocus();
@@ -919,22 +981,33 @@ class _HomeScreenState extends State<HomeScreen>
       children: [
         // ไมค์ล้มก็ขึ้นแถบเดียวกัน — ที่เดียวที่คนมองหาว่า "ทำไมไม่ทำงาน"
         ListenableBuilder(
-          listenable: _voice,
+          listenable: Listenable.merge([_voice, _chat]),
           builder: (context, _) {
+            // คุยต่อเนื่องอยู่ = แถบสถานะ (ฟัง/คิด/พูด) ไว้บนสุด · ข้อความผิดพลาดยังขึ้นต่อท้ายได้
+            // (เปลี่ยนเป็นคุยทีละตา / ปิดไมค์เพราะเงียบนาน)
+            final chat = _chat.active ? _chatStrip(mode) : null;
+            Widget? below;
             // กำลังฟังอยู่และได้ยินอะไรแล้ว — โชว์สิ่งที่ได้ยิน**ตอนนี้**
             //
             // นี่คือสิ่งเดียวที่พิสูจน์ว่าไมค์ทำงานจริงระหว่างที่ยังพูดไม่จบ
             // วงที่เต้นบอกได้แค่ว่ามีเสียงเข้า ไม่ได้บอกว่ามันฟังออก
             if (_voice.stage == VoiceInputStage.listening &&
                 _voice.heard.isNotEmpty) {
-              return _listeningStrip(_voice.heard, mode);
+              below = _listeningStrip(_voice.heard, mode);
+            } else {
+              final why = _voice.error ?? state.lastError;
+              if (why != null) {
+                below = _errorStrip(why, () {
+                  _voice.clearError();
+                  state.clearError();
+                });
+              }
             }
-            final why = _voice.error ?? state.lastError;
-            if (why == null) return const SizedBox.shrink();
-            return _errorStrip(why, () {
-              _voice.clearError();
-              state.clearError();
-            });
+            if (chat == null && below == null) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [?chat, ?below],
+            );
           },
         ),
         _composerRow(state, mode),
@@ -980,6 +1053,70 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// แถบคุยต่อเนื่อง — ตอนนี้ฟัง/คิด/พูดอยู่ · เธอพูดอยู่ แตะแถบ = ให้หยุดแล้วฟัง · X = ปิดไมค์
+  ///
+  /// คนขับรถเหลือบมองได้แวบเดียว · ไอคอนต่างกันทุกขั้น และทั้งแถบเป็นที่แตะ ไม่ใช่ปุ่มเล็ก ๆ
+  Widget _chatStrip(MindMode mode) {
+    final t = S.of(context);
+    final phase = _chat.phase;
+    final heard = _chat.heard;
+    final (icon, text) = switch (phase) {
+      VoiceChatPhase.opening => (Icons.hourglass_top_rounded, t.voiceChatOpening),
+      VoiceChatPhase.hearing => (Icons.graphic_eq_rounded, heard.isNotEmpty ? heard : t.voiceChatHearing),
+      VoiceChatPhase.thinking => (Icons.more_horiz_rounded, t.voiceChatThinking),
+      VoiceChatPhase.speaking => (Icons.record_voice_over_rounded, t.voiceChatSpeaking),
+      _ => (Icons.mic_rounded, heard.isNotEmpty ? heard : t.voiceChatListening),
+    };
+    final engine = switch (_chat.engine) {
+      VoiceChatEngine.live => t.voiceChatLive,
+      null => '',
+      _ => t.voiceChatTurns,
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: GestureDetector(
+        onTap: phase == VoiceChatPhase.speaking ? () => unawaited(_chat.interrupt()) : null,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(11, 9, 7, 9),
+          decoration: BoxDecoration(
+            color: mode.accent.withValues(alpha: .10),
+            borderRadius: BorderRadius.circular(MindRadius.control),
+            border: Border.all(color: mode.accent.withValues(alpha: .28), width: 1),
+          ),
+          child: Row(
+            spacing: 8,
+            children: [
+              Icon(icon, size: 15, color: mode.accent),
+              Expanded(
+                child: Text(
+                  text,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, height: 1.5, color: mode.accent),
+                ),
+              ),
+              if (engine.isNotEmpty)
+                Text(engine, style: mindMono(size: 9, color: mode.accent.withValues(alpha: .7))),
+              Semantics(
+                button: true,
+                label: t.voiceChatClose,
+                child: GestureDetector(
+                  onTap: () => unawaited(_chat.stop()),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(Icons.close_rounded, size: 16, color: mode.accent),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1063,11 +1200,14 @@ class _HomeScreenState extends State<HomeScreen>
       spacing: 7,
       children: [
         // ไมค์ — อัดจริง ถอดเสียงจริง แล้วหย่อนลงช่องพิมพ์ให้ตรวจก่อนส่ง
+        // แตะ = คุยต่อเนื่องด้วยเสียง · กดค้าง = พูดลงช่องพิมพ์ (ตรวจก่อนส่ง)
         MicButton(
           voice: _voice,
+          chat: _chat,
           mode: mode,
-          enabled: state.canTranscribe,
-          onTap: () => _toggleMic(state),
+          enabled: state.canTranscribe || state.voiceChatLiveReady,
+          onTap: () => _toggleChat(state),
+          onLongPress: () => _dictate(state),
         ),
 
         // 🔴 ปิดเสียงเธอต้องอยู่ **ตรงที่คุยกัน** ไม่ใช่ในหน้าตั้งค่า

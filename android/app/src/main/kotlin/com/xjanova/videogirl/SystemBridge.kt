@@ -170,8 +170,11 @@ class SystemBridge(context: Context) {
                 phoneData.sms(call.argument<String>("query") ?: "", call.argument<Int>("limit") ?: 10)
             }
             "mailApps" -> offMain(result) { phoneData.mailApps() }
+            "contactIndex" -> offMain(result) { phoneData.contactIndex() }
             // ── เสียงสดของเธอ (OpenAI Realtime) · ดู CallAudio.liveStart ──
-            "liveAudioStart" -> result.success(CallAudio.liveStart())
+            "liveAudioStart" -> result.success(
+                CallAudio.liveStart(media = call.argument<String>("usage") == "media")
+            )
             "liveAudioWrite" -> {
                 call.argument<ByteArray>("pcm")?.let { CallAudio.liveWrite(it) }
                 result.success(true)

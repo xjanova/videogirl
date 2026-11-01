@@ -43,33 +43,58 @@ class MindInCallService : InCallService() {
         }
         call.registerCallback(callback)
         InCallActivity.show(this, call)
+        // แจ้งเตือนสาย + แถบ "กลับไปที่สาย" บนแป้นโทร · สายซ้อนดังขึ้นตอนจอสายเปิดอยู่ก็วาดใหม่ทันที
+        notifyChanged()
     }
 
     override fun onCallRemoved(call: Call) {
         super.onCallRemoved(call)
         call.unregisterCallback(callback)
+        postDial.remove(call)
+        detailsSeen.remove(call)
         // 🔴 สายซ้อนจบไปหนึ่งสาย ≠ ไม่มีสายแล้ว · ของเดิมตั้ง null ทิ้ง จอสาย
         // จึงปิดตัวเองทั้งที่สายแรกยังคุยอยู่ และวางสายจากจอนี้ไม่ได้อีก
-        if (current == call) current = pick(calls)
-        if (calls.isEmpty()) {
-            // 🔴 ต้องคืนเสียงก่อนปล่อย service เป็น null
-            //
-            // [CallAudio.close] คืนระดับเสียงที่เราเร่งไว้ · ถ้าปล่อย null ก่อน
-            // แล้วค่อยคืน จะไม่มีใครคืนเลย แล้วเจ้าของเจอสายถัดไปดังสุด
-            // โดยไม่รู้ว่าใครไปเร่งไว้ — เงียบสนิท ไม่มีอะไรบอก
-            CallAudio.close(this)
-            mindHandling = false
-            mindOutgoing = false
-            OwnerAsk.clear(this)
-            // จอกลับไปดับตามเวลาพักจอปกติ · ดู [CallScreen]
-            MainActivity.syncCallScreen()
-            service = null
-            InCallActivity.dismiss(this)
-            // จอเธอที่ขึ้นทับจอล็อกระหว่างสาย ต้องถอนตัวทันทีที่สายจบ
-            MainActivity.leaveLockScreen()
-            // ตัวเธอที่ถูกปลุกมาคุยสายเบื้องหลัง · ไม่มีจอแล้วก็ปล่อย (หลังสรุปสายเสร็จ)
-            MindEngine.releaseWhenIdle()
-        }
+        // · เลือกจากสายระดับบนเท่านั้น · คนในสายประชุมก็อยู่ใน `calls` (สถานะ ACTIVE) ชี้ไปที่คน
+        // = วางสาย/ให้เธอรับ ไปโดนคนเดียวในสายประชุม ไม่ใช่ทั้งสาย
+        if (current == call) current = pick(calls.filter { it.parent == null })
+        // สายที่เหลือต้องขึ้นจอ (สายที่พักไว้ กลายเป็นสายหลัก) · ไม่มีสถานะไหนเปลี่ยนมาบอกให้
+        if (calls.isNotEmpty()) notifyChanged()
+        if (calls.isEmpty()) allCallsGone()
+    }
+
+    /**
+     * ระบบเลิกผูกกับเราทั้งที่ยังมีสาย (เข้าโหมดรถ · เปลี่ยนแอปโทรศัพท์หลัก · Telecom เริ่มใหม่)
+     *
+     * 🔴 ไม่มี `onCallRemoved` ตามมา · ทุกสายกลายเป็น "วางแล้ว" แล้ว `calls` ว่างเฉย ๆ ·
+     * ไม่เก็บกวาดที่นี่ = แจ้งเตือน "วางสายแล้ว" ค้างตลอด จอสายไม่ปิด ระดับเสียงที่เร่งไว้ไม่คืน
+     */
+    override fun onUnbind(intent: Intent?): Boolean {
+        val result = super.onUnbind(intent)
+        if (service === this) allCallsGone()
+        return result
+    }
+
+    /** ไม่มีสายเหลือ · เรียกได้ครั้งเดียวต่อรอบ (ล้าง [service] เป็นอย่างสุดท้ายของชุดแรก) */
+    private fun allCallsGone() {
+        current = null
+        CallNotice.cancel(this)
+        // 🔴 ต้องคืนเสียงก่อนปล่อย service เป็น null
+        //
+        // [CallAudio.close] คืนระดับเสียงที่เราเร่งไว้ · ถ้าปล่อย null ก่อน
+        // แล้วค่อยคืน จะไม่มีใครคืนเลย แล้วเจ้าของเจอสายถัดไปดังสุด
+        // โดยไม่รู้ว่าใครไปเร่งไว้ — เงียบสนิท ไม่มีอะไรบอก
+        CallAudio.close(this)
+        mindHandling = false
+        mindOutgoing = false
+        OwnerAsk.clear(this)
+        // จอกลับไปดับตามเวลาพักจอปกติ · ดู [CallScreen]
+        MainActivity.syncCallScreen()
+        service = null
+        InCallActivity.dismiss(this)
+        // จอเธอที่ขึ้นทับจอล็อกระหว่างสาย ต้องถอนตัวทันทีที่สายจบ
+        MainActivity.leaveLockScreen()
+        // ตัวเธอที่ถูกปลุกมาคุยสายเบื้องหลัง · ไม่มีจอแล้วก็ปล่อย (หลังสรุปสายเสร็จ)
+        MindEngine.releaseWhenIdle()
     }
 
     override fun onCallAudioStateChanged(audioState: CallAudioState) {
@@ -84,6 +109,30 @@ class MindInCallService : InCallService() {
             if (state == Call.STATE_ACTIVE && mindHandling) onMindCallActive()
             notifyChanged()
         }
+
+        /**
+         * เบอร์ที่มี ; (กด # ค้างบนแป้นโทร) — สายติดแล้วรอเจ้าของกดส่งเลขที่เหลือ
+         *
+         * 🔴 ไม่มีใครเรียก `postDialContinue` = เลขที่เหลือไม่ถูกส่งเลย (รหัสต่อ/เลขภายในหาย เงียบ ๆ)
+         */
+        override fun onPostDialWait(call: Call, remainingPostDialSequence: String?) {
+            if (remainingPostDialSequence.isNullOrEmpty()) postDial.remove(call)
+            else postDial[call] = remainingPostDialSequence
+            notifyChanged()
+        }
+
+        /** พักสาย/รวมสายได้หรือยัง เปลี่ยนตามเครือข่ายระหว่างสาย · ปุ่มต้องตามทัน */
+        override fun onDetailsChanged(call: Call, details: Call.Details) {
+            // บาง ROM ยิงทุกครั้งที่ extras ขยับ · วาดใหม่เฉพาะเมื่อสิ่งที่ปุ่มใช้เปลี่ยนจริง
+            val key = "${details.callCapabilities}/${details.callProperties}/${details.connectTimeMillis}/" +
+                "${details.handle}/${details.accountHandle?.id}"
+            if (detailsSeen.put(call, key) != key) notifyChanged()
+        }
+
+        override fun onConferenceableCallsChanged(call: Call, conferenceableCalls: MutableList<Call>) =
+            notifyChanged()
+
+        override fun onChildrenChanged(call: Call, children: MutableList<Call>) = notifyChanged()
     }
 
     /**
@@ -108,10 +157,57 @@ class MindInCallService : InCallService() {
         // · จอสายเนทีฟซิงก์เองตอน render จากประกาศข้างล่าง
         MainActivity.syncCallScreen()
         sendBroadcast(Intent(ACTION_CALL_CHANGED).setPackage(packageName))
+        CallNotice.update(this)
     }
+
+    /** ค่าที่เห็นล่าสุดของแต่ละสาย · ดู onDetailsChanged */
+    private val detailsSeen = java.util.WeakHashMap<Call, String>()
 
     companion object {
         const val ACTION_CALL_CHANGED = "com.xjanova.videogirl.CALL_CHANGED"
+
+        /** สายที่รอเจ้าของกดส่งเลขที่เหลือ → เลขที่เหลือ · ดู onPostDialWait */
+        private val postDial = java.util.WeakHashMap<Call, String>()
+
+        @JvmStatic
+        fun postDialFor(call: Call?): String? = call?.let { postDial[it] }
+
+        /** ส่งเลขที่เหลือต่อ · กดซ้ำได้ ไม่มีอะไรค้างก็ไม่ทำอะไร */
+        @JvmStatic
+        fun continuePostDial(call: Call) {
+            if (postDial.remove(call) == null) return
+            call.postDialContinue(true)
+        }
+
+        /**
+         * สายระดับบนสุด · สายประชุมนับเป็นสายเดียว (ลูกสายของมันไม่นับ)
+         *
+         * ระบบส่งทั้งตัวสายประชุมและคนในสายมาใน `calls` · นับลูกด้วย = ปุ่มคิดว่ามีสามสาย
+         */
+        @JvmStatic
+        fun topCalls(): List<Call> = service?.calls.orEmpty().filter { it.parent == null }
+
+        /**
+         * สายที่จอสายกับแจ้งเตือนต้องโชว์: ดังอยู่ > กำลังโทรออก/รอเลือกซิม > กำลังคุย > พักไว้
+         *
+         * สายซ้อนดังขึ้นตอนคุยอยู่ = โชว์สายที่ดัง (ต้องตัดสินใจตอนนี้) · วางแล้วสายที่พักไว้ขึ้นมาแทน
+         */
+        @JvmStatic
+        fun focusCall(): Call? {
+            val all = topCalls()
+            // ว่างแต่ยังมี current = ระบบเลิกผูกกลางสาย (ดู onUnbind) · สายที่วางแล้วห้ามค้างจอ/แจ้งเตือน
+            if (all.isEmpty()) return current?.takeIf { stateOf(it) != Call.STATE_DISCONNECTED }
+            return all.firstOrNull { stateOf(it) == Call.STATE_RINGING }
+                ?: all.firstOrNull {
+                    stateOf(it).let { s ->
+                        s == Call.STATE_DIALING || s == Call.STATE_CONNECTING ||
+                            s == Call.STATE_SELECT_PHONE_ACCOUNT || s == Call.STATE_NEW
+                    }
+                }
+                ?: all.firstOrNull { stateOf(it) == Call.STATE_ACTIVE }
+                ?: all.firstOrNull { stateOf(it) == Call.STATE_HOLDING }
+                ?: all.first()
+        }
 
         /// สายที่กำลังสนใจอยู่ · เก็บเป็น static เพราะ Activity กับ Service
         /// คนละอายุกัน และ Call ส่งผ่าน Intent ไม่ได้ (ไม่ใช่ Parcelable)
@@ -202,11 +298,16 @@ class MindInCallService : InCallService() {
         @JvmStatic
         fun hasOtherCall(): Boolean = (service?.calls?.size ?: 0) > 1
 
-        /** ทำเสียงออกลำโพงหรือหูฟัง · ใช้ตอนจะให้เธอพูดออกลำโพง */
+        /**
+         * ทำเสียงออกลำโพงหรือหูฟัง · ใช้ตอนจะให้เธอพูดออกลำโพง
+         *
+         * 🔴 ปิดลำโพงต้องขอ `WIRED_OR_EARPIECE` ไม่ใช่ `EARPIECE` · เสียบหูฟังสายอยู่ = ระบบไม่มีทาง
+         * หูโทรศัพท์ให้เลือก แล้ว**ทิ้งคำสั่งเงียบ ๆ** ลำโพงค้างเปิดทั้งที่กดปิดแล้ว
+         */
         @JvmStatic
         fun setSpeaker(on: Boolean) {
             service?.setAudioRoute(
-                if (on) CallAudioState.ROUTE_SPEAKER else CallAudioState.ROUTE_EARPIECE
+                if (on) CallAudioState.ROUTE_SPEAKER else CallAudioState.ROUTE_WIRED_OR_EARPIECE
             )
         }
 

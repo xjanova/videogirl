@@ -4,10 +4,13 @@
 /// **ปิดอยู่** (เทา) · **กำลังฟัง** (แดง + วงเต้นตามเสียงจริง) ·
 /// **กำลังถอดเสียง** (วงหมุน) · ถ้าสองอันหลังหน้าตาเหมือนกัน คนจะพูดต่อ
 /// ระหว่างที่ไมค์ปิดไปแล้ว แล้วประโยคนั้นจะหายไปทั้งประโยค
+///
+/// แตะ = คุยต่อเนื่องด้วยเสียง ([VoiceChat] · สีของโหมด + วงเต้น) · กดค้าง = พูดลงช่องพิมพ์ (แบบเดิม · แดง)
 library;
 
 import 'package:flutter/material.dart';
 
+import '../ai/voice_chat.dart';
 import '../ai/voice_input.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
@@ -20,11 +23,17 @@ class MicButton extends StatelessWidget {
     required this.mode,
     required this.onTap,
     required this.enabled,
+    this.chat,
+    this.onLongPress,
   });
 
   final VoiceInput voice;
+
+  /// โหมดคุยต่อเนื่อง · เปิดอยู่ = ปุ่มนี้คือปุ่มปิด
+  final VoiceChat? chat;
   final MindMode mode;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   /// ถอดเสียงได้ไหมด้วยสมองที่เลือกไว้ตอนนี้
   ///
@@ -39,25 +48,38 @@ class MicButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = S.of(context);
 
+    final c = chat;
     return ListenableBuilder(
-      listenable: voice,
+      listenable: c == null ? voice : Listenable.merge([voice, c]),
       builder: (context, _) {
+        final talking = c?.active ?? false;
         final listening = voice.stage == VoiceInputStage.listening;
         final working = voice.stage == VoiceInputStage.working ||
-            voice.stage == VoiceInputStage.opening;
+            voice.stage == VoiceInputStage.opening ||
+            c?.phase == VoiceChatPhase.opening;
+        final on = listening || talking;
+        // คุยต่อเนื่อง = สีของโหมด (คนละสีกับพูดลงช่องพิมพ์ จะได้รู้ว่าเปิดโหมดไหนอยู่)
+        final tint = talking ? mode.accent : const Color(0xFFFF5C8A);
 
         return Semantics(
           button: true,
-          toggled: listening,
-          label: listening ? t.micStop : t.micStart,
+          toggled: on,
+          label: talking
+              ? t.voiceChatClose
+              : listening
+                  ? t.micStop
+                  : t.voiceChatMicHint,
           child: Tooltip(
             message: working
-                ? t.micWorking
-                : listening
-                    ? t.micListening
-                    : t.micStart,
+                ? (talking ? t.voiceChatOpening : t.micWorking)
+                : talking
+                    ? t.voiceChatClose
+                    : listening
+                        ? t.micListening
+                        : t.voiceChatMicHint,
             child: GestureDetector(
               onTap: onTap,
+              onLongPress: onLongPress,
               behavior: HitTestBehavior.opaque,
               child: SizedBox(
                 width: _size,
@@ -67,21 +89,24 @@ class MicButton extends StatelessWidget {
                   children: [
                     // วงที่เต้นตามเสียงจริง — บอกสิ่งที่สีแดงบอกไม่ได้
                     // ว่า **ไมค์ได้ยินเราอยู่** ไม่ใช่แค่เปิดค้างไว้เฉย ๆ
-                    if (listening)
-                      _Halo(level: voice.level, size: _size),
+                    if (on)
+                      _Halo(
+                          level: talking ? c!.level : voice.level,
+                          size: _size,
+                          color: tint),
                     Container(
                       width: _size,
                       height: _size,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: listening
-                            ? const Color(0x33FF5C8A)
+                        color: on
+                            ? tint.withValues(alpha: .2)
                             : MindColors.glass80,
                         borderRadius:
                             BorderRadius.circular(MindRadius.control),
                         border: Border.all(
-                          color: listening
-                              ? const Color(0x66FF5C8A)
+                          color: on
+                              ? tint.withValues(alpha: .4)
                               : MindColors.glassBorder,
                           width: 1,
                         ),
@@ -96,12 +121,14 @@ class MicButton extends StatelessWidget {
                               ),
                             )
                           : Icon(
-                              listening
-                                  ? Icons.mic_rounded
-                                  : Icons.mic_none_rounded,
+                              talking
+                                  ? Icons.graphic_eq_rounded
+                                  : listening
+                                      ? Icons.mic_rounded
+                                      : Icons.mic_none_rounded,
                               size: 18,
-                              color: listening
-                                  ? const Color(0xFFFF5C8A)
+                              color: on
+                                  ? tint
                                   : enabled
                                       ? MindColors.ink60
                                       : MindColors.ink22,
@@ -123,10 +150,11 @@ class MicButton extends StatelessWidget {
 /// ไม่ใช้ AnimationController เพราะ**ตัวขับคือเสียงจริง** ไม่ใช่นาฬิกา
 /// [AnimatedContainer] ก็พอสำหรับหน่วงให้ลื่น โดยไม่ต้องมี ticker เพิ่มอีกตัว
 class _Halo extends StatelessWidget {
-  const _Halo({required this.level, required this.size});
+  const _Halo({required this.level, required this.size, required this.color});
 
   final double level;
   final double size;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -140,7 +168,7 @@ class _Halo extends StatelessWidget {
       height: size * (.9 + .5 * t),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: const Color(0xFFFF5C8A).withValues(alpha: .10 + .18 * t),
+        color: color.withValues(alpha: .10 + .18 * t),
       ),
     );
   }

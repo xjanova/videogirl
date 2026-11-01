@@ -32,6 +32,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../system/permissions.dart';
+import 'call_target.dart';
 import 'call_watch.dart';
 
 enum PhoneLookupKind { contacts, calls, sms }
@@ -53,7 +54,7 @@ class PhoneLookupCall {
 typedef PhonePermissionAsk = Future<bool> Function(MindPermission permission);
 
 class PhoneLookup {
-  PhoneLookup({MethodChannel? channel, DateTime Function()? clock, this.askPermission})
+  PhoneLookup({MethodChannel? channel, DateTime Function()? clock, this.askPermission, this.targets})
       : _ch = channel ?? kSystemChannel,
         _clock = clock ?? DateTime.now;
 
@@ -62,6 +63,9 @@ class PhoneLookup {
 
   /// null = ไม่ขอ แค่บอกเธอว่ายังไม่ได้สิทธิ์
   PhonePermissionAsk? askPermission;
+
+  /// หาชื่อใกล้เคียง + เบอร์ที่โทรเข้ามาแต่ยังไม่ได้บันทึก เมื่อค้นสมุดไม่เจอตรง ๆ · null = ไม่หา
+  final CallTargetResolver? targets;
 
   /// ไม่ใช้ "call" เดี่ยว ๆ · `[[call: …]]` คือแท็กโทรออก ([CallOutTag])
   ///
@@ -169,7 +173,7 @@ class PhoneLookup {
     final items = (raw['items'] as List?)?.whereType<Map>().toList() ?? const [];
     final head = 'Phone book: $total contacts with a phone number.';
     if (items.isEmpty) {
-      return q.isEmpty ? '$head It is empty.' : '$head No contact matches "$q".';
+      return q.isEmpty ? '$head It is empty.' : '$head No contact matches "$q" exactly.${await _near(q)}';
     }
     return [
       q.isEmpty ? '$head Starred first, then A–Z (first ${items.length}):' : '$head Matches for "$q":',
@@ -177,6 +181,28 @@ class PhoneLookup {
         '- ${_one(c['name'])}: ${_one(c['number'])}'
             '${_one(c['label']).isEmpty ? '' : ' (${_one(c['label'])})'}'
             '${c['starred'] == true ? ' ★' : ''}',
+    ].join('\n');
+  }
+
+  /// ค้นไม่เจอตรง ๆ → ชื่อใกล้เคียง + เบอร์ที่โทรเข้ามาแต่ยังไม่ได้บันทึก ([CallTargetResolver])
+  ///
+  /// เจ้าของ: "เธอบอกไม่มี แทนที่จะค้นรายชื่อที่ใกล้เคียงมาและถามฉันก่อนว่าคนไหน หรือเบอร์โทรเข้ามาล่าสุด
+  /// ที่ไม่ได้บันทึกไว้"
+  Future<String> _near(String q) async {
+    final t = targets;
+    if (t == null) return '';
+    final r = await t.resolve(q);
+    final list = [?r.pick, ...r.choices];
+    if (list.isEmpty) return ' Nothing close either, and no unsaved number called in the last two weeks.';
+    return [
+      '',
+      for (final c in list)
+        c.unsaved
+            ? '- not saved: ${_one(c.number)} · last called ${_when(c.at ?? _clock())}'
+                '${c.missed ? ' (missed)' : ''}${c.calls > 1 ? ' · ${c.calls} calls' : ''}'
+                '${c.saidName ? ' · gave the name "${_one(q)}" on a call or in a text' : ''}'
+            : '- close name: ${_one(c.name)}: ${_one(c.number)}',
+      'Tell the owner these briefly and ask which one they meant. Do not just say there is no one.',
     ].join('\n');
   }
 

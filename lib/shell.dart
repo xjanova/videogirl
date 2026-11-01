@@ -8,6 +8,7 @@ import 'avatar/avatar_view.dart';
 import 'calendar/device_calendar.dart';
 import 'hands/phone_task.dart';
 import 'phone/call_session.dart';
+import 'phone/call_target.dart';
 import 'phone/outgoing_call.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/home_screen.dart';
@@ -114,6 +115,7 @@ class _MindShellState extends State<MindShell> {
   @override
   void dispose() {
     _state?.removeListener(_onPendingCall);
+    _state?.removeListener(_onCallChoice);
     _state?.removeListener(_onPhoneAsk);
     _studio?.removeListener(_onStudio);
     _settingsSection.dispose();
@@ -160,6 +162,7 @@ class _MindShellState extends State<MindShell> {
       await MindAudio.stop();
     };
     state.addListener(_onPendingCall);
+    state.addListener(_onCallChoice);
     state.addListener(_onPhoneAsk);
     _state = state;
   }
@@ -214,11 +217,42 @@ class _MindShellState extends State<MindShell> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _CallConfirmSheet(call: p, canAsk: state.realtimeCallsReady),
     );
-    // ปิดกล่องเฉย ๆ (ปัดลง/ย้อนกลับ) = ไม่โทร
+    // ปิดกล่องเฉย ๆ (ปัดลง/ย้อนกลับ) = ไม่โทร · กล่องปิดตัวเองเพราะเจ้าของตอบด้วยเสียงไปแล้ว =
+    // คำขอนี้จบแล้ว ส่ง id ไปกันยกเลิกคำขอใหม่ที่อาจตั้งขึ้นระหว่างนั้น
     if (go != null) {
-      await state.confirmPendingCall(task: go.task, askOwner: go.askOwner);
+      if (state.pendingCall?.id == p.id) await state.confirmPendingCall(task: go.task, askOwner: go.askOwner);
     } else {
-      state.cancelPendingCall();
+      state.cancelPendingCall(id: p.id);
+    }
+  }
+
+  /// คำถาม "หมายถึงคนไหน" ที่โชว์กล่องไปแล้ว
+  int _shownChoice = 0;
+
+  /// เธอหาคนที่จะโทรได้หลายคน / ไม่ตรง · ให้แตะเลือก (ตอบด้วยเสียงหรือพิมพ์ในแชทก็ได้ กล่องปิดเอง)
+  void _onCallChoice() {
+    final c = _state?.callChoice;
+    if (c == null || c.id == _shownChoice || !mounted) return;
+    _shownChoice = c.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_chooseCall(c)));
+  }
+
+  Future<void> _chooseCall(CallChoice c) async {
+    final state = _state;
+    if (state == null || !mounted || state.callChoice?.id != c.id) return;
+    final i = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => _CallChoiceSheet(choice: c),
+    );
+    // ปัดลงเฉย ๆ = ยังไม่ตัดสิน · เจ้าของยังตอบด้วยเสียงหรือพิมพ์ได้
+    if (i == null) return;
+    if (i == CallReply.cancel) {
+      state.cancelCallChoice(id: c.id);
+    } else {
+      state.chooseCall(c.id, i);
     }
   }
 
@@ -372,6 +406,14 @@ class _CallConfirmSheetState extends State<_CallConfirmSheet> {
   Widget build(BuildContext context) {
     final t = S.of(context);
     final p = widget.call;
+    // เจ้าของตอบด้วยเสียงไปแล้ว ("โทรเลย" / "ยกเลิก") = คำขอนี้ไม่ค้างแล้ว · ปิดตัวเอง
+    final current = context.select<MindState, int?>((s) => s.pendingCall?.id);
+    if (current != p.id && !_closed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _close(null);
+      });
+    }
+    final handsFree = context.select<MindState, bool>((s) => s.handsFree);
     return SafeArea(
       child: Padding(
         // คีย์บอร์ดขึ้น = ดันกล่องขึ้นตาม ปุ่มโทรไม่ถูกบัง
@@ -409,6 +451,17 @@ class _CallConfirmSheetState extends State<_CallConfirmSheet> {
               ),
             Text(t.callOutConfirmNote(canAsk: widget.canAsk && _askOwner),
                 style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+            if (handsFree)
+              Row(
+                spacing: 6,
+                children: [
+                  const Icon(Icons.mic_rounded, size: 16, color: MindColors.ink55),
+                  Expanded(
+                    child: Text(t.callOutVoiceHint,
+                        style: const TextStyle(fontSize: 11.5, height: 1.4, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
             const SizedBox(height: 4),
             Row(
               spacing: 10,
@@ -433,6 +486,90 @@ class _CallConfirmSheetState extends State<_CallConfirmSheet> {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "หมายถึงใครคะ" · ชื่อใกล้เคียงในสมุด + เบอร์ที่โทรเข้ามาแต่ยังไม่ได้บันทึก ([CallTargetResolver])
+///
+/// คืนลำดับที่แตะ · [CallReply.cancel] = ไม่ใช่ทั้งหมด · null = ปัดลง (ยังตอบด้วยเสียง/พิมพ์ได้) ·
+/// ปิดตัวเองเมื่อเจ้าของตอบทางอื่นไปแล้ว (MindState เทียบ id)
+class _CallChoiceSheet extends StatefulWidget {
+  const _CallChoiceSheet({required this.choice});
+
+  final CallChoice choice;
+
+  @override
+  State<_CallChoiceSheet> createState() => _CallChoiceSheetState();
+}
+
+class _CallChoiceSheetState extends State<_CallChoiceSheet> {
+  /// กดซ้ำ = pop สองครั้ง ซึ่งจะปิดจอที่อยู่ใต้กล่องไปด้วย
+  bool _closed = false;
+
+  void _close(int? pick) {
+    if (_closed || !mounted) return;
+    _closed = true;
+    Navigator.pop(context, pick);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = S.of(context);
+    final c = widget.choice;
+    final current = context.select<MindState, int?>((s) => s.callChoice?.id);
+    if (current != c.id && !_closed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _close(null));
+    }
+    final now = DateTime.now();
+    Widget row(int i) {
+      final p = c.choices[i];
+      final title = p.unsaved ? p.number : CallNameMatch.display(p.name!);
+      final sub = p.unsaved
+          ? [
+              t.callChoiceWhen(p.at ?? now, now),
+              if (p.saidName) t.callChoiceSaid(CallNameMatch.display(c.target)),
+            ].join(' · ')
+          : t.callChoiceTail(p.tail);
+      return ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        leading: CircleAvatar(
+          radius: 15,
+          backgroundColor: MindColors.ink55.withValues(alpha: .12),
+          child: Text('${i + 1}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+        ),
+        title: Text(title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+        subtitle: Text(sub, style: const TextStyle(fontSize: 11.5, color: MindColors.ink55)),
+        trailing: Icon(p.unsaved && p.missed ? Icons.phone_missed_rounded : Icons.call_rounded, size: 20),
+        onTap: () => _close(i),
+      );
+    }
+
+    final saved = [for (var i = 0; i < c.choices.length; i++) if (!c.choices[i].unsaved) i];
+    final unsaved = [for (var i = 0; i < c.choices.length; i++) if (c.choices[i].unsaved) i];
+    Widget label(String s) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(s, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: MindColors.ink55)),
+        );
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 2,
+            children: [
+              Text(t.callChoiceTitle, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              Text(t.callChoiceHint, style: const TextStyle(fontSize: 11.5, height: 1.4, color: MindColors.ink55)),
+              if (saved.isNotEmpty) ...[label(t.callChoiceSavedLabel), for (final i in saved) row(i)],
+              if (unsaved.isNotEmpty) ...[label(t.callChoiceUnsavedLabel), for (final i in unsaved) row(i)],
+              const SizedBox(height: 8),
+              OutlinedButton(onPressed: () => _close(CallReply.cancel), child: Text(t.callChoiceNone)),
+            ],
+          ),
         ),
       ),
     );

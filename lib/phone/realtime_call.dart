@@ -39,10 +39,15 @@ class RealtimeCall extends VoiceSession {
     this.voice = 'marin',
     this.language = 'th',
     this.transcriptionHint = '',
+    this.turnDetection,
     super.languageReminder,
     super.lookup,
     super.connect,
   });
+
+  /// จังหวะจบตา · null = server_vad แบบในสาย (เงียบ 600 มิลลิวินาที = จบ) ·
+  /// แชทด้วยเสียงใช้ semantic_vad ที่ฟังว่าประโยคจบหรือยัง (ดู RealtimeChat)
+  final Map<String, Object?>? turnDetection;
 
   /// รุ่นในตัวอย่างของเอกสาร OpenAI (ตรวจ 2026-10-06)
   static const defaultModel = 'gpt-realtime-2.1';
@@ -105,14 +110,15 @@ class RealtimeCall extends VoiceSession {
             },
             // เสียงจากลำโพงมือถือมีเสียงห้องปน · เกณฑ์สูงกว่าค่าตั้งต้นเล็กน้อย
             // หยุด 600 มิลลิวินาที = จบตา · ตอบไวแต่ไม่ตัดคนหยุดหายใจ
-            'turn_detection': {
-              'type': 'server_vad',
-              'threshold': 0.55,
-              'prefix_padding_ms': 300,
-              'silence_duration_ms': 600,
-              'create_response': true,
-              'interrupt_response': fullDuplex,
-            },
+            'turn_detection': turnDetection ??
+                {
+                  'type': 'server_vad',
+                  'threshold': 0.55,
+                  'prefix_padding_ms': 300,
+                  'silence_duration_ms': 600,
+                  'create_response': true,
+                  'interrupt_response': fullDuplex,
+                },
           },
           'output': {
             'format': {'type': 'audio/pcm', 'rate': 24000},
@@ -279,6 +285,15 @@ class RealtimeCall extends VoiceSession {
         debugPrint('realtime: $msg');
         onError?.call(msg);
     }
+  }
+
+  /// เจ้าของแตะให้เธอหยุดพูด · ยกเลิกคำตอบที่ยังสร้างอยู่ ตัดเสียงที่ค้าง แล้วบอกเซิร์ฟเวอร์ว่าเธอพูดถึงไหน
+  /// (ไม่บอก = เธอคิดว่าพูดครบแล้ว และตาถัดไปอ้างถึงประโยคที่เจ้าของไม่ได้ยิน)
+  Future<void> interrupt() async {
+    if (!connected) return;
+    if (_responding) _send({'type': 'response.cancel'});
+    _queued = null;
+    await _interruptPlayback();
   }
 
   Future<void> _interruptPlayback() async {
