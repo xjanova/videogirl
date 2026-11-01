@@ -59,6 +59,7 @@ dependencies:
   # (Java/Kotlin ล้วน ไม่มี .so จึงไม่กระทบรายการตัด .so ใน build.gradle.kts)
   flutter_secure_storage: ^11.0.0
   sqflite: ^2.4.2+1
+  camera: ^0.12.0+2
 
 dev_dependencies:
   flutter_test:

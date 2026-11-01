@@ -164,6 +164,17 @@ class SystemBridge(context: Context) {
             "mindPlaceCall" -> result.success(
                 MindInCallService.placeMindCall(context, call.argument<String>("number") ?: "")
             )
+            // มีกล่องรอเจ้าของแตะตอนแอปอยู่หลังบ้าน · ดู [ComeBack]
+            "comeBack" -> {
+                ComeBack.now(context, call.argument<String>("title").orEmpty(), call.argument<String>("body").orEmpty())
+                result.success(true)
+            }
+            "comeBackDone" -> {
+                ComeBack.done(context)
+                result.success(true)
+            }
+            "deviceStatus" -> offMain(result) { deviceStatus() }
+            "savePhoto" -> offMain(result) { savePhoto(call.argument<ByteArray>("jpeg")) }
             "findContacts" -> result.success(calls.findContacts(call.argument<String>("name") ?: ""))
             // ── ของในเครื่องที่เธอเปิดดูตอนเจ้าของถามในแชท (ดู PhoneData) ──
             "smsGranted" -> result.success(phoneData.canReadSms())
@@ -526,6 +537,7 @@ class SystemBridge(context: Context) {
      * (ดู [MindEngine]) สัญญาณสายต้องไปถึง Dart ต่อ
      */
     private fun watchCalls() {
+        MindInCallService.onMindCallLive = { main.post { channel?.invokeMethod("onCallChanged", null) } }
         if (phoneListener != null) return
         val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
 
@@ -548,6 +560,74 @@ class SystemBridge(context: Context) {
             }
         } catch (e: SecurityException) {
             // ยังไม่ได้สิทธิ์สถานะโทรศัพท์ (Android 12+ บังคับ) · ไม่มีสัญญาณก็ยังถามเอาได้
+        }
+    }
+
+    /** แรม พื้นที่ แบต สเปค เน็ต · เธอตอบเจ้าของได้ ("เหลือแรมเท่าไหร่") · ไม่ต้องขอสิทธิ์ · ไม่มีเลขเครื่องหรือตัวระบุ */
+    private fun deviceStatus(): Map<String, Any?> {
+        val mem = android.app.ActivityManager.MemoryInfo()
+        context.getSystemService(android.app.ActivityManager::class.java)?.getMemoryInfo(mem)
+        val disk = android.os.StatFs(Environment.getDataDirectory().path)
+        val battery = context.registerReceiver(
+            null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        )
+        val level = battery?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = battery?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val temp = battery?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
+        val plugged = battery?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        return mapOf(
+            "maker" to Build.MANUFACTURER,
+            "model" to Build.MODEL,
+            "android" to Build.VERSION.RELEASE,
+            "sdk" to Build.VERSION.SDK_INT,
+            "chip" to if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL else null,
+            "abi" to Build.SUPPORTED_ABIS.firstOrNull(),
+            "cores" to Runtime.getRuntime().availableProcessors(),
+            "ramTotal" to mem.totalMem,
+            "ramFree" to mem.availMem,
+            "ramLow" to mem.lowMemory,
+            "diskTotal" to disk.totalBytes,
+            "diskFree" to disk.availableBytes,
+            "battery" to if (level >= 0 && scale > 0) level * 100 / scale else -1,
+            "batteryTemp" to temp / 10.0,
+            "charging" to (plugged != 0),
+            "network" to networkKind(),
+            "uptimeHours" to android.os.SystemClock.elapsedRealtime() / 3_600_000L,
+        )
+    }
+
+    /** เก็บรูปลงคลังภาพ (Pictures/GigGok) · MediaStore ไม่ต้องขอสิทธิ์ · Android ต่ำกว่า 10 ไม่รองรับทางนี้ */
+    private fun savePhoto(jpeg: ByteArray?): Boolean {
+        if (jpeg == null || jpeg.isEmpty() || Build.VERSION.SDK_INT < 29) return false
+        val images = android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val row = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "GigGok_${System.currentTimeMillis()}.jpg")
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/GigGok")
+            put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(images, row) ?: return false
+        return try {
+            resolver.openOutputStream(uri)?.use { it.write(jpeg) } ?: error("no stream")
+            row.clear()
+            row.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, row, null, null)
+            true
+        } catch (_: Exception) {
+            resolver.delete(uri, null, null) // ไฟล์ครึ่ง ๆ ต้องไม่ค้างในคลังภาพ
+            false
+        }
+    }
+
+    private fun networkKind(): String {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return "unknown"
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return "offline"
+        return when {
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "mobile data"
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH) -> "Bluetooth"
+            else -> "other"
         }
     }
 

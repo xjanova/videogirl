@@ -38,6 +38,7 @@ import '../avatar/stage_bridge.dart';
 import '../i18n/strings_ai.dart';
 import '../state/mind_state.dart';
 import '../system/permissions.dart';
+import 'call_hangup.dart';
 import 'call_notes.dart';
 import 'call_lessons.dart';
 import 'call_tags.dart';
@@ -280,6 +281,14 @@ class CallSession extends ChangeNotifier {
     if (number != null && number.isNotEmpty) _number = number;
     _sim = CallSim.fromMap(info) ?? _sim;
 
+    // 🔴 สายโทรออก: ระบบบอก offHook ตั้งแต่กดโทร และไม่มีสัญญาณอะไรอีกตอนปลายสายรับ · ไม่เฝ้าตรงนี้ =
+    // [_begin] ไม่เคยทำงาน เธอไม่พูดเลยจนปลายสายวางไปเอง (log ตัวช่วยไม่มี `start:` ทั้งที่สายติด)
+    if (!live && !_handled && (_watch.state == CallState.offHook || info?['mindOutgoing'] == true)) {
+      _poll ??= Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
+      _notify();
+      return;
+    }
+
     if (!live) {
       _finish();
       return;
@@ -507,6 +516,7 @@ class CallSession extends ChangeNotifier {
     // เจ้าของแทรกสายไปแล้ว = เสียงกลับเข้าหูฟัง · พูดตอนนี้ปลายสายไม่ได้ยิน
     // มีแต่เจ้าของที่โดนเสียงเธอดังใส่หู
     if (clean.isEmpty || !_live || !_mind) return Future<void>.value();
+    _leaving.disarm(); // เจ้าของยังมีเรื่องจะพูด · เธอลาไปแล้วก็ยังไม่วาง
 
     // คุยสดอยู่ = ให้เซสชันเดียวกันพูด (เสียงเดียวกัน ช่องเดียวกัน ไม่ชนกัน) ·
     // คำที่พูดจริงกลับมาเป็นบทของเธอเอง ([RealtimeCall.onHerText]) ไม่ต้องจดซ้ำ
@@ -831,10 +841,16 @@ class CallSession extends ChangeNotifier {
     };
     rt.onHerText = (t) {
       _lines.add(CallLine.her(t));
+      // โมเดลลาแล้วลืมเรียก end_call = ไม่มีอะไรวางให้ · ถือคำพูดของเธอเองเป็นคำขอวาง
+      if (CallGoodbye.says(t) && !_leaving.armed) {
+        debugPrint('call: เธอบอกว่าจะวางสายในบท · รอเสียงลาจบ');
+        _leaving.arm();
+      }
       _notify();
     };
     rt.onCallerText = (t) {
       _lines.add(CallLine.them(t));
+      _leaving.callerSaid();
       _heardRounds++;
       // GPT-Live ปล่อยบทที่ค้างตอนปิด ซึ่งอาจเป็นหลังเจ้าของแทรกสายไปแล้ว
       if (_turn != CallTurn.handedOver) _turn = CallTurn.thinking;
@@ -849,12 +865,12 @@ class CallSession extends ChangeNotifier {
         ended.complete();
       }
     };
-    // ลากันแล้ว = วางสายเมื่อเสียงลาของเธอออกลำโพงหมด (ดูนาฬิกาข้างล่าง)
-    var hangWhenQuiet = false;
+    // ลากันแล้ว = วางหลังเสียงลาออกลำโพงหมดอีกสามวินาที (ดูนาฬิกาข้างล่าง)
+    _leaving.disarm();
     rt.onEndCall = () {
       // ลงบันทึกทุกครั้ง · ของเดิมเงียบ ตรวจไม่ได้ว่าเธอไม่ขอวาง หรือขอแล้วแต่ไม่วาง
       debugPrint('call: เธอขอวางสาย (end_call) · รอเสียงลาจบ');
-      hangWhenQuiet = true;
+      _leaving.arm();
     };
     rt.onAlertOwner = (reason) => unawaited(_state.alertOwner(who: _who, reason: reason));
     // โทรออกแทนเจ้าของ = ถามเจ้าของกลางสายได้ · สายเข้าไม่ได้ (ดู callTools) ·
@@ -952,10 +968,16 @@ class CallSession extends ChangeNotifier {
         // เจ้าของ: "เธอจะถามเราต้อง Mute เสียง ไมค์ไม่ให้ปลายสายได้ยิน"
         _setHold(_ownerAnswer != null && !_ownerAway && !_rtGated && _turn != CallTurn.handedOver);
 
-        // เธอขอวางสายแล้ว และประโยคลาพูดจบแล้ว · กันไว้ห้าวินาทีแรก (โมเดลเรียกพลาดตอนทัก)
-        if (hangWhenQuiet && !speaking && now.difference(started) > const Duration(seconds: 5)) {
-          hangWhenQuiet = false;
-          debugPrint('call: เสียงลาจบแล้ว เธอวางสาย');
+        // เธอลาแล้ว เสียงจบ และคู่สายเงียบครบสามวินาที · กันไว้ห้าวินาทีแรก (โมเดลเรียกพลาดตอนทัก)
+        final leave = _leaving.due(
+          now,
+          age: now.difference(started),
+          herVoice: speaking,
+          callerTalking: rt.callerTalking,
+          held: _ownerAnswer != null,
+        );
+        if (leave && _turn != CallTurn.handedOver) {
+          debugPrint('call: เสียงลาจบแล้ว คู่สายเงียบ เธอวางสาย');
           unawaited(hangUp());
           return;
         }
@@ -1108,6 +1130,8 @@ class CallSession extends ChangeNotifier {
       }
     }
 
+    // เธอลาแล้ว · รอบฟังถัดไปคือสามวินาทีที่เผื่อคู่สายยังพูดไม่จบ
+    var leaving = false;
     while (_live && _mind && !_disposed) {
       // 🔴 เจ้าของพิมพ์ให้เธอพูดอยู่ ([say]) = รอให้พูดจบก่อนค่อยเปิดไมค์
       // · [say] ปิดเทิร์นการฟังทันที ถ้าวนกลับมาฟังเลย ไมค์จะได้ยินเสียง
@@ -1116,7 +1140,7 @@ class CallSession extends ChangeNotifier {
       if (saying != null) await saying;
       if (!_live || !_mind || _disposed) break;
 
-      final heard = await _listen();
+      final heard = await _listen(patience: leaving ? CallHangUp.wait : null);
       if (!_live || !_mind || _disposed) break;
 
       // เทิร์นนี้ถูก [say] ตัดกลางคัน — ให้ประโยคของเจ้าของจบก่อนค่อยตอบ
@@ -1124,6 +1148,15 @@ class CallSession extends ChangeNotifier {
       final cutIn = _saying;
       if (cutIn != null) await cutIn;
       if (!_live || !_mind || _disposed) break;
+
+      if (leaving) {
+        leaving = false;
+        // คู่สายไม่พูดต่อ และเจ้าของไม่ได้พิมพ์แทรก = วาง · พูดต่อ = ตอบตามปกติ แล้วลาใหม่ค่อยนับใหม่
+        if ((heard == null || heard.isEmpty) && cutIn == null && _turn != CallTurn.handedOver) {
+          await hangUp();
+          break;
+        }
+      }
 
       if (heard == null || heard.isEmpty) {
         if (_netLost) {
@@ -1155,12 +1188,12 @@ class CallSession extends ChangeNotifier {
         unawaited(_state.alertOwner(who: _who, reason: c.urgent!));
       }
       final age = DateTime.now().difference(_startedAt ?? DateTime.now());
-      if (c.hangUp && age > const Duration(seconds: 5) && _live && _mind) {
-        await hangUp();
-        break;
-      }
+      leaving = (c.hangUp || CallGoodbye.says(c.text)) && age > CallHangUp.guard;
     }
   }
+
+  /// เธอลาแล้วรอวาง · ทางคุยสด ดูนาฬิกาใน [_talkRealtime]
+  final _leaving = CallHangUp();
 
   /// แจ้งเจ้าของเรื่องด่วนไปแล้วในสายนี้ · ครั้งเดียวต่อสาย
   bool _alertedOwner = false;
@@ -1385,8 +1418,11 @@ class CallSession extends ChangeNotifier {
     }
   }
 
-  Future<String?> _listen() async {
+  /// [patience] = รอเสียงแรกนานเท่านี้แทนค่าปกติ · ใช้ตอนเธอลาแล้ว
+  Future<String?> _listen({Duration? patience}) async {
     if (!await _openMic()) {
+      // ไม่มีไมค์ก็ยังต้องรอครบ · คู่สายอาจยังพูดอยู่ แค่เราไม่ได้ยิน
+      if (patience != null) await Future<void>.delayed(patience);
       _markDeaf();
       return null;
     }
@@ -1432,7 +1468,7 @@ class CallSession extends ChangeNotifier {
 
       if (speechStarted && lastLoud != null && now.difference(lastLoud!) > _endOfSpeech) {
         finish();
-      } else if (!speechStarted && now.difference(startedAt) > _patience) {
+      } else if (!speechStarted && now.difference(startedAt) > (patience ?? _patience)) {
         finish();
       } else if (now.difference(startedAt) > _maxTurn) {
         finish();
@@ -1441,9 +1477,14 @@ class CallSession extends ChangeNotifier {
       _notify();
     };
 
+    // ไมค์ไม่ส่งชิ้นเสียงมา = เงื่อนไขข้างบนไม่เคยถูกตรวจ · ตอนลาห้ามค้างรอเป็นสิบวินาที
+    final giveUp = patience == null ? null : Timer(patience, () {
+      if (!speechStarted) finish();
+    });
     try {
       await done.future.timeout(_maxTurn + const Duration(seconds: 2), onTimeout: () {});
     } finally {
+      giveUp?.cancel();
       if (identical(_endTurn, finish)) _endTurn = null;
       _onChunk = null;
       _micLevel = 0;

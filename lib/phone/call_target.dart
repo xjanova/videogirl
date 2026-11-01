@@ -656,16 +656,45 @@ abstract final class CallReply {
     return null;
   }
 
-  static const _yes = {
-    'ใช่', 'ใช่เลย', 'ใช่แล้ว', 'โทร', 'โทรเลย', 'โทรได้', 'โทรได้เลย', 'โทรไปเลย', 'โทรเลยจ้า', 'ตกลง', 'ได้',
-    'ได้เลย', 'โอเค', 'โอเคโทรเลย', 'เอา', 'เอาเลย', 'จัดไป', 'ยืนยัน', 'ok', 'okay', 'yes', 'yeah', 'yep', 'sure',
-    'callnow', 'call', 'goahead', 'doit',
-  };
+  /// คำที่แปลว่า "โทร" ชัด ๆ · ต่อกับคำเสริมได้ ("ใช่ โทรเลย" "โอเค โทรหาบัวเลย")
+  static const _dialWords = [
+    'โทรออก', 'โทรหา', 'โทรไป', 'โทร', 'ยืนยัน', 'callnow', 'callthem', 'callher', 'callhim', 'call', 'dial', 'goahead',
+    'doit',
+  ];
+
+  /// คำตอบรับทั่วไป · คำเหล่านี้อย่างเดียวไม่ได้แปลว่าโทร (ดู [saysCall])
+  static const _softYes = [
+    'ใช่แล้ว', 'ใช่', 'ตกลง', 'โอเค', 'ได้', 'เอา', 'จัดไป', 'จัดเลย', 'ลุย', 'ถูกต้อง', 'okay', 'ok', 'yes', 'yeah', 'yep',
+    'sure',
+  ];
+
+  /// คำเสริมที่ไม่เปลี่ยนความหมาย · 🔴 ห้ามใส่ "แล้ว" ("โทรไปแล้ว" = เล่าว่าโทรไปแล้ว ไม่ใช่สั่ง) และคำถาม/ปฏิเสธทุกคำ
+  static const _yesFillers = ['เลย', 'ไปเลย', 'ได้เลย', 'เถอะ', 'สิ', 'ซิ', 'เดี๋ยวนี้', 'ตอนนี้', 'หน่อย', 'ให้', 'now'];
+
   static const _no = {
     'ไม่', 'ไม่ใช่', 'ไม่โทร', 'ไม่ต้อง', 'ไม่ต้องโทร', 'ยกเลิก', 'ไม่เอา', 'เดี๋ยวก่อน', 'รอก่อน', 'ยังไม่โทร',
-    'ยังก่อน', 'ยังไม่ต้อง', 'no', 'nope', 'cancel', 'stop', 'wait', 'dont', 'notnow',
+    'ยังก่อน', 'ยังไม่ต้อง', 'ไม่โทรแล้ว', 'ไม่ต้องแล้ว', 'ไม่เอาแล้ว', 'ยกเลิกเลย', 'ยกเลิกก่อน', 'พอแล้ว', 'อย่าโทร',
+    'อย่าเพิ่งโทร', 'อย่าเพิ่ง', 'no', 'nope', 'cancel', 'stop', 'wait', 'dont', 'notnow',
   };
   static const _polite = ['ครับผม', 'ค่ะ', 'คะ', 'ค่า', 'ครับ', 'คับ', 'จ้ะ', 'จ้า', 'จ๊ะ', 'น่ะ', 'นะ', 'please'];
+
+  /// คำเรียกเธอที่ติดมาในคำตอบ ("โทรเลยมายด์")
+  static const _herNames = ['น้องมายด์', 'น้องมาย', 'มายด์', 'มาย', 'mind'];
+
+  /// คำตอบ "ใช่" เฉย ๆ นับเป็นคำตอบของ "โทรเลยไหมคะ" ได้นานเท่านี้หลังเธอถาม · เกินนี้คุยเรื่องอื่นไปแล้ว
+  static const askWindow = Duration(seconds: 90);
+
+  static final _askThai = RegExp(r'โทร[^\s]{0,10}\s?(ไหม|มั้ย|หรือยัง|เลยนะ)');
+  static final _askEnglish = RegExp(r"\b(call|dial)(\s+(them|him|her|now|right now))*\s*\?", caseSensitive: false);
+
+  /// ประโยคของเธอจบด้วยการถามว่าให้โทรเลยไหม · ใช้ตัดสินว่า "ใช่" "โอเค" เฉย ๆ ตอบเรื่องโทรหรือเรื่องอื่น
+  ///
+  /// 🔴 ดูเฉพาะท้ายประโยค และ "ไหม" ต้องชิดคำว่าโทร · "ตอนโทรให้บอกเรื่องราคาด้วยไหมคะ" ไม่ใช่ถามว่าจะกดโทร
+  static bool asksToDial(String line) {
+    final t = line.trim();
+    final tail = t.length > 60 ? t.substring(t.length - 60) : t;
+    return _askThai.hasMatch(tail) || _askEnglish.hasMatch(tail);
+  }
 
   static const _stepYes = {
     'ทำเลย', 'ทำได้', 'ทำได้เลย', 'ทำต่อ', 'ทำต่อเลย', 'ทำไปเลย', 'ส่งเลย', 'ส่งได้', 'ส่งได้เลย', 'ยืนยัน', 'ตกลงทำเลย',
@@ -687,17 +716,42 @@ abstract final class CallReply {
   ///
   /// 🔴 คุยด้วยเสียง เธอถามเรื่องอื่นต่อได้ขณะกล่องยืนยันยังเปิดอยู่ ("บอกเขาว่าบ่ายสองใช่ไหมคะ") แล้วเจ้าของ
   /// ตอบ "ใช่" = ตอบคำถามนั้น ไม่ใช่สั่งให้กดโทรตอนนี้ · คำปฏิเสธไม่ต้องเข้มขนาดนี้ (ไม่โทร = ปลอดภัย)
-  static bool saysCall(String text) =>
-      confirm(text) == true && RegExp(r'โทร|call|ยืนยัน|go\s*ahead|do\s*it', caseSensitive: false).hasMatch(text);
+  static bool saysCall(String text, {List<String> names = const []}) =>
+      confirm(text, names: names) == true &&
+      RegExp(r'โทร|call|dial|ยืนยัน|go\s*ahead|do\s*it', caseSensitive: false).hasMatch(text);
 
-  /// ตอบกล่องยืนยันการโทรด้วยคำสั้น ๆ · true = โทร · false = ไม่โทร · null = ไม่ใช่คำตอบ
+  /// ตอบกล่องยืนยันการโทรด้วยคำสั้น ๆ · true = โทร · false = ไม่โทร · null = ไม่ใช่คำตอบ ·
+  /// [names] = ชื่อคนที่จะโทร ("โทรหาบัวเลย") · ไม่ใช้ชื่อตัดสินอะไร แค่ไม่ให้ชื่อทำให้ประโยคไม่เข้ารูป
   ///
-  /// 🔴 ทั้งประโยคต้องเป็นคำตอบ ไม่ใช่แค่มีคำว่า "ได้" อยู่ข้างใน · "ได้ยินไหม" "ไม่รู้สิ" ต้องไม่โทร
-  static bool? confirm(String text) {
+  /// 🔴 **ทุกคำ**ในประโยคต้องเป็นคำตอบ ไม่ใช่แค่มีคำว่า "ได้" อยู่ข้างใน · "ได้ยินไหม" "ไม่รู้สิ" "โทรไปแล้ว" ต้องไม่โทร
+  static bool? confirm(String text, {List<String> names = const []}) {
     final t = _bare(text);
-    if (_yes.contains(t)) return true;
+    if (t.isEmpty) return null;
     if (_no.contains(t)) return false;
-    return null;
+    final who = [
+      for (final n in names) ...CallNameMatch.variants(n).map((v) => v.toLowerCase().replaceAll(RegExp(r'\s+'), '')),
+      ..._herNames,
+    ]..sort((a, b) => b.length.compareTo(a.length));
+    final yes = [..._dialWords, ..._softYes];
+    return _readsAs(t, yes: yes, fill: [..._yesFillers, ...who, ..._polite]) ? true : null;
+  }
+
+  /// [t] ตัดเป็นคำจากสองชุดนี้ได้หมดทั้งข้อความ และมีคำจาก [yes] อย่างน้อยหนึ่งคำ
+  static bool _readsAs(String t, {required List<String> yes, required List<String> fill}) {
+    final seen = <(int, bool)>{};
+    bool from(int at, bool hit) {
+      if (at == t.length) return hit;
+      if (!seen.add((at, hit))) return false;
+      for (final w in yes) {
+        if (w.isNotEmpty && t.startsWith(w, at) && from(at + w.length, true)) return true;
+      }
+      for (final w in fill) {
+        if (w.isNotEmpty && t.startsWith(w, at) && from(at + w.length, hit)) return true;
+      }
+      return false;
+    }
+
+    return from(0, false);
   }
 
   /// ตัดช่องว่าง เครื่องหมาย และคำลงท้าย

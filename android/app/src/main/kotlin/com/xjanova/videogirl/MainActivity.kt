@@ -349,6 +349,7 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         com.xjanova.videogirl.direct.setup.DirectAudioMonitorService.start(this)
         CallScreen.apply(this)
+        ComeBack.done(this)
     }
 
     /// ขึ้นทับจอล็อกอยู่ไหม (เฉพาะระหว่างสายที่เธอถือ)

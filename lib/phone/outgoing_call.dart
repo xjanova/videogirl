@@ -17,7 +17,22 @@ import 'package:flutter/foundation.dart';
 
 @immutable
 class PendingCall {
-  const PendingCall({required this.number, required this.task, this.name, this.id = 0});
+  const PendingCall({required this.number, required this.task, this.name, this.id = 0, this.at, this.askOwner});
+
+  /// ขึ้น/แก้กล่องล่าสุดเมื่อไหร่ · คำถาม "โทรเลยไหมคะ" ต้องมาหลังเวลานี้ถึงนับ (ดู CallReply.asksToDial)
+  final DateTime? at;
+
+  /// สวิตช์ "ถามฉันได้ระหว่างสาย" ที่เจ้าของเปลี่ยนในกล่อง · null = ดูจากเรื่องที่สั่ง
+  final bool? askOwner;
+
+  PendingCall copyWith({String? task, bool? askOwner}) => PendingCall(
+        number: number,
+        name: name,
+        id: id,
+        at: at,
+        task: task ?? this.task,
+        askOwner: askOwner ?? this.askOwner,
+      );
 
   /// เบอร์ที่จะโทร (ตามที่อ่านได้ ยังไม่ตัดขีด)
   final String number;

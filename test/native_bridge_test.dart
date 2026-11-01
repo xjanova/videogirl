@@ -206,6 +206,8 @@ void main() {
       'RECEIVE_BOOT_COMPLETED',
       'WAKE_LOCK',
       'VIBRATE',
+      // ใช้ผ่าน setFullScreenIntent (ComeBack.kt) · ชื่อสิทธิ์ไม่โผล่ในโค้ด
+      'USE_FULL_SCREEN_INTENT',
       // สี่ตัวนี้ขอผ่าน Intent ไปหน้าตั้งค่า ไม่ได้ผ่าน Manifest.permission
       'REQUEST_INSTALL_PACKAGES',
       'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',

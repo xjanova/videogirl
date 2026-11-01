@@ -247,6 +247,31 @@ void main() {
     });
 
     test('🔴 ยืนยันโทรด้วยเสียง: ทั้งประโยคต้องเป็นคำตอบ', () {
+      // เจ้าของ: "เธอให้ยืนยันซ้ำๆ ไม่โทรให้สักที" · พูดธรรมชาติแบบนี้เคยตกหมด
+      for (final s in ['ใช่ โทรเลย', 'โทรเลยมายด์', 'โทรออกเลย', 'ตกลงโทรเลย', 'โอเค โทรได้เลยค่ะ', 'โทรไปเลยครับ', 'ใช่แล้วโทรเลย']) {
+        expect(CallReply.confirm(s), isTrue, reason: s);
+        expect(CallReply.saysCall(s), isTrue, reason: s);
+      }
+      expect(CallReply.confirm('โทรหาบัวเลย', names: ['บัว']), isTrue);
+      expect(CallReply.saysCall('โทรหาบัวเลย', names: ['บัว']), isTrue);
+      expect(CallReply.confirm('โทรหาบัวเลย'), isNull, reason: 'ไม่ใช่คนในกล่อง = อาจเป็นสายใหม่');
+      // 🔴 มีคำนอกเหนือจากคำตอบ = ไม่ใช่คำตอบ
+      for (final s in ['โทรไปแล้ว', 'โทรแล้ว', 'ได้ยินไหม', 'โทรไหม', 'ไม่รู้สิ', 'โทรหาแม่ด้วย', 'ยังไม่ได้โทร', 'ตอนนี้ไม่ได้']) {
+        expect(CallReply.confirm(s), isNull, reason: s);
+      }
+      for (final s in ['ไม่โทรแล้ว', 'อย่าเพิ่งโทร', 'พอแล้ว', 'ไม่เอาแล้วค่ะ', 'ยกเลิกเลย']) {
+        expect(CallReply.confirm(s), isFalse, reason: s);
+      }
+      expect(CallReply.confirm('ไม่เอาแบบนี้ แก้ก่อน'), isNull, reason: 'ขอแก้ = ให้เธอแก้ ไม่ใช่ยกเลิก');
+
+      expect(CallReply.asksToDial('จะโทรหาบัวแจ้งว่าเลื่อนนัดเป็นบ่ายสอง โทรเลยไหมคะ'), isTrue);
+      expect(CallReply.asksToDial('โทรเลยมั้ยคะ'), isTrue);
+      expect(CallReply.asksToDial('Shall I? Call now?'), isTrue);
+      expect(CallReply.asksToDial('ตอนโทรให้บอกเรื่องราคาด้วยไหมคะ'), isFalse);
+      expect(CallReply.asksToDial('บอกเขาว่าบ่ายสองใช่ไหมคะ'), isFalse);
+      expect(CallReply.asksToDial('โทรเลยไหมคะ เอ๊ะ อีกอย่าง จะให้แจ้งราคาที่คุยกันไว้เมื่อวานนี้ด้วยหรือเปล่า ถ้าใช่ก็บอกมานะคะ มายด์จะเขียนลงบท'), isFalse,
+          reason: 'คำถามสุดท้ายไม่ใช่เรื่องกดโทร');
+
       expect(CallReply.confirm('โทรเลยค่ะ'), isTrue);
       expect(CallReply.confirm('โอเค'), isTrue);
       expect(CallReply.confirm('Call now'), isTrue);

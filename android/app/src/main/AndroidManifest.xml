@@ -39,9 +39,11 @@
         tools:ignore="ScopedStorage"/>
 
     <!-- Android 10 ลงมาไม่มี MANAGE_EXTERNAL_STORAGE ใช้ตัวนี้แทน
-         maxSdkVersion กันไม่ให้เครื่องใหม่ขอสิทธิ์ที่ไม่มีผลอะไรแล้ว -->
+         maxSdkVersion กันไม่ให้เครื่องใหม่ขอสิทธิ์ที่ไม่มีผลอะไรแล้ว
+         tools:replace = ปลั๊กอิน camera ประกาศ 28 · ค่าของแอปต้องชนะ ไม่งั้น Android 10 เขียนสำเนาไม่ได้ -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="29"/>
+        android:maxSdkVersion="29"
+        tools:replace="android:maxSdkVersion"/>
 
     <!-- ═══ ให้เธอเฝ้างานตอนแอปปิด ═══════════════════════════════
          FOREGROUND_SERVICE / RECEIVE_BOOT_COMPLETED / WAKE_LOCK ปลั๊กอิน
@@ -58,6 +60,8 @@
     <!-- Android 13 (API 33) การแจ้งเตือนกลายเป็นสิทธิ์ที่ต้องขอ
          ไม่ได้ขอ = บริการรันอยู่จริงแต่ผู้ใช้ไม่เห็นอะไรเลย -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- กล่องยืนยันโทรรอเจ้าของแตะตอนแอปอยู่หลังบ้าน · แอปเปิดหน้าเองจากเบื้องหลังไม่ได้ ดู ComeBack.kt -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
 
     <!-- 🔴 ตัวชี้ขาดความน่าเชื่อถือของงานเบื้องหลัง
          ไม่ได้ยกเว้น = ระบบหรี่ให้ตื่นทุก 9–15 นาทีแทน 5 และ ROM จีนฆ่าทิ้งเลย
