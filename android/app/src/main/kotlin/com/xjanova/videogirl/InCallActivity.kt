@@ -662,9 +662,10 @@ class InCallActivity : Activity() {
     private fun renderSim(call: Call) {
         // ซิมของสาย · อ่านทุกรอบ render ได้ (ถูก) แต่ล้มต้องไม่ทำจอนี้พัง
         val s = SimInfo.of(this, call)
+        val carrier = s?.carrier(this)
         val simText = when {
             s == null || s.count < 2 -> null
-            s.slot != null && s.label != null -> getString(R.string.call_sim_label, s.slot, s.label)
+            s.slot != null && carrier != null -> getString(R.string.call_sim_label, s.slot, carrier)
             s.slot != null -> getString(R.string.call_sim, s.slot)
             else -> s.label
         }
@@ -788,7 +789,7 @@ class InCallActivity : Activity() {
             texts.addView(PhoneUi.text(this, 16f, Color.WHITE, bold = true).apply {
                 text = getString(R.string.dial_sim, s?.slot ?: (i + 1))
             })
-            s?.label?.let { label ->
+            s?.carrier(this)?.let { label ->
                 texts.addView(PhoneUi.text(this, 12f, PhoneUi.WHITE70).apply {
                     text = label
                     maxLines = 1

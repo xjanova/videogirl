@@ -20,6 +20,8 @@
     <string name="dial_hint">Enter a number</string>
     <string name="dial_app_label">Phone</string>
     <string name="dial_open_mind">Open Mind</string>
+    <string name="dial_brand">GigGok</string>
+    <string name="dial_mind_badge">Mind</string>
     <string name="dial_tab_keypad">Keypad</string>
     <string name="dial_tab_recents">Recents</string>
     <string name="dial_tab_contacts">Contacts</string>

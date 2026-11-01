@@ -35,6 +35,22 @@ object SimInfo {
 
     /** ช่องซิม (1/2 · null = ไม่รู้) · ชื่อที่คนอ่านรู้เรื่อง · มีซิมใช้งานกี่ใบ */
     data class Sim(val slot: Int?, val label: String?, val count: Int) {
+        /**
+         * ชื่อซิมที่ไม่พูดช่องซ้ำ · vivo ตั้งชื่อเองว่า "SIM 1 DTAC" วางใต้ "ซิม 1" แล้วอ่านซ้ำสองรอบ
+         * ตัดคำนำหน้าช่องออก เหลือ "DTAC" · ชื่อคือ "SIM 1" เฉย ๆ = null (ไม่ต้องมีบรรทัดสอง)
+         */
+        fun carrier(context: Context): String? {
+            val l = label?.trim() ?: return null
+            val n = slot ?: return l
+            for (p in listOf(context.getString(R.string.dial_sim, n), "SIM $n", "SIM$n")) {
+                // "SIM 12" ไม่ใช่ช่อง 1
+                if (l.startsWith(p, ignoreCase = true) && l.getOrNull(p.length)?.isDigit() != true) {
+                    return l.substring(p.length).trimStart(' ', '·', '-', '–', ':', '|').ifEmpty { null }
+                }
+            }
+            return l
+        }
+
         fun toMap(): Map<String, Any?> = mapOf(
             "simSlot" to slot,
             "simLabel" to label,

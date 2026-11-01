@@ -11,9 +11,11 @@ import android.graphics.Color
 import android.graphics.ColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.RadialGradient
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
@@ -70,6 +72,12 @@ object PhoneUi {
     const val RED_DEEP = 0xFFD93A5B.toInt()
     const val GLASS = 0xD9FFFFFF.toInt()
     const val GLASS_BORDER = 0xE6FFFFFF.toInt()
+
+    /** ม่วงเข้มสำหรับตัวหนังสือบนพื้นม่วงอ่อน · VIOLET บน LAVENDER จางเกินจะอ่านป้ายตัวเล็ก */
+    const val VIOLET_DEEP = 0xFF5B4BDB.toInt()
+
+    /** พื้นม่วงอ่อนของปุ่มรอง (ลบ · โทรจากคำแนะนำ · แท็บที่เลือก) */
+    const val LAVENDER = 0xFFEEE9FF.toInt()
 
     /** จอสายเป็นโทนกลางคืน · ตัวหนังสือขาวอ่านง่ายตอนยกขึ้นดูกลางสาย และไม่แสบตาตอนกริ่งดังตอนดึก */
     const val NIGHT_GLASS = 0x1FFFFFFF
@@ -186,6 +194,82 @@ object PhoneUi {
     fun ripple(content: Drawable, rippleColor: Int, mask: Drawable? = null) =
         RippleDrawable(ColorStateList.valueOf(rippleColor), content, mask ?: content)
 
+    /**
+     * กรอบกระจกขอบไล่สี (กรอบโชว์เบอร์) · GradientDrawable ไล่สีได้แค่พื้น ขอบไล่สีต้องวาดเอง
+     *
+     * ไม่มีเงา (ไม่ให้ outline) · พื้นโปร่งแสง เงาจะลอดขึ้นมาเป็นคราบเทาในกรอบ
+     */
+    class GlowCard(
+        fill: Int,
+        private val stroke: IntArray,
+        private val strokePx: Float,
+        private val radiusPx: Float,
+    ) : Drawable() {
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill }
+        private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = strokePx
+        }
+        private val rect = RectF()
+
+        override fun onBoundsChange(bounds: Rect) {
+            super.onBoundsChange(bounds)
+            strokePaint.shader = LinearGradient(
+                bounds.left.toFloat(), bounds.top.toFloat(), bounds.right.toFloat(), bounds.bottom.toFloat(),
+                stroke, null, Shader.TileMode.CLAMP
+            )
+        }
+
+        override fun draw(canvas: Canvas) {
+            if (bounds.isEmpty) return
+            val half = strokePx / 2
+            rect.set(bounds.left + half, bounds.top + half, bounds.right - half, bounds.bottom - half)
+            val r = minOf(radiusPx, rect.height() / 2)
+            canvas.drawRoundRect(rect, r, r, fillPaint)
+            canvas.drawRoundRect(rect, r, r, strokePaint)
+        }
+
+        override fun setAlpha(alpha: Int) = Unit
+        override fun setColorFilter(colorFilter: ColorFilter?) = Unit
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+    }
+
+    /** เส้นโค้งใต้หัวข้อ ไล่สีซ้ายไปขวา · ยกปลายขวาขึ้นนิดหนึ่งแบบขีดด้วยปากกา */
+    class Swoosh(private val colors: IntArray, private val strokePx: Float) : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = strokePx
+            strokeCap = Paint.Cap.ROUND
+        }
+        private val path = Path()
+
+        override fun onBoundsChange(bounds: Rect) {
+            super.onBoundsChange(bounds)
+            val s = strokePx / 2
+            val l = bounds.left + s
+            val r = bounds.right - s
+            val t = bounds.top + s
+            val b = bounds.bottom - s
+            path.reset()
+            path.moveTo(l, t + (b - t) * .55f)
+            path.quadTo(l + (r - l) * .5f, b, r, t)
+            paint.shader = LinearGradient(l, 0f, r, 0f, colors, null, Shader.TileMode.CLAMP)
+        }
+
+        override fun draw(canvas: Canvas) {
+            if (bounds.isEmpty) return
+            canvas.drawPath(path, paint)
+        }
+
+        override fun setAlpha(alpha: Int) = Unit
+        override fun setColorFilter(colorFilter: ColorFilter?) = Unit
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+    }
+
     fun icon(context: Context, res: Int, tint: Int, sizeDp: Int) = ImageView(context).apply {
         setImageResource(res)
         imageTintList = ColorStateList.valueOf(tint)
@@ -199,6 +283,19 @@ object PhoneUi {
         setTextColor(color)
         if (bold) typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         includeFontPadding = false
+    }
+
+    /** น้ำหนักตัวอักษรเป็นตัวเลข (500 กลาง · 600 ค่อนหนา · 800 หนามาก) · ก่อน Android 9 ได้แค่หนา/ปกติ */
+    fun weight(w: Int): Typeface =
+        if (Build.VERSION.SDK_INT >= 28) Typeface.create(Typeface.DEFAULT, w, false)
+        else Typeface.create(Typeface.DEFAULT, if (w >= 600) Typeface.BOLD else Typeface.NORMAL)
+
+    /** เงาสีเดียวกับปุ่ม (เขียวใต้ปุ่มโทร ม่วงใต้แป้น) แทนเงาเทาดำ · Android 9+ ที่เหลือได้เงาเทาปกติ */
+    fun tintShadow(view: View, color: Int) {
+        if (Build.VERSION.SDK_INT >= 28) {
+            view.outlineAmbientShadowColor = color
+            view.outlineSpotShadowColor = color
+        }
     }
 
     /** หดนิดหนึ่งตอนกด ปล่อยแล้วเด้งกลับ · ให้รู้สึกว่าปุ่มรับนิ้วจริง */
@@ -265,6 +362,27 @@ object PhoneUi {
             insets
         }
         root.requestApplyInsets()
+    }
+
+    /**
+     * ความสูงที่วางของได้จริง (dp) — หักแถบสถานะ แถบนำทาง และรอยบากแล้ว
+     *
+     * displayMetrics นับแถบระบบรวมหรือไม่รวมแล้วแต่รุ่น Android กับ targetSdk · เดาผิด = แป้นใหญ่เกิน
+     * ดันปุ่มโทรตกขอบ หรือเล็กเกินจนจอโล่ง · Android 11+ ถามหน้าต่างได้ตรง ๆ ตั้งแต่ onCreate
+     */
+    fun usableHeightDp(activity: Activity): Float {
+        val density = activity.resources.displayMetrics.density
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                val m = activity.windowManager.currentWindowMetrics
+                val bars = m.windowInsets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                return (m.bounds.height() - bars.top - bars.bottom) / density
+            } catch (e: Exception) {
+                // ROM แปลกบางยี่ห้อ · ใช้ทางเดิมข้างล่าง
+            }
+        }
+        // เครื่องเก่า: displayMetrics ไม่นับแถบนำทางอยู่แล้ว เหลือหักแถบสถานะ
+        return activity.resources.displayMetrics.heightPixels / density - 24f
     }
 
     // ── คน ──────────────────────────────────────────────────
@@ -459,18 +577,21 @@ object PhoneUi {
         onUp: (Char) -> Unit,
         onLong: ((Char) -> Boolean)? = null,
     ): LinearLayout {
+        // แป้นสว่างมีเงา · แถวกับตารางต้องไม่ตัดเงาที่ล้นขอบล่างของปุ่ม
         val grid = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
+            if (!dark) clipChildren = false
         }
         val rows = listOf("123", "456", "789", "*0#")
         for ((r, row) in rows.withIndex()) {
             val line = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
+                if (!dark) clipChildren = false
             }
             for ((i, k) in row.withIndex()) {
-                val key = key(context, k, dark, keyDp)
+                val key = if (dark) key(context, k, true, keyDp) else lightKey(context, k, keyDp)
                 key.setOnTouchListener { v, e ->
                     when (e.actionMasked) {
                         MotionEvent.ACTION_DOWN -> {
@@ -523,6 +644,57 @@ object PhoneUi {
             letterSpacing = .18f
             gravity = Gravity.CENTER
             setPadding(0, dp(context, 2), 0, 0)
+        })
+        box.addView(col, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
+        return box
+    }
+
+    /**
+     * ปุ่มแป้นโทร (สว่าง) — กระจกฝ้าไล่ขาวลงม่วงอ่อน ขอบขาว เงาม่วงจาง ๆ (แบบที่ ChatGPT ออกแบบ 2026-11-01)
+     *
+     * `*` กับ `#` ไม่มีตัวอักษรใต้ จึงอยู่กลางปุ่ม · `*` ของฟอนต์ลอยสูงแบบตัวยก ต้องกดลงเอง
+     * ไม่งั้นเบี้ยวเทียบกับ 0 ข้าง ๆ · `1` เว้นบรรทัดไว้ ให้เลขตรงแนวเดียวกับ 2 และ 3
+     */
+    private fun lightKey(context: Context, k: Char, keyDp: Int): FrameLayout {
+        val face = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFAFFFFFF.toInt(), 0xEBF3EFFF.toInt())
+        ).apply {
+            shape = GradientDrawable.OVAL
+            setStroke(dp(context, 1), Color.WHITE)
+        }
+        val box = FrameLayout(context).apply {
+            background = ripple(face, 0x2E7C6CFF, oval(Color.WHITE))
+            elevation = dp(context, 2).toFloat()
+            tintShadow(this, 0x997C6CFF.toInt())
+            contentDescription = k.toString()
+            isClickable = true
+            isFocusable = true
+        }
+        val digitSp = keyDp * .37f
+        val digit = text(context, digitSp, INK).apply {
+            text = k.toString()
+            gravity = Gravity.CENTER
+            typeface = weight(600)
+        }
+        if (k == '*' || k == '#') {
+            if (k == '*') {
+                digit.setTextSize(TypedValue.COMPLEX_UNIT_SP, digitSp * 1.15f)
+                digit.translationY = digit.textSize * .2f
+            }
+            box.addView(digit, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
+            return box
+        }
+        val col = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+        col.addView(digit)
+        col.addView(text(context, 10.5f, 0xA623204A.toInt()).apply {
+            text = LETTERS[k].orEmpty().ifEmpty { " " }
+            typeface = weight(600)
+            letterSpacing = .12f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(context, 1), 0, 0)
         })
         box.addView(col, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
         return box

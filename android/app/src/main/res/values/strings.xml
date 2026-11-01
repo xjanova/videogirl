@@ -31,6 +31,8 @@
     <!-- แป้นโทร (DialerActivity) · ชื่อแอปนี้คือป้ายใต้ไอคอนโทรศัพท์บนหน้าจอหลักด้วย -->
     <string name="dial_app_label">โทรศัพท์</string>
     <string name="dial_open_mind">เปิดมายด์</string>
+    <string name="dial_brand">GigGok</string>
+    <string name="dial_mind_badge">Mind</string>
     <string name="dial_tab_keypad">แป้นกด</string>
     <string name="dial_tab_recents">ล่าสุด</string>
     <string name="dial_tab_contacts">รายชื่อ</string>
