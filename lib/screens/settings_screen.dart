@@ -46,6 +46,7 @@ import '../i18n/strings_settings.dart';
 import '../i18n/strings_hands.dart';
 import '../i18n/strings_sos.dart';
 import '../phone/call_session.dart';
+import '../phone/realtime_call.dart';
 import '../studio/mind_studio.dart';
 import '../system/app_life.dart';
 import '../i18n/strings_voice.dart';
@@ -2898,6 +2899,11 @@ class _SettingsScreenState extends State<SettingsScreen>
             Text(channel.hintOf(S.of(context)),
                 style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
 
+            if (channel == VoiceChannel.chat &&
+                state.brain == BrainProvider.openai &&
+                state.hasOwnKey)
+              ..._voiceChatChoice(state, mode),
+
             const SizedBox(height: 14),
             Text(S.of(context).voiceEngine,
                 style: mindMono(
@@ -3040,38 +3046,10 @@ class _SettingsScreenState extends State<SettingsScreen>
               spacing: 8,
               children: [
                 Expanded(
-                  child: GestureDetector(
-                    onTap: _previewing ? null : () => _preview(state, channel, profile),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 11),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: MindColors.glass85,
-                        borderRadius: BorderRadius.circular(MindRadius.control),
-                        border:
-                            Border.all(color: MindColors.glassBorder, width: 1),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        spacing: 7,
-                        children: [
-                          if (_previewing)
-                            SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: mode.accent),
-                            )
-                          else
-                            Icon(Icons.volume_up_rounded,
-                                size: 16, color: mode.accent),
-                          Text(
-                              S.of(context)
-                                  .listenTo(channel.labelOf(S.of(context))),
-                              style: const TextStyle(fontSize: 12)),
-                        ],
-                      ),
-                    ),
+                  child: _listenButton(
+                    text: S.of(context).listenTo(channel.labelOf(S.of(context))),
+                    mode: mode,
+                    onTap: () => _preview(state, channel, profile),
                   ),
                 ),
                 GestureDetector(
@@ -3101,37 +3079,136 @@ class _SettingsScreenState extends State<SettingsScreen>
               ],
             ),
             // ผลการลองฟัง — ตรงใต้ปุ่ม ไม่ใช่ที่หน้าแชทซึ่งไม่ได้เปิดอยู่
-            if (_previewNote != null && _previewFor == channel) ...[
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                spacing: 7,
-                children: [
-                  Icon(
-                    _previewNote!.ok
-                        ? Icons.graphic_eq_rounded
-                        : Icons.error_outline_rounded,
-                    size: 15,
-                    color: _previewNote!.ok
-                        ? const Color(0xFF00A894)
-                        : const Color(0xFFB46A00),
-                  ),
-                  Expanded(
-                    child: Text(
-                      _previewNote!.text,
-                      style: TextStyle(
-                        fontSize: 11,
-                        height: 1.5,
-                        color: _previewNote!.ok
-                            ? MindColors.ink75
-                            : const Color(0xFFB46A00),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            if (_previewNote != null && _previewFor == channel && !_previewLive)
+              _previewResult(),
           ],
+        ],
+      ),
+    );
+  }
+
+  // เจ้าของ: "เธอใช้ เสียงส่วน ไหนในการสังเคราะห์ ต้องมีตัวเลือกด้วย ... ซึ่ง เราตั้ง Open ai live แล้วมันเสียเงิน ควรตั้งได้ด้วย"
+  // · อยู่ใต้ช่องแชทเพราะเป็นการคุยกับเจ้าของ · สมองอื่นไม่มีคุยสดให้เลือก จึงไม่แสดง
+  List<Widget> _voiceChatChoice(MindState state, MindMode mode) {
+    final t = S.of(context);
+    final live = state.voiceChatLive;
+    final voices = RealtimeCall.voices.toList();
+    return [
+      const SizedBox(height: 14),
+      Text(t.voiceChatWay,
+          style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+      const SizedBox(height: 7),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 7),
+        child: _choiceRow(
+          title: t.voiceChatWayLive,
+          subtitle: t.voiceChatWayLiveHint,
+          selected: live,
+          mode: mode,
+          onTap: () => state.setVoiceChatLive(true),
+        ),
+      ),
+      _choiceRow(
+        title: t.voiceChatWayTurns,
+        subtitle: t.voiceChatWayTurnsHint,
+        selected: !live,
+        mode: mode,
+        onTap: () => state.setVoiceChatLive(false),
+      ),
+      if (live) ...[
+        const SizedBox(height: 14),
+        Text(t.voiceChatLiveVoice,
+            style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+        const SizedBox(height: 7),
+        for (var i = 0; i < voices.length; i += 3)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              spacing: 6,
+              children: [
+                for (var j = i; j < i + 3; j++)
+                  Expanded(
+                    child: j < voices.length
+                        ? _segment(
+                            text: voices[j],
+                            selected: state.voiceChatVoice == voices[j],
+                            mode: mode,
+                            onTap: () => state.setVoiceChatVoice(voices[j]),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+              ],
+            ),
+          ),
+        Text(t.voiceChatLiveVoiceHint,
+            style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
+        const SizedBox(height: 8),
+        _listenButton(
+          text: t.voiceChatLiveListen,
+          mode: mode,
+          onTap: () => _preview(state, VoiceChannel.chat, state.voiceChatLiveProfile, live: true),
+        ),
+        if (_previewNote != null && _previewLive) _previewResult(),
+      ],
+    ];
+  }
+
+  Widget _listenButton({
+    required String text,
+    required MindMode mode,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: _previewing ? null : onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: MindColors.glass85,
+          borderRadius: BorderRadius.circular(MindRadius.control),
+          border: Border.all(color: MindColors.glassBorder, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 7,
+          children: [
+            if (_previewing)
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2, color: mode.accent),
+              )
+            else
+              Icon(Icons.volume_up_rounded, size: 16, color: mode.accent),
+            Flexible(
+              child: Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _previewResult() {
+    final note = _previewNote!;
+    final tone = note.ok ? MindColors.ink75 : const Color(0xFFB46A00);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 7,
+        children: [
+          Icon(
+            note.ok ? Icons.graphic_eq_rounded : Icons.error_outline_rounded,
+            size: 15,
+            color: note.ok ? const Color(0xFF00A894) : const Color(0xFFB46A00),
+          ),
+          Expanded(
+            child: Text(note.text, style: TextStyle(fontSize: 11, height: 1.5, color: tone)),
+          ),
         ],
       ),
     );
@@ -3144,18 +3221,22 @@ class _SettingsScreenState extends State<SettingsScreen>
   ({bool ok, String text})? _previewNote;
   VoiceChannel? _previewFor;
 
+  /// ผลลองฟังเป็นของปุ่มเสียงคุยสด · แสดงใต้ปุ่มนั้น ไม่ใช่ท้ายการ์ด
+  bool _previewLive = false;
+
   /// ลองฟังด้วยเจ้า/รุ่น/เสียงที่เลือกอยู่จริง แล้วบอกให้ชัดว่าได้ยินอะไร
   /// หรือทำไมฟังไม่ได้ · ไม่ตกไปเสียงเครื่องเงียบ ๆ (ดู MindState.previewVoice)
   Future<void> _preview(
-      MindState state, VoiceChannel channel, VoiceProfile profile) async {
+      MindState state, VoiceChannel channel, VoiceProfile profile, {bool live = false}) async {
     final t = S.of(context);
     final what = _voiceWhat(state, profile, t);
     setState(() {
       _previewing = true;
       _previewFor = channel;
+      _previewLive = live;
       _previewNote = (ok: true, text: t.previewMaking(what));
     });
-    final why = await state.previewVoice(channel, onPlaying: () {
+    final why = await state.previewVoice(channel, as: profile, onPlaying: () {
       if (mounted) setState(() => _previewNote = (ok: true, text: t.previewPlaying(what)));
     });
     if (!mounted) return;

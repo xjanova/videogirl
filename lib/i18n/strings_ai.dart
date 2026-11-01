@@ -664,9 +664,9 @@ extension AiStrings on S {
   List<String> get wakeReplyWords => isThai ? const ['ขา?', 'คะ?', 'ค่ะ?'] : const ['Yes?', 'Mm-hm?', "I'm here."];
   String get wakeCard => pick('เรียกชื่อเธอ', 'Call her by name');
   String get wakeIntro => pick(
-        'เรียกคำที่สอนไว้เมื่อไหร่ เธอขานรับทันทีแล้วฟังคำสั่ง แม้อยู่แอปอื่นหรือจอดับ · เธอจำเสียงตามตัวอย่าง '
+        'เรียกคำที่สอนไว้แล้วเว้นจังหวะ เธอจะขานรับแล้วฟังคำสั่ง แม้อยู่แอปอื่นหรือจอดับ · เธอจำเสียงตามตัวอย่าง '
             'จึงตอบคนที่สอนได้ดีที่สุด แต่ไม่ใช่การยืนยันตัวตน · ตอนเครื่องล็อกเธอคุยได้ แต่โทรออกและกดขั้นที่ย้อนไม่ได้ต้องปลดล็อกก่อน',
-        'Say your word any time and she answers right away and listens, even from another app or with the screen '
+        'Say your word, then pause. She answers and listens, even from another app or with the screen '
             'off. She matches your own recordings, so she responds best to whoever taught her, but that is not proof of '
             "who's speaking. While the phone is locked she can talk, but calls and steps that can't be undone need an "
             'unlock first.',
@@ -725,6 +725,23 @@ extension AiStrings on S {
   String get voiceChatLive => pick('คุยสด', 'Live');
   String get voiceChatTurns => pick('ทีละตา', 'Turn by turn');
   String get voiceChatClose => pick('ปิดไมค์', 'Turn the mic off');
+  String get voiceChatWay => pick('ตอนคุยต่อเนื่อง (แตะไมค์ หรือเรียกชื่อ)', 'Hands-free talk (mic tap or calling her name)');
+  String get voiceChatWayLive => pick('คุยสด OpenAI', 'OpenAI live');
+  String get voiceChatWayLiveHint => pick(
+        'ตอบไว · คิดค่าเสียงจากคีย์ของคุณ แพงกว่าแบบทีละตา · ต่อไม่ได้จะใช้แบบทีละตาให้เอง',
+        'Answers fast · billed per audio on your key, more than turn by turn · falls back to it if it cannot connect',
+      );
+  String get voiceChatWayTurns => pick('ฟังจบแล้วตอบทีละตา', 'Turn by turn');
+  String get voiceChatWayTurnsHint => pick(
+        'ช้ากว่า · พูดด้วยเสียงแชทที่เลือกด้านล่าง เสียงในเครื่องไม่มีค่าเสียงพูด · ยังมีค่าถอดเสียงกับค่าคิดจากคีย์ของคุณ',
+        'Slower · speaks with the chat voice picked below, and the device voice has no speech cost · transcribing and thinking still bill your key',
+      );
+  String get voiceChatLiveVoice => pick('เสียงตอนคุยสด', 'Live voice');
+  String get voiceChatLiveVoiceHint => pick(
+        'แยกจากเสียงโทรเข้าและโทรออก · เปลี่ยนแล้วมีผลรอบคุยถัดไป',
+        'Separate from the call voices · applies from the next talk',
+      );
+  String get voiceChatLiveListen => pick('ฟังเสียงนี้', 'Hear this voice');
 
   /// ปุ่มไมค์ · แตะกับกดค้างทำคนละอย่าง ต้องบอก ไม่งั้นคนที่เคยกดพูดลงช่องพิมพ์จะงง
   String get voiceChatMicHint => pick(
