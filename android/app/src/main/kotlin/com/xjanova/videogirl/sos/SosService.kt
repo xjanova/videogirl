@@ -389,7 +389,7 @@ class SosService : Service(), SensorEventListener {
             }
             stopIncident() // กำลังซ้อมอยู่แล้วเกิดเหตุจริง · เหตุจริงมาก่อน
         }
-        val rehearsal = how == SosTrigger.IMPACT && !autoCallAllowed(p)
+        val rehearsal = SosRouter.rehearses(p, how, autoCallAllowed(p))
         // เสียงให้เวลามากกว่าปุ่ม · ปุ่มคือเจ้าของกดเอง เสียงคือตัวถอดเสียงที่ฟังผิดได้
         val sec = when {
             resumedFrom != null -> RESUME_COUNTDOWN_SEC
@@ -435,7 +435,8 @@ class SosService : Service(), SensorEventListener {
      */
     private fun askHelp(inc: Incident) {
         if (phase != Phase.ALERT) return
-        if (!inc.drill) {
+        // 🔴 โหมดทดสอบไม่มีทางปลด · ตอบ "ช่วยด้วย" ก็แค่จบการจำลองเร็วขึ้น
+        if (!inc.drill && !testing(inc)) {
             inc.rehearsal = false
             inc.confidence = SosConfidence.HIGH
             SosStore.saveLive(this, inc.kind, SosTrigger.BUTTON, SosConfidence.HIGH, inc.startedAt, inc.silent)
@@ -445,6 +446,9 @@ class SosService : Service(), SensorEventListener {
 
     /** 🔴 ด่านซ้ำฝั่งเนทีฟ · หน้าตั้งค่ากันแล้วก็ยังต้องมี · แผนในไฟล์ถูกแก้ได้ */
     private fun autoCallAllowed(p: SosPlan) = p.autoCall && SosStore.drills(this) >= 1
+
+    /** ใช้แผนล่าสุด · เจ้าของอาจเปิดโหมดทดสอบระหว่างนับถอยหลัง */
+    private fun testing(inc: Incident) = (plan ?: inc.plan).testMode
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -557,6 +561,7 @@ class SosService : Service(), SensorEventListener {
         voice.quiet()
         main.removeCallbacks(ticker)
         inc.ownerBusy = inCall()
+        if (!inc.drill && testing(inc)) inc.rehearsal = true
 
         val steps = SosRouter.route(p, inc.kind, inc.confidence, inc.drill, inc.abroad, ::isEcc)
         // โหมดซ้อม: ครบทุกขั้นแต่ไม่แตะโลกภายนอก · บอกเจ้าของว่าถ้าเป็นจริงจะแจ้งใคร
@@ -873,7 +878,7 @@ class SosService : Service(), SensorEventListener {
     private fun armedNotice(): Notification = NotificationCompat.Builder(this, CHANNEL_ARMED)
         .setSmallIcon(R.drawable.ic_listen)
         .setContentTitle(getString(R.string.sos_armed_title))
-        .setContentText(getString(R.string.sos_armed_body))
+        .setContentText(getString(if (plan?.testMode != false) R.string.sos_armed_test else R.string.sos_armed_body))
         .setOngoing(true)
         .setSilent(true)
         // 🔒 ขึ้นจอล็อกได้เพราะไม่มีข้อมูลส่วนตัว · ปุ่มนี้คือทางเรียก SOS เองโดยไม่ต้องปลดล็อก

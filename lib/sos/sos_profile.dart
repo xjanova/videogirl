@@ -40,6 +40,7 @@ class SosProfile {
     this.testNumber = '',
     this.armed = false,
     this.autoCall = false,
+    this.testMode = true,
     this.consent = 0,
     this.countdownSec = 30,
     this.sensitivity = 1,
@@ -65,6 +66,7 @@ class SosProfile {
         testNumber: (j['testNumber'] as String?) ?? '',
         armed: j['armed'] == true,
         autoCall: j['autoCall'] == true,
+        testMode: j['testMode'] != false,
         consent: (j['consent'] as int?) ?? 0,
         countdownSec: (j['countdownSec'] as int?) ?? 30,
         sensitivity: (j['sensitivity'] as int?) ?? 1,
@@ -87,6 +89,9 @@ class SosProfile {
   final String testNumber;
   final bool armed;
   final bool autoCall;
+
+  /// ทุกทางเข้าจำลองหมด ไม่แจ้งใครจริง · 🔴 ค่าตั้งต้นเปิด · ไม่มีค่าในไฟล์ก็ถือว่าเปิด
+  final bool testMode;
   final int consent;
   final int countdownSec;
   final int sensitivity;
@@ -113,6 +118,7 @@ class SosProfile {
     String? testNumber,
     bool? armed,
     bool? autoCall,
+    bool? testMode,
     int? consent,
     int? countdownSec,
     int? sensitivity,
@@ -130,6 +136,7 @@ class SosProfile {
         testNumber: testNumber ?? this.testNumber,
         armed: armed ?? this.armed,
         autoCall: autoCall ?? this.autoCall,
+        testMode: testMode ?? this.testMode,
         consent: consent ?? this.consent,
         countdownSec: countdownSec ?? this.countdownSec,
         sensitivity: sensitivity ?? this.sensitivity,
@@ -148,6 +155,7 @@ class SosProfile {
         'testNumber': testNumber,
         'armed': armed,
         'autoCall': autoCall,
+        'testMode': testMode,
         'consent': consent,
         'countdownSec': countdownSec,
         'sensitivity': sensitivity,

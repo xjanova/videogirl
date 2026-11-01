@@ -124,6 +124,16 @@ void main() {
       expect(m['autoCall'], isFalse);
     });
 
+    test('🔴 test mode stays on until the owner turns it off', () {
+      expect(const SosProfile().testMode, isTrue);
+      expect(SosProfile.parse('{"armed":true}').testMode, isTrue, reason: 'old files must not go live');
+      expect(_plan(const SosProfile(consent: kSosConsentVersion))['testMode'], isTrue);
+      expect(_plan(const SosProfile(testMode: false))['testMode'], isTrue, reason: 'no consent, never live');
+      const live = SosProfile(consent: kSosConsentVersion, testMode: false);
+      expect(_plan(live)['testMode'], isFalse);
+      expect(SosProfile.parse(live.encode()).testMode, isFalse);
+    });
+
     test('empty fields are not spoken and nothing is invented', () {
       final th = _plan(const SosProfile(consent: kSosConsentVersion))['th'] as Map<String, dynamic>;
       for (final word in ['กรุ๊ปเลือด', 'แพ้ยา', 'โรคประจำตัว', 'ยาที่ใช้', 'ทะเบียนรถ', 'อายุ']) {

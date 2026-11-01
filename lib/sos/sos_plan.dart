@@ -16,6 +16,7 @@ abstract final class SosPlanBuilder {
   static String build(SosProfile p, {required int year}) => jsonEncode({
         'armed': p.armed && p.consented,
         'autoCall': p.autoCall && p.consented,
+        'testMode': p.testMode || !p.consented,
         'countdownSec': p.countdownSec,
         'manualCountdownSec': 5,
         'routes': SosDirectory.wireRoutes,

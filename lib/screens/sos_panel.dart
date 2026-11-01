@@ -45,6 +45,7 @@ class _SosPanelState extends State<SosPanel> with WidgetsBindingObserver {
   List<SosContactInfo> _contacts = const [];
   bool _armed = false;
   bool _autoCall = false;
+  bool _testMode = true;
   int _consent = 0;
   int _countdown = 30;
   int _sensitivity = 1;
@@ -110,6 +111,7 @@ class _SosPanelState extends State<SosPanel> with WidgetsBindingObserver {
       _contacts = p.contacts;
       _armed = p.armed;
       _autoCall = p.autoCall;
+      _testMode = p.testMode;
       _consent = p.consent;
       _countdown = p.countdownSec;
       _sensitivity = p.sensitivity;
@@ -143,6 +145,7 @@ class _SosPanelState extends State<SosPanel> with WidgetsBindingObserver {
         testNumber: _test.text.trim(),
         armed: _armed,
         autoCall: _autoCall,
+        testMode: _testMode,
         consent: _consent,
         countdownSec: _countdown,
         sensitivity: _sensitivity,
@@ -247,6 +250,22 @@ class _SosPanelState extends State<SosPanel> with WidgetsBindingObserver {
     setState(() => _autoCall = on);
     if (await _save() || !mounted) return;
     setState(() => _autoCall = !on);
+  }
+
+  /// 🔴 ออกจากโหมดทดสอบต้องยืนยัน · กลับเข้าโหมดทดสอบไม่ต้อง
+  Future<void> _setTestMode(bool on) async {
+    if (_busy) return;
+    _busy = true;
+    try {
+      final t = S.of(context);
+      if (!on && !await _confirm(t.sosRealAsk, t.sosRealYes, title: t.sosRealTitle)) return;
+      if (!mounted) return;
+      setState(() => _testMode = on);
+      if (await _save() || !mounted) return;
+      setState(() => _testMode = !on);
+    } finally {
+      _busy = false;
+    }
   }
 
   Future<void> _manual() async {
@@ -364,6 +383,18 @@ class _SosPanelState extends State<SosPanel> with WidgetsBindingObserver {
       if (_armed)
         _ready(st.running ? t.sosRunning : t.sosNotRunning, st.running,
             fix: () => unawaited(_sos.sync().then((_) => _check()))),
+      if (_armed)
+        Row(
+          spacing: MindSpace.md,
+          children: [
+            Expanded(
+              child: Text(t.sosTestMode,
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: MindColors.ink)),
+            ),
+            Switch(value: _testMode, activeTrackColor: widget.accent, onChanged: (v) => unawaited(_setTestMode(v))),
+          ],
+        ),
+      if (_armed) Text(_testMode ? t.sosTestModeOn : t.sosTestModeOff, style: _small),
       if (st.busy)
         OutlinedButton(
           onPressed: () => unawaited(_sos.stop().then((_) => _check())),
@@ -374,7 +405,7 @@ class _SosPanelState extends State<SosPanel> with WidgetsBindingObserver {
           style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB3261E)),
           onPressed: st.busy ? null : () => unawaited(_manual()),
           icon: const Icon(Icons.sos_rounded),
-          label: Text(t.sosManualButton),
+          label: Text(_testMode ? t.sosTestButton : t.sosManualButton),
         ),
       if (_armed) Text(t.sosManualHint, style: _small),
     ]);
@@ -475,11 +506,11 @@ class _SosPanelState extends State<SosPanel> with WidgetsBindingObserver {
           Switch(
             value: _autoCall && drilled,
             activeTrackColor: widget.accent,
-            onChanged: drilled && _armed ? (v) => unawaited(_setAutoCall(v)) : null,
+            onChanged: drilled && _armed && !_testMode ? (v) => unawaited(_setAutoCall(v)) : null,
           ),
         ],
       ),
-      Text(drilled ? t.sosAutoCallHint : t.sosAutoCallLocked, style: _small),
+      Text(_testMode ? t.sosAutoCallTesting : (drilled ? t.sosAutoCallHint : t.sosAutoCallLocked), style: _small),
       if (_armed && !_status.dialer) Text(t.sosDialerWarn, style: _small),
       Text(t.sosCountdown(_countdown), style: _body),
       Slider(
@@ -542,7 +573,7 @@ class _SosPanelState extends State<SosPanel> with WidgetsBindingObserver {
       if (st.readings.isEmpty)
         Text(t.sosLogEmpty, style: _small)
       else
-        for (final r in st.readings.take(8))
+        for (final r in st.readings.take(_testMode ? 30 : 8))
           Text(
             '${DateTime.fromMillisecondsSinceEpoch(r.atMs).toLocal().toString().substring(5, 16)} · '
             '${r.peakG.toStringAsFixed(1)} g · Δv ${r.deltaV.toStringAsFixed(1)} · '

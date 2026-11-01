@@ -131,6 +131,7 @@
     <string name="sos_channel_alert">Emergency alert</string>
     <string name="sos_armed_title">Mind is watching for emergencies</string>
     <string name="sos_armed_body">Turn off in settings · Not guaranteed, and no replacement for emergency services</string>
+    <string name="sos_armed_test">Test mode · nobody is alerted</string>
     <string name="sos_action_call">Get help</string>
     <string name="sos_action_stop">Stop, I\'m fine</string>
     <string name="sos_action_help">Help, alert now</string>

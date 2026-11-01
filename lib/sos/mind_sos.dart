@@ -69,6 +69,9 @@ class SosStatus {
   /// ยังไม่รู้ = ไม่เตือน · ฝั่งเนทีฟตรวจตอนเปิดระบบ
   bool get thaiVoice => m['thaiVoice'] != false;
   bool get busy => m['phase'] == 'ALERT' || m['phase'] == 'DISPATCH';
+
+  /// ไม่มีค่า = ถือว่าทดสอบ · ป้ายต้องไม่บอกว่าแจ้งจริงทั้งที่ไม่รู้
+  bool get testMode => m['testMode'] != false;
   bool get silent => busy && _b('silent');
 
   Map<Object?, Object?> get _battery => (m['battery'] as Map<Object?, Object?>?) ?? const {};

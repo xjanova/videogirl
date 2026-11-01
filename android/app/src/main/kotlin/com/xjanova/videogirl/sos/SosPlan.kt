@@ -13,6 +13,11 @@ data class SosPlan(
     val armed: Boolean,
     /** แรงกระแทกโทรจริงได้ · false = โหมดซ้อม: เธอถามเหมือนจริงแต่ไม่แจ้งใคร */
     val autoCall: Boolean,
+    /**
+     * โหมดทดสอบ · ทุกทางเข้าจำลองหมด ไม่มี SMS ไม่มีสาย · เจ้าของ: "แต่ละเครื่องมันต้องจูนหลายวัน
+     * ให้ตั้งค่าจูนไว้ก่อน พร้อมแล้วค่อยเปิดแจ้งจริงได้" · 🔴 ค่าตั้งต้นต้องเป็น true
+     */
+    val testMode: Boolean = true,
     val countdownSec: Int,
     val manualCountdownSec: Int,
     /** kind.name → เบอร์เรียงตามลำดับ · ในไทย */

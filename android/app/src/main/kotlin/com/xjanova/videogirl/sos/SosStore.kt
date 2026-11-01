@@ -25,6 +25,7 @@ object SosStore {
         SosPlan(
             armed = o.optBoolean("armed"),
             autoCall = o.optBoolean("autoCall"),
+            testMode = o.optBoolean("testMode", true),
             countdownSec = o.optInt("countdownSec", 30).coerceIn(10, 120),
             manualCountdownSec = o.optInt("manualCountdownSec", 5).coerceIn(3, 30),
             routes = o.getJSONObject("routes").let { r ->

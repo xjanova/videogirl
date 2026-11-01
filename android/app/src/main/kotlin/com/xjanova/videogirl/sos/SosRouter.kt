@@ -45,6 +45,13 @@ object SosRouter {
         return sms + officials + family
     }
 
+    /**
+     * เหตุนี้จำลองไหม · 🔴 โหมดทดสอบคุมทุกทางเข้า รวมปุ่ม คำพูด และแจ้งเงียบ ·
+     * ปิดอยู่ แรงกระแทกยังจำลองจนกว่าจะเปิดด่านโทรอัตโนมัติ
+     */
+    fun rehearses(plan: SosPlan, how: SosTrigger, autoCallAllowed: Boolean) =
+        plan.testMode || (how == SosTrigger.IMPACT && !autoCallAllowed)
+
     /** เบอร์ทดสอบใช้ได้จริงไหม · เบอร์สั้นไม่ใช่เบอร์มือถือของเจ้าของ */
     fun drillSafe(number: String, isEcc: (String) -> Boolean): Boolean {
         val n = OutgoingRules.normalize(number) ?: return false

@@ -41,6 +41,22 @@ class SosCoreTest {
     private val noEcc: (String) -> Boolean = { false }
 
     @Test
+    fun `test mode simulates every way in, even with automatic calling allowed`() {
+        val p = plan()
+        assertEquals(true, p.testMode)
+        for (how in SosTrigger.values()) assertTrue(SosRouter.rehearses(p, how, autoCallAllowed = true))
+    }
+
+    @Test
+    fun `with test mode off only the impact gate still rehearses`() {
+        val p = plan().copy(testMode = false)
+        assertTrue(SosRouter.rehearses(p, SosTrigger.IMPACT, autoCallAllowed = false))
+        assertFalse(SosRouter.rehearses(p, SosTrigger.IMPACT, autoCallAllowed = true))
+        assertFalse(SosRouter.rehearses(p, SosTrigger.BUTTON, autoCallAllowed = false))
+        assertFalse(SosRouter.rehearses(p, SosTrigger.VOICE, autoCallAllowed = false))
+    }
+
+    @Test
     fun `a silent alert warns people not to call back and says so to officers`() {
         val t = texts.copy(
             smsSilent = "silent {loc}",

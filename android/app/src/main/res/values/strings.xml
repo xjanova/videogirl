@@ -148,6 +148,7 @@
     <string name="sos_channel_alert">แจ้งเหตุฉุกเฉิน</string>
     <string name="sos_armed_title">มายด์เฝ้าเหตุฉุกเฉินอยู่</string>
     <string name="sos_armed_body">ปิดได้ในการตั้งค่า · ระบบนี้ไม่รับประกันและไม่ทดแทนหน่วยฉุกเฉิน</string>
+    <string name="sos_armed_test">โหมดทดสอบ · ยังไม่แจ้งใครจริง</string>
     <string name="sos_action_call">ขอความช่วยเหลือ</string>
     <string name="sos_action_stop">หยุด ฉันไม่เป็นไร</string>
     <string name="sos_action_help">ช่วยด้วย แจ้งเหตุเลย</string>

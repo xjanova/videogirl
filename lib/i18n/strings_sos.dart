@@ -14,6 +14,25 @@ extension SosStrings on S {
   String get sosRunning => pick('กำลังเฝ้าอยู่', 'Watching');
   String get sosNotRunning => pick('ตั้งเปิดไว้ แต่ตัวเฝ้าไม่ได้ทำงาน · ระบบอาจปิดแอป', 'Switched on, but the watcher is not running · The system may have closed the app');
   String get sosManualButton => pick('ขอความช่วยเหลือตอนนี้', 'Get help now');
+  String get sosTestButton => pick('ลองกดขอความช่วยเหลือ (ทดสอบ)', 'Try asking for help (test)');
+  String get sosTestMode => pick('โหมดทดสอบ ยังไม่แจ้งจริง', 'Test mode, nobody is alerted');
+  String get sosTestModeOn => pick(
+        'มายด์เรียกและนับถอยหลังตามปกติ แต่ไม่ส่ง SMS ไม่โทรหาใคร ทั้งแรงกระแทก ปุ่ม และคำพูด · '
+            '🔴 เกิดเหตุจริงตอนนี้ต้องโทรเอง · ใช้จูนความไวจากบันทึกแรงกระแทกหลาย ๆ วัน พร้อมแล้วค่อยปิดโหมดนี้',
+        'Mind calls out and counts down as usual, but texts and calls nobody, for impacts, the button and your voice. '
+            '🔴 In a real emergency now, call for help yourself. Tune the sensitivity from the impact log over a few days, then turn this off',
+      );
+  String get sosTestModeOff => pick(
+        '🔴 แจ้งจริงอยู่ · ขอความช่วยเหลือด้วยปุ่มหรือคำพูดแล้วไม่ตอบ = ส่ง SMS และโทรจริง',
+        '🔴 Live · asking for help by button or voice and not answering sends real texts and calls',
+      );
+  String get sosRealTitle => pick('เปิดแจ้งจริง', 'Turn on real alerts');
+  String get sosRealAsk => pick(
+        'จากนี้มายด์จะส่ง SMS และโทรหาผู้ติดต่อกับเจ้าหน้าที่จริง · แจ้งเหตุเท็จมีผลจริง · จูนความไวจนพอใจแล้วใช่ไหมคะ',
+        'From now on Mind will really text and call your contacts and responders. False alerts have real consequences. Are you happy with the tuning?',
+      );
+  String get sosRealYes => pick('พร้อมแล้ว เปิดแจ้งจริง', 'Ready, turn on real alerts');
+  String get sosAutoCallTesting => pick('ใช้ได้เมื่อปิดโหมดทดสอบ', 'Available once test mode is off');
   String get sosTriggerFailed => pick('เริ่มไม่ได้ · โทรเองทันทีค่ะ', 'Could not start · Call for help yourself now');
   String get sosManualHint => pick(
         'มีเวลา 5 วินาทีให้กดหยุด · พูดว่า "SOS" กับมายด์ก็ได้ มีเวลา 10 วินาที\n'

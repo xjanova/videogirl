@@ -107,6 +107,7 @@ object SosBridge {
             "phase" to snap.phase.name,
             "silent" to snap.silent,
             "autoCall" to (plan?.autoCall == true),
+            "testMode" to (plan?.testMode != false),
             "drills" to SosStore.drills(c),
             "readings" to SosStore.readings(c),
             "battery" to SosStore.battery(c),
