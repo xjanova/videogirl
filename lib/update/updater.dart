@@ -330,6 +330,21 @@ class Updater extends ChangeNotifier {
       return false;
     }
 
+    // กดยกเลิกที่หน้าติดตั้งของระบบแล้วกดใหม่ = เปิดไฟล์ที่ตรวจผ่านแล้ว ไม่โหลดซ้ำ
+    // · ตรวจแฮชอีกรอบก่อนเปิดเสมอ ไฟล์ในแคชถูกระบบลบหรือเขียนทับได้
+    final kept = _verified;
+    if (kept != null && info.sha256 != null && kept.path.endsWith(info.apkName)) {
+      try {
+        if (await kept.exists()) {
+          _set(UpdateStage.verifying);
+          if (await _hashFile(kept) == info.sha256) return await _openInstaller(kept);
+        }
+      } on Object catch (e) {
+        debugPrint('update: reuse verified file failed — ${e.runtimeType}');
+      }
+      _verified = null;
+    }
+
     _progress = 0;
     _set(UpdateStage.downloading);
 
@@ -378,20 +393,31 @@ class Updater extends ChangeNotifier {
         return false;
       }
 
-      _set(UpdateStage.ready);
-      final opened = await OpenFilex.open(file.path,
-          type: 'application/vnd.android.package-archive');
-      if (opened.type != ResultType.done) {
-        _set(UpdateStage.failed, error: _s().updateInstallerBlocked);
-        return false;
-      }
-      return true;
+      _verified = file;
+      return await _openInstaller(file);
     } on Object catch (e) {
       // TimeoutException จากเน็ตค้าง / ไฟล์เขียนไม่ได้ / Error จากปลั๊กอิน
       debugPrint('update: โหลดไม่สำเร็จ — $e');
       _set(UpdateStage.failed, error: _s().updateRetry);
       return false;
     }
+  }
+
+  /// ไฟล์ที่ตรวจแฮชผ่านรอบล่าสุด · null = ยังไม่มี หรือใช้ซ้ำไม่ได้แล้ว
+  File? _verified;
+
+  /// ไม่โยน error · ปลั๊กอินพังต้องจบที่ข้อความบอกผู้ใช้ ไม่ใช่โหลดใหม่ทั้งไฟล์
+  Future<bool> _openInstaller(File file) async {
+    _set(UpdateStage.ready);
+    try {
+      final opened = await OpenFilex.open(file.path,
+          type: 'application/vnd.android.package-archive');
+      if (opened.type == ResultType.done) return true;
+    } on Object catch (e) {
+      debugPrint('update: open installer failed — ${e.runtimeType}');
+    }
+    _set(UpdateStage.failed, error: _s().updateInstallerBlocked);
+    return false;
   }
 
   Future<void> _sweepOldApks({required String keep}) async {

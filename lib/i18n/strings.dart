@@ -69,6 +69,11 @@ class S {
   String get tabCalendar => _('ปฏิทิน', 'Calendar');
   String get tabTimeline => _('ไทม์ไลน์', 'Timeline');
   String get tabSettings => _('ตั้งค่า', 'Settings');
+  String get tabPhone => _('โทรศัพท์', 'Phone');
+  String get phoneOpenFailed => _(
+        'เปิดแป้นโทรไม่ได้ค่ะ ลองแตะไอคอน "โทรศัพท์" บนหน้าจอหลักของเครื่องแทนนะคะ',
+        'Could not open the dialer. Try the Phone icon on your home screen instead.',
+      );
 
   // ═══ โหมด ══════════════════════════════════════════════
   String get modeWork => _('งาน', 'Work');
@@ -1278,6 +1283,22 @@ class S {
       _('ดาวน์โหลดแล้ว $done · $pct%', 'Downloaded $done · $pct%');
   String updateInstall(String size) =>
       _('ดาวน์โหลดและติดตั้ง · $size', 'Download and install · $size');
+  /// ไฟล์โหลดและตรวจแล้ว (เคยกดยกเลิกที่หน้าติดตั้ง) · แค่เปิดหน้าติดตั้งอีกครั้ง
+  String get updateInstallNow => _('ติดตั้งเลย', 'Install now');
+  // ── กล่องที่เด้งเองเมื่อมีรุ่นใหม่ (update_sheet.dart) ──
+  String updateYouHave(String v) =>
+      _('ตอนนี้ใช้รุ่น $v อยู่', 'You have version $v');
+  /// size null = ไม่รู้ขนาดไฟล์ · ไม่โชว์ "0.0 MB"
+  String updateNow(String? size) => size == null
+      ? _('อัปเดตเลย', 'Update now')
+      : _('อัปเดตเลย · $size', 'Update now · $size');
+  String get updateLater => _('ไว้ทีหลัง', 'Later');
+  String get updateHide =>
+      _('ซ่อนไว้ · โหลดต่อให้เอง', 'Hide · keeps downloading');
+  String get updateClosesNote => _(
+        'ระหว่างติดตั้ง แอปจะปิดตัวสักครู่ แล้วเปิดใหม่ได้ตามปกติ',
+        'The app closes for a moment while it installs',
+      );
 
   // ═══ หน้าแก้ข้อความยาว ═════════════════════════════════
   String get discardTitle => _('ทิ้งที่แก้ไว้?', 'Discard changes?');

@@ -40,6 +40,8 @@ void main() {
       check('tabCalendar', en.tabCalendar);
       check('tabTimeline', en.tabTimeline);
       check('tabSettings', en.tabSettings);
+      check('tabPhone', en.tabPhone);
+      check('phoneOpenFailed', en.phoneOpenFailed);
 
       // หน้าเปิดแอป
       check('splashSkip', en.splashSkip);

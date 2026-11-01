@@ -117,6 +117,8 @@ object PhoneUi {
 
         override fun draw(canvas: Canvas) {
             val b = bounds
+            // ขนาดศูนย์ = รัศมีศูนย์ · RadialGradient โยน IllegalArgumentException ทั้งจอพัง
+            if (b.isEmpty) return
             canvas.drawRect(b, base)
             val size = maxOf(b.width(), b.height()).toFloat()
             for (o in orbs) {
@@ -222,6 +224,11 @@ object PhoneUi {
      */
     fun edgeToEdge(activity: Activity, root: View, lightBars: Boolean) {
         val window = activity.window
+        // 🔴 ทั้งสองจอเรียกที่นี่ก่อน setContentView · ตอนนั้นยังไม่มี DecorView แล้ว
+        // window.insetsController ยิง NPE ใน PhoneWindow (`?.` กันไม่ได้ พังข้างใน) ·
+        // 0.1.53 เปิดแป้นโทรแล้วแอปเด้งออกทุกครั้ง · decorView สร้างมันขึ้นมาก่อน
+        // ค่าที่ตั้งตอนยังไม่ติดหน้าต่าง ระบบเก็บไว้ใช้ตอนติดเอง
+        val decor = window.decorView
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false)
             val appearance = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
@@ -229,7 +236,7 @@ object PhoneUi {
             window.insetsController?.setSystemBarsAppearance(if (lightBars) appearance else 0, appearance)
         } else {
             @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            decor.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                 (if (lightBars) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
