@@ -50,6 +50,13 @@ enum MindPermission {
   /// สมุดโทรศัพท์ — เบอร์อย่างเดียวช่วยอะไรไม่ได้ ต้องรู้ว่าเป็นใคร
   contacts(check: 'contactsGranted', ask: 'requestContacts', inApp: true),
 
+  /// SMS — เจ้าของถาม "มี SMS อะไรเข้ามาบ้าง" แล้วเธอเปิดดูให้ได้ (ดู PhoneLookup)
+  ///
+  /// อ่านอย่างเดียว · แอปแจก APK เอง จึงไม่ติดนโยบาย SMS ของ Play Store ·
+  /// เป็นสิทธิ์จำกัดของ Android (ต้องให้ตัวติดตั้งอนุญาตไว้ก่อน) · ดูธงบนเครื่องจริง
+  /// ด้วย `dumpsys package` ก่อนสรุปว่ากล่องขอจะขึ้น
+  sms(check: 'smsGranted', ask: 'requestSms', inApp: true),
+
   /// รับสายแทน · เธอยังพูดในสายไม่ได้ ดู [CallWatch]
   answerCalls(check: 'answerGranted', ask: 'requestAnswer', inApp: true),
 

@@ -276,9 +276,20 @@ class S {
         'or Android hides the caller number entirely',
       );
   String get permContacts => _('สมุดโทรศัพท์', 'Contacts');
+  /// 🔴 เดิมเขียนว่า "ไม่ส่งออกจากเครื่อง" · ตอนนี้เธอเปิดสมุดให้ตอนถามในแชท และถ้าใช้
+  /// สมองบนคลาวด์ บรรทัดที่เปิดดูไปกับข้อความนั้น · ต้องบอกตรง ๆ ไม่ใช่สัญญาที่ไม่จริง
   String get permContactsWhy => _(
-        'เปลี่ยนเบอร์เป็นชื่อคน · อ่านอย่างเดียว ไม่แก้ ไม่ส่งออกจากเครื่อง',
-        'Turns numbers into names — read-only, never edited, never leaves this device',
+        'เปลี่ยนเบอร์เป็นชื่อคน และให้เธอหาเบอร์ให้ตอนถาม · อ่านอย่างเดียว ไม่แก้ · '
+        'ถ้าใช้สมองบนคลาวด์ จะส่งไปเฉพาะรายชื่อที่เธอเปิดดูในคำถามนั้น',
+        'Turns numbers into names and lets her find a number when you ask — read-only, never edited · '
+        'with a cloud brain, only the entries she looks up go out with that message',
+      );
+  String get permSms => _('ข้อความ SMS', 'Text messages (SMS)');
+  String get permSmsWhy => _(
+        'ให้เธอเล่า SMS ที่เข้ามาหรือส่งออกตอนคุณถาม · อ่านอย่างเดียว ไม่ส่ง ไม่ลบ · '
+        'ซ่อนรหัส OTP ไว้เสมอ · ถ้าใช้สมองบนคลาวด์ จะส่งไปเฉพาะข้อความที่เธอเปิดดูในคำถามนั้น',
+        'Lets her tell you about texts you got or sent when you ask — read-only, never sends or deletes · '
+        'one-time codes always hidden · with a cloud brain, only the texts she looks up go out with that message',
       );
   String get permAnswer => _('รับสายแทน', 'Answer calls');
   String get permAnswerWhy => _(
@@ -1232,34 +1243,63 @@ class S {
       );
   String toneFor(String channel) => _('น้ำเสียง — $channel', 'Tone — $channel');
 
-  // ═══ หน้าเมล — ยังไม่ได้ต่อกล่องเมลจริง ═══════════════════
+  // ═══ หน้าเมล — เธอใช้แอปเมลในเครื่องแทนเจ้าของ ════════════
   //
-  // 🔴 ของเดิมเป็นกล่องเมลสมมติทั้งหน้า (สยามเทค / คุณนภา / "24 ฉบับ")
-  // ที่หน้าตาเหมือนของจริงทุกอย่าง · คนเพิ่งลงแอปอ่านว่าเธอเข้าไปอ่านเมล
-  // ของเขาแล้ว ซึ่งทั้งไม่จริงและน่ากลัว · บอกตรง ๆ ดีกว่า (หลักเดียวกับ
-  // หน้าปฏิทิน ที่เลิกใช้นัดสมมติไปก่อนแล้ว)
-  String get mailTitle => _('ยังไม่ได้เชื่อมกล่องเมล', 'Your inbox is not connected yet');
+  // เจ้าของ: "เชื่อมต่อกับแอพในเครื่องเลยได้ไหม เช่น google mail hotmail" · ไม่มีรหัสผ่านเมล
+  // ไม่มี OAuth · เธอใช้มือ (การช่วยเหลือพิเศษ) เปิดแอปเมลอ่านให้ · หน้านี้ยังไม่โชว์เมลเอง ·
+  // 🔴 ห้ามกลับไปใช้กล่องเมลสมมติ (สยามเทค / คุณนภา / "24 ฉบับ") · คนอ่านว่าเธออ่านเมลเขาไปแล้ว
+  String get mailTitle => _('เมลของคุณ', 'Your mail');
   String get mailSubtitle => _(
-        'เธอยังไม่ได้อ่านเมลของคุณเลยสักฉบับ',
-        "She hasn't read a single one of your emails",
+        'เธอเปิดแอปเมลในเครื่องอ่านให้ ไม่ต้องใส่รหัสผ่านเมล',
+        'She opens the mail app on your phone for you — no mail password needed',
       );
-  String get mailNotYetTitle =>
-      _('วันที่เชื่อมแล้ว เธอจะช่วยได้แบบนี้', 'Once it is connected, she will');
-  List<String> get mailNotYetPoints => isThai
+  String get mailAppsTitle => _('แอปเมลในเครื่อง', 'Mail apps on this phone');
+  String get mailNoApp => _(
+        'ยังไม่พบแอปเมลในเครื่อง · ติดตั้ง Gmail หรือ Outlook แล้วลงชื่อเข้าใช้ เธอจะใช้ได้ทันที',
+        'No mail app found · install Gmail or Outlook and sign in, and she can use it right away',
+      );
+  String get mailLooking => _('กำลังดูว่ามีแอปเมลอะไรบ้าง…', 'Looking for mail apps…');
+  String mailCheckButton(String app) => _('ให้เธอเช็กเมลใน $app', 'Have her check $app');
+  String get mailBusy => _('เธอกำลังทำงานในเครื่องอยู่…', 'She is busy on your phone…');
+  String get mailHandsOff => _(
+        'เปิด "ให้มายด์ใช้เครื่องแทน" ในหน้าตั้งค่าก่อน เธอถึงจะเปิดแอปเมลได้',
+        'Turn on "Let Mind use the phone" in Settings first so she can open your mail app',
+      );
+  String get mailResultInChat => _(
+        'เธอจะเปิดแอปเมลขึ้นมาอ่านเอง แล้วสรุปให้ในแชทกับเธอ (และแจ้งเตือน ถ้าคุณไม่ได้เปิดแอปอยู่)',
+        'She opens the mail app herself, then sums it up in your chat with her '
+            '(and in a notification if the app is not open)',
+      );
+  String get mailCanDoTitle => _('สั่งในแชทได้เลย เช่น', 'Ask her in chat, for example');
+  List<String> get mailCanDoPoints => isThai
       ? const [
-          'คัดเมลที่ต้องตอบจริงออกจากข่าวสารและใบเสร็จ',
-          'สรุปให้ฟังตอนเช้า',
-          'ร่างคำตอบให้คุณกดส่งเอง — เธอไม่ส่งอะไรแทนคุณถ้าไม่ได้สั่ง',
+          '"มีเมลใหม่อะไรบ้าง สรุปให้หน่อย"',
+          '"หาเมลจากธนาคารเมื่อวาน"',
+          '"ตอบเมลล่าสุดของคุณสมชายว่าพรุ่งนี้บ่ายสองสะดวก"',
         ]
       : const [
-          'pick out the emails that need an answer from newsletters and receipts',
-          'read you a summary in the morning',
-          'draft replies for you to send — she never sends anything on her own',
+          '"Any new mail? Give me a summary"',
+          '"Find yesterday\'s email from the bank"',
+          '"Reply to Somchai\'s latest email: tomorrow at 2pm works"',
         ];
-  String get mailNotYetMeanwhile => _(
-        'ระหว่างนี้คุยกับเธอที่แท็บมายด์ได้เลย เธอรู้ตารางนัดในปฏิทินและสายที่โทรเข้ามาแล้ว',
-        'Meanwhile, talk to her in the Mind tab — she already knows your '
-            'calendar and the calls you get.',
+  String get mailSafety => _(
+        'ก่อนกดส่งเมลทุกครั้ง แอปจะถามคุณก่อน · เธอไม่เปิดลิงก์หรือไฟล์แนบเอง · '
+            'แอปธนาคารและช่องรหัสผ่านแตะไม่ได้ · เธอเห็นเท่าที่แอปเมลแสดงบนจอ',
+        'The app asks you before every send · she never opens links or attachments on her own · '
+            'banking apps and password fields are off-limits · she sees only what the mail app shows on screen',
+      );
+
+  /// ข้อความของเธอตอนเจ้าของกดปุ่มเช็กเมล
+  String mailCheckAck(String app) =>
+      _('ได้ค่ะ ขอเปิด $app ดูเมลใหม่ให้นะคะ', 'Sure — opening $app to check your new mail.');
+
+  /// งานที่ส่งให้มือของเธอ (PhoneAgent) · เขียนให้ครบในประโยคเดียว ห้ามเกินที่เจ้าของสั่ง
+  String mailCheckGoal(String app) => _(
+        'เปิด $app แล้วอ่านเมลล่าสุดในกล่องจดหมาย (ฉบับที่ยังไม่ได้อ่านก่อน) สรุปให้เจ้าของทีละฉบับว่าใครส่งมา '
+            'เรื่องอะไร และต้องทำอะไรไหม ไม่เกิน 8 ฉบับ · ห้ามตอบ ลบ เก็บถาวร หรือเปิดลิงก์และไฟล์แนบ',
+        'Open $app and read the newest emails in the inbox (unread first). For each, tell the owner who sent it, '
+            'what it is about and whether it needs action — at most 8. Do not reply, delete, archive, '
+            'or open links or attachments.',
       );
 
   // ═══ หน้าปฏิทิน (อ่านจากปฏิทินของเครื่องจริง) ═══════════

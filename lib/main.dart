@@ -342,6 +342,10 @@ class _MindBootstrapState extends State<MindBootstrap>
     // ซึ่งอ่านได้ว่าเธอจำไม่ได้ ทั้งที่ความจริงคือยังไม่ได้ถาม
     // ยังไม่ได้ให้สิทธิ์ก็ไม่เป็นไร — จบที่สถานะ denied เงียบ ๆ
     _state.attachCalendar(_calendar);
+    // ให้เธอขอสิทธิ์สมุดโทรศัพท์/สาย/SMS เองตอนเปิดดูครั้งแรก (PhoneLookup) · ตัวเดียวกับการ์ดสิทธิ์
+    _state.attachPermissions(_perms);
+    // แอปเมลในเครื่อง · เธอต้องรู้ชื่อแอปก่อนเจ้าของถามเรื่องเมล (MindPersona.mailBlock)
+    unawaited(_state.refreshMailApps());
     await _calendar.load();
 
     // เฝ้าสายตั้งแต่เปิดแอป · การเฝ้าเองไม่ต้องใช้สิทธิ์ (รู้แค่ว่ามีสาย)

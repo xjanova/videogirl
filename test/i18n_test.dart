@@ -272,14 +272,19 @@ void main() {
       check('errBadKey', en.errBadKey);
       check('updateInstallerBlocked', en.updateInstallerBlocked);
 
-      // หน้าเมล (ยังไม่ได้เชื่อม) และปฏิทิน
+      // หน้าเมล (ผ่านแอปเมลในเครื่อง) และปฏิทิน
       check('mailTitle', en.mailTitle);
       check('mailSubtitle', en.mailSubtitle);
-      check('mailNotYetTitle', en.mailNotYetTitle);
-      for (final p in en.mailNotYetPoints) {
-        check('mailNotYetPoints', p);
+      check('mailNoApp', en.mailNoApp);
+      check('mailCheckButton', en.mailCheckButton('Gmail'));
+      check('mailHandsOff', en.mailHandsOff);
+      check('mailResultInChat', en.mailResultInChat);
+      for (final p in en.mailCanDoPoints) {
+        check('mailCanDoPoints', p);
       }
-      check('mailNotYetMeanwhile', en.mailNotYetMeanwhile);
+      check('mailSafety', en.mailSafety);
+      check('mailCheckGoal', en.mailCheckGoal('Gmail'));
+      check('permSmsWhy', en.permSmsWhy);
       check('calRestClear', en.calRestClear);
       check('calRestHours', en.calRestHours(4));
       check('calNoneToday', en.calNoneToday);
@@ -342,7 +347,8 @@ void main() {
         'ramTooSmallDetail': th.ramTooSmallDetail('3.6'),
         'brainOnDeviceTradeoff': th.brainOnDeviceTradeoff,
         'updateSource': th.updateSource,
-        'mailNotYetMeanwhile': th.mailNotYetMeanwhile,
+        'mailResultInChat': th.mailResultInChat,
+        'mailCheckGoal': th.mailCheckGoal('Gmail'),
         'puppetCalibrating': th.puppetCalibrating,
         'puppetPrivacy': th.puppetPrivacy,
         'packWhy': th.packWhy,
@@ -417,6 +423,9 @@ void main() {
         'lib/phone/call_lessons.dart',
         // แท็กสั่งงานในเครื่อง ("[[ทำในเครื่อง: …]]") ที่ต้องจับจากคำตอบของโมเดล
         'lib/hands/hands_tag.dart',
+        // แท็กขอดูของในเครื่อง ("[[ประวัติโทร: …]]") กับคำกรอง ("ไม่ได้รับ" "เมื่อวาน") และคำที่บอกว่า
+        // SMS เป็นรหัส ("รหัส" "ยืนยัน") ที่ต้อง **จับให้ได้** ไม่ใช่ข้อความที่ผู้ใช้เห็น
+        'lib/phone/phone_lookup.dart',
         // คำบนปุ่มจริงของแอปอื่น ("ส่ง" "ชำระ" "ลบ") ที่ต้อง **จับให้ได้** ก่อนเธอกด เพื่อถามเจ้าของก่อน
         'lib/hands/phone_policy.dart',
       };
