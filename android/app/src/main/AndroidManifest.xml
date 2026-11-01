@@ -52,6 +52,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <!-- บริการเฝ้างานของเธอใช้ specialUse ไม่ใช่ dataSync — ดูที่ <service> ข้างล่าง -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <!-- ไมค์ตอนแอปไม่อยู่บนจอ (listen/ListenService.kt) · คุยต่อขณะเธอไปเปิดแอปอื่น และรอคำเรียกชื่อ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
 
     <!-- Android 13 (API 33) การแจ้งเตือนกลายเป็นสิทธิ์ที่ต้องขอ
          ไม่ได้ขอ = บริการรันอยู่จริงแต่ผู้ใช้ไม่เห็นอะไรเลย -->
@@ -289,6 +291,18 @@
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Owner-requested on-device task the assistant performs, with a stop button" />
         </service>
+
+        <!-- ═══ ไมค์ของมายด์ตอนแอปไม่อยู่บนจอ ═══════════════════════
+             คุยสดต่อขณะเธอเปิดเมล/เว็บให้ และรอคำเรียก ("น้องมายด์") · มีแจ้งเตือนค้างพร้อมปุ่มหยุดเสมอ
+             ประเภท microphone · ไม่ใช่ specialUse · ระบบให้ไมค์ตามประเภทนี้เท่านั้น -->
+        <service android:name=".listen.ListenService" android:exported="false"
+            android:foregroundServiceType="microphone"/>
+        <receiver android:name=".listen.ListenBootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
 
         <!-- ประเภทของ foreground service ต้องประกาศใน manifest
              ประกาศแค่ตอนเรียก startForeground ไม่พอ — Android ปฏิเสธ

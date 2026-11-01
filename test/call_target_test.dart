@@ -213,6 +213,12 @@ void main() {
     ];
 
     test('ลำดับ · ชื่อ · เลขท้าย · คำบอกลักษณะ', () {
+      expect(CallReply.stepConfirm('ทำเลยค่ะ'), isTrue);
+      expect(CallReply.stepConfirm('ส่งได้เลย'), isTrue);
+      expect(CallReply.stepConfirm('ไม่ต้องค่ะ'), isFalse);
+      expect(CallReply.stepConfirm('ใช่ค่ะ'), isNull, reason: 'เธออาจถามเรื่องอื่นอยู่');
+      expect(CallReply.stepConfirm('โอเค'), isNull);
+      expect(CallReply.stepConfirm('ได้'), isNull);
       expect(CallReply.choice('คนที่สองค่ะ', choices), 1);
       expect(CallReply.choice('อันแรก', choices), 0);
       expect(CallReply.choice('เบอร์ 3', choices), 2);

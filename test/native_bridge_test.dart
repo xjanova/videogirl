@@ -197,6 +197,8 @@ void main() {
       'ACCESS_NETWORK_STATE',
       'FOREGROUND_SERVICE',
       'FOREGROUND_SERVICE_DATA_SYNC',
+      // ไมค์เบื้องหลัง (listen/ListenService.kt) · เป็นสิทธิ์ normal เช่นกัน
+      'FOREGROUND_SERVICE_MICROPHONE',
       // บริการเฝ้างาน (flutter_background_service) ใช้ประเภทนี้ — ดู manifest
       'FOREGROUND_SERVICE_SPECIAL_USE',
       'RECEIVE_BOOT_COMPLETED',

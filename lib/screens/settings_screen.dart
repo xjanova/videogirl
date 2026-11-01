@@ -25,6 +25,7 @@ import 'call_lessons_panel.dart';
 import 'call_personality_panel.dart';
 import 'direct_call_panel.dart';
 import 'phone_control_panel.dart';
+import 'wake_word_panel.dart';
 import 'shop_screen.dart';
 import '../memory/mind_memory.dart';
 import '../system/permissions.dart';
@@ -385,6 +386,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             _languageCard(state, mode, t),
             // เจ้าของ: "ต้องทำให้ มายด์ คอนโทรลเครื่องได้หมด เปิดได้ได้ทุกแอพ ทำแทนเราได้"
             _card(mode: mode, label: t.handsCard, child: PhoneControlPanel(accent: mode.accent)),
+            // เจ้าของ: "ใช้คำพิเศษเรียกเธอให้รับคำสั่งได้ เช่นน้องมายด์ เธอต้องขานทันทีที่รู้ว่าเรียก"
+            _card(mode: mode, label: t.wakeCard, child: WakeWordPanel(accent: mode.accent)),
             _permissionCard(context, mode, t),
             _watchCard(context, mode, t),
             _exitCard(state, mode, t),

@@ -114,4 +114,15 @@
     <string name="hands_record_cancel">Cancel</string>
     <string name="hands_public_working">Mind is working on your phone</string>
     <string name="hands_public_ask">Mind needs your OK for the next step</string>
+    <!-- Mind's microphone while the app is not on screen (listen/ListenService.kt) -->
+    <string name="listen_channel">Mind is listening</string>
+    <string name="listen_watch_title">Mind is waiting for her name</string>
+    <string name="listen_watch_text">Say “%1$s” any time · No sound leaves the phone until you call her</string>
+    <string name="listen_default_word">Hey Mind</string>
+    <string name="listen_talking_title">Mind is talking with you</string>
+    <string name="listen_talking_text">The mic is on · Say "that's all" or turn it off</string>
+    <string name="listen_stop_watch">Stop waiting</string>
+    <string name="listen_stop_talk">Mic off</string>
+    <string name="listen_resume_title">Mind is not listening for her name</string>
+    <string name="listen_resume_text">Tap to bring her back</string>
 </resources>

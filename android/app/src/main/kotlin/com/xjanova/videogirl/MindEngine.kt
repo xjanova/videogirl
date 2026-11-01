@@ -84,7 +84,9 @@ object MindEngine {
 
     private val release = Runnable {
         // เจ้าของเปิดแอปอยู่ หรือมีสายใหม่เข้ามา = ยังต้องใช้
-        if (MainActivity.dartAlive || MindInCallService.service != null) return@Runnable
+        if (MainActivity.dartAlive || MindInCallService.service != null ||
+            com.xjanova.videogirl.listen.ListenService.running
+        ) return@Runnable
         FlutterEngineCache.getInstance().get(ID)?.destroy()
     }
 

@@ -659,6 +659,65 @@ extension AiStrings on S {
 
   // ── คุยต่อเนื่องด้วยเสียง (แตะไมค์ · lib/ai/voice_chat.dart) ──
   String get voiceChatOpening => pick('กำลังเปิดไมค์…', 'Opening the mic…');
+  // ═══ เรียกชื่อเธอ ═══════════════════════════════════════
+  /// คำขานรับ · เล่นจากไฟล์ที่เตรียมไว้ สลับกันไป
+  List<String> get wakeReplyWords => isThai ? const ['ขา?', 'คะ?', 'ค่ะ?'] : const ['Yes?', 'Mm-hm?', "I'm here."];
+  String get wakeCard => pick('เรียกชื่อเธอ', 'Call her by name');
+  String get wakeIntro => pick(
+        'เรียกคำที่สอนไว้เมื่อไหร่ เธอขานรับทันทีแล้วฟังคำสั่ง แม้อยู่แอปอื่นหรือจอดับ · เธอจำเสียงตามตัวอย่าง '
+            'จึงตอบคนที่สอนได้ดีที่สุด แต่ไม่ใช่การยืนยันตัวตน · ตอนเครื่องล็อกเธอคุยได้ แต่โทรออกและกดขั้นที่ย้อนไม่ได้ต้องปลดล็อกก่อน',
+        'Say your word any time and she answers right away and listens, even from another app or with the screen '
+            'off. She matches your own recordings, so she responds best to whoever taught her, but that is not proof of '
+            "who's speaking. While the phone is locked she can talk, but calls and steps that can't be undone need an "
+            'unlock first.',
+      );
+  String get wakePrivacy => pick(
+        'ระหว่างรอ เสียงอยู่ในเครื่องเท่านั้น ไม่บันทึก ไม่ส่งออก · เรียกแล้วจึงส่งเสียงไปที่สมองที่เลือกไว้ · '
+            'เธอได้ยินผิดได้บางครั้ง แล้วเสียงรอบข้างจะถูกส่งไปไม่เกิน 20 วินาที · ไมค์เปิดค้าง จึงเปลืองแบตเพิ่มและเห็นจุดเขียวตลอด',
+        'While waiting, sound stays on the phone and is never saved or sent. After you call her, it goes to the brain '
+            "you chose. She can mishear now and then, and up to 20 seconds of what's around you is sent. "
+            'The mic stays on, so it uses more battery and the green dot stays lit.',
+      );
+  String get wakeSwitch => pick('รอฟังคำเรียก', 'Listen for my word');
+  String wakeWordIs(String word) => pick('คำเรียก: «$word»', 'Your word: “$word”');
+  String get wakeNeedTeach => pick('ยังไม่ได้สอนคำเรียก', 'No word taught yet');
+  String get wakeTeach => pick('สอนคำเรียก', 'Teach her a word');
+  String get wakeTeachAgain => pick('สอนใหม่', 'Teach again');
+  String get wakeForget => pick('ลบคำเรียก', 'Delete the word');
+  String get wakeForgetAsk =>
+      pick('ลบคำเรียกและเสียงตัวอย่างไหมคะ? เธอจะหยุดรอฟังด้วย', 'Delete the word and its recordings? She will stop listening too.');
+  String get wakeForgetYes => pick('ลบ', 'Delete');
+  String get wakeCancel => pick('ยกเลิก', 'Cancel');
+  String get wakeWordField => pick('คำที่จะใช้เรียก', 'The word you will say');
+  String get wakeDefaultWord => pick('น้องมายด์', 'Hey Mind');
+  String get wakeWordEmpty => pick('พิมพ์คำเรียกก่อนนะคะ', 'Type the word first.');
+  String get wakeReplaceAsk =>
+      pick('สอนใหม่จะแทนคำเรียกเดิมเมื่อสอนจบ ทำต่อไหมคะ?', 'This replaces your current word once finished. Continue?');
+  String get wakeReplaceYes => pick('สอนใหม่', 'Teach again');
+  String wakeSay(String word, int done, int all) =>
+      pick('พูดว่า «$word» แล้วหยุด ($done/$all)', 'Say “$word”, then stop ($done/$all)');
+  String get wakeTeachTooShort => pick('สั้นหรือยาวเกินไป พูดใหม่อีกครั้งนะคะ', 'Too short or too long. Please say it again.');
+  String get wakeTeachUnlike => pick('ไม่เหมือนครั้งก่อน ๆ พูดใหม่อีกครั้งนะคะ', "That didn't match the others. Please say it again.");
+  String get wakeTeachDone => pick('จำได้แล้วค่ะ ลองเรียกเธอดูได้เลย', 'Got it. Try calling her.');
+  String get wakeTeachFailed => pick('เปิดไมค์ไม่ได้ ลองใหม่อีกครั้งนะคะ', "Couldn't open the mic. Please try again.");
+  String get wakeSensitivity => pick('ความไว', 'Sensitivity');
+  String get wakeStrict => pick('เข้ม', 'Strict');
+  String get wakeNormal => pick('ปกติ', 'Normal');
+  String get wakeLoose => pick('ไว', 'Eager');
+  String get wakeTryReply => pick('ลองฟังเสียงขาน', 'Hear her answer');
+  String get wakePaused => pick('พักฟังอยู่ เพราะมีสายหรือแอปอื่นใช้ไมค์', 'Paused: a call or another app is using the mic');
+  String get wakeListening => pick('กำลังรอฟังอยู่', 'Listening for your word');
+  String get wakeOffNow => pick('ไม่ได้รอฟัง', 'Not listening');
+  String get wakeUnlockFirst => pick(
+        'ปลดล็อกเครื่องก่อนนะคะ ขั้นนี้ย้อนกลับไม่ได้ ต้องเป็นเจ้าของเครื่องสั่งเท่านั้น',
+        "Please unlock your phone first. This can't be undone, so it has to come from you.",
+      );
+  String get wakePreparing => pick('กำลังเตรียมเสียงขาน…', 'Getting her answer ready…');
+  String get wakeBackgroundOff => pick(
+        'ฟังเบื้องหลังไม่ได้ในรอบนี้ · ออกจากแอปแล้วไมค์จะปิด',
+        "Background listening isn't available right now. The mic will turn off when you leave the app.",
+      );
+
   String get voiceChatListening => pick('ฟังอยู่ค่ะ พูดได้เลย', 'Listening — just talk');
   String get voiceChatHearing => pick('กำลังฟัง…', 'Hearing you…');
   String get voiceChatThinking => pick('กำลังคิด…', 'Thinking…');
