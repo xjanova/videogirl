@@ -29,6 +29,7 @@ import '../avatar/avatar_view.dart';
 import '../ai/local_brain.dart';
 import '../ai/local_server_scan.dart';
 import '../ai/mind_audio.dart';
+import '../ai/mind_eyes.dart';
 import '../ai/mind_persona.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
@@ -355,14 +356,65 @@ class MindState extends ChangeNotifier {
   }
 
   /// ตั้งกล่องยืนยัน · รอให้คำตอบของเธอขึ้นจอก่อน (ตาถัดไปของ event loop) ไม่งั้นลำดับกลับหัว
+  ///
+  /// 🔴 สายเดิมที่กล่องเปิดค้างอยู่ = แก้กล่องใบเดิม ไม่เปิดใบใหม่ · เจ้าของบอกแก้เรื่องได้โดยไม่ต้องกดซ้ำ และโมเดลที่เรียก
+  /// เครื่องมือซ้ำก็ไม่ทำให้กล่องเด้งใหม่ทุกครั้ง (เจ้าของ: "เธอให้ยืนยันซ้ำๆ ไม่โทรให้สักที")
   void _offerCall({required String number, String? name, required String task}) {
-    final p = PendingCall(number: number, name: name, task: task, id: ++_callSeq);
+    final open = _pendingCall;
+    final same = open != null && _sameNumber(open.number, number);
+    _offerUnchanged = same && open.task.trim() == task.trim();
+    final p = PendingCall(
+      number: number,
+      name: name ?? (same ? open.name : null),
+      task: task,
+      id: same ? open.id : ++_callSeq,
+      at: _clock(),
+      askOwner: same ? open.askOwner : null,
+    );
     _callChoice = null;
     unawaited(Future<void>(() {
       if (_disposed) return;
+      // เจ้าของกดโทร/ยกเลิกไปแล้วระหว่างรอคิว · กล่องเดิมจบแล้ว ห้ามเปิดคืน
+      if (same && _pendingCall?.id != p.id) return;
       _pendingCall = p;
       _notify();
     }));
+  }
+
+  /// ขอสายล่าสุดเหมือนกล่องที่เปิดอยู่ทุกอย่าง · ผลเครื่องมือบอกเธอให้หยุดเรียกซ้ำ
+  bool _offerUnchanged = false;
+
+  static bool _sameNumber(String a, String b) {
+    final x = a.replaceAll(RegExp(r'[^0-9]'), ''), y = b.replaceAll(RegExp(r'[^0-9]'), '');
+    return x.length >= 9 && y.length >= 9
+        ? x.substring(x.length - 9) == y.substring(y.length - 9)
+        : x == y;
+  }
+
+  /// เธอถามหลังกล่องขึ้นว่า "โทรเลยไหมคะ" และยังไม่นาน · "ใช่" "โอเค" เฉย ๆ จึงตอบเรื่องโทรแน่ ·
+  /// ถามเรื่องอื่นต่อ = ประโยคล่าสุดเปลี่ยน คำตอบนั้นไม่กดโทร
+  bool get askedToDial {
+    final p = _pendingCall, l = _lastHer, at = p?.at;
+    if (p == null || l == null || at == null || l.at.isBefore(at)) return false;
+    return _clock().difference(l.at) <= CallReply.askWindow && CallReply.asksToDial(l.text);
+  }
+
+  /// ประโยคล่าสุดของเธอ (แชท · คุยสด · ข้อความแจ้ง) · ดู [askedToDial]
+  ({String text, DateTime at})? _lastHer;
+
+  /// ชื่อคนที่จะโทร ให้คำตอบแบบ "โทรหาบัวเลย" เข้ารูป
+  List<String> get _pendingNames => [if (_pendingCall?.name != null) _pendingCall!.name!];
+
+  /// คำของเจ้าของแปลว่าโทร/ไม่โทรไหม · null = ไม่ใช่คำตอบเรื่องนี้ · ตัวคุมเสียงใช้ตัดสินว่าต้องสะกิดเธอไหม
+  bool? pendingCallReply(String text) => CallReply.confirm(text, names: _pendingNames);
+
+  /// เจ้าของแก้เรื่องหรือสวิตช์ในกล่อง · ตอบ "โทรเลย" ด้วยเสียงต่อจากนั้นต้องได้ฉบับที่แก้ · [id] เก่า = ทิ้ง
+  void editPendingCall(int id, {String? task, bool? askOwner}) {
+    final p = _pendingCall;
+    if (p == null || p.id != id) return;
+    final t = task?.trim();
+    _pendingCall = p.copyWith(task: t == null || t.isEmpty ? null : t, askOwner: askOwner);
+    _notify();
   }
 
   /// คำตอบเรื่องโทรที่ตัดสินได้ในเครื่อง ไม่ต้องถามสมอง · null = ส่งให้สมองตามปกติ ·
@@ -393,9 +445,10 @@ class MindState extends ChangeNotifier {
     final p = _pendingCall;
     if (p != null) {
       // 🔴 ทั้งประโยคต้องเป็นคำตอบ ("โทรเลย" "ใช่" "ยกเลิก") · "ได้ยินไหม" ไม่ใช่การยืนยัน (ดู CallReply.confirm)
-      final yes = CallReply.confirm(text);
-      // คุยต่อเนื่องด้วยเสียง = ต้องมีคำว่า "โทร" ชัด ๆ (ดู CallReply.saysCall) · "ใช่" เฉย ๆ ให้สมองตอบตามบริบท
-      if (yes == true && (!_handsFree || CallReply.saysCall(text))) {
+      final yes = pendingCallReply(text);
+      // คุยต่อเนื่องด้วยเสียง: พูดว่าโทรชัด ๆ หรือเธอเพิ่งถามว่า "โทรเลยไหมคะ" ([askedToDial]) ·
+      // "ใช่" ตอนเธอถามเรื่องอื่นให้สมองตอบตามบริบท
+      if (yes == true && (!_handsFree || CallReply.saysCall(text, names: _pendingNames) || askedToDial)) {
         if (!await _voiceBarred()) await confirmPendingCall();
         return '';
       }
@@ -420,11 +473,17 @@ class MindState extends ChangeNotifier {
   void Function(String text)? onHerNotice;
 
   /// [id] = ของกล่องที่ปิด · กล่องเก่าที่ปิดตามหลัง (เจ้าของตอบด้วยเสียงไปแล้ว) ต้องไม่ยกเลิกคำขอใหม่
-  void cancelPendingCall({int? id}) {
+  ///
+  /// [tell] = เจ้าของกดยกเลิกในกล่อง · คุยเสียงอยู่เธอต้องรู้ ไม่งั้นถามต่อว่าโทรเลยไหมกับกล่องที่ปิดไปแล้ว
+  void cancelPendingCall({int? id, bool tell = false}) {
     final p = _pendingCall;
     if (p == null || (id != null && p.id != id)) return;
     _pendingCall = null;
-    _notify();
+    if (tell && _handsFree) {
+      _say(s.callChoiceCancelled);
+    } else {
+      _notify();
+    }
   }
 
   /// เจ้าของกด "โทรเลย" · [task] = เรื่องที่เจ้าของแก้ในกล่องยืนยัน (ว่าง = ใช้ของเธอ) ·
@@ -433,9 +492,7 @@ class MindState extends ChangeNotifier {
     final asked = _pendingCall;
     if (asked == null) return;
     final edited = task?.trim() ?? '';
-    final p = edited.isEmpty
-        ? asked
-        : PendingCall(number: asked.number, name: asked.name, task: edited, id: asked.id);
+    final p = edited.isEmpty ? asked : asked.copyWith(task: edited);
     _pendingCall = null;
     _notify();
     String? why;
@@ -449,7 +506,7 @@ class MindState extends ChangeNotifier {
       return;
     }
     _outgoing = (who: p.who, number: p.number, task: p.task);
-    _outgoingAskOk = askOwner ?? !OutgoingRules.noAsking(p.task);
+    _outgoingAskOk = askOwner ?? p.askOwner ?? !OutgoingRules.noAsking(p.task);
     _outgoingAnswered = false;
     _say(s.callOutDialing(p.who));
   }
@@ -1124,6 +1181,7 @@ class MindState extends ChangeNotifier {
     _callGreetingText = p.getString('callGreeting') ?? '';
     _realtimeCalls = p.getBool('realtimeCalls') ?? true;
     _voiceChatLive = p.getBool('voiceChatLive') ?? true;
+    _voiceChatVoicePick = p.getString('voiceChatVoice') ?? '';
     _liveCalls = p.getBool('liveCalls') ?? false;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
 
@@ -1280,7 +1338,40 @@ class MindState extends ChangeNotifier {
 
   void _notify() {
     if (_disposed) return;
+    _syncComeBack();
     notifyListeners();
+  }
+
+  /// กล่องที่เรียกเจ้าของกลับมาไปแล้ว · กันเรียกซ้ำทุกครั้งที่ state ขยับ
+  String? _comeBackFor;
+
+  /// มีกล่องรอเจ้าของแตะ แต่แอปอยู่หลังบ้าน = เรียกกลับมา ([ComeBack] ฝั่งเนทีฟ)
+  ///
+  /// 🔴 เฉพาะเรื่องโทร · งานในเครื่อง (ถามก่อนส่ง) ไม่ดึงจอกลับ · มือเธอกำลังถือแอปอื่นอยู่ ดึงมาแล้ว
+  /// กดขั้นต่อไปจะพลาดจอ · ทางนั้นตอบจากปุ่มในแจ้งเตือนหรือด้วยเสียงได้โดยไม่ต้องสลับแอป
+  void _syncComeBack() {
+    final p = _pendingCall, c = _callChoice;
+    final key = p != null ? 'call${p.id}' : (c != null ? 'choice${c.id}' : null);
+    if (key == _comeBackFor) return;
+    final had = _comeBackFor != null;
+    _comeBackFor = key;
+    if (key == null) {
+      if (had) unawaited(_system('comeBackDone'));
+      return;
+    }
+    if (_appVisible) return;
+    unawaited(_system('comeBack', {
+      'title': p != null ? s.comeBackCallTitle : s.comeBackChoiceTitle,
+      'body': p != null ? s.comeBackCallBody(p.who) : s.comeBackChoiceBody,
+    }));
+  }
+
+  Future<void> _system(String method, [Map<String, Object?>? args]) async {
+    try {
+      await kSystemChannel.invokeMethod<Object?>(method, args);
+    } on Object catch (e) {
+      debugPrint('$method: ${e.runtimeType}'); // ไม่ใช่ Android · เธอยังบอกด้วยเสียงและขึ้นแชท
+    }
   }
 
   // ═══ โหมด ══════════════════════════════════════════════
@@ -2677,20 +2768,51 @@ class MindState extends ChangeNotifier {
   /// คุยสดได้ไหมตอนนี้ · OpenAI ด้วยคีย์ของเจ้าของเท่านั้น (เหมือนในสาย · ไม่ยืมคีย์ข้ามสมอง)
   bool get voiceChatLiveReady => _voiceChatLive && _brain == BrainProvider.openai && hasOwnKey;
 
-  /// เสียงของเธอตอนคุยสด · เสียงแชทเป็นของ OpenAI และ Realtime รู้จัก = ใช้ · ไม่งั้นใช้เสียงที่ตั้งไว้รับสาย
-  String get _voiceChatVoice {
-    final chat = voiceFor(VoiceChannel.chat);
-    if (chat.engine == TtsEngine.openai && RealtimeCall.voices.contains(chat.voice)) return chat.voice;
-    return voiceFor(VoiceChannel.answer).voice;
+  /// เสียงที่เจ้าของเลือกให้คุยสด · ว่าง = ยังไม่เคยเลือก
+  String _voiceChatVoicePick = '';
+
+  void setVoiceChatVoice(String v) {
+    if (!RealtimeCall.voices.contains(v) || v == _voiceChatVoicePick) return;
+    _voiceChatVoicePick = v;
+    _save('voiceChatVoice', v);
+    _notify();
   }
+
+  /// เสียงของเธอตอนคุยสด · เลือกเอง > เสียงแชท > ค่าตั้งต้น
+  ///
+  /// เจ้าของ: "ฉันรู้สึกว่าเธอเลือกใช้เสียง เดียวกับการโทรเข้าหรือออก" · ของเดิมตกไปเสียงรับสายจริง ·
+  /// 🔴 ห้ามหยิบเสียงของช่องโทร · คนละช่อง เจ้าของตั้งแยกไว้คนละเหตุผล
+  String get voiceChatVoice {
+    if (RealtimeCall.voices.contains(_voiceChatVoicePick)) return _voiceChatVoicePick;
+    final chat = voiceFor(VoiceChannel.chat).voice;
+    return RealtimeCall.voices.contains(chat) ? chat : VoiceProfile.openAiDefaults.voice;
+  }
+
+  /// เสียงคุยสดในรูปที่สังเคราะห์เป็นไฟล์ได้ · ลองฟังกับเสียงขาน ซึ่งไม่ได้ผ่าน Realtime
+  VoiceProfile get voiceChatLiveProfile {
+    final chat = voiceFor(VoiceChannel.chat);
+    final base = chat.engine == TtsEngine.openai
+        ? chat
+        : VoiceProfile.defaultFor(VoiceChannel.chat, lang).copyWith(engine: TtsEngine.openai);
+    return base.copyWith(voice: voiceChatVoice);
+  }
+
+  /// เสียงที่เธอจะขาน · ต้องเป็นเสียงเดียวกับที่คุยต่อ ไม่งั้นขานคนละคน
+  VoiceProfile get _wakeReplyProfile =>
+      voiceChatLiveReady ? voiceChatLiveProfile : voiceFor(VoiceChannel.chat);
+
+  /// เปลี่ยนเมื่อเสียงขานที่อัดไว้ใช้ไม่ได้แล้ว ([renderWakeReplies] ต้องอัดใหม่)
+  int get wakeReplyKey => Object.hash(lang, _wakeReplyProfile);
 
   RealtimeChat openVoiceChat({required ChatToolRunner tools}) => RealtimeChat(
         apiKey: effectiveOpenAiKey,
         instructions: voiceChatPrompt(),
         tools: chatVoiceTools(web: _webSearch && _webSearcher() != null, phone: _phoneControl),
         runChatTool: tools,
-        voice: _voiceChatVoice,
+        voice: voiceChatVoice,
         language: _sttLang,
+        // 🔴 "โทรเลย" ตัดสินจากบทที่ถอดได้ในเครื่อง · ถอดเพี้ยน = เธอได้ยินแต่แอปไม่กดโทร · บอกคำที่คาดไว้ให้ตัวถอด
+        transcriptionHint: s.voiceChatTranscriptionHint,
         connect: debugRealtimeConnect,
       );
 
@@ -2743,7 +2865,7 @@ class MindState extends ChangeNotifier {
   /// เสียงขานรับเมื่อถูกเรียกชื่อ · สังเคราะห์ล่วงหน้าด้วยเสียงแชทของเธอ ขานได้ทันทีโดยไม่รอเน็ต ·
   /// ทางไหนล้มก็ตกไปเสียงเครื่องเหมือนการพูดปกติ · ได้ไม่ครบ = คืนเท่าที่ได้
   Future<List<Utterance>> renderWakeReplies() async {
-    final profile = voiceFor(VoiceChannel.chat);
+    final profile = _wakeReplyProfile;
     final out = <Utterance>[];
     for (final word in s.wakeReplyWords) {
       try {
@@ -2761,10 +2883,10 @@ class MindState extends ChangeNotifier {
   Future<bool> confirmCallByVoice(String text) async {
     final p = _pendingCall;
     if (p == null) return false;
-    final yes = CallReply.confirm(text);
+    final yes = pendingCallReply(text);
     if (yes == null) return false;
-    // ด้วยเสียง "ใช่" "โอเค" อาจตอบคำถามอื่นของเธอ · กดโทรเมื่อพูดว่าโทรชัด ๆ เท่านั้น
-    if (yes && !CallReply.saysCall(text)) return false;
+    // ด้วยเสียง "ใช่" "โอเค" อาจตอบคำถามอื่นของเธอ · กดโทรเมื่อพูดว่าโทรชัด ๆ หรือเธอเพิ่งถามเรื่องโทรพอดี
+    if (yes && !CallReply.saysCall(text, names: _pendingNames) && !askedToDial) return false;
     if (yes) {
       if (await _voiceBarred()) return false;
       await confirmPendingCall();
@@ -2781,12 +2903,26 @@ class MindState extends ChangeNotifier {
       case 'call_someone':
         final who = arg('who');
         final task = arg('task');
+        final script = arg('script');
         if (who.isEmpty) return 'Ask the owner who to call.';
-        final said = await _resolveCall(who, task.isEmpty ? who : task);
+        final brief = _clip(
+            [
+              if (script.isNotEmpty) '${s.callOutScriptLabel}: $script',
+              if (task.isNotEmpty) task,
+            ].join('\n'),
+            1200);
+        final said = await _resolveCall(who, brief.isEmpty ? who : brief);
         if (said == null) {
-          return 'A confirmation card is on the screen now. Tell the owner in one short sentence who you will call '
-              '(name and last four digits) and that they can say "call now" or "cancel". Do not say the call has '
-              'started.';
+          if (_offerUnchanged) {
+            return 'That card is already open and nothing changed, so do not call this tool again. Ask the owner once: '
+                '"${s.callOutAskLine}" If the app still does not dial after they answer, tell them to tap the call '
+                'button on the screen.';
+          }
+          return 'The card is on the owner\'s screen now with the task and your script. Read the plan aloud in one or '
+              'two short sentences (who, last four digits, what you will tell them), then end with exactly: '
+              '"${s.callOutAskLine}" The app hears the answer itself and dials on a yes to that question; you cannot '
+              'dial. If the owner wants a change, call call_someone again with the whole new task and script (the same '
+              'card updates), say only what changed, and ask again. Do not say the call has started.';
         }
         // ข้อความถาม/หาไม่เจอขึ้นแชทด้วย · เจ้าของที่มองจอได้แตะเลือกได้ · ไม่ผ่าน [_say]
         // (onHerNotice จะสั่งให้เธอพูดซ้ำทั้งที่ผลนี้กลับไปให้เธอพูดอยู่แล้ว)
@@ -2801,6 +2937,7 @@ class MindState extends ChangeNotifier {
         final kind = switch (arg('kind')) {
           'contacts' => PhoneLookupKind.contacts,
           'sms' => PhoneLookupKind.sms,
+          'device' => PhoneLookupKind.device,
           _ => PhoneLookupKind.calls,
         };
         var q = arg('query');
@@ -2816,8 +2953,234 @@ class MindState extends ChangeNotifier {
         if (goal.isEmpty) return 'Ask the owner what to do.';
         unawaited(_phoneTaskFromChat(goal));
         return 'Started. Tell the owner in one short sentence that you are doing it now; you will tell them the result.';
+      case 'open_eyes':
+        final said = await openEyes(front: arg('camera') != 'back');
+        if (said == null) return _lockedResult;
+        return eyes.on
+            ? 'The camera is on. A picture of what it sees comes with this result, and another each time the owner '
+                'starts talking. Describe only what you really see, and never guess who someone is from their face.'
+            : 'Not opened. Tell the owner: $said';
+      case 'close_eyes':
+        await eyes.turnOff();
+        return 'The camera is off. You can no longer see.';
+      case 'take_photo':
+        final said = await takePhoto(front: arg('camera') != 'back');
+        return said == null ? _lockedResult : 'Tell the owner briefly: $said';
+      case 'open_app':
+        final app = arg('name');
+        if (app.isEmpty) return 'Ask the owner which app.';
+        return await openAppNow(app) ?? _lockedResult;
+      case 'play_recording':
+        final said = await playRecording(arg('who'));
+        if (said == null) return _lockedResult;
+        return playingRecording
+            ? 'Say at most three words, then stop talking: the recording starts as soon as you finish, and the owner '
+                'can stop it from the screen. ($said)'
+            : 'Tell the owner briefly: $said';
     }
     return 'Unknown tool.';
+  }
+
+  // ── ตา · ดู MindEyes ──
+
+  MindEyes? _lazyEyes;
+  MindEyes get eyes => _lazyEyes ??= MindEyes();
+
+  @visibleForTesting
+  set debugEyes(MindEyes e) => _lazyEyes = e;
+
+  /// ประโยคล่าสุดของเจ้าของ · ตัดสินเรื่องกล้องจากคำของเขาเอง
+  ({String text, DateTime at})? _lastOwner;
+
+  /// เจ้าของขอให้ดู/ถ่ายในครึ่งนาทีล่าสุดไหม · คุยสดบทมาช้ากว่าเครื่องมือได้ จึงรอสั้น ๆ ก่อนตัดสิน
+  Future<bool> _ownerAskedToSee() async {
+    for (var i = 0; i < 25; i++) {
+      final l = _lastOwner;
+      if (l != null && _clock().difference(l.at) <= const Duration(seconds: 30) && EyesWords.ask.hasMatch(l.text)) {
+        return true;
+      }
+      if (i < 24) await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return false;
+  }
+
+  /// ด่านเดียวกันของทุกทางที่เปิดกล้อง · คืนข้อความเมื่อเปิดไม่ได้ · null = ผ่าน
+  Future<String?> _cameraBlocked() async {
+    if (!await _ownerAskedToSee()) return s.eyesNotAsked;
+    if (!_appVisible) return s.eyesNeedScreen;
+    final perms = _perms;
+    if (perms != null && !perms.of(MindPermission.camera)) {
+      if (!await _askPhonePermission(MindPermission.camera)) return s.eyesNoPermission;
+    }
+    return null;
+  }
+
+  /// เปิดตา · คืนข้อความบอกเจ้าของ · null = เครื่องล็อก บอกไปแล้ว
+  Future<String?> openEyes({bool front = true}) async {
+    if (await _voiceBarred()) return null;
+    final blocked = await _cameraBlocked();
+    if (blocked != null) return blocked;
+    return await eyes.turnOn(front: front) ? s.eyesOpened : s.eyesFailed;
+  }
+
+  Uint8List? _lastPhoto;
+
+  /// รูปที่เพิ่งถ่าย ให้เธอเห็นด้วย · อ่านครั้งเดียว · ไม่เก็บค้างในหน่วยความจำ
+  Uint8List? takeLastPhoto() {
+    final p = _lastPhoto;
+    _lastPhoto = null;
+    return p;
+  }
+
+  /// ถ่ายแล้วเก็บเข้าคลังภาพ · ใช้กล้องที่เปิดอยู่ถ้าตรงข้าง · คืนข้อความบอกเจ้าของ · null = เครื่องล็อก บอกไปแล้ว
+  Future<String?> takePhoto({bool front = true}) async {
+    if (await _voiceBarred()) return null;
+    final blocked = await _cameraBlocked();
+    if (blocked != null) return blocked;
+    final wasOn = eyes.on, wasFront = eyes.front;
+    if (!await eyes.turnOn(front: front)) return s.eyesFailed;
+    final jpeg = await eyes.look();
+    // เปิดมาถ่ายรูปเดียว = ปิดกลับ · กำลังมองอยู่ = กลับไปข้างเดิม
+    if (!wasOn) {
+      await eyes.turnOff();
+    } else if (wasFront != front) {
+      await eyes.turnOn(front: wasFront);
+    }
+    if (jpeg == null) return s.eyesFailed;
+    var saved = false;
+    try {
+      saved = await kSystemChannel.invokeMethod<bool>('savePhoto', {'jpeg': jpeg}) == true;
+    } on Object catch (e) {
+      debugPrint('กล้อง: เก็บรูปไม่ได้ — ${e.runtimeType}');
+    }
+    _lastPhoto = jpeg;
+    return saved ? s.photoSaved : s.photoNotSaved;
+  }
+
+  static const _lockedResult = 'The phone is locked, so this was not done. The owner has already been told to unlock it. '
+      'Do not repeat that.';
+
+  // ── ของที่เธอทำได้ทันที · เจ้าของ: "ถ้าเราคุยแล้วสั่งให้เธอเปิดเสียงที่บันทึกให้ฟังก็ควรเปิดได้" ──
+
+  bool _playingRecording = false;
+  bool get playingRecording => _playingRecording;
+  int _recordingSeq = 0;
+
+  /// คุยสดอยู่ เธอกำลังพูดไหม · เสียงทางนั้นไม่ผ่าน [speaking] · ตัวคุมเสียงเป็นคนตอบ
+  bool Function()? herVoiceBusy;
+
+  /// เปิดเสียงสายที่บันทึกไว้ · [who] ว่าง = ล่าสุด · คืนข้อความบอกเจ้าของ · null = เครื่องล็อก บอกไปแล้ว
+  ///
+  /// 🔴 เสียงสายคือเสียงคนอื่น · คำเรียกไม่ใช่การยืนยันตัวตน ([_voiceBarred]) · ไม่งั้นใครก็พูดใส่เครื่องที่วางไว้แล้วฟังได้
+  Future<String?> playRecording(String who) async {
+    if (await _voiceBarred()) return null;
+    final found = await _findRecording(who);
+    if (found == null) return s.recordingNone(who);
+    unawaited(_playRecordingFile(found.file, found.note));
+    return s.recordingPlaying(found.note.who);
+  }
+
+  Future<({File file, CallNote note})?> _findRecording(String who) async {
+    final q = who.trim().toLowerCase();
+    final digits = q.replaceAll(RegExp(r'[^0-9]'), '');
+    for (final n in _callNotes?.notes ?? const <CallNote>[]) {
+      final match = q.isEmpty ||
+          n.who.toLowerCase().contains(q) ||
+          n.summary.toLowerCase().contains(q) ||
+          (digits.length >= 4 && n.who.replaceAll(RegExp(r'[^0-9]'), '').contains(digits));
+      if (!match) continue;
+      final f = await CallRecordings.forNote(n.id);
+      if (f != null) return (file: f, note: n);
+    }
+    return null;
+  }
+
+  Future<void> _playRecordingFile(File file, CallNote note) async {
+    final seq = ++_recordingSeq;
+    _playingRecording = true;
+    _notify();
+    unawaited(_callNotes?.markSeen(note.id));
+    // ให้เธอพูดประโยคสั้น ๆ จบก่อน · คุยสดเสียงเธอเริ่มหลังผลเครื่องมือกลับไป จึงรอให้เริ่มก่อนนิดหนึ่ง
+    if (herVoiceBusy != null) await Future<void>.delayed(const Duration(milliseconds: 1200));
+    for (var i = 0; i < 100 && seq == _recordingSeq; i++) {
+      if (!_speaking && !(herVoiceBusy?.call() ?? false)) break;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (seq != _recordingSeq || _disposed) return;
+    var ok = false;
+    try {
+      // ตอบกลับเมื่อเล่นจบหรือถูกหยุด · เรื่องยาวเท่าสาย จึงไม่มีเวลาหมด
+      ok = await kSystemChannel.invokeMethod<bool>('playAudioFile', {'path': file.path}) == true;
+    } on Object catch (e) {
+      debugPrint('เสียงสาย: เล่นไม่ได้ — ${e.runtimeType}');
+    }
+    if (seq != _recordingSeq || _disposed) return; // ถูกหยุด · [stopRecording] เก็บของแล้ว
+    _playingRecording = false;
+    if (!ok) reportError(s.recordingFailed);
+    _notify();
+  }
+
+  /// หยุดเสียงสาย · เจ้าของกดหยุด / ปิดไมค์ / สายเข้า
+  Future<void> stopRecording() async {
+    if (!_playingRecording) return;
+    _recordingSeq++;
+    _playingRecording = false;
+    _notify();
+    try {
+      await kSystemChannel.invokeMethod<bool>('stopAudioFile');
+    } on Object catch (e) {
+      debugPrint('เสียงสาย: หยุดไม่ได้ — ${e.runtimeType}');
+    }
+  }
+
+  /// เปิดแอปทันทีไม่ผ่านสมอง · คืนข้อความบอกเจ้าของ · null = เครื่องล็อก บอกไปแล้ว ·
+  /// ธนาคาร การเงิน ตัวติดตั้งแอป ถูกกันที่ HandsPolicy ฝั่ง Android
+  Future<String?> openAppNow(String name) async {
+    if (!_phoneControl) return s.openAppOff;
+    if (await _voiceBarred()) return null;
+    final st = await hands.status();
+    if (st.running) return s.openAppBusy;
+    // 🔴 แอปอยู่หลังบ้านและบริการปิดอยู่ = ระบบทิ้งคำสั่งเปิดเงียบ ๆ แต่ตอบ ok · ให้งานในเครื่องเปิดบริการก่อน
+    if (!_appVisible && !st.enabled) {
+      unawaited(_phoneTaskFromChat(s.openAppGoal(name)));
+      return s.handsAck;
+    }
+    final r = await hands.openApp(name);
+    if (r.ok) return s.openAppDone(r.str('label').isEmpty ? name : r.str('label'));
+    switch (r.error) {
+      case 'blocked':
+        return s.openAppBlocked(r.str('label').isEmpty ? name : r.str('label'));
+      case 'in_call':
+        return s.openAppInCall;
+      case 'stopped':
+        // เจ้าของกดหยุดงานก่อนหน้า · ด่านนั้นค้างจนเริ่มงานใหม่ · คำสั่งนี้คือคำสั่งใหม่จากเจ้าของ
+        unawaited(_phoneTaskFromChat(s.openAppGoal(name)));
+        return s.handsAck;
+      case 'not_found':
+        final near = r.data['candidates'];
+        return s.openAppNotFound(name, near is List ? near.whereType<String>().toList() : const []);
+    }
+    return s.openAppFailed(name);
+  }
+
+  Future<void> _quickFromChat(({String? app, String? recording, String? photo}) q) async {
+    await Future<void>.delayed(Duration.zero); // ให้คำตอบของเธอขึ้นก่อน
+    final photo = q.photo;
+    if (photo != null) {
+      final said = await takePhoto(front: !QuickTag.backCamera(photo));
+      _lastPhoto = null; // แชทพิมพ์ไม่มีทางส่งภาพให้สมอง
+      if (said != null && !_disposed) _say(said);
+    }
+    final app = q.app;
+    if (app != null) {
+      final said = await openAppNow(app);
+      if (said != null && said != s.handsAck && !_disposed) _say(said);
+    }
+    final who = q.recording;
+    if (who != null) {
+      final said = await playRecording(who);
+      if (said != null && !playingRecording && !_disposed) _say(said);
+    }
   }
 
   /// ถอดเสียงปลายสายเป็นข้อความ
@@ -3197,12 +3560,13 @@ class MindState extends ChangeNotifier {
   /// [onPlaying] ถูกเรียกตอนสร้างเสียงเสร็จและเริ่มเล่น (หน้าจอบอกขั้นตอนได้)
   Future<String?> previewVoice(
     VoiceChannel channel, {
+    VoiceProfile? as,
     void Function()? onPlaying,
   }) async {
     final out = speaker;
     if (out == null) return s.errVoiceNoOutput;
     await hush();
-    final profile = voiceFor(channel);
+    final profile = as ?? voiceFor(channel);
     final seq = ++_speechSeq;
     try {
       debugPrint('เสียง: ลองฟัง ${profile.engine.name} · ${profile.model} · ${profile.voice}');
@@ -3540,6 +3904,7 @@ class MindState extends ChangeNotifier {
               PhoneLookupKind.contacts => s.lookingContacts,
               PhoneLookupKind.calls => s.lookingCalls,
               PhoneLookupKind.sms => s.lookingSms,
+              PhoneLookupKind.device => s.lookingDevice,
             };
       _notify();
       final last = round == maxLookups;
@@ -3575,13 +3940,18 @@ class MindState extends ChangeNotifier {
     // สั่งให้ทำในเครื่อง → เธอทำเอง ถามเจ้าของเฉพาะขั้นที่ย้อนกลับไม่ได้ (PhonePolicy)
     final hand = HandsTag.parse(out.text);
     if (hand.goal != null && _phoneControl) unawaited(_phoneTaskFromChat(hand.goal!));
+    // เปิดแอป / เปิดเสียงสาย · ทำได้ทันที ไม่ต้องใช้มือ
+    final quick = QuickTag.parse(hand.text);
+    final anyQuick = quick.app != null || quick.recording != null || quick.photo != null;
+    if (anyQuick) unawaited(_quickFromChat((app: quick.app, recording: quick.recording, photo: quick.photo)));
     if (callSaid != null) return callSaid;
     // เขียนแต่แท็กมา = อย่าให้เหลือฟองเปล่า
-    if (hand.text.isEmpty) {
+    if (quick.text.isEmpty) {
       if (out.target != null) return s.callOutAck;
       if (hand.goal != null && _phoneControl) return s.handsAck;
+      if (anyQuick) return s.quickAck;
     }
-    return hand.text;
+    return quick.text;
   }
 
   // ═══ สมองก้อนเดียวกับมายด์บนคอม (BrainX Cloud) ═══════════════
@@ -4161,7 +4531,12 @@ class MindState extends ChangeNotifier {
   /// ไม่ส่งกลับเข้าโมเดล · ใช้กับประโยค "คิดไม่ได้" ตอนสมองล้ม
   void _push(ChatMessage m, {bool ephemeral = false}) {
     // ฟองแสดงเฉพาะสิ่งที่ **เธอ** พูด ข้อความของเราไม่ต้องมีฟองเหนือหัวเธอ
-    if (m.fromHer) _armBubble();
+    if (m.fromHer) {
+      _armBubble();
+      _lastHer = (text: m.text, at: _clock());
+    } else {
+      _lastOwner = (text: m.text, at: _clock());
+    }
     _armChat();
     _messages.add(m);
     if (_messages.length > _historyLimit) {
@@ -4342,6 +4717,7 @@ class MindState extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_lazyEyes?.turnOff());
     // งานในเครื่อง/การสอนที่ค้าง · ไม่หยุด = ลูปถามสมองต่อ และ Android ยังจับจออยู่จนหมดเวลาเอง
     stopPhoneTask();
     if (_teaching != null) {

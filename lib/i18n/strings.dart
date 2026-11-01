@@ -800,7 +800,7 @@ class S {
 
   // ═══ ช่องทางเสียง ══════════════════════════════════════
   String get channelChat => _('พูดในแชท', 'In chat');
-  String get channelChatHint => _('ตอนคุยกับเราในแอป', 'When talking with you in the app');
+  String get channelChatHint => _('ตอนคุยกับเรา ทั้งในแอปและตอนเรียกชื่อ', 'When talking with you, in the app or after you call her name');
   String get channelAnswer => _('เสียงตอบรับ', 'Answering');
   String get channelAnswerHint =>
       _('ตอนเธอรับสายแทนเรา', 'When she answers a call for you');
@@ -992,7 +992,55 @@ class S {
   String callChoiceTail(String tail) => _('เบอร์ลงท้าย $tail', 'Number ending $tail');
   String callChoiceSaid(String name) => _('บอกชื่อว่า "$name"', 'Said they were "$name"');
   String get callOutVoiceHint =>
-      _('พูดว่า "โทรเลย" หรือ "ยกเลิก" ได้เลย ไม่ต้องแตะจอ', 'You can just say "call now" or "cancel" — no need to tap');
+      _('พูดว่า "โทรเลย" "ยกเลิก" หรือบอกสิ่งที่อยากแก้ได้เลย ไม่ต้องแตะจอ',
+          'You can just say "call now", "cancel", or what to change — no need to tap');
+
+  /// หัวข้อบทพูดในเรื่องที่จะโทร · ต้องตรงกับที่ [MindPersona.outgoingBlock] บอกให้พูดตาม
+  String get callOutScriptLabel => _('บทเปิด', 'Opening script');
+
+  String get eyesOnLabel => _('กล้องเปิดอยู่', 'Camera on');
+  String get eyesWhere => _('มายด์เห็นภาพนี้ ส่งไป OpenAI', 'Mind sees this. Sent to OpenAI');
+  String get eyesOff => _('ปิดกล้อง', 'Turn the camera off');
+  String get eyesOpened => _('เปิดกล้องแล้วค่ะ', 'The camera is on.');
+  String get eyesFailed => _('เปิดกล้องไม่ได้ค่ะ แอปอื่นอาจใช้อยู่', 'I could not use the camera. Another app may be using it.');
+  String get eyesNotAsked => _('มายด์เปิดกล้องเมื่อเจ้าของขอเท่านั้นค่ะ', 'I only use the camera when you ask.');
+  String get eyesNeedScreen => _('กล้องใช้ได้ตอนแอปอยู่บนจอค่ะ เปิดแอปก่อนนะคะ', 'The camera only works with the app on screen. Please open it first.');
+  String get eyesNoPermission => _('ยังไม่ได้อนุญาตกล้องค่ะ อนุญาตได้ที่ ตั้งค่า', 'Camera access is not allowed yet. You can allow it in Settings.');
+  String get photoSaved => _('ถ่ายแล้วค่ะ เก็บไว้ในคลังภาพ โฟลเดอร์ GigGok', 'Photo taken and saved to the GigGok folder in your gallery.');
+  String get photoNotSaved => _('ถ่ายแล้วแต่เก็บลงคลังภาพไม่ได้ค่ะ', 'I took it, but could not save it to the gallery.');
+
+  String get lookingDevice => _('กำลังดูข้อมูลเครื่อง…', 'Checking the phone…');
+  String get quickAck => _('ได้ค่ะ', 'Sure.');
+  String get recordingStop => _('หยุด', 'Stop');
+  String get recordingPlayingNow => _('กำลังเปิดเสียงสายที่บันทึกไว้', 'Playing a saved call');
+  String recordingPlaying(String who) => _('เปิดเสียงสาย $who', 'Playing the call with $who');
+  String recordingNone(String who) => who.trim().isEmpty
+      ? _('ยังไม่มีเสียงสายที่บันทึกไว้ค่ะ', 'There are no saved call recordings yet.')
+      : _('ไม่เจอเสียงสายที่บันทึกไว้ของ $who ค่ะ', 'I could not find a saved recording for $who.');
+  String get recordingFailed => _('เปิดเสียงสายไม่ได้ค่ะ', "Couldn't play that recording");
+  String openAppGoal(String name) => _('เปิดแอป $name', 'Open the $name app');
+  String openAppDone(String name) => _('เปิด $name แล้วค่ะ', 'Opened $name.');
+  String get openAppOff => _('เจ้าของปิดการใช้มือถือไว้ค่ะ เปิดได้ที่หน้าตั้งค่า', 'Using the phone is turned off in Settings.');
+  String get openAppBusy => _('กำลังทำงานในเครื่องอยู่ค่ะ รอให้เสร็จก่อนนะคะ', 'I am in the middle of a task on the phone. Please wait for it to finish.');
+  String get openAppInCall => _('ติดสายอยู่ค่ะ เปิดแอปตอนนี้ไม่ได้', 'I cannot open apps during a call.');
+  String openAppBlocked(String name) => _('$name เป็นแอปที่มายด์เปิดไม่ได้ค่ะ ต้องเปิดเองนะคะ', '$name is an app I am not allowed to open. Please open it yourself.');
+  String openAppNotFound(String name, List<String> near) => near.isEmpty
+      ? _('ไม่เจอแอป $name ในเครื่องค่ะ', 'I could not find $name on this phone.')
+      : _('ไม่เจอแอป $name ค่ะ ใกล้เคียงคือ ${near.join(', ')}', 'I could not find $name. Close matches: ${near.join(', ')}.');
+  String openAppFailed(String name) => _('เปิด $name ไม่ได้ค่ะ', 'I could not open $name.');
+
+  String get comeBackCallTitle => _('มายด์รอให้กดโทร', 'Mind is waiting for you to confirm a call');
+  String comeBackCallBody(String who) => _('แตะเพื่อดูและยืนยันสายถึง $who', 'Tap to review the call to $who');
+  String get comeBackChoiceTitle => _('มายด์ถามว่าจะโทรหาคนไหน', 'Mind is asking who to call');
+  String get comeBackChoiceBody => _('แตะเพื่อเลือก', 'Tap to choose');
+
+  String get voiceChatTranscriptionHint => _(
+        'เจ้าของคุยกับมายด์ คำที่พบบ่อย: โทรเลย ยกเลิก ใช่ โอเค ทำเลย ส่งเลย เปิดเลย ไม่ต้อง มายด์',
+        'The owner is talking to Mind. Common words: call now, cancel, yes, okay, do it, send it, open it, stop, Mind.',
+      );
+
+  /// คำถามปิดท้ายสรุปก่อนโทร · ต้องอยู่ในรูปที่ CallReply.asksToDial จับได้ ("ใช่" เฉย ๆ จึงนับเป็นคำตอบ)
+  String get callOutAskLine => _('โทรเลยไหมคะ', 'Call now?');
   String callOutNeedContacts(String name) => _(
         'น้องมายยังเปิดสมุดโทรศัพท์ไม่ได้ค่ะ ขอเบอร์ของ $name แทนได้ไหมคะ (หรือให้สิทธิ์สมุดโทรศัพท์ในหน้าตั้งค่า)',
         'I cannot open your contacts yet — could you give me $name\'s number (or allow contacts in Settings)?',
@@ -1011,8 +1059,8 @@ class S {
         _ => _('โทรออกไม่สำเร็จค่ะ เบอร์อาจไม่ถูกต้อง', 'The call could not be placed — the number may be wrong'),
       };
   String get callOutKickoff => _(
-        'ปลายสายรับสายแล้ว ทักทาย แนะนำตัว และบอกว่าโทรมาเรื่องอะไร',
-        'They have picked up. Greet them, introduce yourself, and say why you are calling.',
+        'ปลายสายรับสายแล้วและรอคุณพูดอยู่ เริ่มพูดเดี๋ยวนี้: ทักทาย แนะนำตัว แล้วแจ้งเรื่องตามบทเปิดให้ครบ',
+        'They have picked up and are waiting for you. Speak now: greet them, introduce yourself, and deliver your opening script in full.',
       );
   String get callOutEditHint => _(
         'แก้ได้ก่อนกดโทร · บอกให้ครบว่าต้องการอะไร ยอมได้แค่ไหน และอยากได้อะไรกลับมา',

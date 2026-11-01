@@ -172,7 +172,7 @@ void main() {
       final s = await mind();
       await s.runVoiceTool('call_someone', {'who': 'บัว', 'task': 'ถามเรื่องของ'});
       final out = await s.runVoiceTool('call_someone', {'who': 'บัวบาน', 'task': 'ถามเรื่องของ'});
-      expect(out, contains('confirmation card'));
+      expect(out, contains('card is on'));
       expect(out, contains('Do not say the call has started'));
       await _settle();
       expect(s.pendingCall?.number, '0822222222');
@@ -218,6 +218,116 @@ void main() {
       await s.send('โทรเลย');
       expect(calls.where((c) => c.method == 'mindPlaceCall'), hasLength(1));
       s.setHandsFree(false);
+    });
+
+    group('🔴 เตรียมบท สรุป แล้วตกลงครั้งเดียว (เจ้าของ: "เธอให้ยืนยันซ้ำๆ ไม่โทรให้สักที")', () {
+      Iterable<MethodCall> dials() => calls.where((c) => c.method == 'mindPlaceCall');
+
+      Future<MindState> offered() async {
+        final s = await mind();
+        await s.runVoiceTool('call_someone', {
+          'who': '0899999999',
+          'task': 'เป้าหมาย: เลื่อนนัด',
+          'script': 'สวัสดีค่ะ มายด์เลขาคุณบอสนะคะ ขอเลื่อนนัดเป็นบ่ายสองวันจันทร์ค่ะ',
+        });
+        await _settle();
+        return s;
+      }
+
+      test('บทเปิดอยู่ในกล่อง และตามเข้า prompt ของสายจริง', () async {
+        final s = await offered();
+        expect(s.pendingCall?.task, contains('ขอเลื่อนนัดเป็นบ่ายสอง'));
+        expect(await s.confirmCallByVoice('โทรเลย'), isTrue);
+        await _settle();
+        final p = s.callPrompt(live: true, outgoing: true);
+        expect(p, contains('ขอเลื่อนนัดเป็นบ่ายสอง'));
+        expect(p, contains(s.s.callOutScriptLabel));
+      });
+
+      test('เธอถาม "โทรเลยไหมคะ" แล้ว "ใช่" เฉย ๆ = โทร · ไม่ต้องพูดซ้ำ', () async {
+        final s = await offered();
+        expect(await s.confirmCallByVoice('ใช่'), isFalse, reason: 'เธอยังไม่ได้ถาม');
+        s.noteVoiceLine(fromHer: true, text: 'จะโทรหา 9999 ขอเลื่อนนัดเป็นบ่ายสอง โทรเลยไหมคะ');
+        expect(await s.confirmCallByVoice('ใช่ค่ะ'), isTrue);
+        expect(dials(), hasLength(1));
+      });
+
+      test('เธอเปลี่ยนไปถามเรื่องอื่น = "ใช่" ไม่กดโทร', () async {
+        final s = await offered();
+        s.noteVoiceLine(fromHer: true, text: 'โทรเลยไหมคะ');
+        s.noteVoiceLine(fromHer: true, text: 'เดี๋ยวนะคะ นัดเดิมบ่ายสองใช่ไหมคะ');
+        expect(await s.confirmCallByVoice('ใช่'), isFalse);
+        expect(dials(), isEmpty);
+        expect(s.pendingCall, isNotNull);
+      });
+
+      test('คำถามเก่าก่อนกล่องขึ้น ไม่นับ · คำถามที่เกินเวลา ไม่นับ', () async {
+        var now = DateTime(2026, 11, 1, 12);
+        final s = MindState(openai: _Brain('ได้ค่ะ'), clock: () => now);
+        addTearDown(s.dispose);
+        await s.load();
+        s.debugCallTargets = CallTargetResolver(clock: () => now);
+        s.noteVoiceLine(fromHer: true, text: 'โทรเลยไหมคะ');
+        now = now.add(const Duration(seconds: 5));
+        await s.runVoiceTool('call_someone', {'who': '0899999999', 'task': 'นัด', 'script': 'ฮัลโล'});
+        await _settle();
+        expect(s.askedToDial, isFalse);
+        s.noteVoiceLine(fromHer: true, text: 'โทรเลยไหมคะ');
+        expect(s.askedToDial, isTrue);
+        now = now.add(CallReply.askWindow + const Duration(seconds: 1));
+        expect(s.askedToDial, isFalse);
+      });
+
+      test('🔴 เครื่องล็อกรหัส: "โทรเลย" และ "ใช่" หลังเธอถาม ก็ไม่โทร', () async {
+        final s = await offered();
+        s.setHandsFree(true);
+        addTearDown(() => s.setHandsFree(false));
+        s.phoneLocked = () async => true;
+        s.noteVoiceLine(fromHer: true, text: 'โทรเลยไหมคะ');
+        await s.confirmCallByVoice('ใช่');
+        await s.confirmCallByVoice('โทรเลย');
+        expect(dials(), isEmpty);
+      });
+
+      test('ขอแก้ = กล่องใบเดิม · เรียกซ้ำโดยไม่เปลี่ยน = บอกเธอให้หยุด ไม่เปิดใบใหม่', () async {
+        final s = await offered();
+        final id = s.pendingCall!.id;
+        final again = await s.runVoiceTool('call_someone', {
+          'who': '0899999999',
+          'task': 'เป้าหมาย: เลื่อนนัด',
+          'script': 'สวัสดีค่ะ มายด์เลขาคุณบอสนะคะ ขอเลื่อนนัดเป็นบ่ายสามวันจันทร์ค่ะ',
+        });
+        await _settle();
+        expect(again, contains('card is on'));
+        expect(s.pendingCall?.id, id);
+        expect(s.pendingCall?.task, contains('บ่ายสาม'));
+
+        final same = await s.runVoiceTool('call_someone', {
+          'who': '0899999999',
+          'task': 'เป้าหมาย: เลื่อนนัด',
+          'script': 'สวัสดีค่ะ มายด์เลขาคุณบอสนะคะ ขอเลื่อนนัดเป็นบ่ายสามวันจันทร์ค่ะ',
+        });
+        await _settle();
+        expect(same, contains('already open'));
+        expect(s.pendingCall?.id, id);
+      });
+
+      test('คนละเบอร์ = กล่องใหม่ · เจ้าของพิมพ์แก้ในกล่อง แล้วพูดโทรเลย ได้ฉบับที่แก้', () async {
+        final s = await offered();
+        final id = s.pendingCall!.id;
+        s.editPendingCall(id, task: 'ฉบับที่เจ้าของแก้เอง', askOwner: false);
+        s.editPendingCall(id + 99, task: 'กล่องเก่า');
+        expect(s.pendingCall?.task, 'ฉบับที่เจ้าของแก้เอง');
+        await s.runVoiceTool('call_someone', {'who': '0811111111', 'task': 'เรื่องอื่น', 'script': 'ฮัลโล'});
+        await _settle();
+        expect(s.pendingCall?.id, isNot(id));
+
+        final t = await offered();
+        t.editPendingCall(t.pendingCall!.id, task: 'ฉบับแก้');
+        await t.confirmCallByVoice('โทรเลย');
+        await _settle();
+        expect(t.callPrompt(live: true, outgoing: true), contains('ฉบับแก้'));
+      });
     });
 
     test('ใช้มือถือไม่ได้เมื่อเจ้าของปิดไว้ · เครื่องมือที่ไม่รู้จัก = บอกตรง ๆ', () async {

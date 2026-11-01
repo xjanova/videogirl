@@ -39,9 +39,11 @@
         tools:ignore="ScopedStorage"/>
 
     <!-- Android 10 ลงมาไม่มี MANAGE_EXTERNAL_STORAGE ใช้ตัวนี้แทน
-         maxSdkVersion กันไม่ให้เครื่องใหม่ขอสิทธิ์ที่ไม่มีผลอะไรแล้ว -->
+         maxSdkVersion กันไม่ให้เครื่องใหม่ขอสิทธิ์ที่ไม่มีผลอะไรแล้ว
+         tools:replace = ปลั๊กอิน camera ประกาศ 28 · ค่าของแอปต้องชนะ ไม่งั้น Android 10 เขียนสำเนาไม่ได้ -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="29"/>
+        android:maxSdkVersion="29"
+        tools:replace="android:maxSdkVersion"/>
 
     <!-- ═══ ให้เธอเฝ้างานตอนแอปปิด ═══════════════════════════════
          FOREGROUND_SERVICE / RECEIVE_BOOT_COMPLETED / WAKE_LOCK ปลั๊กอิน
@@ -58,6 +60,8 @@
     <!-- Android 13 (API 33) การแจ้งเตือนกลายเป็นสิทธิ์ที่ต้องขอ
          ไม่ได้ขอ = บริการรันอยู่จริงแต่ผู้ใช้ไม่เห็นอะไรเลย -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- กล่องยืนยันโทรรอเจ้าของแตะตอนแอปอยู่หลังบ้าน · แอปเปิดหน้าเองจากเบื้องหลังไม่ได้ ดู ComeBack.kt -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
 
     <!-- 🔴 ตัวชี้ขาดความน่าเชื่อถือของงานเบื้องหลัง
          ไม่ได้ยกเว้น = ระบบหรี่ให้ตื่นทุก 9–15 นาทีแทน 5 และ ROM จีนฆ่าทิ้งเลย
@@ -101,6 +105,20 @@
          ทั้งที่กลไกทำงานครบ · ดู CallAudio.kt
          เป็นสิทธิ์ระดับปกติ ระบบให้ตั้งแต่ติดตั้ง ไม่ต้องขอผู้ใช้ -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+
+    <!-- ═══ แจ้งเหตุฉุกเฉิน (sos/SosService.kt · docs/sos.md) ═══════════════
+         ทุกตัวขอเมื่อเจ้าของเปิดระบบนี้เองเท่านั้น · ไม่เปิด = ไม่มีอะไรทำงาน
+         SEND_SMS: ส่งพิกัดให้ญาติตอนเจ้าของกดอะไรไม่ได้แล้ว · ไม่อยู่ในกลุ่มสิทธิ์ที่ขอตอนเริ่มแอป
+         ACCESS_BACKGROUND_LOCATION: ตำแหน่งตอนจอล็อก · บน Android 11+ เจ้าของต้องเลือก "ตลอดเวลา" เอง
+         USE_FULL_SCREEN_INTENT: ปุ่มหยุดเต็มจอบนจอล็อก · Android 14+ เจ้าของต้องอนุญาตเอง -->
+    <uses-permission android:name="android.permission.SEND_SMS"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <!-- เครื่องที่ไม่มีซิมก็ยังลงแอปได้ แค่ไม่มีสายให้รับ -->
     <uses-feature android:name="android.hardware.telephony" android:required="false"/>
@@ -304,6 +322,32 @@
             </intent-filter>
         </receiver>
 
+        <!-- ═══ แจ้งเหตุฉุกเฉิน ════════════════════════════════════════
+             ทำงานเองโดยไม่ต้องมี Flutter · ตอนเกิดเหตุ Dart อาจไม่อยู่แล้ว
+             exported="false" ทุกตัว · แอปอื่นสั่งเริ่มหรือหยุดแจ้งเหตุไม่ได้
+             จอฉุกเฉินเป็นเนทีฟล้วนและขึ้นทับจอล็อก · ห้ามมีข้อมูลสุขภาพบนจอนี้ -->
+        <service android:name=".sos.SosService" android:exported="false"
+            android:foregroundServiceType="location|specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Owner-enabled crash detection and emergency alert; keeps the owner's location ready and shows a stop button" />
+        </service>
+        <activity
+            android:name=".sos.SosActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.xjanova.videogirl.sos"
+            android:excludeFromRecents="true"
+            android:screenOrientation="portrait"
+            android:showOnLockScreen="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>
+        <receiver android:name=".sos.SosReceiver" android:exported="false"/>
+        <receiver android:name=".sos.SosBootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
+
         <!-- ประเภทของ foreground service ต้องประกาศใน manifest
              ประกาศแค่ตอนเรียก startForeground ไม่พอ — Android ปฏิเสธ
              ปลั๊กอินประกาศ <service> มาให้แล้ว เราเติมแค่ประเภทเข้าไป -->
@@ -398,5 +442,23 @@
             <action android:name="android.intent.action.SENDTO"/>
             <data android:scheme="mailto"/>
         </intent>
+
+        <!-- แจ้งเหตุ (sos/) · ตัวสังเคราะห์เสียง ตัวถอดเสียง และแอปที่รับแชร์พิกัด
+             🔴 Android 11+ ไม่ประกาศ = TextToSpeech เริ่มไม่ขึ้นแบบเงียบ ๆ แล้วเธอไม่มีเสียงตอนเกิดเหตุ -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="smsto"/>
+        </intent>
+        <package android:name="jp.naver.line.android"/>
     </queries>
 </manifest>

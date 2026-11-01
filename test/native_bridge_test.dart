@@ -199,11 +199,15 @@ void main() {
       'FOREGROUND_SERVICE_DATA_SYNC',
       // ไมค์เบื้องหลัง (listen/ListenService.kt) · เป็นสิทธิ์ normal เช่นกัน
       'FOREGROUND_SERVICE_MICROPHONE',
+      // ตัวเฝ้าแรงกระแทก (sos/SosService.kt) · สิทธิ์ normal เช่นกัน ตัวที่ต้องขอคือ ACCESS_FINE_LOCATION
+      'FOREGROUND_SERVICE_LOCATION',
       // บริการเฝ้างาน (flutter_background_service) ใช้ประเภทนี้ — ดู manifest
       'FOREGROUND_SERVICE_SPECIAL_USE',
       'RECEIVE_BOOT_COMPLETED',
       'WAKE_LOCK',
       'VIBRATE',
+      // ใช้ผ่าน setFullScreenIntent (ComeBack.kt) · ชื่อสิทธิ์ไม่โผล่ในโค้ด
+      'USE_FULL_SCREEN_INTENT',
       // สี่ตัวนี้ขอผ่าน Intent ไปหน้าตั้งค่า ไม่ได้ผ่าน Manifest.permission
       'REQUEST_INSTALL_PACKAGES',
       'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',

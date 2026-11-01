@@ -99,6 +99,13 @@ void main() {
 
     tearDown(() => rt.close());
 
+    test('🔴 สะกิดให้พูด ไม่ทำให้ลืมเรื่องที่ต้องแจ้ง · response.create แทนที่คำสั่งทั้งเซสชันสำหรับคำตอบนั้น', () {
+      rt.nudge('ปลายสายรับแล้ว');
+      final out = socket.sent.last['response'] as Map;
+      expect(out['instructions'], contains('คุณคือผู้ช่วยรับสาย'));
+      expect(out['instructions'], contains('ปลายสายรับแล้ว'));
+    });
+
     test('ต่อด้วยคีย์ของเจ้าของ · ตั้งเสียง 24 kHz · ถอดเสียงภาษาไทย · แล้วทักด้วยประโยคที่กำหนด', () {
       expect(url!.scheme, 'wss');
       expect(url!.queryParameters['model'], RealtimeCall.defaultModel);

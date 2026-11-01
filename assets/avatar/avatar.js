@@ -29,6 +29,7 @@ import { LipSync } from './lipsync.js';
 import { Framing } from './framing.js';
 import { FaceMocap } from './mocap.js';
 import { Morphs } from './morphs.js';
+import { Startle } from './startle.js';
 
 /**
  * Mood -> the VRM expression that carries it, and how much of it.
@@ -175,6 +176,7 @@ export class Avatar {
         this._gazeBase = new THREE.Vector3();
 
         this.idle = new Idle(vrm);
+        this.startled = new Startle(vrm);
         this.framing = new Framing(this.camera, vrm);
         // ช็อตที่เจ้าของเลือก + ขนาดเวทีที่ Flutter บอกมาก่อนตัวเธอโหลดเสร็จ ·
         // กระโดดไปเลย ไม่ค่อย ๆ ซูมจากเต็มตัวตอนเปิดแอป
@@ -208,7 +210,10 @@ export class Avatar {
         // มีคนสั่งอารมณ์มา = มีอะไรเกิดขึ้น = ยังไม่ถูกทิ้ง
         this._quiet = 0;
         this._autoWait = false;
+        const was = this.mood;
         this.mood = m in MOOD_EXPRESSION ? m : 'neutral';
+        // ถูกเรียกให้ตื่นตัว (สายเข้า) · อารมณ์คงอยู่ได้นาน แต่สะดุ้งแค่ตอนเริ่ม
+        if (this.mood === 'alert' && was !== 'alert') this.startle();
 
         // 🔴 ไม่ผูกปาก "พึมพำ" กับอารมณ์ 'calling' อีกแล้ว · ของเดิมเปิดไว้ทั้งสาย
         // ปากจึงขยับตลอดแม้ตอนที่คู่สายพูดและเธอควรเงียบฟัง · ตอนนี้ปากในสาย
@@ -299,6 +304,13 @@ export class Avatar {
         this.motion?.setBusy(false);
         this.motion?.setTalking(false);
         this.framing?.set('full');
+    }
+
+    /** สะดุ้งจากท่าที่อยู่ตอนนี้ · จอดับอยู่ไม่ต้องทำ ไม่งั้นค้างไว้เล่นตอนกลับมา */
+    startle() {
+        if (this._asleep) return false;
+        this._quiet = 0;
+        return this.startled?.fire() ?? false;
     }
 
     /** Sit down / stand up, if the clips for it are present. */
@@ -616,6 +628,7 @@ export class Avatar {
         this.mocap.update(dt, performance.now());
         this.idle.apply(this._t, w, this.lip.speaking ? this.lip.level : 0, dt,
                         onPhone ? 0 : (onFeet ? 0.82 : 0), armsFree ? 0 : 0.75);
+        this.startled.apply(dt, armsFree ? 0.25 : 1);
 
         // 3 — face.
         this._face(dt);
@@ -714,8 +727,9 @@ export class Avatar {
         //
         // ทับเฉพาะตอน mood เป็น neutral · ถ้าเจ้าของตั้งอารมณ์ไว้แล้ว
         // อารมณ์นั้นต้องชนะ ไม่ใช่โดนรอยยิ้มสุ่ม ๆ กลบ
+        // ยิ้มเองของ VRoid ปิดตา · ทับหน้าตกใจแล้วตาที่ควรเบิกกลายเป็นหรี่
         const warmOn = (this.mood === 'neutral' || this.mood === 'waiting')
-            && !this.speaking;
+            && !this.speaking && !this.startled.active;
 
         const warmName = !warmOn
             ? null
@@ -728,6 +742,8 @@ export class Avatar {
             const cur = em.getValue(expr) ?? 0;
             let want = expr === wantExpr ? wantAmt * cap : 0;
             if (expr === warmName) want = Math.max(want, warmAmt);
+            // ตกใจชนะอารมณ์ที่ค้างอยู่ชั่วขณะ · ถูก cap ตอนพูดเหมือนอารมณ์อื่น
+            if (expr === 'surprised') want = Math.max(want, this.startled.level * cap);
             em.setValue(expr, cur + (want - cur) * k);
         }
 

@@ -120,6 +120,7 @@
     <string name="hands_desc">มายด์อ่านหน้าจอเป็นตัวหนังสือ แล้วกด พิมพ์ เลื่อน หรือเปิดแอปแทนคุณ เฉพาะตอนทำงานที่คุณสั่งเท่านั้น · ถ้ามีสิทธิ์ GigGok จะเปิดบริการนี้ตอนเริ่มงานและปิดเองหลังทำเสร็จ · ไม่เปิดและไม่แตะแอปธนาคาร การเงิน หรือกระเป๋าเงิน ไม่แตะช่องรหัสผ่าน และไม่แตะหน้าติดตั้งแอปหรือหน้าขอสิทธิ์ · ถามคุณก่อนส่ง จ่าย ซื้อ หรือลบ · กดหยุดได้ทุกเมื่อจากแจ้งเตือน</string>
     <string name="hands_channel">มายด์กำลังใช้เครื่องแทน</string>
     <string name="hands_ask_channel">มายด์ขออนุญาตก่อนทำ</string>
+    <string name="come_back_channel">มายด์รอให้เจ้าของแตะยืนยัน</string>
     <string name="hands_stop">หยุด</string>
     <string name="hands_stopping">กำลังหยุด…</string>
     <string name="hands_allow">ทำเลย</string>
@@ -141,4 +142,39 @@
     <string name="listen_stop_talk">ปิดไมค์</string>
     <string name="listen_resume_title">มายด์ยังไม่ได้ฟังชื่อเธอ</string>
     <string name="listen_resume_text">แตะเพื่อให้กลับมารอฟัง</string>
+
+    <!-- แจ้งเหตุฉุกเฉิน · 🔒 ขึ้นบนจอล็อกได้ทั้งหมด ห้ามมีชื่อ อาการ เบอร์ญาติ หรือพิกัด -->
+    <string name="sos_channel_armed">ระบบฉุกเฉินเปิดอยู่</string>
+    <string name="sos_channel_alert">แจ้งเหตุฉุกเฉิน</string>
+    <string name="sos_armed_title">มายด์เฝ้าเหตุฉุกเฉินอยู่</string>
+    <string name="sos_armed_body">ปิดได้ในการตั้งค่า · ระบบนี้ไม่รับประกันและไม่ทดแทนหน่วยฉุกเฉิน</string>
+    <string name="sos_armed_test">โหมดทดสอบ · ยังไม่แจ้งใครจริง</string>
+    <string name="sos_action_call">ขอความช่วยเหลือ</string>
+    <string name="sos_action_stop">หยุด ฉันไม่เป็นไร</string>
+    <string name="sos_action_help">ช่วยด้วย แจ้งเหตุเลย</string>
+    <string name="sos_alert_title">เป็นอะไรไหมคะ</string>
+    <string name="sos_alert_title_drill">ซ้อม · ไม่มีการแจ้งเหตุจริง</string>
+    <string name="sos_alert_body">ถ้าไม่ตอบ มายด์จะเริ่มแจ้งเหตุเมื่อหมดเวลา</string>
+    <string name="sos_dispatching">กำลังแจ้งเหตุ</string>
+    <string name="sos_report_done">แจ้งเหตุแล้ว</string>
+    <string name="sos_report_cancelled">ยกเลิกแล้ว · ยังไม่มีอะไรส่งออกไป</string>
+    <string name="sos_report_cancelled_late">หยุดแล้ว · แต่บางอย่างส่งออกไปแล้ว</string>
+    <string name="sos_report_rehearsal">โหมดซ้อม · ไม่ได้แจ้งใครจริง</string>
+    <string name="sos_report_failed">ยังแจ้งใครไม่ได้ · โทรหาคนช่วยเองทันที</string>
+    <string name="sos_line_unsure">โทร %1$s แล้ว ไม่แน่ใจว่ามีคนรับ</string>
+    <string name="sos_line_hang_up">สาย %1$s อาจยังอยู่ · วางที่จอสายของเครื่อง</string>
+    <string name="sos_line_not_dialer">โทร %1$s เองไม่ได้ · ต้องตั้งเป็นแอปโทรศัพท์หลัก</string>
+    <string name="sos_silent_report">มีบันทึกใหม่ในตั้งค่า</string>
+    <string name="sos_report_counts">ข้อความ %1$d · สายที่ถึง %2$d</string>
+    <string name="sos_share_location">แชร์ตำแหน่ง</string>
+    <string name="sos_line_sms">ส่งข้อความแล้ว %1$d คน</string>
+    <string name="sos_line_sms_failed">ส่งข้อความไม่สำเร็จ %1$d คน</string>
+    <string name="sos_line_contact">ผู้ติดต่อฉุกเฉิน</string>
+    <string name="sos_line_reached">สายถึง %1$s แล้ว</string>
+    <string name="sos_line_would_call">ถ้าเป็นเหตุจริงจะโทร %1$s</string>
+    <string name="sos_line_no_answer">ติดต่อ %1$s ไม่ได้</string>
+    <string name="sos_line_call_back">ถ้าไม่ได้เกิดเหตุจริง โปรดโทรกลับบอกเจ้าหน้าที่ · วางสายที่จอโทรศัพท์ของเครื่อง</string>
+    <string name="sos_line_no_voice">เครื่องนี้พูดในสายไม่ได้ · ไปต่อด้วยข้อความ</string>
+    <string name="sos_stopped_title">ระบบฉุกเฉินหยุดแล้ว</string>
+    <string name="sos_stopped_body">แตะเพื่อเปิดมายด์ให้กลับมาเฝ้าเหตุ</string>
 </resources>

@@ -24,6 +24,7 @@ import 'ai/mind_audio.dart';
 import 'ai/mind_listen.dart';
 import 'ai/voice_chat.dart';
 import 'screens/splash_screen.dart';
+import 'sos/mind_sos.dart';
 import 'diagnostics/debug_reporter.dart';
 import 'diagnostics/mind_log.dart';
 import 'store/mind_store.dart';
@@ -31,6 +32,7 @@ import 'store/mind_vault.dart';
 import 'studio/mind_studio.dart';
 import 'screens/unsupported_screen.dart';
 import 'shell.dart';
+import 'widgets/eyes_overlay.dart';
 import 'i18n/strings.dart';
 import 'i18n/strings_ai.dart';
 import 'state/mind_state.dart';
@@ -167,7 +169,7 @@ class _MindBootstrapState extends State<MindBootstrap>
   /// (ปัดแอปทิ้งระหว่างคุย · ถูกเรียกชื่อตอนไม่มีจอ) ซึ่ง [_hasView] ทิ้งเชลล์ทั้งก้อน
   late final VoiceChat _voiceChat = VoiceChat(
     state: _state,
-    sendTurn: _state.send,
+    sendTurn: MindSos.instance.guarded(_state.send),
     ensureMic: _ensureMic,
     lips: _avatar,
     keepAwake: _keepAwake,
@@ -259,6 +261,9 @@ class _MindBootstrapState extends State<MindBootstrap>
   /// ฝั่งเนทีฟบอกว่าจอ (Activity) ตายแต่ตัวเธอยังอยู่ (มีสายค้าง) · เวทีเก่าใช้ไม่ได้แล้ว
   static const _life = MethodChannel('giggok/life');
 
+  int? _wakeVoice;
+  Timer? _wakeVoiceWait;
+
   @override
   void initState() {
     super.initState();
@@ -290,6 +295,8 @@ class _MindBootstrapState extends State<MindBootstrap>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(_state.saveVaultNow());
+      // กล้องทำงานได้เฉพาะตอนแอปอยู่บนจอ · ปิดเอง ไม่เปิดคืนเอง (ดู MindEyes)
+      unawaited(_state.eyes.turnOff());
       return;
     }
     // กลับเข้าแอป — ผู้ใช้อาจเพิ่งไปโหลดชุดภาษาสำหรับถอดเสียงในเครื่องมา
@@ -297,11 +304,29 @@ class _MindBootstrapState extends State<MindBootstrap>
     if (state == AppLifecycleState.resumed) {
       // รีสตาร์ตเครื่อง/อัปเดตแอป/ถูกระบบปิด · ไมค์เริ่มเองไม่ได้ ต้องเริ่มตอนแอปอยู่บนจอ
       unawaited(MindListen.instance.sync());
+      unawaited(MindSos.instance.sync());
       unawaited(_state.refreshDeviceStt(forget: true));
       // อาจเพิ่งไปให้สิทธิ์ปฏิทิน เพิ่มนัด หรือข้ามวันมาแล้ว · เธอตอบเรื่อง
       // ตารางจากก้อนนี้ ถ้าไม่อ่านใหม่จะตอบจากของเมื่อวาน
       unawaited(_calendar.refreshIfStale());
     }
+  }
+
+  /// เสียงขานอัดไว้ล่วงหน้า · เปลี่ยนเสียงแล้วไม่อัดใหม่ = เรียกแล้วขานด้วยเสียงเก่า
+  void _watchWakeVoice() {
+    final now = _state.wakeReplyKey;
+    if (now == _wakeVoice) return;
+    _wakeVoice = now;
+    _wakeVoiceWait?.cancel();
+    // รอเลือกจนจบ · แตะไล่ดูหลายเสียงต้องไม่สังเคราะห์ทุกครั้ง
+    _wakeVoiceWait = Timer(const Duration(seconds: 3), () => unawaited(_renderWakeReplies()));
+  }
+
+  Future<void> _renderWakeReplies() async {
+    final listen = MindListen.instance;
+    if (!(await listen.status()).wake) return;
+    final clips = await _state.renderWakeReplies();
+    if (clips.isNotEmpty) await listen.setReplies(clips);
   }
 
   Future<void> _boot() async {
@@ -359,6 +384,8 @@ class _MindBootstrapState extends State<MindBootstrap>
       // ต่อตัวถอดเสียงในเครื่องก่อนโหลดค่า · `load()` ถามความพร้อมของมันต่อ
       _state.attachDeviceSpeech(DeviceSpeech.instance);
       await _state.load(store: _store);
+      _wakeVoice = _state.wakeReplyKey;
+      _state.addListener(_watchWakeVoice);
       await _pack.restore(preferId: _state.avatarPackId);
 
       // อยู่รอบแรกเพราะต้องกั้น **ก่อน** เชลล์เกิด ไม่งั้น WebView จะเริ่มโหลด
@@ -374,6 +401,8 @@ class _MindBootstrapState extends State<MindBootstrap>
     if (!mounted) return;
     setState(() => _canBuildShell = true);
     if (_hasView) unawaited(MindListen.instance.sync());
+    MindSos.instance.onAlert = _avatar.startle;
+    unawaited(MindSos.instance.sync());
 
     // ── รอบสอง: ของที่รอได้ ทำหลังเชลล์เริ่มโหลด VRM ไปแล้ว ──
     try {
@@ -409,6 +438,7 @@ class _MindBootstrapState extends State<MindBootstrap>
     // ยังไม่ได้ให้สิทธิ์ก็แค่ไม่รู้ว่าใครโทร ไม่ได้ล้มทั้งระบบ
     _state.attachCalls(_calls);
     _calls.addListener(_showCallOnStage);
+    _calls.addListener(_yieldMicToCall);
 
     // สายที่เพิ่งวางมีผลกับอารมณ์เธอ · CallWatch เป็นคนกันไม่ให้นับซ้ำ
     // (สายเดียวยิงครั้งเดียว) ที่นี่จึงแปลงเป็นความหึงได้ตรง ๆ
@@ -433,10 +463,22 @@ class _MindBootstrapState extends State<MindBootstrap>
     await _session.start();
   }
 
+  /// มีสาย = ปิดคุยต่อเนื่อง · ไมค์เป็นของสาย
+  ///
+  /// 🔴 หน้าแชทก็ทำอยู่ แต่คุยเบื้องหลังตอนไม่มีจอ ไม่มีหน้าแชทให้ทำ · สั่งโทรด้วยเสียงแล้วเธอจะพูดทับเสียงรอสาย
+  void _yieldMicToCall() {
+    if (_calls.state == CallState.idle) return;
+    if (_voiceChat.active) unawaited(_voiceChat.stop());
+    unawaited(_state.stopRecording());
+    unawaited(_state.eyes.turnOff());
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _wakeVoiceWait?.cancel();
     _calls.removeListener(_showCallOnStage);
+    _calls.removeListener(_yieldMicToCall);
     _calls.onCallEnded = null;
     _session.dispose();
     _soul.dispose();
@@ -508,6 +550,11 @@ class _MindBootstrapState extends State<MindBootstrap>
         builder: (context, state, _) => MaterialApp(
           title: 'GigGok',
           debugShowCheckedModeBanner: false,
+          // อยู่เหนือ Navigator · เปิดหน้าตั้งค่าทับแล้วสัญญาณกล้องต้องยังเห็น
+          builder: (context, child) => Stack(
+            fit: StackFit.expand,
+            children: [?child, EyesOverlay(eyes: state.eyes)],
+          ),
           theme: mindTheme(state.mode),
           locale: state.lang.locale,
           supportedLocales: [for (final l in AppLang.values) l.locale],

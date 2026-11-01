@@ -41,12 +41,13 @@ import 'package:flutter/services.dart';
 import 'package:record/record.dart';
 
 import '../avatar/stage_bridge.dart';
+import '../hands/hands_tag.dart';
 import '../i18n/strings_ai.dart';
 import '../phone/call_session.dart';
-import '../phone/call_target.dart';
 import '../state/mind_state.dart';
 import '../system/permissions.dart';
 import 'device_speech.dart';
+import 'mind_eyes.dart';
 import 'mind_listen.dart';
 import 'openai_client.dart';
 import 'realtime_chat.dart';
@@ -228,6 +229,9 @@ class VoiceChat extends ChangeNotifier {
   DateTime _openAt = DateTime(0);
   DateTime _loudAt = DateTime(0);
   bool _gated = false;
+
+  /// เธอพูดอยู่ไหม ณ นาฬิการอบล่าสุด · ไม่นับเสียงสายที่เปิด · ดู [MindState.herVoiceBusy]
+  bool _herBusy = false;
   final _loud = _Loudness();
 
   /// ข้อความแจ้งที่เธอกำลังพูด (ทีละตา/ในเครื่อง) · ระหว่างนี้ไมค์ไม่ฟัง
@@ -281,6 +285,7 @@ class VoiceChat extends ChangeNotifier {
 
     state.setHandsFree(true);
     state.onHerNotice = _onNotice;
+    state.herVoiceBusy = () => _herBusy;
     _activity();
     _openAt = DateTime(0);
     unawaited(keepAwake?.call(true));
@@ -328,6 +333,8 @@ class VoiceChat extends ChangeNotifier {
     _level = 0;
     _resetTurn();
     if (state.onHerNotice == _onNotice) state.onHerNotice = null;
+    state.herVoiceBusy = null;
+    _herBusy = false;
     state.setHandsFree(false);
     if (why != null) state.reportError(why);
     if (!_disposed) notifyListeners();
@@ -345,6 +352,7 @@ class VoiceChat extends ChangeNotifier {
     }
     // ปิดไมค์ = เจ้าของไม่อยากฟังต่อ / สายเข้า · เสียงที่ยังพูดค้างต้องเงียบตาม
     if (state.speaking) await state.hush();
+    await state.stopRecording();
     await keepAwake?.call(false);
   }
 
@@ -352,6 +360,7 @@ class VoiceChat extends ChangeNotifier {
   Future<void> interrupt() async {
     if (!active) return;
     _activity();
+    await state.stopRecording();
     final rt = _rt;
     if (rt != null) {
       await rt.interrupt();
@@ -404,6 +413,7 @@ class VoiceChat extends ChangeNotifier {
     rt.onResponseDone = () => _responding = false;
     rt.onHerText = (t) => state.noteVoiceLine(fromHer: true, text: t);
     rt.onCallerText = (t) => unawaited(_ownerSaid(rt, t));
+    rt.onSpeechStart = () => unawaited(_look(rt));
     // เธอลาแล้ว · ปิดไมค์เมื่อเสียงลาออกลำโพงหมด (ดู [_onTick])
     rt.onEndCall = () => _endWhenQuiet = true;
     rt.onError = (m) {
@@ -453,15 +463,30 @@ class VoiceChat extends ChangeNotifier {
       await stop();
       return;
     }
+    // 🔴 ปิดกล้องด้วยเสียงไม่รอโมเดล
+    if (EyesWords.off(text) && state.eyes.showing) {
+      await state.eyes.turnOff();
+      if (identical(_rt, rt)) rt.remind('The camera is off now. You can no longer see.');
+      return;
+    }
     if (await state.answerPhoneAskByVoice(text)) return;
     // 🔴 "โทรเลย" / "ยกเลิก" ตัดสินจากคำของเจ้าของเองในเครื่อง ไม่ใช่จากที่โมเดลเข้าใจ
     if (state.pendingCall == null) return;
-    final yes = CallReply.confirm(text);
-    if (yes == null || !await state.confirmCallByVoice(text)) return;
-    if (identical(_rt, rt)) {
-      rt.remind(yes
-          ? 'The owner said to call. The app is dialing now; you will be on that call.'
-          : 'The owner cancelled the call. It was not placed.');
+    final yes = state.pendingCallReply(text);
+    if (yes == null) return;
+    final asked = state.askedToDial;
+    if (await state.confirmCallByVoice(text)) {
+      if (identical(_rt, rt)) {
+        rt.remind(yes
+            ? 'The owner said to call. The app is dialing now; you will be on that call. Say only a few words.'
+            : 'The owner cancelled the call. It was not placed.');
+      }
+      return;
+    }
+    // "ใช่" เฉย ๆ ตอนเธอไม่ได้ถามเรื่องโทร = ตอบเรื่องอื่นได้ · ไม่กดโทร แต่ไม่ปล่อยให้วนถามเงียบ ๆ
+    if (yes && !asked && state.pendingCall != null && identical(_rt, rt)) {
+      rt.remind('The owner said yes, but your last line did not ask about dialing, so nothing was dialed. If that yes '
+          'was about the call, ask exactly: "${state.s.callOutAskLine}"');
     }
   }
 
@@ -469,11 +494,31 @@ class VoiceChat extends ChangeNotifier {
     _toolsRunning++;
     _activity();
     try {
-      return await state.runVoiceTool(name, args);
+      final out = await state.runVoiceTool(name, args);
+      // ภาพเข้าบทสนทนาก่อนผลเครื่องมือ · เธอจะตอบจากภาพนี้ทันที
+      final rt = _rt;
+      if (rt != null) {
+        if (name == 'open_eyes') await _look(rt, force: true);
+        final shot = state.takeLastPhoto();
+        if (shot != null) rt.sendImage(shot);
+      }
+      return out;
     } finally {
       _toolsRunning = math.max(0, _toolsRunning - 1);
       _activity();
     }
+  }
+
+  DateTime _lookedAt = DateTime(0);
+
+  /// ส่งภาพตอนนี้ให้เธอ · ไม่เกินทุก [MindEyes.minGap]
+  Future<void> _look(RealtimeChat rt, {bool force = false}) async {
+    final eyes = state.eyes;
+    final now = _clock();
+    if (!eyes.on || (!force && now.difference(_lookedAt) < MindEyes.minGap)) return;
+    _lookedAt = now;
+    final jpeg = await eyes.look();
+    if (jpeg != null && identical(_rt, rt)) rt.sendImage(jpeg);
   }
 
   /// ท่อคุยสดหลุดกลางทาง · ถอดเสียงได้ = คุยทีละตาต่อ ไม่ให้เจ้าของที่ขับรถอยู่ต้องมาแตะใหม่
@@ -499,8 +544,11 @@ class VoiceChat extends ChangeNotifier {
     _setLips(false);
     _lipFrames.clear();
     _lipTotalMs = 0;
+    // ตาใช้ได้เฉพาะคุยสด · ไม่มีท่อ = กล้องเปิดค้างโดยไม่มีใครเห็นภาพ
+    await state.eyes.turnOff();
     if (rt != null) {
       rt
+        ..onSpeechStart = null
         ..onAudio = null
         ..onInterruption = null
         ..onResponseStart = null
@@ -812,6 +860,10 @@ class VoiceChat extends ChangeNotifier {
         audible = state.speaking;
         speaking = audible || _notices > 0;
       }
+      _herBusy = speaking;
+      // 🔴 เสียงสายที่เปิดอยู่ดังเข้าไมค์ · ไม่ปิดหู = เธอตอบเสียงในบันทึกเหมือนเจ้าของพูด ·
+      // และไมค์ต้องไม่ปิดเองกลางเรื่องยาว ๆ · เจ้าของหยุดจากแถบบนจอ
+      if (state.playingRecording) speaking = true;
       final now = _clock();
       if (_woke && !_ownerTalked && now.difference(_wokeAt) > wakeWait) {
         debugPrint('voice chat: ถูกเรียกแล้วไม่มีคำสั่ง ปิดไมค์');

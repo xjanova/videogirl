@@ -106,7 +106,11 @@ class MindInCallService : InCallService() {
 
     private val callback = object : Call.Callback() {
         override fun onStateChanged(call: Call, state: Int) {
-            if (state == Call.STATE_ACTIVE && mindHandling) onMindCallActive()
+            if (state == Call.STATE_ACTIVE && mindHandling) {
+                onMindCallActive()
+                // 🔴 Telephony ไม่มีสัญญาณตอนปลายสายรับ · ที่นี่ที่เดียวที่รู้ · บอก Dart ให้เธอเริ่มพูดทันที
+                onMindCallLive?.invoke()
+            }
             notifyChanged()
         }
 
@@ -165,6 +169,10 @@ class MindInCallService : InCallService() {
 
     companion object {
         const val ACTION_CALL_CHANGED = "com.xjanova.videogirl.CALL_CHANGED"
+
+        /** สายที่เธอถือต่อติดแล้ว · [SystemBridge] ผูกไว้ยิงต่อให้ Dart */
+        @JvmStatic
+        var onMindCallLive: (() -> Unit)? = null
 
         /** สายที่รอเจ้าของกดส่งเลขที่เหลือ → เลขที่เหลือ · ดู onPostDialWait */
         private val postDial = java.util.WeakHashMap<Call, String>()

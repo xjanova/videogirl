@@ -442,11 +442,17 @@ class LiveCall extends VoiceSession {
 
   Timer? _hangUp;
 
+  /// ไม่มีเหตุการณ์เริ่มพูด · บทที่ค้างรอขอบประโยค = คู่สายยังพูดอยู่
+  @override
+  bool get callerTalking => _callerText.isNotEmpty;
+
   @override
   void endCallRequested(Object? callId) {
     // ผลกลับไปแต่ไม่สั่งตอบต่อ · ลาไปแล้ว สั่งต่อ = เธอพูดอีกประโยคหลังลา
     if (callId is String) _toolItem(callId, '{"hanging_up":true}');
-    _hangUp ??= Timer(hangUpGrace, () => onEndCall?.call());
+    // ไม่ใช้ ??= · คู่สายพูดแทรกแล้วเธอลาใหม่ นาฬิกาที่ยิงไปแล้วจะไม่ทำงานอีก
+    _hangUp?.cancel();
+    _hangUp = Timer(hangUpGrace, () => onEndCall?.call());
   }
 
   @override

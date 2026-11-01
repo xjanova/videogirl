@@ -148,11 +148,21 @@ class RealtimeCall extends VoiceSession {
     if (!connected) return;
     _send({
       'type': 'response.create',
-      'response': {'output_modalities': ['audio'], 'instructions': instructions},
+      'response': {
+        'output_modalities': ['audio'],
+        // 🔴 คำสั่งของคำตอบนี้แทนที่ของทั้งเซสชัน · ส่งเดี่ยว ๆ = เธอลืมเรื่องที่ต้องโทรมาแจ้ง
+        'instructions': '${this.instructions}\n\n=== Right now ===\n$instructions',
+      },
     });
   }
 
   final _resampler = Resampler16to24();
+
+  /// อีกฝ่ายเริ่มพูด · คุยกับเจ้าของใช้เป็นจังหวะส่งภาพ (ดู VoiceChat)
+  void Function()? onSpeechStart;
+
+  @override
+  bool get callerTalking => _callerTalking;
 
   @override
   void sendMic(Uint8List pcm16k) {
@@ -160,6 +170,21 @@ class RealtimeCall extends VoiceSession {
     final up = _resampler.convert(pcm16k);
     if (up.isEmpty) return;
     _send({'type': 'input_audio_buffer.append', 'audio': base64Encode(up)});
+  }
+
+  /// ภาพหนึ่งใบเข้าบทสนทนา · ไม่สั่งให้ตอบ · ใช้กับคำพูดที่ตามมา · ดู MindEyes
+  void sendImage(Uint8List jpeg) {
+    if (!connected || jpeg.isEmpty) return;
+    _send({
+      'type': 'conversation.item.create',
+      'item': {
+        'type': 'message',
+        'role': 'user',
+        'content': [
+          {'type': 'input_image', 'image_url': 'data:image/jpeg;base64,${base64Encode(jpeg)}'},
+        ],
+      },
+    });
   }
 
   /// ข้อความระบบ
@@ -232,6 +257,7 @@ class RealtimeCall extends VoiceSession {
       case 'input_audio_buffer.speech_started':
         _callerTalking = true;
         if (fullDuplex) unawaited(_interruptPlayback());
+        onSpeechStart?.call();
       case 'input_audio_buffer.speech_stopped':
         _callerTalking = false;
       case 'response.output_audio.delta':

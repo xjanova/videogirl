@@ -8,6 +8,8 @@ import '../ai/voice_chat.dart';
 import '../ai/voice_input.dart';
 import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
+import '../avatar/startle_cue.dart';
+import '../sos/mind_sos.dart';
 import '../persona/mind_soul.dart';
 import '../phone/call_session.dart';
 import '../phone/call_watch.dart';
@@ -274,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen>
       _chat.dispose();
     } else {
       // หน้าแชทหายไปกับจอ แต่เธอยังคุยอยู่ได้ · ทางส่งเดิมอ้างถึงหน้านี้
-      _chat.sendTurn = context.read<MindState>().send;
+      _chat.sendTurn = MindSos.instance.guarded(context.read<MindState>().send);
     }
     super.dispose();
   }
@@ -296,6 +298,8 @@ class _HomeScreenState extends State<HomeScreen>
   /// แบบเดียวกันเป๊ะ · ทางส่งสองทางที่ทำงานไม่เหมือนกันคือของที่จะเพี้ยน
   /// จากกันเรื่อย ๆ ทุกครั้งที่มีใครแก้ทางใดทางหนึ่ง
   Future<void> _sendText(MindState state, String text) async {
+    // ก่อนด่าน canSend · สมองยังไม่พร้อมหรือกำลังตอบอยู่ก็ต้องขอความช่วยเหลือได้
+    if (await MindSos.instance.heard(text)) return;
     if (text.trim().isEmpty || !state.canSend) return;
 
     // แถบเดียวโชว์ได้ทีละเรื่อง · ถ้าไม่ล้างของเก่าตรงนี้ ข้อผิดพลาดจากไมค์
@@ -318,6 +322,11 @@ class _HomeScreenState extends State<HomeScreen>
 
     await sending;
     if (!mounted) return;
+
+    final last = state.messages.isEmpty ? null : state.messages.last;
+    if (last != null && last.fromHer && startsStartled(last.text)) {
+      unawaited(widget.avatar.startle());
+    }
 
     if (context.read<CallWatch>().state == CallState.idle) {
       await widget.avatar.setMood(state.mode.isWork ? MindMood.pleased : MindMood.happy);
