@@ -31,6 +31,7 @@ import 'store/mind_vault.dart';
 import 'studio/mind_studio.dart';
 import 'screens/unsupported_screen.dart';
 import 'shell.dart';
+import 'widgets/eyes_overlay.dart';
 import 'i18n/strings.dart';
 import 'i18n/strings_ai.dart';
 import 'state/mind_state.dart';
@@ -290,6 +291,8 @@ class _MindBootstrapState extends State<MindBootstrap>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(_state.saveVaultNow());
+      // กล้องทำงานได้เฉพาะตอนแอปอยู่บนจอ · ปิดเอง ไม่เปิดคืนเอง (ดู MindEyes)
+      unawaited(_state.eyes.turnOff());
       return;
     }
     // กลับเข้าแอป — ผู้ใช้อาจเพิ่งไปโหลดชุดภาษาสำหรับถอดเสียงในเครื่องมา
@@ -409,6 +412,7 @@ class _MindBootstrapState extends State<MindBootstrap>
     // ยังไม่ได้ให้สิทธิ์ก็แค่ไม่รู้ว่าใครโทร ไม่ได้ล้มทั้งระบบ
     _state.attachCalls(_calls);
     _calls.addListener(_showCallOnStage);
+    _calls.addListener(_yieldMicToCall);
 
     // สายที่เพิ่งวางมีผลกับอารมณ์เธอ · CallWatch เป็นคนกันไม่ให้นับซ้ำ
     // (สายเดียวยิงครั้งเดียว) ที่นี่จึงแปลงเป็นความหึงได้ตรง ๆ
@@ -433,10 +437,21 @@ class _MindBootstrapState extends State<MindBootstrap>
     await _session.start();
   }
 
+  /// มีสาย = ปิดคุยต่อเนื่อง · ไมค์เป็นของสาย
+  ///
+  /// 🔴 หน้าแชทก็ทำอยู่ แต่คุยเบื้องหลังตอนไม่มีจอ ไม่มีหน้าแชทให้ทำ · สั่งโทรด้วยเสียงแล้วเธอจะพูดทับเสียงรอสาย
+  void _yieldMicToCall() {
+    if (_calls.state == CallState.idle) return;
+    if (_voiceChat.active) unawaited(_voiceChat.stop());
+    unawaited(_state.stopRecording());
+    unawaited(_state.eyes.turnOff());
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _calls.removeListener(_showCallOnStage);
+    _calls.removeListener(_yieldMicToCall);
     _calls.onCallEnded = null;
     _session.dispose();
     _soul.dispose();
@@ -508,6 +523,11 @@ class _MindBootstrapState extends State<MindBootstrap>
         builder: (context, state, _) => MaterialApp(
           title: 'GigGok',
           debugShowCheckedModeBanner: false,
+          // อยู่เหนือ Navigator · เปิดหน้าตั้งค่าทับแล้วสัญญาณกล้องต้องยังเห็น
+          builder: (context, child) => Stack(
+            fit: StackFit.expand,
+            children: [?child, EyesOverlay(eyes: state.eyes)],
+          ),
           theme: mindTheme(state.mode),
           locale: state.lang.locale,
           supportedLocales: [for (final l in AppLang.values) l.locale],

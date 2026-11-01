@@ -231,6 +231,7 @@ class _MindShellState extends State<MindShell> {
     _state?.removeListener(_onPendingCall);
     _state?.removeListener(_onCallChoice);
     _state?.removeListener(_onPhoneAsk);
+    _state?.removeListener(_onRecording);
     _studio?.removeListener(_onStudio);
     _settingsSection.dispose();
     super.dispose();
@@ -278,7 +279,12 @@ class _MindShellState extends State<MindShell> {
     state.addListener(_onPendingCall);
     state.addListener(_onCallChoice);
     state.addListener(_onPhoneAsk);
+    state.addListener(_onRecording);
     _state = state;
+    // 🔴 จอเพิ่งมา (เจ้าของแตะแจ้งเตือนหลังคุยเบื้องหลังตอนไม่มีจอ) · กล่องขึ้นค้างไว้ก่อนมีเชลล์นี้ ไม่มี state ขยับมาบอกอีก
+    _onPendingCall();
+    _onCallChoice();
+    _onPhoneAsk();
 
     // รุ่นใหม่ · เช็คหลังหน้าเปิดแอปหาย และทุกครั้งที่กลับเข้าแอป
     _life = AppLifecycleListener(onResume: () => unawaited(_checkUpdate()));
@@ -290,6 +296,25 @@ class _MindShellState extends State<MindShell> {
     } else {
       gate.addListener(_onSplashGone);
     }
+  }
+
+  bool _recordingBar = false;
+
+  /// เธอเปิดเสียงสายให้ฟัง · ไมค์ปิดหูอยู่ (ไม่งั้นเธอตอบเสียงในบันทึก) พูดว่าหยุดไม่ได้ · จึงมีปุ่มหยุดบนจอเสมอ
+  void _onRecording() {
+    final state = _state;
+    if (state == null || !mounted || state.playingRecording == _recordingBar) return;
+    _recordingBar = state.playingRecording;
+    final bar = ScaffoldMessenger.maybeOf(context);
+    if (!_recordingBar) {
+      bar?.hideCurrentSnackBar();
+      return;
+    }
+    bar?.showSnackBar(SnackBar(
+      content: Text(state.s.recordingPlayingNow),
+      duration: const Duration(hours: 2),
+      action: SnackBarAction(label: state.s.recordingStop, onPressed: () => unawaited(state.stopRecording())),
+    ));
   }
 
   /// คำถาม "ให้ทำขั้นนี้ไหม" ที่โชว์กล่องไปแล้ว
@@ -347,7 +372,7 @@ class _MindShellState extends State<MindShell> {
     if (go != null) {
       if (state.pendingCall?.id == p.id) await state.confirmPendingCall(task: go.task, askOwner: go.askOwner);
     } else {
-      state.cancelPendingCall(id: p.id);
+      state.cancelPendingCall(id: p.id, tell: true);
     }
   }
 
@@ -546,6 +571,15 @@ class _CallConfirmSheetState extends State<_CallConfirmSheet> {
   /// กดซ้ำ = pop สองครั้ง ซึ่งจะปิดจอที่อยู่ใต้กล่องไปด้วย
   bool _closed = false;
 
+  /// เรื่องล่าสุดที่รู้จาก [MindState] · ไม่ตรงกับช่อง = เธอแก้ตามที่เจ้าของบอกด้วยเสียง
+  late String _seen = widget.call.task;
+
+  /// เจ้าของพิมพ์แก้ในกล่อง · พูด "โทรเลย" ต่อจากนี้ต้องได้ฉบับที่แก้ ไม่ใช่ฉบับก่อนพิมพ์
+  void _typed() {
+    _seen = _task.text;
+    context.read<MindState>().editPendingCall(widget.call.id, task: _task.text);
+  }
+
   @override
   void dispose() {
     _task.dispose();
@@ -569,6 +603,14 @@ class _CallConfirmSheetState extends State<_CallConfirmSheet> {
         if (mounted) _close(null);
       });
     }
+    // เจ้าของบอกแก้ด้วยเสียงแล้วเธอแก้เรื่อง · กล่องเดิมเปลี่ยนตาม ไม่เปิดใบใหม่
+    final latest = context.select<MindState, String?>((s) => s.pendingCall?.id == p.id ? s.pendingCall?.task : null);
+    if (latest != null && latest != _seen) {
+      _seen = latest;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _task.text = latest;
+      });
+    }
     final handsFree = context.select<MindState, bool>((s) => s.handsFree);
     return SafeArea(
       child: Padding(
@@ -584,6 +626,7 @@ class _CallConfirmSheetState extends State<_CallConfirmSheet> {
             Text(t.callOutTaskLabel, style: const TextStyle(fontSize: 11, color: MindColors.ink55)),
             TextField(
               controller: _task,
+              onChanged: (_) => _typed(),
               minLines: 2,
               maxLines: 8,
               maxLength: 1200,
@@ -600,7 +643,10 @@ class _CallConfirmSheetState extends State<_CallConfirmSheet> {
                 contentPadding: EdgeInsets.zero,
                 dense: true,
                 value: _askOwner,
-                onChanged: (v) => setState(() => _askOwner = v),
+                onChanged: (v) {
+                  setState(() => _askOwner = v);
+                  context.read<MindState>().editPendingCall(p.id, askOwner: v);
+                },
                 title: Text(t.callAskOwnerAllow, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                 subtitle: Text(_askOwner ? t.callAskOwnerAllowOn : t.callAskOwnerAllowOff,
                     style: const TextStyle(fontSize: 10.5, height: 1.45, color: MindColors.ink55)),

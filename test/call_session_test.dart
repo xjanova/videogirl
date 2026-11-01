@@ -87,8 +87,12 @@ void main() {
           .setMockMethodCallHandler(kSystemChannel, (call) async {
         calls.add(call);
         if (call.method == 'callInfo') return info;
+        if (call.method == 'recentCalls') return <Object?>[];
         return true;
       });
+      // เธอเริ่มคุย = เปิดตัวอัดเสียง · ไม่มีปลั๊กอินในเทสต์
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel('com.llfbandit.record/messages'), (_) async => null);
 
       watch = CallWatch();
       session = CallSession(watch: watch, state: MindState());
@@ -160,6 +164,44 @@ void main() {
       expect(calls.map((c) => c.method), contains('callDisconnect'));
       expect(calls.map((c) => c.method), contains('callEndAudio'),
           reason: 'ไม่คืนระดับเสียงที่เร่งไว้ = สายถัดไปดังสุดโดยไม่มีใครรู้');
+      expect(session.onStage, isFalse);
+    });
+
+    /// 🔴 สายจริง 2026-11-01: 21:36:18 ปลายสายรับ · ตัวช่วยไม่เคยถูกสั่ง `start:` · 21:36:44 ปลายสายวางเพราะเงียบ
+    test('🔴 สายที่เธอโทรออก: ระหว่างรอสายไม่ตัดจอ · ปลายสายรับเมื่อไหร่ เธอเริ่มเอง (นาฬิกาถามเอง)', () async {
+      info = {'live': false, 'mind': true, 'mindOutgoing': true, 'outgoing': true, 'number': '0812345678'};
+      await session.start();
+      expect(session.onStage, isFalse, reason: 'ยังไม่มีใครรับ');
+
+      info = {'live': true, 'mind': true, 'mindOutgoing': true, 'number': '0812345678'};
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      expect(session.onStage, isTrue);
+      expect(session.outgoingCall, isTrue);
+      expect(calls.map((c) => c.method), contains('mindAnswer'), reason: 'เปิดลำโพงตอนปลายสายรับ');
+    });
+
+    test('🔴 ปลายสายรับ: เนทีฟบอก onCallChanged แล้วเธอเริ่มทันที ไม่ต้องรอนาฬิกา', () async {
+      await watch.start();
+      final m = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      Future<void> native(String method, [Object? args]) => m.handlePlatformMessage(
+          kSystemChannel.name, kSystemChannel.codec.encodeMethodCall(MethodCall(method, args)), (_) {});
+
+      info = {'live': false, 'mind': true, 'mindOutgoing': true, 'number': '0812345678'};
+      await native('onCallState', {'state': 2});
+      info = {'live': true, 'mind': true, 'mindOutgoing': true, 'number': '0812345678'};
+      await native('onCallChanged');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(session.onStage, isTrue);
+    });
+
+    test('ปลายสายไม่รับแล้วสายหลุด = เก็บของจบ ไม่มีนาฬิกาค้าง', () async {
+      info = {'live': false, 'mind': true, 'mindOutgoing': true, 'number': '0812345678'};
+      await session.start();
+      info = {'live': false, 'mind': false, 'number': null};
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      calls.clear();
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      expect(calls, isEmpty, reason: 'ยังถามทุกวินาที = นาฬิกาไม่หยุด');
       expect(session.onStage, isFalse);
     });
 

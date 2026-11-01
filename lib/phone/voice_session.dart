@@ -257,8 +257,11 @@ abstract class VoiceSession {
   /// ท่อหลุด / เซิร์ฟเวอร์แจ้งข้อผิดพลาด
   void Function(String message)? onError;
 
-  /// เธอลากับคู่สายแล้ว ขอวางสาย · ผู้เรียกวางเมื่อเสียงลาออกลำโพงจบ
+  /// เธอลากับคู่สายแล้ว ขอวางสาย · ผู้เรียกนับเวลาหลังเสียงลาจบ (ดู CallHangUp)
   void Function()? onEndCall;
+
+  /// คู่สายกำลังพูดอยู่ตอนนี้ · บทยังไม่มาก็รู้
+  bool get callerTalking => false;
 
   /// เรื่องด่วน · ผู้เรียกแจ้งเตือนเจ้าของ
   void Function(String reason)? onAlertOwner;

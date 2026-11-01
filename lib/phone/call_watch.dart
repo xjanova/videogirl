@@ -223,6 +223,11 @@ class CallWatch extends ChangeNotifier {
     // ไหลเข้ารายงานดีบัคที่ส่งออกนอกเครื่องได้ (ดู DebugReport)
     final st = call.arguments is Map ? (call.arguments as Map)['state'] : null;
     debugPrint('call: ได้สัญญาณ ${call.method} state=$st');
+    // ปลายสายรับสายที่เธอโทรออก · Telephony ไม่มีสัญญาณนี้ มีแต่ Telecom ฝั่งเนทีฟ · ปลุก CallSession ไปถามเอง
+    if (call.method == 'onCallChanged') {
+      notifyListeners();
+      return null;
+    }
     if (call.method != 'onCallState') return null;
 
     final args = call.arguments;

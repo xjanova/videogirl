@@ -105,6 +105,7 @@
     <string name="hands_desc">Mind reads the screen as text and taps, types, scrolls or opens apps for you, only while doing a task you asked for · when it has permission, GigGok turns this service on for the task and off again afterwards · it never opens or touches banking, finance or wallet apps, password fields, or app-install and permission screens · it asks you before sending, paying, buying or deleting · stop it any time from the notification</string>
     <string name="hands_channel">Mind is using the phone</string>
     <string name="hands_ask_channel">Mind asks before acting</string>
+    <string name="come_back_channel">Mind needs you to confirm</string>
     <string name="hands_stop">Stop</string>
     <string name="hands_stopping">Stopping…</string>
     <string name="hands_allow">Do it</string>
