@@ -657,6 +657,32 @@ extension AiStrings on S {
         "The phone's recogniser is busy — try again in a moment",
       );
 
+  // ── คุยต่อเนื่องด้วยเสียง (แตะไมค์ · lib/ai/voice_chat.dart) ──
+  String get voiceChatOpening => pick('กำลังเปิดไมค์…', 'Opening the mic…');
+  String get voiceChatListening => pick('ฟังอยู่ค่ะ พูดได้เลย', 'Listening — just talk');
+  String get voiceChatHearing => pick('กำลังฟัง…', 'Hearing you…');
+  String get voiceChatThinking => pick('กำลังคิด…', 'Thinking…');
+  String get voiceChatSpeaking => pick('กำลังพูด · แตะเพื่อให้หยุด', 'Speaking · tap to stop her');
+  String get voiceChatLive => pick('คุยสด', 'Live');
+  String get voiceChatTurns => pick('ทีละตา', 'Turn by turn');
+  String get voiceChatClose => pick('ปิดไมค์', 'Turn the mic off');
+
+  /// ปุ่มไมค์ · แตะกับกดค้างทำคนละอย่าง ต้องบอก ไม่งั้นคนที่เคยกดพูดลงช่องพิมพ์จะงง
+  String get voiceChatMicHint => pick(
+        'แตะ = คุยต่อเนื่องด้วยเสียง · กดค้าง = พูดลงช่องพิมพ์',
+        'Tap = talk hands-free · Long-press = dictate into the box',
+      );
+
+  String get voiceChatIdleOff => pick(
+        'ปิดไมค์ให้แล้วค่ะ เพราะเงียบไปนาน · แตะไมค์เพื่อคุยต่อ',
+        'Turned the mic off after a long silence — tap the mic to talk again',
+      );
+
+  /// คุยสดเริ่มไม่ได้/หลุดกลางทาง · [fallback] = เปลี่ยนเป็นคุยทีละตาให้แล้ว · false = ปิดไมค์
+  String voiceChatLiveLost({required bool fallback}) => fallback
+      ? pick('คุยสดต่อไม่ได้ เปลี่ยนเป็นคุยทีละตาให้แล้วค่ะ', 'Live talk is not available — switched to turn by turn')
+      : pick('คุยสดต่อไม่ได้ ปิดไมค์ให้แล้วค่ะ', 'Live talk is not available — the mic is off');
+
   String get micListening => pick('กำลังฟังอยู่…', 'Listening…');
   String get micWorking => pick('กำลังถอดเสียง…', 'Writing it down…');
   String get micStart => pick('พูดแทนการพิมพ์', 'Speak instead of typing');

@@ -111,6 +111,42 @@ class PhoneData(private val context: Context, private val calls: CallBridge) {
         }
     }
 
+    /**
+     * ทั้งสมุดแบบย่อ (ชื่อ · เบอร์) ให้ฝั่ง Dart หาชื่อที่ใกล้เคียงตอนสั่งโทร
+     *
+     * เจ้าของ: "ให้เธอโทรออกหาลูกค้าชื่อบัว เธอบอกไม่มี แทนที่จะค้นรายชื่อที่ใกล้เคียงมาถามฉันก่อน" ·
+     * `LIKE` หา "บัว" ไม่เจอเมื่อสมุดเขียน "บัวร์" / "Bua" หรือเธอเขียน "ลูกค้าบัว" ·
+     * เทียบความใกล้เคียงต้องเห็นทุกชื่อ · ผลไม่ออกจากเครื่อง (ฝั่ง Dart คัดเหลือไม่กี่ชื่อให้เจ้าของเลือก)
+     *
+     * เรียงคนที่ติดต่อบ่อยก่อน · หยุดที่ [INDEX_CAP] รายการ
+     */
+    fun contactIndex(): List<Map<String, String>>? {
+        if (!calls.canReadContacts()) return null
+        val out = LinkedHashMap<String, Map<String, String>>()
+        return try {
+            context.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                ),
+                null, null,
+                "${ContactsContract.CommonDataKinds.Phone.TIMES_CONTACTED} DESC"
+            )?.use { c ->
+                while (c.moveToNext() && out.size < INDEX_CAP) {
+                    val name = c.getString(0) ?: continue
+                    val number = c.getString(1) ?: continue
+                    val key = number.filter { it.isDigit() }.takeLast(9)
+                    if (key.isEmpty() || out.containsKey(key)) continue
+                    out[key] = mapOf("name" to name, "number" to number)
+                }
+            }
+            out.values.toList()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private fun contactTotal(): Int = try {
         context.contentResolver.query(
             ContactsContract.Contacts.CONTENT_URI,
@@ -228,6 +264,9 @@ class PhoneData(private val context: Context, private val calls: CallBridge) {
     companion object {
         /** สแกนไม่เกินเท่านี้แถวต่อครั้ง · SMS หลายหมื่นข้อความไม่ทำให้ค้าง */
         private const val SCAN_CAP = 600
+
+        /** สมุดใหญ่กว่านี้ ชื่อที่ไม่ค่อยติดต่อหลุดจากการเทียบ · ส่งข้ามช่องทางราว 200 KB ที่เพดาน */
+        private const val INDEX_CAP = 5000
 
         /** เนื้อ SMS ยาวกว่านี้ตัดทิ้ง · เธอต้องการใจความ ไม่ใช่โฆษณาทั้งก้อน */
         private const val BODY_CAP = 400

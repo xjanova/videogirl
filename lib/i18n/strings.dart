@@ -926,9 +926,68 @@ class S {
   String callOutNoteTitle(String who) => _('น้องมายโทรหา $who', 'Mai called $who');
   String get callOutSilent => _('ปลายสายรับแต่ไม่ได้พูดอะไร', 'They picked up but did not say anything');
   String callOutNoContact(String name) => _(
-        'หาชื่อ "$name" ในสมุดโทรศัพท์ไม่เจอค่ะ ขอเบอร์หน่อยได้ไหมคะ',
-        'I could not find "$name" in your contacts — what is the number?',
+        'หา "$name" ไม่เจอทั้งในสมุดโทรศัพท์และเบอร์ที่โทรเข้ามาล่าสุดค่ะ ขอเบอร์หน่อยได้ไหมคะ',
+        'I could not find "$name" in your contacts or among recent callers — what is the number?',
       );
+
+  // ── หาว่าหมายถึงใคร (lib/phone/call_target.dart) · เธอพูดออกเสียงด้วย จึงสั้นและไม่มีสัญลักษณ์แปลก ──
+
+  /// เลือกได้คนเดียวแต่ชื่อไม่ตรงกับที่สั่ง ("บัว" → "บัวบาน") · กล่องยืนยันขึ้นตามมา
+  String callOutPicked(String who, String tail) => _(
+        'เจอ "$who" เบอร์ลงท้าย $tail ค่ะ จะให้โทรเลยไหมคะ กดโทรเลย หรือพูดว่า "โทรเลย" ก็ได้ค่ะ',
+        'Found "$who", number ending $tail. Shall I call? Tap Call now or just say "call now".',
+      );
+
+  /// [list] = บรรทัดจาก [callChoiceContact] / [callChoiceUnsaved] · [anyContact] = มีชื่อในสมุดในรายการ ·
+  /// [single] = มีตัวเลือกเดียว (ถามว่าใช่คนนี้ไหม)
+  String callOutChoose(String name, String list, {required bool anyContact, required bool single}) {
+    if (single) {
+      return anyContact
+          ? _('ไม่เจอ "$name" ตรง ๆ ค่ะ ที่ใกล้ที่สุดคือ\n$list\nใช่คนนี้ไหมคะ',
+              'I could not find "$name" exactly. The closest is\n$list\nIs that the one?')
+          : _('ในสมุดไม่มีชื่อ "$name" ค่ะ แต่มีเบอร์ที่โทรเข้ามาล่าสุดที่ยังไม่ได้บันทึก\n$list\nใช่เบอร์นี้ไหมคะ',
+              '"$name" is not in your contacts, but this number called recently and is not saved\n$list\nIs that them?');
+    }
+    return anyContact
+        ? _('หา "$name" แล้วเจอหลายคนที่ใกล้เคียงค่ะ\n$list\nหมายถึงคนไหนคะ บอกลำดับ ชื่อ หรือเลขท้ายได้เลยค่ะ',
+            'I found a few people close to "$name"\n$list\nWhich one? Say the number in the list, the name, or the last digits.')
+        : _('ในสมุดไม่มีชื่อ "$name" ค่ะ แต่มีเบอร์ที่โทรเข้ามาล่าสุดที่ยังไม่ได้บันทึก\n$list\nใช่เบอร์ไหนไหมคะ บอกลำดับหรือเลขท้ายได้เลยค่ะ',
+            '"$name" is not in your contacts, but these numbers called recently and are not saved\n$list\nIs it one of them? Say the number in the list or the last digits.');
+  }
+
+  String callChoiceContact(int n, String name, String tail) =>
+      _('$n. $name เบอร์ลงท้าย $tail', '$n. $name, number ending $tail');
+
+  /// [said] = คนโทรบอกชื่อนี้ไว้ในสายที่เธอรับ หรือลงชื่อไว้ใน SMS
+  String callChoiceUnsaved(int n, String number, String when,
+      {required bool missed, required int calls, String? said}) {
+    final how = missed ? _('ไม่ได้รับสาย', 'missed call') : _('โทรเข้า', 'called');
+    final times = calls > 1 ? _(' ($calls ครั้ง)', ' ($calls times)') : '';
+    final name = said == null ? '' : _(' บอกชื่อว่า "$said"', ', said they were "$said"');
+    return '$n. $number $how $when$times$name';
+  }
+
+  /// วันนี้ 14:20 · เมื่อวาน 14:20 · 3 วันก่อน
+  String callChoiceWhen(DateTime at, DateTime now) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    final hm = '${two(at.hour)}:${two(at.minute)}';
+    final days = DateTime.utc(now.year, now.month, now.day).difference(DateTime.utc(at.year, at.month, at.day)).inDays;
+    if (days <= 0) return _('วันนี้ $hm', 'today $hm');
+    if (days == 1) return _('เมื่อวาน $hm', 'yesterday $hm');
+    return _('$days วันก่อน', '$days days ago');
+  }
+
+  String get callChoiceCancelled => _('ได้ค่ะ ยังไม่โทรนะคะ', 'OK, I will not call.');
+  String get callChoiceTitle => _('หมายถึงใครคะ', 'Who did you mean?');
+  String get callChoiceHint =>
+      _('แตะเลือก หรือพูด/พิมพ์ลำดับ ชื่อ หรือเลขท้ายก็ได้', 'Tap one, or say or type its number in the list, the name, or the last digits');
+  String get callChoiceSavedLabel => _('ในสมุดโทรศัพท์', 'In your contacts');
+  String get callChoiceUnsavedLabel => _('โทรเข้ามา ยังไม่ได้บันทึก', 'Called you, not saved');
+  String get callChoiceNone => _('ไม่ใช่ทั้งหมด', 'None of these');
+  String callChoiceTail(String tail) => _('เบอร์ลงท้าย $tail', 'Number ending $tail');
+  String callChoiceSaid(String name) => _('บอกชื่อว่า "$name"', 'Said they were "$name"');
+  String get callOutVoiceHint =>
+      _('พูดว่า "โทรเลย" หรือ "ยกเลิก" ได้เลย ไม่ต้องแตะจอ', 'You can just say "call now" or "cancel" — no need to tap');
   String callOutNeedContacts(String name) => _(
         'น้องมายยังเปิดสมุดโทรศัพท์ไม่ได้ค่ะ ขอเบอร์ของ $name แทนได้ไหมคะ (หรือให้สิทธิ์สมุดโทรศัพท์ในหน้าตั้งค่า)',
         'I cannot open your contacts yet — could you give me $name\'s number (or allow contacts in Settings)?',

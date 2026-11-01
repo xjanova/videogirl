@@ -113,8 +113,8 @@ object CallAudio {
         if (!open || ownerRouted) return
         val service = MindInCallService.service ?: return
         val state = service.callAudioState ?: return
-        // ไมค์ของสายถูกปิด = ไม่มีเสียงอะไรขึ้นสายเลย · แอปเราไม่มีปุ่มปิดไมค์ ที่ปิดมาจากที่อื่น
-        // (ปุ่มบนหูฟังบลูทูธ / สายก่อนหน้า) · ตอนเธอถือสายไม่มีใครตั้งใจให้ปิด
+        // ไมค์ของสายถูกปิด = ไม่มีเสียงอะไรขึ้นสายเลย · ปุ่มปิดไมค์ของจอสายกดไม่ได้ตอนเธอถือสาย
+        // ที่ปิดมาจากที่อื่น (ปุ่มบนหูฟังบลูทูธ / สายก่อนหน้า) · ตอนเธอถือสายไม่มีใครตั้งใจให้ปิด
         // ยกเว้นตอนเธอพักสายถามเจ้าของ ([hold]) · ที่ปิดนั้นตั้งใจ
         if (state.isMuted && !holdMuted && reasserts < MAX_REASSERTS) {
             reasserts++
@@ -200,7 +200,8 @@ object CallAudio {
         restore(context)
         // ปิดธงก่อนสลับ · [keepSpeaker] ที่ตามมากับการเปลี่ยนเส้นทางต้องไม่เปิดลำโพงคืน
         open = false
-        MindInCallService.service?.setAudioRoute(CallAudioState.ROUTE_EARPIECE)
+        // หูฟังสายเสียบอยู่ = กลับเข้าหูฟัง · ขอ EARPIECE ตรง ๆ ระบบทิ้งคำสั่ง ลำโพงค้าง (ดู setSpeaker)
+        MindInCallService.service?.setAudioRoute(CallAudioState.ROUTE_WIRED_OR_EARPIECE)
     }
 
     /** จบสาย หรือเลิกให้เธอพูด — คืนระดับเสียงเดิมทุกครั้ง */
@@ -351,7 +352,7 @@ object CallAudio {
     // แล้วเขียนไฟล์ (ทางเดิม [play]) · ออกลำโพงทางเดียวกับ [play] (ดูหัวไฟล์)
 
     /** หนึ่งรอบการเล่น · เปลี่ยนก้อนใหม่ทั้งก้อนตอนล้าง ไม่ใช้ของเก่าต่อ */
-    private class Live(val track: android.media.AudioTrack, val rate: Int) {
+    private class Live(val track: android.media.AudioTrack, val rate: Int, val media: Boolean) {
         val queue = java.util.concurrent.LinkedBlockingQueue<ByteArray>()
         val written = java.util.concurrent.atomic.AtomicLong(0)   // เฟรมที่ส่งให้ลำโพงแล้ว
         val queued = java.util.concurrent.atomic.AtomicLong(0)    // ไบต์ที่ยังรอคิว
@@ -379,8 +380,13 @@ object CallAudio {
     @Volatile
     private var live: Live? = null
 
-    /** เริ่มช่องเสียงสด · ทุกครั้งที่เรียกได้ช่องใหม่สะอาด (ทิ้งเสียงที่ค้างอยู่) */
-    fun liveStart(rate: Int = 24000): Boolean {
+    /**
+     * เริ่มช่องเสียงสด · ทุกครั้งที่เรียกได้ช่องใหม่สะอาด (ทิ้งเสียงที่ค้างอยู่)
+     *
+     * [media] = คุยกับเจ้าของในแชท (ไม่มีสาย) · ออกเป็นเสียงสื่อ ดังตามปุ่มเสียงปกติ และไปลำโพงรถ/หูฟังบลูทูธ
+     * แบบ A2DP ได้ · ในสายใช้ช่องสนทนาเหมือนเดิม (ดูหัวไฟล์)
+     */
+    fun liveStart(rate: Int = 24000, media: Boolean = false): Boolean {
         liveStop()
         return try {
             val min = android.media.AudioTrack.getMinBufferSize(
@@ -391,7 +397,10 @@ object CallAudio {
             val track = android.media.AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setUsage(
+                            if (media) AudioAttributes.USAGE_MEDIA
+                            else AudioAttributes.USAGE_VOICE_COMMUNICATION
+                        )
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -407,7 +416,7 @@ object CallAudio {
                 .setTransferMode(android.media.AudioTrack.MODE_STREAM)
                 .build()
             track.play()
-            val l = Live(track, rate)
+            val l = Live(track, rate, media)
             live = l
             l.writer.start()
             true
@@ -433,8 +442,8 @@ object CallAudio {
 
     /** ทิ้งเสียงที่ค้างอยู่ทันที (เจ้าของแทรกสาย / ยกเลิกคำตอบ) แล้วพร้อมเล่นต่อ */
     fun liveClear() {
-        val rate = live?.rate ?: return
-        liveStart(rate)
+        val l = live ?: return
+        liveStart(l.rate, l.media)
     }
 
     fun liveStop() {
