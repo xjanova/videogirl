@@ -288,7 +288,11 @@ class _MindShellState extends State<MindShell> {
       // Scaffold บวกความสูงแถบเข้าไปใน MediaQuery.padding ของ body ให้เอง
       // SafeArea ในแต่ละหน้าจอจึงยังกันเนื้อหาไม่ให้มุดใต้แถบเหมือนเดิม
       extendBody: true,
+      // 🔴 expand ห้ามหาย · Scaffold ให้ body แบบหลวม (ต่ำสุด 0) และตอนไม่มีงาน
+      // _PhoneTaskBanner คืน SizedBox.shrink ที่ไม่ได้ Positioned · Stack ปกติ
+      // ยึดขนาดตามลูกแบบนั้น = 0×0 แล้วทุกแท็บถูกบีบหาย จอดำทั้งแอป (0.1.50)
       body: Stack(
+        fit: StackFit.expand,
         children: [
           Positioned.fill(
             child: IndexedStack(
