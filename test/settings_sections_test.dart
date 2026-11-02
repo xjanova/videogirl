@@ -5,11 +5,15 @@
 /// และหน้าตั้งค่าเป็นการ์ดสิบเจ็ดใบเรียงยาวในหน้าเดียว
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:videogirl/ai/brain_provider.dart';
+import 'package:videogirl/ai/voice_profile.dart';
+import 'package:videogirl/ai/speech_service.dart';
 import 'package:videogirl/ai/openai_config.dart';
 import 'package:videogirl/ai/proxy_account.dart';
 import 'package:videogirl/i18n/strings_ai.dart';
@@ -20,6 +24,9 @@ import 'package:videogirl/diagnostics/debug_reporter.dart';
 import 'package:videogirl/diagnostics/mind_log.dart';
 import 'package:videogirl/i18n/strings.dart';
 import 'package:videogirl/i18n/strings_settings.dart';
+import 'package:videogirl/i18n/strings_brains.dart';
+import 'package:videogirl/screens/brain_voice_frames.dart';
+import 'package:videogirl/persona/call_character.dart';
 import 'package:videogirl/persona/mind_soul.dart';
 import 'package:videogirl/screens/settings_screen.dart';
 import 'package:videogirl/state/mind_state.dart';
@@ -113,6 +120,72 @@ void main() {
     expect(find.text(s.licenseSerial), findsNothing);
     expect(find.text(s.settingsSecAccount), findsOneWidget);
 
+    await t.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
+  testWidgets('หมวดสมองและเสียง: สามกรอบชัดเจน · เลือกเจ้าแล้วขึ้นรุ่นพร้อมราคา', (t) async {
+    final (state, section) = await _mount(t);
+    section.value = SettingsSection.brain;
+    await t.pump(const Duration(milliseconds: 300));
+    final s = _s(t);
+    expect(find.text(s.frameBrainTitle), findsOneWidget);
+    for (final title in [s.frameSttTitle, s.frameTtsTitle]) {
+      await t.scrollUntilVisible(find.text(title), 400, scrollable: find.byType(Scrollable).first);
+      expect(find.text(title), findsOneWidget, reason: 'ไม่มีกรอบ $title');
+    }
+    expect(find.byType(SettingsFrame), findsWidgets);
+    await t.scrollUntilVisible(find.text(s.frameBrainTitle), -400, scrollable: find.byType(Scrollable).first);
+
+    state.setBrain(BrainProvider.claude);
+    await t.pump();
+    expect(find.text('Claude Sonnet 5.5'), findsOneWidget);
+    expect(find.textContaining(s.brainPrice('2', '10')), findsOneWidget);
+    expect(state.sttActual.name, 'device', reason: 'Claude ไม่มีหู = ถอดในเครื่อง');
+
+    await t.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
+  testWidgets('ElevenLabs: แผงปรับแต่งและโคลนเสียงวาดได้ไม่ล้น ทั้ง v4 และ v3', (t) async {
+    final (state, _) = await _mount(t);
+    // ค่าในหน่วยความจำตั้งก่อน await ที่ไปหาช่องเนทีฟ (ซึ่งไม่ตอบในเทสต์)
+    unawaited(state.setPremiumKey(TtsEngine.elevenlabs, 'sk_test'));
+    for (final model in ['eleven_v4', 'eleven_v3']) {
+      state.setVoice(
+          VoiceChannel.chat,
+          state.voiceFor(VoiceChannel.chat).copyWith(
+              engine: TtsEngine.elevenlabs, model: model, voice: 'abcdefghijklmnopqrst'));
+      await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ListView(children: [
+            ElevenTuningPanel(state: state, channel: VoiceChannel.chat),
+            ElevenClonePanel(state: state),
+          ]),
+        ),
+      ));
+      await t.pump();
+      expect(t.takeException(), isNull, reason: model);
+      final s = S.of(t.element(find.byType(ElevenTuningPanel)));
+      expect(find.text(s.elStability), findsOneWidget);
+      expect(find.text(s.elV3Only), model == 'eleven_v4' ? findsOneWidget : findsNothing);
+    }
+    await t.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
+  testWidgets('หมวดสาย: แผงตัวละครอยู่บนสุด บอกว่าใครคุยในสายตอนนี้', (t) async {
+    final (state, section) = await _mount(t);
+    state.saveCharacter(const CallCharacter(id: 'tom', name: 'คุณต้น', gender: CharacterGender.male));
+    state.bindCharacter(state.callVoiceEngine(), 'tom');
+    section.value = SettingsSection.calls;
+    await t.pump(const Duration(milliseconds: 300));
+    expect(t.takeException(), isNull);
+    final s = _s(t);
+    expect(find.text(s.chCard.toUpperCase()), findsOneWidget);
+    expect(find.text(s.chNow), findsOneWidget);
+    // "ตอนนี้ในสาย" บอกชื่อและเหตุผล (เสียงผูกกับตัวนี้)
+    expect(find.textContaining('คุณต้น', findRichText: true), findsWidgets);
     await t.pumpWidget(const SizedBox.shrink());
     state.dispose();
   });

@@ -24,6 +24,10 @@ import '../phone/call_watch.dart';
 import '../studio/studio_backdrop.dart';
 import '../system/permissions.dart';
 import '../ai/brain_provider.dart';
+import '../persona/call_character.dart';
+import '../ai/cloud_brains.dart';
+import '../ai/eleven_tuning.dart';
+import '../ai/stt_engine.dart';
 import '../ai/device_speech.dart';
 import '../avatar/avatar_view.dart';
 import '../ai/local_brain.dart';
@@ -33,6 +37,7 @@ import '../ai/mind_eyes.dart';
 import '../ai/mind_persona.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
+import '../i18n/strings_brains.dart';
 import '../i18n/strings_settings.dart';
 import '../i18n/strings_voice.dart';
 import '../ai/openai_client.dart';
@@ -1309,6 +1314,8 @@ class MindState extends ChangeNotifier {
     _geminiKey = await SecretStore.read(SecretStore.kGeminiKey);
     _elevenLabsKey = await SecretStore.read(SecretStore.kElevenLabsKey);
     _azureKey = await SecretStore.read(SecretStore.kAzureSpeechKey);
+    _xaiKey = await SecretStore.read(SecretStore.kXaiKey);
+    _anthropicKey = await SecretStore.read(SecretStore.kAnthropicKey);
     _azureRegion = p.getString('azureRegion') ?? '';
     for (final e in const [TtsEngine.elevenlabs, TtsEngine.azure]) {
       try {
@@ -1324,6 +1331,22 @@ class MindState extends ChangeNotifier {
     _licenseKey = p.getString('licenseKey') ?? '';
     _licenseType = p.getString('licenseType') ?? '';
     _brainModel = p.getString('brainModel') ?? OpenAiConfig.brainModel;
+    for (final b in BrainProvider.values.where((b) => b.isCloudKey)) {
+      final saved = p.getString('brainModel_${b.name}');
+      // รุ่นที่ไม่อยู่ในรายการแล้ว (เจ้านั้นปลดรุ่น) = กลับไปรุ่นตั้งต้นของเจ้านั้น
+      if (saved != null && CloudBrains.modelsOf(b).any((m) => m.id == saved)) {
+        _cloudModels[b] = saved;
+      }
+    }
+    _stt = SttEngine.values.firstWhere(
+      (e) => e.name == p.getString('sttEngine'),
+      orElse: () => SttEngine.auto,
+    );
+    try {
+      _elevenEffects = ElevenEffects.fromJson(jsonDecode(p.getString('elevenEffects') ?? '{}'));
+    } on Object {
+      _elevenEffects = const ElevenEffects();
+    }
     _proxyModel = p.getString('proxyModel') ?? '';
     _webSearch = p.getBool('webSearch') ?? true;
     _phoneControl = p.getBool('phoneControl') ?? true;
@@ -1334,6 +1357,7 @@ class MindState extends ChangeNotifier {
     _callPlay = (p.getDouble('callPlay') ?? 0.4).clamp(0.0, 1.0);
     _callMaxMinutes = p.getInt('callMaxMinutes') ?? 3;
     _callStyle = p.getString('callStyle') ?? '';
+    _cast = CallCast.decode(p.getString('callCast'), _maiDefault());
     _lessons = CallLessons.decode(p.getString('callLessons'));
     _callCode = await SecretStore.read(SecretStore.kCallCode);
     _codeFails = decodeCodeFails(p.getString('callCodeFails'));
@@ -2177,10 +2201,141 @@ class MindState extends ChangeNotifier {
     }
   }
 
+  // ═══ ElevenLabs: เอฟเฟกต์ · บัญชี · โคลนเสียง ══════════════════
+  ElevenEffects _elevenEffects = const ElevenEffects();
+
+  /// แคตตาล็อกเอฟเฟกต์ที่โหลดไว้ (จำข้ามการเปิดแอป)
+  ElevenEffects get elevenEffects => _elevenEffects;
+
+  ElevenAccount? _elevenAccount;
+
+  /// แผน + เครดิตของบัญชี · null = ยังไม่ได้โหลด
+  ElevenAccount? get elevenAccount => _elevenAccount;
+
+  bool _elevenBusy = false;
+  bool get elevenBusy => _elevenBusy;
+
+  /// โหลดแผนบัญชีและแคตตาล็อกเอฟเฟกต์ · คืนข้อความผิดพลาด หรือ null เมื่อสำเร็จ
+  Future<String?> loadElevenExtras() async {
+    final premium = _speech.premium;
+    if (premium == null || _elevenBusy) return null;
+    _elevenBusy = true;
+    _notify();
+    try {
+      _elevenAccount = await premium.elevenAccount();
+      // แคตตาล็อกเอฟเฟกต์เป็นของเสริม · โหลดไม่ได้ไม่ใช่เรื่องที่ต้องเตือน
+      try {
+        _elevenEffects = await premium.elevenEffects();
+        _save('elevenEffects', jsonEncode(_elevenEffects.toJson()));
+      } on Object catch (e) {
+        debugPrint('ElevenLabs: โหลดเอฟเฟกต์ไม่ได้ — ${e.runtimeType}');
+      }
+      return null;
+    } on OpenAiFailure catch (e) {
+      return e.message;
+    } on Object catch (e) {
+      debugPrint('ElevenLabs: โหลดบัญชีไม่ได้ — ${e.runtimeType}');
+      return s.premiumFailed('ElevenLabs');
+    } finally {
+      _elevenBusy = false;
+      _notify();
+    }
+  }
+
+  /// โคลนเสียงเจ้าของจากไฟล์ที่อัดไว้ · คืน voice_id ใหม่
+  ///
+  /// สำเร็จแล้วโหลดรายชื่อเสียงใหม่ให้เสียงโคลนโผล่ในรายการทันที
+  /// · ข้อผิดพลาดโยนเป็น [OpenAiFailure] ให้หน้าจอบอกเจ้าของตรง ๆ
+  Future<String> cloneElevenVoice({
+    required String name,
+    required List<String> files,
+    bool removeNoise = true,
+  }) async {
+    final premium = _speech.premium;
+    if (premium == null) throw OpenAiFailure(s.premiumFailed('ElevenLabs'));
+    final id = await premium.elevenClone(
+      name: name,
+      files: files,
+      removeNoise: removeNoise,
+      description: 'GigGok owner voice',
+    );
+    await loadAccountVoices(TtsEngine.elevenlabs);
+    return id;
+  }
+
+  /// ลบเสียง (โคลน) ออกจากบัญชี · ช่องที่ใช้เสียงนั้นอยู่ถอยไปไม่มีเสียงที่เลือก
+  Future<String?> deleteElevenVoice(String id) async {
+    final premium = _speech.premium;
+    if (premium == null) return s.premiumFailed('ElevenLabs');
+    try {
+      await premium.elevenDeleteVoice(id);
+    } on OpenAiFailure catch (e) {
+      return e.message;
+    }
+    for (final c in VoiceChannel.values) {
+      final p = voiceFor(c);
+      if (p.engine == TtsEngine.elevenlabs && p.voice == id) setVoice(c, p.copyWith(voice: ''));
+    }
+    await loadAccountVoices(TtsEngine.elevenlabs);
+    return null;
+  }
+
   void setAzureRegion(String v) {
     // ภูมิภาคเป็นส่วนหนึ่งของชื่อโดเมน · เก็บเฉพาะตัวอักษร/ตัวเลข กันใส่ URL ทั้งเส้นมา
     _azureRegion = v.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
     _save('azureRegion', _azureRegion);
+    _notify();
+  }
+
+  // ═══ สมองของเจ้าอื่น (Grok · Claude · Gemini) ═══════════════
+  //
+  // คีย์อยู่ใน SecretStore เหมือนคีย์ OpenAI · Gemini ใช้คีย์ AI Studio ตัวเดียวกับเสียง
+  String _xaiKey = '';
+  String _anthropicKey = '';
+
+  /// คีย์ของเจ้าสมองนั้น · ว่าง = ยังไม่ได้ใส่
+  String brainKey(BrainProvider b) => switch (b) {
+        BrainProvider.openai => effectiveOpenAiKey,
+        BrainProvider.grok => _xaiKey,
+        BrainProvider.claude => _anthropicKey,
+        BrainProvider.gemini => _geminiKey,
+        _ => '',
+      };
+
+  /// มีคีย์ของสมองที่เลือกอยู่ไหม (เจ้าที่ไม่ต้องใช้คีย์ = true)
+  bool get brainKeyReady => !_brain.needsOwnKey || brainKey(_brain).isNotEmpty;
+
+  Future<void> setBrainKey(BrainProvider b, String v) async {
+    final value = v.trim();
+    switch (b) {
+      case BrainProvider.openai:
+        return setOpenAiKey(value);
+      case BrainProvider.gemini:
+        return setPremiumKey(TtsEngine.gemini, value);
+      case BrainProvider.grok:
+        _xaiKey = value;
+      case BrainProvider.claude:
+        _anthropicKey = value;
+      default:
+        return;
+    }
+    final slot = CloudBrains.keySlot(b);
+    if (slot != null && !await SecretStore.write(slot, value)) reportError(s.errKeyNotSaved);
+    _notify();
+  }
+
+  /// รุ่นที่เลือกไว้ของแต่ละเจ้า · แยกกันเพื่อสลับเจ้าไปมาแล้วไม่ต้องเลือกใหม่
+  final Map<BrainProvider, String> _cloudModels = {};
+
+  /// รุ่นของเจ้านั้น (OpenAI ใช้ [brainModel] ตัวเดิม)
+  String modelOf(BrainProvider b) => b == BrainProvider.openai
+      ? _brainModel
+      : _cloudModels[b] ?? CloudBrains.defaultModel(b);
+
+  void setModelOf(BrainProvider b, String id) {
+    if (b == BrainProvider.openai) return setBrainModel(id);
+    _cloudModels[b] = id;
+    _save('brainModel_${b.name}', id);
     _notify();
   }
 
@@ -2374,9 +2529,19 @@ class MindState extends ChangeNotifier {
   ///
   /// 🔴 บันทึกเสียงอยู่ = บอกคู่สายตั้งแต่ประโยคแรกเสมอ แม้เจ้าของตั้งคำทักเอง · คนที่ถูกบันทึก
   /// ควรรู้ตัว · ไม่อยากให้มีประโยคนี้ = ปิดการบันทึก · ไม่ต่อซ้ำเมื่อคำทักพูดถึงการบันทึกเองแล้ว
-  String callGreeting() {
-    final own = _callGreetingText.trim();
-    final base = own.isEmpty ? s.callGreeting : own;
+  String callGreeting({bool live = false}) {
+    final who = callCharacter(live: live);
+    final own = who.greeting.trim().isNotEmpty
+        ? who.greeting.trim()
+        // คำทักที่ตั้งไว้ในหน้าสายเดิมเป็นของน้องมาย · ตัวอื่นไม่ยืมไป (ชื่อในคำทักจะผิดตัว)
+        : who.isBuiltIn
+            ? _callGreetingText.trim()
+            : '';
+    final base = own.isNotEmpty
+        ? own
+        : who.isBuiltIn && who.name == MindPersona.callName(_lang) && !who.male
+            ? s.callGreeting
+            : s.characterGreeting(who.name, who.role, male: who.male);
     if (!_recordCalls || _mentionsRecording(own)) return base;
     return '$base ${s.callRecordingNotice}';
   }
@@ -2487,6 +2652,61 @@ class MindState extends ChangeNotifier {
   static int outgoingWrapMinutes(int limit) => limit <= 0 ? 0 : (limit < 6 ? 6 : limit);
 
   /// บุคลิกที่เจ้าของเขียนเอง (เช่น เรียกคนโทรว่าพี่ ชอบหัวเราะ) · ว่าง = ตามค่าตั้งต้น
+  // ═══ ตัวละครในสาย (โปรไฟล์บุคลิก) ═══════════════════════════
+  //
+  // เจ้าของตั้งได้หลายตัว (ชื่อ เพศ บทบาท นิสัย คำทัก) · เลือกตัวสำหรับรับสาย/โทรออก
+  // · ผูกกับเจ้าเสียงได้ (OpenAI → ตัว A · ElevenLabs → ตัว B) ดู [CallCast.active]
+  CallCast _cast = CallCast.initial(
+      CallCharacter(id: CallCharacter.maiId, name: MindPersona.callName(AppLang.th)));
+  CallCast get cast {
+    final mai = _cast.byId(CallCharacter.maiId);
+    if (mai == null || !_untouchedMaiName(mai.name)) return _cast;
+    return _cast.upsert(mai.copyWith(name: MindPersona.callName(_lang)));
+  }
+
+  /// ชื่อตั้งต้นที่เจ้าของยังไม่ได้แก้ = เปลี่ยนตามภาษาแอป (น้องมาย ↔ Mai)
+  static bool _untouchedMaiName(String n) =>
+      n == MindPersona.callName(AppLang.th) || n == MindPersona.callName(AppLang.en);
+
+  CallCharacter _maiDefault() =>
+      CallCharacter(id: CallCharacter.maiId, name: MindPersona.callName(_lang));
+
+  /// เจ้าเสียงที่คนปลายสายได้ยินจริง · คุยสดพูดด้วยเสียง OpenAI เสมอ
+  TtsEngine callVoiceEngine({bool live = false}) =>
+      live ? TtsEngine.openai : voiceFor(VoiceChannel.answer).engine;
+
+  /// ตัวละครที่ใช้ในสายตอนนี้
+  CallCharacter callCharacter({bool live = false, bool outgoing = false}) =>
+      cast.active(outgoing: outgoing, engine: callVoiceEngine(live: live));
+
+  void _setCast(CallCast c) {
+    _cast = c;
+    _save('callCast', c.encode());
+    _notify();
+  }
+
+  /// บันทึกตัวละคร (เพิ่มใหม่หรือแก้ตัวเดิม)
+  void saveCharacter(CallCharacter c) {
+    final old = _cast.byId(c.id);
+    _setCast(_cast.upsert(c.tidy(fallbackName: old?.name ?? _maiDefault().name)));
+  }
+
+  void deleteCharacter(String id) => _setCast(_cast.remove(id));
+
+  void setAnswerCharacter(String id) => _setCast(_cast.copyWith(answerId: id));
+  void setOutgoingCharacter(String id) => _setCast(_cast.copyWith(outgoingId: id));
+
+  /// ผูกเจ้าเสียงกับตัวละคร · null = เลิกผูก
+  void bindCharacter(TtsEngine engine, String? id) {
+    final map = {..._cast.byEngine};
+    if (id == null) {
+      map.remove(engine);
+    } else {
+      map[engine] = id;
+    }
+    _setCast(_cast.copyWith(byEngine: map));
+  }
+
   static const callStyleMax = 400;
   String _callStyle = '';
   String get callStyle => _callStyle;
@@ -2510,6 +2730,7 @@ class MindState extends ChangeNotifier {
         outgoing: outgoing ? _outgoing : null,
         askOwner: _outgoingAskOk,
         callerName: _callerName,
+        character: callCharacter(live: live, outgoing: outgoing),
         soul: _soul,
         schedule: _calendar?.busyBlock(now: _clock()) ?? '',
         now: _clock(),
@@ -2923,7 +3144,7 @@ class MindState extends ChangeNotifier {
   /// [outgoing] = สายที่น้องมายโทรออก · ไม่มีคำทักตายตัว (รอปลายสายพูด "ฮัลโหล" ก่อน)
   /// · [greet] = false เมื่อรับช่วงต่อจาก GPT-Live ที่ทักไปแล้ว
   RealtimeCall openRealtimeCall({bool outgoing = false, bool greet = true, String? contact}) {
-    final greeting = outgoing || !greet ? '' : callGreeting();
+    final greeting = outgoing || !greet ? '' : callGreeting(live: true);
     // สร้างดัชนีคลังไว้ตั้งแต่สายเริ่ม · คำถามแรกของคนโทรจะได้ไม่ต้องรอ
     unawaited(callKnowledge.warm());
     return RealtimeCall(
@@ -2946,7 +3167,7 @@ class MindState extends ChangeNotifier {
     return LiveCall(
       apiKey: effectiveOpenAiKey,
       instructions: callPrompt(live: true, outgoing: outgoing, contact: contact),
-      greeting: outgoing ? '' : callGreeting(),
+      greeting: outgoing ? '' : callGreeting(live: true),
       // เสียงที่ตั้งไว้ให้ "ตอบรับสาย" · ไม่ใช่เสียงที่ GPT-Live รู้จัก = marin
       voice: voiceFor(VoiceChannel.answer).voice,
       languageReminder: MindPersona.callLanguageReminder(_lang),
@@ -3509,8 +3730,12 @@ class MindState extends ChangeNotifier {
   /// แล้วเธอพูดทักได้คำเดียว จากนั้นหูดับทั้งสาย · ตอนนี้ป้อนเสียงที่อัดจากสาย
   /// ให้ตัวถอดเสียงในเครื่องของ Android (13 ขึ้นไป) เสียงคู่สายไม่ออกไปไหน
   Future<String> transcribeCall(Uint8List wav) async {
-    if (_brain != BrainProvider.onDevice) return transcribeChat(wav);
+    if (sttActual != SttEngine.device) return transcribeChat(wav);
+    return _transcribeOnDevice(wav);
+  }
 
+  /// ถอดไฟล์เสียงด้วยตัวถอดเสียงของเครื่อง · เสียงไม่ออกนอกเครื่อง
+  Future<String> _transcribeOnDevice(Uint8List wav) async {
     final dev = _speechEngine;
     if (dev == null) throw OpenAiFailure(s.callNoOnDeviceStt);
     final dir = await getTemporaryDirectory();
@@ -4769,6 +4994,34 @@ class MindState extends ChangeNotifier {
           ours: false,
         );
 
+      case BrainProvider.claude:
+        if (_anthropicKey.isEmpty) throw OpenAiFailure(s.brainKeyNeeded('Claude'));
+        return (
+          client: ClaudeClient(apiKeyOf: () => _anthropicKey, strings: () => s),
+          model: modelOf(BrainProvider.claude),
+          ours: false,
+        );
+
+      case BrainProvider.grok:
+      case BrainProvider.gemini:
+        final b = _brain;
+        if (brainKey(b).isEmpty) {
+          throw OpenAiFailure(s.brainKeyNeeded(CloudBrains.providerName(b)));
+        }
+        return (
+          client: OpenAiClient(
+            baseUrl: b == BrainProvider.grok ? CloudBrains.grokBaseUrl : CloudBrains.geminiBaseUrl,
+            apiKeyOf: () => brainKey(b),
+            timeout: const Duration(seconds: 60),
+            strings: () => s,
+            upstream: Upstream.cloud,
+            cloudName: CloudBrains.providerName(b),
+            effortOf: (m) => CloudBrains.effortFor(b, m),
+          ),
+          model: modelOf(b),
+          ours: false,
+        );
+
       case BrainProvider.onDevice:
         // ผู้เรียกทั้งสองที่กันกรณีนี้ไว้ก่อนแล้ว · มาถึงนี่ได้แปลว่ามีทางใหม่
         // ที่ลืมกัน ซึ่งต้องดังตอนนั้นเลย ไม่ใช่เงียบแล้วยิงข้อความออกเน็ต
@@ -4816,26 +5069,60 @@ class MindState extends ChangeNotifier {
   ///
   /// 🔴 สมองในเครื่องใช้ได้ **ก็ต่อเมื่อเครื่องถอดเสียงในเครื่องได้จริง**
   /// ไม่ใช่ตกไปใช้ทางข้างนอกแทน — ทางนั้นสัญญาว่าไม่มีอะไรออกนอกเครื่อง
-  bool get canTranscribe => switch (_brain) {
-        BrainProvider.onDevice => _deviceSttReady,
-        BrainProvider.openai => hasOwnKey,
-        BrainProvider.mindProxy =>
-          _storeBaseUrl.trim().isNotEmpty && _licenseKey.trim().isNotEmpty,
-        BrainProvider.homeServer => _homeServerUrl.trim().isNotEmpty,
+  bool get canTranscribe => switch (sttActual) {
+        SttEngine.device => _deviceSttReady,
+        SttEngine.openai => hasOwnKey,
+        SttEngine.elevenlabs => _elevenLabsKey.isNotEmpty,
+        SttEngine.grok => _xaiKey.isNotEmpty,
+        SttEngine.auto => switch (_brain) {
+            BrainProvider.openai => hasOwnKey,
+            BrainProvider.mindProxy =>
+              _storeBaseUrl.trim().isNotEmpty && _licenseKey.trim().isNotEmpty,
+            BrainProvider.homeServer => _homeServerUrl.trim().isNotEmpty,
+            _ => false,
+          },
       };
 
   /// เสียงจะถูกถอด**ในเครื่อง**ไหม — ใช้บอกผู้ใช้ว่าเสียงไปไหน
-  bool get transcribesOnDevice => _brain == BrainProvider.onDevice;
+  bool get transcribesOnDevice => sttActual == SttEngine.device;
+
+  // ═══ ตัวถอดเสียง ════════════════════════════════════════
+  SttEngine _stt = SttEngine.auto;
+
+  /// ที่ผู้ใช้เลือกไว้ (อาจเป็น auto)
+  SttEngine get stt => _stt;
+
+  void setStt(SttEngine v) {
+    _stt = v;
+    _save('sttEngine', v.name);
+    _notify();
+  }
+
+  /// ตัวที่ใช้จริง · auto แปลงตามสมอง · คืน [SttEngine.auto] = ไปทางเดียวกับสมอง
+  /// (OpenAI · พร็อกซี · เซิร์ฟเวอร์ในบ้าน ซึ่งพูด /audio/transcriptions เหมือนกัน)
+  SttEngine get sttActual {
+    if (_stt != SttEngine.auto) return _stt;
+    return switch (_brain) {
+      BrainProvider.onDevice || BrainProvider.claude || BrainProvider.gemini => SttEngine.device,
+      BrainProvider.grok => SttEngine.grok,
+      _ => SttEngine.auto,
+    };
+  }
 
   /// ทำไมถึงยังใช้ไมค์ไม่ได้ — ว่างถ้าใช้ได้อยู่แล้ว
   ///
   /// ต้องบอกให้ตรงกับสิ่งที่เขาต้องไปทำ ไม่ใช่ปุ่มที่กดแล้วเงียบ
-  String get whyNoMic => switch (_brain) {
+  String get whyNoMic => switch (sttActual) {
         _ when canTranscribe => '',
-        BrainProvider.onDevice => s.micNoOnDevice,
-        BrainProvider.openai => s.ownKeyNeeded,
-        BrainProvider.mindProxy => s.licenseNeeded,
-        BrainProvider.homeServer => s.homeServerNoUrl,
+        SttEngine.device => s.micNoOnDevice,
+        SttEngine.openai => s.ownKeyNeeded,
+        SttEngine.elevenlabs => s.premiumKeyNeeded('ElevenLabs'),
+        SttEngine.grok => s.brainKeyNeeded('Grok'),
+        SttEngine.auto => switch (_brain) {
+            BrainProvider.mindProxy => s.licenseNeeded,
+            BrainProvider.homeServer => s.homeServerNoUrl,
+            _ => s.ownKeyNeeded,
+          },
       };
 
   /// ถอดเสียงที่อัดจากช่องแชท
@@ -4843,8 +5130,19 @@ class MindState extends ChangeNotifier {
   /// ไปตามสมองที่เลือกไว้เสมอ (ดู [_networkBrain]) · คืนสตริงว่างเมื่อ
   /// ไม่มีเสียงพูดอยู่ในไฟล์ ซึ่ง**ไม่ใช่ความผิดพลาด** ผู้เรียกต้องแยกเอง
   Future<String> transcribeChat(Uint8List wav) async {
-    if (_brain == BrainProvider.onDevice) {
-      throw OpenAiFailure(s.micNeedsCloudBrain);
+    switch (sttActual) {
+      case SttEngine.device:
+        return _transcribeOnDevice(wav);
+      case SttEngine.openai:
+        return _openai.transcribe(wav, language: _sttLang);
+      case SttEngine.elevenlabs:
+        final premium = _speech.premium;
+        if (premium == null) throw OpenAiFailure(s.premiumFailed('ElevenLabs'));
+        return premium.elevenTranscribe(wav, thai: _lang == AppLang.th);
+      case SttEngine.grok:
+        return GrokStt.transcribe(wav, key: _xaiKey, thai: _lang == AppLang.th, strings: s);
+      case SttEngine.auto:
+        break;
     }
     final (:client, :model, :ours) = _networkBrain();
     try {

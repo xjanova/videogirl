@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
 import '../i18n/strings_voice.dart';
+import 'eleven_tuning.dart';
 import 'openai_client.dart';
 import 'premium_catalog.dart';
 import 'speech_service.dart';
@@ -185,25 +186,12 @@ class PremiumTts {
     final voice = p.voice.trim();
     if (voice.isEmpty) throw OpenAiFailure(_s().elevenPickVoice);
     final model = p.model.startsWith('eleven_') ? p.model : PremiumCatalog.elevenModels.first;
-    final said = text.length > elevenMaxChars ? text.substring(0, elevenMaxChars) : text;
-    final lang = thai ? 'th' : 'en';
-
-    // v4 ใช้ได้ผ่าน text-to-dialogue (ตามเอกสาร) · v3 ผ่าน text-to-speech
-    // · ต้องส่ง model_id เสมอ ไม่ส่ง = multilingual_v2 ซึ่งไม่มีภาษาไทย
     final dialogue = model.startsWith('eleven_v4');
     final uri = dialogue
         ? Uri.parse('https://api.elevenlabs.io/v1/text-to-dialogue?output_format=mp3_44100_128')
         : Uri.parse('https://api.elevenlabs.io/v1/text-to-speech/'
             '${Uri.encodeComponent(voice)}?output_format=mp3_44100_128');
-    final body = dialogue
-        ? {
-            'model_id': model,
-            'language_code': lang,
-            'inputs': [
-              {'text': said, 'voice_id': voice}
-            ],
-          }
-        : {'text': said, 'model_id': model, 'language_code': lang};
+    final body = elevenBody(text, p, thai: thai);
 
     final res = await _send(
       TtsEngine.elevenlabs,
@@ -218,14 +206,130 @@ class PremiumTts {
     return (bytes: res, mime: 'audio/mpeg');
   }
 
-  /// เสียงทั้งหมดในบัญชี ElevenLabs ของผู้ใช้ (รวมเสียงที่เพิ่มจากคลังและเสียงโคลน)
-  Future<List<PremiumVoice>> elevenVoices() async {
+  /// เนื้อคำขอ ElevenLabs พร้อมการปรับแต่งทั้งหมด · แยกให้เทสต์ตรวจได้
+  ///
+  /// v4 ใช้ได้ผ่าน text-to-dialogue (ตามเอกสาร) · v3 ผ่าน text-to-speech
+  /// · ต้องส่ง model_id เสมอ ไม่ส่ง = multilingual_v2 ซึ่งไม่มีภาษาไทย
+  ///
+  /// 🔴 ส่งเฉพาะช่องที่รุ่นนั้นรับ · text-to-dialogue ไม่มี style / speed /
+  /// speaker boost (เอกสาร ToDialogueSettings มีแค่ stability · similarity)
+  /// ส่งช่องที่ไม่รู้จักไปเสี่ยง 422 ทั้งประโยค
+  @visibleForTesting
+  static Map<String, Object> elevenBody(String text, VoiceProfile p, {required bool thai}) {
+    final model = p.model.startsWith('eleven_') ? p.model : PremiumCatalog.elevenModels.first;
+    final t = p.eleven;
+    final tagged = t.tagged(text);
+    final said = tagged.length > elevenMaxChars ? tagged.substring(0, elevenMaxChars) : tagged;
+    double r(double v) => (v * 100).roundToDouble() / 100;
+    final common = <String, Object>{
+      'model_id': model,
+      'language_code': thai ? 'th' : 'en',
+      if (t.normalize != 'auto') 'apply_text_normalization': t.normalize,
+      if (t.seed > 0) 'seed': t.seed,
+      if (t.hasEffects) 'audio_effects': t.effectsJson(),
+    };
+    if (model.startsWith('eleven_v4')) {
+      return {
+        ...common,
+        'inputs': [
+          {'text': said, 'voice_id': p.voice.trim()}
+        ],
+        'settings': {'stability': r(t.stability), 'similarity': r(t.similarity)},
+      };
+    }
+    return {
+      'text': said,
+      ...common,
+      'voice_settings': {
+        'stability': r(t.stability),
+        'similarity_boost': r(t.similarity),
+        'style': r(t.style),
+        'use_speaker_boost': t.speakerBoost,
+        'speed': r(t.speed),
+      },
+    };
+  }
+
+  String _elevenKey() {
     final key = _keyOf(TtsEngine.elevenlabs).trim();
     if (key.isEmpty) throw OpenAiFailure(_s().premiumKeyNeeded('ElevenLabs'));
+    return key;
+  }
+
+  /// โคลนเสียงแบบทันที (Instant Voice Clone) จากไฟล์เสียงตัวอย่าง
+  ///
+  /// POST /v1/voices/add · multipart · คืน voice_id ที่ใช้พูดได้ทันที
+  /// · ต้องเป็นแผน Starter ขึ้นไป (แผนฟรีโคลนไม่ได้ → 401/403 พร้อมข้อความ)
+  Future<String> elevenClone({
+    required String name,
+    required List<String> files,
+    bool removeNoise = true,
+    String description = '',
+  }) async {
+    final key = _elevenKey();
+    final req = http.MultipartRequest('POST', Uri.parse('https://api.elevenlabs.io/v1/voices/add'))
+      ..headers['xi-api-key'] = key
+      ..fields['name'] = name
+      ..fields['remove_background_noise'] = '$removeNoise';
+    if (description.isNotEmpty) req.fields['description'] = description;
+    for (final f in files) {
+      req.files.add(await http.MultipartFile.fromPath('files', f));
+    }
+    final res = await _send(TtsEngine.elevenlabs, req);
+    final j = jsonDecode(utf8.decode(res));
+    final id = j is Map ? j['voice_id'] : null;
+    if (id is! String || id.isEmpty) throw OpenAiFailure(_s().premiumFailed('ElevenLabs'));
+    return id;
+  }
+
+  /// ลบเสียงออกจากบัญชี (ใช้กับเสียงโคลนของเจ้าของ)
+  Future<void> elevenDeleteVoice(String id) async {
+    await _send(
+      TtsEngine.elevenlabs,
+      http.Request('DELETE', Uri.parse('https://api.elevenlabs.io/v1/voices/${Uri.encodeComponent(id)}'))
+        ..headers['xi-api-key'] = _elevenKey(),
+    );
+  }
+
+  /// แผนและเครดิตที่เหลือ · ใช้บอกเจ้าของว่าโคลนได้ไหม เหลือใช้อีกเท่าไร
+  Future<ElevenAccount> elevenAccount() async {
+    final res = await _send(
+      TtsEngine.elevenlabs,
+      http.Request('GET', Uri.parse('https://api.elevenlabs.io/v1/user/subscription'))
+        ..headers['xi-api-key'] = _elevenKey(),
+    );
+    return ElevenAccount.parse(jsonDecode(utf8.decode(res)));
+  }
+
+  /// เอฟเฟกต์ที่ใช้ได้ (ฟิลเตอร์ · ห้อง · เสียงพื้นหลัง) · GET /v1/audio-effects/catalog
+  Future<ElevenEffects> elevenEffects() async {
+    final res = await _send(
+      TtsEngine.elevenlabs,
+      http.Request('GET', Uri.parse('https://api.elevenlabs.io/v1/audio-effects/catalog'))
+        ..headers['xi-api-key'] = _elevenKey(),
+    );
+    return ElevenEffects.parse(jsonDecode(utf8.decode(res)));
+  }
+
+  /// ถอดเสียงด้วย Scribe v2 · POST /v1/speech-to-text (multipart)
+  Future<String> elevenTranscribe(Uint8List wav, {required bool thai}) async {
+    final req = http.MultipartRequest('POST', Uri.parse('https://api.elevenlabs.io/v1/speech-to-text'))
+      ..headers['xi-api-key'] = _elevenKey()
+      ..fields['model_id'] = 'scribe_v2'
+      ..fields['language_code'] = thai ? 'th' : 'en'
+      ..fields['tag_audio_events'] = 'false'
+      ..files.add(http.MultipartFile.fromBytes('file', wav, filename: 'speech.wav'));
+    final res = await _send(TtsEngine.elevenlabs, req);
+    final j = jsonDecode(utf8.decode(res));
+    return (j is Map && j['text'] is String ? j['text'] as String : '').trim();
+  }
+
+  /// เสียงทั้งหมดในบัญชี ElevenLabs ของผู้ใช้ (รวมเสียงที่เพิ่มจากคลังและเสียงโคลน)
+  Future<List<PremiumVoice>> elevenVoices() async {
     final res = await _send(
       TtsEngine.elevenlabs,
       http.Request('GET', Uri.parse('https://api.elevenlabs.io/v2/voices?page_size=100'))
-        ..headers['xi-api-key'] = key,
+        ..headers['xi-api-key'] = _elevenKey(),
     );
     final j = jsonDecode(utf8.decode(res));
     final list = j is Map ? j['voices'] : null;
@@ -347,4 +451,39 @@ class PremiumTts {
   }
 
   void close() => _http.close();
+}
+
+/// แผนของบัญชี ElevenLabs · GET /v1/user/subscription
+@immutable
+class ElevenAccount {
+  const ElevenAccount({
+    this.tier = '',
+    this.used = 0,
+    this.limit = 0,
+    this.canClone = false,
+    this.voiceSlotsUsed = 0,
+    this.voiceLimit = 0,
+  });
+
+  final String tier;
+  final int used;
+  final int limit;
+  final bool canClone;
+  final int voiceSlotsUsed;
+  final int voiceLimit;
+
+  int get left => (limit - used).clamp(0, limit);
+
+  static ElevenAccount parse(Object? j) {
+    if (j is! Map) return const ElevenAccount();
+    int n(String k) => j[k] is num ? (j[k] as num).toInt() : 0;
+    return ElevenAccount(
+      tier: '${j['tier'] ?? ''}',
+      used: n('character_count'),
+      limit: n('character_limit'),
+      canClone: j['can_use_instant_voice_cloning'] == true,
+      voiceSlotsUsed: n('voice_slots_used'),
+      voiceLimit: n('voice_limit'),
+    );
+  }
 }

@@ -5,6 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../ai/brain_provider.dart';
+import '../ai/cloud_brains.dart';
+import '../ai/stt_engine.dart';
+import '../i18n/strings_brains.dart';
+import 'brain_voice_frames.dart';
+import 'call_character_panel.dart';
 import '../i18n/enum_labels.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
@@ -351,8 +356,17 @@ class _SettingsScreenState extends State<SettingsScreen>
             // เตือนเฉพาะตอนที่ "เลือกใช้คีย์ตัวเองแล้วแต่ยังไม่ได้ใส่คีย์"
             if (state.brain.needsOwnKey && !state.hasOwnKey) _noKeyBanner(),
             _brainCard(state, mode),
-            _brainxCard(state, mode),
+            SettingsFrame(
+              number: 2,
+              icon: Icons.hearing_rounded,
+              color: FrameColors.stt,
+              title: t.frameSttTitle,
+              what: t.frameSttWhat,
+              status: sttNowLabel(state, t),
+              child: SttPicker(state: state),
+            ),
             _voiceCard(state, mode),
+            _brainxCard(state, mode),
           ],
         SettingsSection.you => [
             _longTextCard(
@@ -378,6 +392,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             _memoryCard(context, state, mode, t),
           ],
         SettingsSection.calls => [
+            // เจ้าของ: "โปรไฟล์ตัวตนสำหรับรับสายพูดสาย … ผูกกับโมเดลเสียงได้ · อย่าให้งง" → ไว้บนสุดของหมวดสาย
+            _card(mode: mode, label: t.chCard, child: CallCharacterPanel(accent: mode.accent)),
             // เจ้าของ: "อยากให้หน้าต่อสายตรง โดดเด่นในการตั้งค่า และสถานะชัดเจนเมื่อต่อติด"
             _card(mode: mode, label: t.directCallSetupHint, child: DirectCallPanel(accent: mode.accent)),
             // คุยสดแสดงเสมอ ไม่ขึ้นกับรับสายอัตโนมัติ
@@ -1622,13 +1638,98 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   // ── สมอง ─────────────────────────────────
+  /// คีย์ + รายการรุ่นของ Grok / Claude / Gemini
+  List<Widget> _cloudBrainTools(MindState state, MindMode mode) {
+    final t = S.of(context);
+    final b = state.brain;
+    final who = CloudBrains.providerName(b);
+    final key = state.brainKey(b);
+    return [
+      FrameStepLabel('${t.frameStep(2)} · ${t.stepKey}', color: FrameColors.brain),
+      _linkRow(
+        title: t.brainKeyTitle(who),
+        value: key.isEmpty ? t.ownKeyNotSet : SecretStore.mask(key),
+        mode: mode,
+        onTap: () => _editBrainKey(state, b),
+      ),
+      if (b == BrainProvider.gemini)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(t.brainKeyShared,
+              style: const TextStyle(fontSize: 10, color: MindColors.ink50)),
+        ),
+      _keyGuide(who, mode),
+      FrameStepLabel('${t.frameStep(3)} · ${t.stepPickModel}', color: FrameColors.brain),
+      BrainModelList(
+        provider: b,
+        selected: state.modelOf(b),
+        mode: mode,
+        onPick: (id) => state.setModelOf(b, id),
+      ),
+    ];
+  }
+
+  Future<void> _editBrainKey(MindState state, BrainProvider b) async {
+    final t = S.of(context);
+    final who = CloudBrains.providerName(b);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final ctl = TextEditingController();
+    final v = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t.brainKeyTitle(who)),
+        content: TextField(
+          controller: ctl,
+          autofocus: true,
+          obscureText: true,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: InputDecoration(hintText: switch (b) {
+            BrainProvider.grok => 'xai-…',
+            BrainProvider.claude => 'sk-ant-…',
+            _ => 'AIza…',
+          }),
+        ),
+        actions: [
+          if (state.brainKey(b).isNotEmpty)
+            TextButton(onPressed: () => Navigator.pop(ctx, ''), child: Text(t.ownKeyClear)),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(t.cancel)),
+          TextButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: Text(t.save)),
+        ],
+      ),
+    );
+    ctl.dispose();
+    if (v == null) return;
+    await state.setBrainKey(b, v);
+    final msg = v.trim().isEmpty
+        ? t.ownKeyRemoved
+        : CloudBrains.keyLooksRight(b, v)
+            ? t.ownKeySaved
+            : t.brainKeyLooksWrong(who);
+    messenger
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   Widget _brainCard(MindState state, MindMode mode) {
-    return _card(
-      mode: mode,
-      label: S.of(context).sectionBrain,
+    final t = S.of(context);
+    final b0 = state.brain;
+    return SettingsFrame(
+      number: 1,
+      icon: Icons.psychology_rounded,
+      color: FrameColors.brain,
+      title: t.frameBrainTitle,
+      what: t.frameBrainWhat,
+      status: switch (b0) {
+        BrainProvider.onDevice => '${b0.labelOf(t)} · ${state.localBrain.variant.label}',
+        BrainProvider.homeServer => '${b0.labelOf(t)} · ${state.homeServerModel}',
+        BrainProvider.mindProxy => b0.labelOf(t),
+        _ => '${b0.labelOf(t)} · ${CloudBrains.find(state.modelOf(b0))?.label ?? state.modelOf(b0)}',
+      },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          FrameStepLabel('${t.frameStep(1)} · ${t.stepPickProvider}', color: FrameColors.brain, top: 0),
           for (final b in BrainProvider.values)
             Padding(
               padding: const EdgeInsets.only(bottom: 7),
@@ -1743,22 +1844,13 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             _keyGuide('OpenAI', mode),
             const SizedBox(height: 12),
-            Text(S.of(context).sectionBrain,
-                style: mindMono(
-                    size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
-            const SizedBox(height: 7),
-            for (final m in OpenAiConfig.brainChoices)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: _choiceRow(
-                  title: m.label,
-                  subtitle: S.of(context).brainModelHint(m.id),
-                  trailing: m.id,
-                  selected: state.brainModel == m.id,
-                  mode: mode,
-                  onTap: () => state.setBrainModel(m.id),
-                ),
-              ),
+            FrameStepLabel('${t.frameStep(2)} · ${t.stepPickModel}', color: FrameColors.brain),
+            BrainModelList(
+              provider: BrainProvider.openai,
+              selected: state.brainModel,
+              mode: mode,
+              onPick: state.setBrainModel,
+            ),
             _customModelRow(
               current: state.brainModel,
               presets: OpenAiConfig.brainChoices.map((m) => m.id).toList(),
@@ -1768,6 +1860,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               onSave: state.setBrainModel,
             ),
           ],
+          if (state.brain.isCloudKey) ..._cloudBrainTools(state, mode),
           if (state.brain == BrainProvider.homeServer) ...[
             const SizedBox(height: 12),
             _linkRow(
@@ -2606,6 +2699,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     'Gemini': 'https://aistudio.google.com/apikey',
     'ElevenLabs': 'https://elevenlabs.io/app/settings/api-keys',
     'Azure': 'https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices',
+    'Grok': 'https://console.x.ai/',
+    'Claude': 'https://console.anthropic.com/settings/keys',
   };
 
   /// เจ้าที่เปิดคู่มืออยู่ · พับไว้เป็นค่าตั้งต้น ไม่ให้การ์ดยาวจนหาอย่างอื่นไม่เจอ
@@ -2620,6 +2715,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       'OpenAI' => t.keyGuideOpenAi,
       'Gemini' => t.keyGuideGemini,
       'ElevenLabs' => t.keyGuideElevenLabs,
+      'Grok' => t.keyGuideGrok,
+      'Claude' => t.keyGuideClaude,
       _ => t.keyGuideAzure,
     };
     return Column(
@@ -2852,10 +2949,20 @@ class _SettingsScreenState extends State<SettingsScreen>
     final profile = state.voiceFor(channel);
     final usingOpenAi = profile.engine == TtsEngine.openai;
     final canInstruct = OpenAiConfig.supportsInstructions(profile.model);
+    final t = S.of(context);
 
-    return _card(
-      mode: mode,
-      label: S.of(context).sectionVoice,
+    return SettingsFrame(
+      number: 3,
+      icon: Icons.graphic_eq_rounded,
+      color: FrameColors.tts,
+      title: t.frameTtsTitle,
+      what: t.frameTtsWhat,
+      status: state.voiceEnabled
+          ? [
+              for (final c in VoiceChannel.values)
+                '${c.labelOf(t)}: ${state.voiceFor(c).engine.labelOf(t)}',
+            ].join(' · ')
+          : t.voiceDisabledNote,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2931,10 +3038,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               ..._voiceChatChoice(state, mode),
 
             const SizedBox(height: 14),
-            Text(S.of(context).voiceEngine,
-                style: mindMono(
-                    size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
-            const SizedBox(height: 7),
+            FrameStepLabel(t.voiceEngine, color: FrameColors.tts, top: 0),
             // .wired ไม่ใช่ .values — เสียงโคลนยังไม่ได้ต่อสาย
             // (ดู TtsEngine.wired) เลือกได้แต่ไม่ทำงานคือฟีเจอร์ปลอม
             // · แนวตั้งเพราะมีห้าเจ้าแล้ว ปุ่มเรียงแถวเดียวอ่านชื่อไม่ออก
@@ -2955,6 +3059,13 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             if (profile.engine.isPremium)
               ..._premiumVoice(state, channel, profile, mode),
+            if (profile.engine == TtsEngine.elevenlabs &&
+                state.premiumKey(TtsEngine.elevenlabs).isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ElevenTuningPanel(state: state, channel: channel),
+              const SizedBox(height: 12),
+              ElevenClonePanel(state: state),
+            ],
 
             if (usingOpenAi) ...[
               // 🔴 ช่องกรอกคีย์ต้องมาอยู่ตรงนี้ด้วย
@@ -3308,17 +3419,21 @@ class _SettingsScreenState extends State<SettingsScreen>
   Widget _inCallInfo(MindState state) {
     final t = S.of(context);
     final answer = state.voiceFor(VoiceChannel.answer);
-    final listen = switch (state.brain) {
-      BrainProvider.onDevice => t.callListenOnDevice,
-      BrainProvider.openai => t.callListenOpenAi,
-      BrainProvider.mindProxy => t.callListenProxy,
-      BrainProvider.homeServer => t.callListenHome,
+    // ฟังด้วยตัวถอดเสียงที่ใช้จริง · auto = ทางเดียวกับสมอง
+    final listen = switch (state.sttActual) {
+      SttEngine.device => t.callListenOnDevice,
+      SttEngine.auto => switch (state.brain) {
+          BrainProvider.mindProxy => t.callListenProxy,
+          BrainProvider.homeServer => t.callListenHome,
+          _ => t.callListenOpenAi,
+        },
+      final e => e.labelOf(t),
     };
     final think = state.brain == BrainProvider.onDevice
         ? '${state.brain.labelOf(t)} · ${state.localBrain.variant.label}'
         : state.brain == BrainProvider.homeServer
             ? '${state.brain.labelOf(t)} · ${state.homeServerModel}'
-            : '${state.brain.labelOf(t)} · ${state.brainModel}';
+            : '${state.brain.labelOf(t)} · ${state.modelOf(state.brain)}';
     final speak = _voiceWhat(state, answer, t);
     Widget line(IconData icon, String label, String value) => Row(
           crossAxisAlignment: CrossAxisAlignment.start,

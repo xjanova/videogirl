@@ -790,7 +790,8 @@ class S {
   /// ไม่ใช่สถานะปัจจุบัน — ป้ายที่บอกสถานะทำให้คนอ่านสลับกันได้เสมอ
   String get voiceMute => _('ปิดเสียงเธอ', 'Mute her voice');
   String get voiceUnmute => _('เปิดเสียงเธอ', 'Unmute her voice');
-  String get voiceEngine => _('เครื่องเสียง', 'Voice engine');
+  String get voiceEngine =>
+      _('เลือกโมเดลเสียงที่จะใช้สังเคราะห์เสียง', 'Choose the model that synthesizes her voice');
   String get voiceModel => _('โมเดลเสียง', 'Voice model');
   String get voicePick => _('เสียง', 'Voice');
   String get voiceInstructions => _('น้ำเสียงที่สั่งไว้', 'Tone instructions');
@@ -815,7 +816,7 @@ class S {
   String get channelAnswerHint =>
       _('ตอนเธอคุยในสาย ทั้งรับสายแทนเราและโทรออก', 'When she talks on a call, answering for you or calling out');
 
-  // ═══ เครื่องเสียง ══════════════════════════════════════
+  // ═══ โมเดลสังเคราะห์เสียง ══════════════════════════════════════
   String get ttsOpenAi => _('OpenAI', 'OpenAI');
   String get ttsOpenAiHint => _('สมจริงที่สุด สั่งอารมณ์เสียงได้ · มีค่าใช้จ่าย',
       'Most lifelike, tone can be steered · costs money');
