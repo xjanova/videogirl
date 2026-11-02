@@ -38,7 +38,8 @@ import 'package:sqflite/sqflite.dart';
 ///
 /// 2 = ตาราง `call_notes` (บันทึกสายที่มายด์รับแทน)
 /// 3 = `call_notes.sim` (โทรเข้าทางซิมไหน · เครื่องสองซิม)
-const _schemaVersion = 3;
+/// 4 = ตาราง `apps` (ตารางแอปในเครื่อง · ดู AppTable)
+const _schemaVersion = 4;
 
 /// ชื่อไฟล์ฐาน · ใช้ชื่อเดียวกันทั้งในพื้นที่แอปและในสำเนาข้างนอก
 /// จะได้ไม่ต้องเดาว่าไฟล์ไหนคู่กับไฟล์ไหนตอนไปส่องด้วยตัวจัดการไฟล์
@@ -96,6 +97,7 @@ class MindDb {
         } else if (from < 3) {
           await d.execute('ALTER TABLE call_notes ADD COLUMN sim TEXT');
         }
+        if (from < 4) await _createApps(d);
       },
     );
     final mind = MindDb._(db);
@@ -190,6 +192,7 @@ class MindDb {
     ''');
 
     await _createCallNotes(d);
+    await _createApps(d);
   }
 
   /// สายที่มายด์รับแทน — ใครโทรมา ฝากอะไรไว้ และบทสนทนาเต็ม
@@ -210,6 +213,37 @@ class MindDb {
     ''');
     await d.execute(
         'CREATE INDEX IF NOT EXISTS idx_call_notes_at ON call_notes(at)');
+  }
+
+  /// แอปในเครื่อง · หมวด ลำดับ ชื่อเรียก · แอปที่ถอดแล้วเก็บแถวไว้ (`removed_at`) ลงกลับมาหมวดเดิมยังอยู่
+  static Future<void> _createApps(DatabaseExecutor d) async {
+    await d.execute('''
+      CREATE TABLE IF NOT EXISTS apps (
+        pkg          TEXT PRIMARY KEY,
+        label        TEXT NOT NULL,
+        category     TEXT NOT NULL,
+        own_category INTEGER NOT NULL DEFAULT 0,
+        rank         INTEGER,
+        aliases      TEXT NOT NULL DEFAULT '',
+        opens        INTEGER NOT NULL DEFAULT 0,
+        last_open    INTEGER,
+        added_at     INTEGER NOT NULL,
+        noticed_at   INTEGER,
+        removed_at   INTEGER
+      )
+    ''');
+  }
+
+  // ═══ ตารางแอป ═════════════════════════════════════════
+
+  Future<List<Map<String, Object?>>> allApps() => _db.query('apps');
+
+  Future<void> putApps(List<Map<String, Object?>> rows) async {
+    final b = _db.batch();
+    for (final row in rows) {
+      b.insert('apps', row, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await b.commit(noResult: true);
   }
 
   // ═══ บันทึกสาย ═════════════════════════════════════════
@@ -511,6 +545,7 @@ class MindDb {
       await txn.delete('journal');
       // บทสนทนาของคนที่โทรมาก็เป็นข้อมูลของผู้ใช้ · ล้างทั้งหมดต้องรวมตัวนี้
       await txn.delete('call_notes');
+      await txn.delete('apps');
     });
     _settings.clear();
   }

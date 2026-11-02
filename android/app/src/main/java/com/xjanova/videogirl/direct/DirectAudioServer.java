@@ -85,6 +85,27 @@ public final class DirectAudioServer {
         }
     }
 
+    /** Fixed argv, never a shell. `ps` as the shell user is the only view of other apps' processes,
+     *  which Android hides from apps. Largest first; names are printable ASCII so the frame size is the char count. */
+    private static String processes() throws Exception {
+        java.lang.Process ps=new ProcessBuilder("/system/bin/ps","-A","-o","PID,RSS,NAME").redirectErrorStream(true).start();
+        java.util.ArrayList<String[]> rows=new java.util.ArrayList<>();
+        try (BufferedReader lines=new BufferedReader(new InputStreamReader(ps.getInputStream(),StandardCharsets.UTF_8))) {
+            for (String line=lines.readLine(); line!=null && rows.size()<4000; line=lines.readLine()) {
+                String[] row=line.trim().split("\\s+",3);
+                if (row.length==3 && row[0].matches("[0-9]{1,9}") && row[1].matches("[0-9]{1,12}")) rows.add(row);
+            }
+        } finally { ps.destroy(); }
+        rows.sort((a,b)->Long.compare(Long.parseLong(b[1]),Long.parseLong(a[1])));
+        StringBuilder out=new StringBuilder(rows.size()+"\n");
+        for (String[] row:rows) {
+            String line=row[0]+" "+row[1]+" "+row[2].replaceAll("[^\\x20-\\x7e]","?")+"\n";
+            if (out.length()+line.length()>AudioProtocol.MAX_PAYLOAD-64) break;
+            out.append(line);
+        }
+        return out.toString();
+    }
+
     private static boolean supported() {
         try {
             AudioDeviceInfo out=ShellAudio.telephonyOut();
@@ -164,6 +185,7 @@ public final class DirectAudioServer {
                             }
                             break;
                         case AudioProtocol.STOP: stop(); reply(f.id,"ok"); break;
+                        case AudioProtocol.PROCESSES: reply(f.id,processes()); break;
                         default: throw new IOException("unknown command");
                     }
                 } catch (Exception e) {

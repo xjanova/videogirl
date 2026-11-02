@@ -21,7 +21,7 @@ import 'package:videogirl/i18n/strings_ai.dart';
 void main() {
   group('ระดับการคิดที่ขอ', () {
     test('5.x มีจุด และ 6 Luna = none (คุยเล่นไม่ต้องคิดลึก)', () {
-      for (final id in ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4-mini', 'gpt-6-luna']) {
+      for (final id in ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6.1-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4-mini', 'gpt-6-luna']) {
         expect(OpenAiConfig.effortFor(id), 'none', reason: id);
       }
     });

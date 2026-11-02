@@ -63,13 +63,11 @@ extension VoiceChannelLabels on VoiceChannel {
   String labelOf(S s) => switch (this) {
         VoiceChannel.chat => s.channelChat,
         VoiceChannel.answer => s.channelAnswer,
-        VoiceChannel.outgoing => s.channelOutgoing,
       };
 
   String hintOf(S s) => switch (this) {
         VoiceChannel.chat => s.channelChatHint,
         VoiceChannel.answer => s.channelAnswerHint,
-        VoiceChannel.outgoing => s.channelOutgoingHint,
       };
 }
 

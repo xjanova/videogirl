@@ -10,7 +10,10 @@ import 'speech_service.dart';
 /// แยกเพราะบริบทต่างกันจริง: คุยในแอปคือคุยกับเจ้าของ จะหวานแค่ไหนก็ได้
 /// แต่ตอนรับสายคนปลายทางเป็นคนแปลกหน้า ต้องเป็นทางการและฟังชัดเป็นหลัก
 /// ป้ายที่ผู้ใช้เห็นอยู่ใน i18n/enum_labels.dart — enum เก็บแค่ตัวตน
-enum VoiceChannel { chat, answer, outgoing }
+///
+/// 🔴 เคยมีช่อง "โทรออก" แยก แต่ไม่มีทางไหนอ่านค่ามันเลย สายออกใช้เสียงเดียวกับรับสาย
+/// (speakForCall · Realtime · GPT-Live) · แท็บที่ตั้งแล้วไม่มีผลคือของปลอม จึงถอด
+enum VoiceChannel { chat, answer }
 
 /// เสียงหนึ่งชุดของหนึ่งช่องทาง
 @immutable
@@ -112,20 +115,12 @@ class VoiceProfile {
             instructions: MindPersona.defaultVoiceInstructions(lang),
           ),
 
-        // รับสายแทน: คนปลายสายเป็นคนแปลกหน้า ต้องสุภาพ ชัด ไม่หวาน
+        // ในสาย ทั้งรับและโทรออก: คนปลายสายเป็นคนแปลกหน้า ต้องสุภาพ ชัด ไม่หวาน
         VoiceChannel.answer => VoiceProfile(
             engine: TtsEngine.device,
             voice: 'sage',
             model: 'gpt-4o-mini-tts',
             instructions: MindPersona.answerVoiceInstructions(lang),
-          ),
-
-        // โทรออก: ต้องฟังชัดที่สุดเพราะสายโทรศัพท์บีบเสียงอยู่แล้ว
-        VoiceChannel.outgoing => VoiceProfile(
-            engine: TtsEngine.device,
-            voice: 'shimmer',
-            model: 'gpt-4o-mini-tts',
-            instructions: MindPersona.outgoingVoiceInstructions(lang),
           ),
       };
 }

@@ -3,18 +3,22 @@ package com.xjanova.videogirl.hands
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
 import android.view.accessibility.AccessibilityWindowInfo
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * บริการ "ให้มายด์ใช้เครื่องแทน" — อ่านจอเป็นตัวหนังสือ แล้วกด พิมพ์ เลื่อนแทนเจ้าของ
@@ -228,6 +232,68 @@ class MindHands : AccessibilityService() {
         return reply
     }
 
+    /** มีแอปที่ห้ามอ่านอยู่บนจอไหม · ตรวจทุกหน้าต่าง (จอแยก หน้าต่างลอย) · ถามไม่ได้ = ถือว่ามี */
+    private fun blockedOnScreen(): Boolean = try {
+        HandsPolicy.isBlocked(this, activeRoot()?.packageName?.toString()) || windows.any { w ->
+            val pkg = w.root?.packageName?.toString()
+            pkg != packageName && HandsPolicy.isBlocked(this, pkg)
+        }
+    } catch (_: Exception) {
+        true
+    }
+
+    /**
+     * ถ่ายภาพจอเป็น JPEG ด้านยาวไม่เกิน [maxEdge] · เรียกนอกเธรดหลัก
+     *
+     * 🔴 กติกาเดียวกับ [snapshot]: แอปใน [HandsPolicy] ไม่ถ่าย · ตรวจทั้งก่อนและหลังถ่าย
+     * เพราะแอปธนาคารเปิดขึ้นมาระหว่างรอภาพได้ · หน้าต่างกันถ่ายจอ (FLAG_SECURE) ตอบ `secure`
+     */
+    fun screenshot(maxEdge: Int): Map<String, Any> {
+        if (Build.VERSION.SDK_INT < 30) return err("unsupported")
+        HandsControl.blockReason(this)?.let { return err(it) }
+        if (blockedOnScreen()) return err("blocked")
+        val latch = CountDownLatch(1)
+        val shot = AtomicReference<ScreenshotResult?>()
+        val failure = AtomicReference<Int?>()
+        val late = AtomicBoolean(false)
+        takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+            override fun onSuccess(result: ScreenshotResult) {
+                // รอเลิกไปแล้ว · ไม่มีใครปิดบัฟเฟอร์ให้
+                if (late.get()) result.hardwareBuffer.close() else shot.set(result)
+                latch.countDown()
+            }
+
+            override fun onFailure(errorCode: Int) {
+                failure.set(errorCode)
+                latch.countDown()
+            }
+        })
+        if (!latch.await(4, TimeUnit.SECONDS)) late.set(true)
+        val result = shot.getAndSet(null)
+            ?: return err(if (failure.get() == ERROR_TAKE_SCREENSHOT_SECURE_WINDOW) "secure" else "failed")
+        val buffer = result.hardwareBuffer
+        try {
+            if (blockedOnScreen()) return err("blocked")
+            val hardware = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return err("failed")
+            val soft = hardware.copy(Bitmap.Config.ARGB_8888, false)
+            hardware.recycle()
+            if (soft == null) return err("failed")
+            val scale = maxEdge.toFloat() / maxOf(soft.width, soft.height)
+            val small = if (scale < 1f) {
+                Bitmap.createScaledBitmap(soft, (soft.width * scale).toInt(), (soft.height * scale).toInt(), true)
+            } else {
+                soft
+            }
+            val out = ByteArrayOutputStream()
+            small.compress(Bitmap.CompressFormat.JPEG, 70, out)
+            if (small !== soft) small.recycle()
+            soft.recycle()
+            return mapOf("ok" to true, "jpeg" to out.toByteArray())
+        } finally {
+            buffer.close()
+        }
+    }
+
     // ── ทำ ─────────────────────────────────────────────────
 
     /** ปุ่มจากภาพจอล่าสุด · null = เลขเก่า/ปุ่มหายไปแล้ว */
@@ -253,6 +319,7 @@ class MindHands : AccessibilityService() {
             "type" -> type(id, text ?: "")
             "submit" -> submit(id)
             "scroll" -> scroll(id, dir ?: "down")
+            "drag" -> drag(id, text?.toIntOrNull(), dir)
             else -> err("unsupported")
         }
     }
@@ -374,15 +441,66 @@ class MindHands : AccessibilityService() {
         return if (ok) mapOf("ok" to true) else err("failed")
     }
 
+    /**
+     * ลากจากปุ่มหนึ่งไปอีกปุ่ม หรือไปขอบจอ ([dir] left/right = พลิกหน้า) · เจ้าของ: "จัดเรียงไอค่อน หน้าจอได้ จัดหมวดหมู่ได้"
+     *
+     * 🔴 Android ไม่มีทางให้แอปอื่นสั่งย้ายไอคอนของตัวเปิดแอป · ทางเดียวคือนิ้วจำลองแบบเดียวกับคน: กดค้างจนไอคอนหลุด
+     * แล้วลาก · ทั้งเส้นต้องเป็นนิ้วเดียวไม่ยกขึ้น จึงต่อเส้นด้วย continueStroke แทนการปัดธรรมดา
+     */
+    private fun drag(id: Int?, toId: Int?, dir: String?): Map<String, Any> {
+        val from = (if (id == null) null else nodeAt(id)) ?: return err("stale")
+        if (blocked(from)) return err("blocked")
+        val a = Rect()
+        from.getBoundsInScreen(a)
+        if (a.isEmpty) return err("failed")
+        val edge = toId == null
+        val dm = resources.displayMetrics
+        val end = if (toId != null) {
+            val to = nodeAt(toId) ?: return err("stale")
+            if (blocked(to)) return err("blocked")
+            val b = Rect()
+            to.getBoundsInScreen(b)
+            if (b.isEmpty) return err("failed")
+            b.exactCenterX() to b.exactCenterY()
+        } else {
+            when (dir) {
+                "left" -> 4f to a.exactCenterY()
+                "right" -> dm.widthPixels - 4f to a.exactCenterY()
+                else -> return err("failed")
+            }
+        }
+        HandsControl.blockReason(this)?.let { return err(it) }
+        val x1 = a.exactCenterX()
+        val y1 = a.exactCenterY()
+        fun line(fromX: Float, fromY: Float, toX: Float, toY: Float) = Path().apply {
+            moveTo(fromX, fromY)
+            lineTo(toX, toY)
+        }
+        // เส้นยาวศูนย์ใช้ไม่ได้ · ขยับหนึ่งพิกเซลแทนการอยู่นิ่ง
+        val hold = GestureDescription.StrokeDescription(line(x1, y1, x1 + 1f, y1), 0L, 750L, true)
+        val move = hold.continueStroke(line(x1 + 1f, y1, end.first, end.second), 0L, 650L, true)
+        // ค้างที่ปลายทาง ตัวเปิดแอปจะได้เปิดช่องหรือพลิกหน้า ก่อนปล่อย
+        val rest = move.continueStroke(line(end.first, end.second, end.first, end.second + 1f), 0L, if (edge) 1200L else 450L, false)
+        for (stroke in listOf(hold, move, rest)) {
+            if (!send(GestureDescription.Builder().addStroke(stroke).build())) return err("failed")
+        }
+        return mapOf("ok" to true)
+    }
+
     /** แตะ/กดค้าง/ปัด ด้วยนิ้วจำลอง · รอผลไม่เกิน 3 วิ */
     private fun gesture(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean {
         val path = Path().apply {
             moveTo(x1.coerceAtLeast(0f), y1.coerceAtLeast(0f))
             if (x1 != x2 || y1 != y2) lineTo(x2.coerceAtLeast(0f), y2.coerceAtLeast(0f))
         }
-        val g = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0L, durationMs))
-            .build()
+        return send(
+            GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path, 0L, durationMs))
+                .build(),
+        )
+    }
+
+    private fun send(g: GestureDescription): Boolean {
         val done = CountDownLatch(1)
         val ok = AtomicBoolean(false)
         val sent = try {

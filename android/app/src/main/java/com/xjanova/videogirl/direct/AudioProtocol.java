@@ -8,7 +8,7 @@ public final class AudioProtocol {
     private AudioProtocol() {}
     public static final int VERSION = 2, MAX_PAYLOAD = 32768;
     public static final int STATUS = 1, START = 2, WRITE = 3, CLEAR = 4,
-            PENDING = 5, TAKEOVER = 6, STOP = 7;
+            PENDING = 5, TAKEOVER = 6, STOP = 7, PROCESSES = 8;
     public static final int REPLY = 100, DOWNLINK = 101, PLAYED = 102, UPLINK = 103, ERROR = 104;
     public static final class Frame {
         public final int type, id;

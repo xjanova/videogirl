@@ -27,6 +27,7 @@ class PhoneAction {
   static const kinds = {
     'tap',
     'long_press',
+    'drag',
     'type',
     'submit',
     'scroll',
@@ -52,6 +53,8 @@ class PhoneAction {
     'touch': 'tap',
     'longpress': 'long_press',
     'long_click': 'long_press',
+    'move': 'drag',
+    'drag_and_drop': 'drag',
     'input': 'type',
     'type_text': 'type',
     'write': 'type',
@@ -94,7 +97,7 @@ class PhoneAction {
   final String body;
 
   /// ลายเซ็นไว้จับว่าเธอทำขั้นเดิมซ้ำ ๆ
-  String get signature => '$kind|${id ?? ''}|$text|$dir|$name';
+  String get signature => '$kind|${id ?? ''}|$text|$dir|$name|$to';
 
   /// อ่านวัตถุ JSON ก้อนแรกในคำตอบ · รับ ```json …``` และข้อความนำหน้า · ไม่ได้ = null
   static PhoneAction? parse(String reply) {

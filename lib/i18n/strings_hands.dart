@@ -10,6 +10,7 @@ extension HandsStrings on S {
   String handsStepTap(String label) => pick('กด «$label»', 'Tap “$label”');
   String get handsStepTapUnnamed => pick('กดปุ่มที่ไม่มีชื่อ', 'Tap an unlabelled button');
   String handsStepLong(String label) => pick('กดค้าง «$label»', 'Long-press “$label”');
+  String handsStepDrag(String label) => pick('ย้าย «$label»', 'Move “$label”');
   String get handsStepType => pick('พิมพ์ข้อความ', 'Type text');
   String get handsStepSubmit => pick('กด Enter บนแป้นพิมพ์', 'Press Enter on the keyboard');
   String get handsStepScroll => pick('เลื่อนจอ', 'Scroll');

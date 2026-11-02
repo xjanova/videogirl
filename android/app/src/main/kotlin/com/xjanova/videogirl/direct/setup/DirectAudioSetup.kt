@@ -298,6 +298,46 @@ object DirectAudioSetup {
         }
     }
 
+    /** Every process on the phone, biggest first, read by the shell helper. Runs on [work] with the other
+     *  helper sessions; during a call the helper's one session is the call. Answers on the main thread. */
+    fun processes(context: Context, answer: (Map<String, Any>) -> Unit) {
+        val app = context.applicationContext
+        work.execute {
+            val out = readProcesses(app)
+            main.post { answer(out) }
+        }
+    }
+
+    private fun readProcesses(context: Context): Map<String, Any> {
+        fun fail(why: String) = mapOf<String, Any>("error" to why)
+        val prefs = context.getSharedPreferences("giggok_direct_audio", Context.MODE_PRIVATE)
+        if (prefs.getString("token", null) == null) return fail("not_paired")
+        if (phoneBusy(context)) return fail("in_call")
+        return try {
+            open(context).use { ch ->
+                ch.socket.soTimeout = 5000
+                AudioProtocol.write(ch.output, AudioProtocol.PROCESSES, 1, ByteArray(0))
+                val reply = AudioProtocol.read(ch.input)
+                val text = reply.text()
+                // A helper started by the previous APK does not know the command and answers error:.
+                if (reply.type != AudioProtocol.REPLY) return fail("failed")
+                if (text.startsWith("error:")) return fail("old_helper")
+                val lines = text.lineSequence().toList()
+                val items = lines.drop(1).mapNotNull { line ->
+                    val row = line.split(' ', limit = 3)
+                    val pid = row.getOrNull(0)?.toIntOrNull()
+                    val kb = row.getOrNull(1)?.toLongOrNull()
+                    val name = row.getOrNull(2)
+                    if (pid == null || kb == null || name.isNullOrEmpty()) return@mapNotNull null
+                    val pkg = name.substringBefore(':')
+                    val label = if (pkg.contains('.')) com.xjanova.videogirl.hands.HandsPolicy.label(context, pkg) else ""
+                    mapOf("pid" to pid, "kb" to kb, "name" to name, "label" to label)
+                }
+                mapOf("total" to (lines.firstOrNull()?.toIntOrNull() ?: items.size), "items" to items)
+            }
+        } catch (_: Exception) { fail("offline") }
+    }
+
     /** What the settings card shows: asked of the helper now, not remembered from an earlier setup.
      *  Runs on [work], so never alongside a setup probe. */
     private fun live(context: Context): String {

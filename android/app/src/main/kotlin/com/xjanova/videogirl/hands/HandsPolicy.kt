@@ -2,6 +2,7 @@ package com.xjanova.videogirl.hands
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import java.util.Locale
@@ -113,6 +114,41 @@ internal object HandsPolicy {
         if (launchable.size > 200) launchable.clear()
         launchable[pkg] = yes
         return yes
+    }
+
+    /** แถวของตารางแอป ([AppTable] ฝั่ง Dart) · หมวดจาก Play ติดมากับแอป ไม่มี = ค่าว่าง · ไม่รวมตัวเราเอง */
+    fun appRows(context: Context): List<Map<String, Any>> {
+        val pm = context.packageManager
+        return launcherApps(context).filter { it.first != context.packageName }.map { (pkg, name) ->
+            val info = try {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getPackageInfo(pkg, 0)
+                }
+            } catch (_: Exception) {
+                null
+            }
+            val kind = when (info?.applicationInfo?.category) {
+                ApplicationInfo.CATEGORY_GAME -> "game"
+                ApplicationInfo.CATEGORY_AUDIO -> "music"
+                ApplicationInfo.CATEGORY_VIDEO -> "video"
+                ApplicationInfo.CATEGORY_IMAGE -> "photo"
+                ApplicationInfo.CATEGORY_SOCIAL -> "social"
+                ApplicationInfo.CATEGORY_NEWS -> "news"
+                ApplicationInfo.CATEGORY_MAPS -> "travel"
+                ApplicationInfo.CATEGORY_PRODUCTIVITY -> "work"
+                else -> ""
+            }
+            mapOf(
+                "pkg" to pkg,
+                "label" to name,
+                "category" to kind,
+                "installed" to (info?.firstInstallTime ?: 0L),
+                "blocked" to isBlocked(context, pkg),
+            )
+        }
     }
 
     /** แอปที่มีไอคอนบนหน้าแอปทั้งหมด · (แพ็กเกจ, ชื่อ) */

@@ -17,7 +17,15 @@ import 'package:flutter/foundation.dart';
 
 @immutable
 class PendingCall {
-  const PendingCall({required this.number, required this.task, this.name, this.id = 0, this.at, this.askOwner});
+  const PendingCall({
+    required this.number,
+    required this.task,
+    this.name,
+    this.id = 0,
+    this.at,
+    this.askOwner,
+    this.sim,
+  });
 
   /// ขึ้น/แก้กล่องล่าสุดเมื่อไหร่ · คำถาม "โทรเลยไหมคะ" ต้องมาหลังเวลานี้ถึงนับ (ดู CallReply.asksToDial)
   final DateTime? at;
@@ -25,13 +33,17 @@ class PendingCall {
   /// สวิตช์ "ถามฉันได้ระหว่างสาย" ที่เจ้าของเปลี่ยนในกล่อง · null = ดูจากเรื่องที่สั่ง
   final bool? askOwner;
 
-  PendingCall copyWith({String? task, bool? askOwner}) => PendingCall(
+  /// ซิมที่เจ้าของเลือกสำหรับสายนี้ ([SimChoice.id]) · null = ดู [SimChoice.pick]
+  final String? sim;
+
+  PendingCall copyWith({String? task, bool? askOwner, String? sim}) => PendingCall(
         number: number,
         name: name,
         id: id,
         at: at,
         task: task ?? this.task,
         askOwner: askOwner ?? this.askOwner,
+        sim: sim ?? this.sim,
       );
 
   /// เบอร์ที่จะโทร (ตามที่อ่านได้ ยังไม่ตัดขีด)
@@ -47,6 +59,46 @@ class PendingCall {
   final int id;
 
   String get who => name ?? number;
+}
+
+/// ซิมหนึ่งใบที่โทรออกได้ · จาก SimInfo.choices ฝั่ง Android
+///
+/// เจ้าของ: "การโทรออก ยังติดปัญหาตรงให้เลือก sim เพราะเป็นเครื่อง2 sim" · เครื่องตั้ง "ถามทุกครั้ง" แล้วเธอไม่บอกซิม =
+/// สายค้างรอเลือกทั้งที่ยืนยันแล้ว · เธอจึงเลือกซิมตั้งแต่กล่องยืนยัน
+@immutable
+class SimChoice {
+  const SimChoice({required this.id, this.slot, this.label, this.isDefault = false});
+
+  static SimChoice? fromMap(Map<Object?, Object?> m) {
+    final id = m['id'];
+    if (id is! String || id.isEmpty) return null;
+    final slot = m['slot'], label = m['label'];
+    return SimChoice(
+      id: id,
+      slot: slot is num ? slot.toInt() : null,
+      label: label is String && label.trim().isNotEmpty ? label.trim() : null,
+      isDefault: m['default'] == true,
+    );
+  }
+
+  /// `PhoneAccountHandle.id` · ไม่ขึ้นจอ
+  final String id;
+
+  /// ช่องซิม 1/2 · null = ไม่รู้
+  final int? slot;
+
+  /// ชื่อที่เจ้าของตั้งหรือชื่อค่าย
+  final String? label;
+
+  /// ซิมโทรออกที่ตั้งไว้ในเครื่อง
+  final bool isDefault;
+
+  /// ซิมของสายนี้: ที่สั่งมา > ที่เจ้าของเลือกครั้งก่อน > ค่าของเครื่อง > ซิมแรก ·
+  /// id ที่ไม่อยู่ในรายการแล้ว (ถอดซิม) ไม่นับ · ไม่มีซิมในรายการ = null ให้เครื่องตัดสิน
+  static SimChoice? pick(List<SimChoice> sims, {String? asked, String? last}) {
+    SimChoice? byId(String? id) => id == null ? null : sims.where((s) => s.id == id).firstOrNull;
+    return byId(asked) ?? byId(last) ?? sims.where((s) => s.isDefault).firstOrNull ?? sims.firstOrNull;
+  }
 }
 
 /// สายที่น้องมายกำลังโทรออก (หลังเจ้าของยืนยัน) · ใช้ทำ prompt ของสายและรายงานผล

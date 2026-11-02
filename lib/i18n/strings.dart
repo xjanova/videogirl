@@ -801,12 +801,9 @@ class S {
   // ═══ ช่องทางเสียง ══════════════════════════════════════
   String get channelChat => _('พูดในแชท', 'In chat');
   String get channelChatHint => _('ตอนคุยกับเราในแอป', 'When talking with you in the app');
-  String get channelAnswer => _('เสียงตอบรับ', 'Answering');
+  String get channelAnswer => _('ในสาย', 'On calls');
   String get channelAnswerHint =>
-      _('ตอนเธอรับสายแทนเรา', 'When she answers a call for you');
-  String get channelOutgoing => _('โทรออก', 'Outgoing');
-  String get channelOutgoingHint =>
-      _('ตอนเธอโทรหาคนอื่นแทนเรา', 'When she calls someone on your behalf');
+      _('ตอนเธอคุยในสาย ทั้งรับสายแทนเราและโทรออก', 'When she talks on a call, answering for you or calling out');
 
   // ═══ เครื่องเสียง ══════════════════════════════════════
   String get ttsOpenAi => _('OpenAI', 'OpenAI');
@@ -916,6 +913,19 @@ class S {
           'Mai will tell them she is your AI secretary calling for you · normal call charges apply · she reports back in chat',
         );
   String get callOutGo => _('โทรเลย', 'Call now');
+  String get callOutSimLabel => _('โทรด้วยซิม', 'Call from');
+
+  /// "ซิม 2 · DTAC" · เธอพูดออกเสียงด้วย
+  String callSimName(int? slot, String? label) {
+    final name = slot == null ? _('ซิม', 'SIM') : _('ซิม $slot', 'SIM $slot');
+    return label == null ? name : '$name · $label';
+  }
+
+  String callOutSimSet(String sim) => _('เปลี่ยนเป็น$sim แล้วค่ะ โทรเลยไหมคะ', 'Switched to $sim. Shall I call?');
+  String get callNotByHands => _(
+        'มายด์ไม่โทรผ่านแอปโทรศัพท์ของเครื่องค่ะ บอกชื่อหรือเบอร์มาได้เลย มายด์จะขึ้นกล่องให้ยืนยันแล้วโทรเอง',
+        'I do not call through the phone app. Tell me the name or number and I will show the card and call myself.',
+      );
   String get callOutAck => _('ได้เลยค่ะ', 'Sure.');
   String get callOutCancel => _('ยังไม่โทร', 'Not now');
   String callOutDialing(String who) => _(
@@ -1010,6 +1020,66 @@ class S {
   String get photoNotSaved => _('ถ่ายแล้วแต่เก็บลงคลังภาพไม่ได้ค่ะ', 'I took it, but could not save it to the gallery.');
 
   String get lookingDevice => _('กำลังดูข้อมูลเครื่อง…', 'Checking the phone…');
+  String get lookingProcesses => _('กำลังดูโปรเซสในเครื่อง…', 'Checking what is running…');
+  String get lookingApps => _('กำลังเปิดตารางแอป…', 'Checking the app table…');
+
+  String deviceVolumeSet(int percent) => _('ตั้งเสียงไว้ที่ $percent% แล้วค่ะ', 'Volume is at $percent%.');
+  String get deviceMuted => _('ปิดเสียงแล้วค่ะ', 'Muted.');
+  String get deviceUnmuted => _('เปิดเสียงแล้วค่ะ', 'Sound is back on.');
+  String get deviceTorchOn => _('เปิดไฟฉายแล้วค่ะ', 'The flashlight is on.');
+  String get deviceTorchOff => _('ปิดไฟฉายแล้วค่ะ', 'The flashlight is off.');
+  String get deviceMediaDone => _('เรียบร้อยค่ะ', 'Done.');
+  String get deviceRingerNormal => _('เปิดเสียงเรียกเข้าแล้วค่ะ', 'The ringer is on.');
+  String get deviceRingerVibrate => _('ตั้งเป็นโหมดสั่นแล้วค่ะ', 'The phone is on vibrate.');
+  String get deviceNoFlash => _('เครื่องนี้ไม่มีไฟฉายให้เปิดค่ะ', 'This phone has no flashlight I can use.');
+  String get deviceCameraBusy =>
+      _('กล้องถูกใช้อยู่ค่ะ เปิดไฟฉายตอนนี้ไม่ได้', 'The camera is in use, so the flashlight cannot turn on now.');
+  String get deviceDnd => _('เครื่องอยู่ในโหมดห้ามรบกวนค่ะ เปลี่ยนเสียงนี้ไม่ได้ ต้องปิดโหมดนั้นก่อน',
+      'Do Not Disturb is on, so I cannot change this. Turn it off first.');
+  String get deviceFailed => _('สั่งเครื่องไม่สำเร็จค่ะ', 'The phone did not do that.');
+
+  String appCategoryName(String key) => switch (key) {
+        'chat' => _('แชท', 'Chat'),
+        'social' => _('โซเชียล', 'Social'),
+        'video' => _('วิดีโอ', 'Video'),
+        'music' => _('เพลง', 'Music'),
+        'photo' => _('รูปภาพ', 'Photos'),
+        'game' => _('เกม', 'Games'),
+        'shopping' => _('ช้อปปิ้ง', 'Shopping'),
+        'food' => _('อาหาร', 'Food'),
+        'travel' => _('เดินทาง', 'Travel'),
+        'finance' => _('การเงิน', 'Finance'),
+        'work' => _('งาน', 'Work'),
+        'news' => _('ข่าว', 'News'),
+        'tools' => _('เครื่องมือ', 'Tools'),
+        'other' => _('อื่น ๆ', 'Other'),
+        _ => key,
+      };
+  String appCategorySet(String app, String key) =>
+      _('ย้าย $app ไปหมวด${appCategoryName(key)}แล้วค่ะ', '$app is now in ${appCategoryName(key)}.');
+  String appOrderSet(String app, int order) => _('ตั้ง $app ไว้ลำดับ $order ในหมวดแล้วค่ะ', '$app is now number $order in its category.');
+  String appAliasSet(String app, String alias) => _('จำแล้วค่ะ เรียก $app ว่า $alias ได้เลย', 'Got it. "$alias" now means $app.');
+  String appNotInTable(String name) => _('หาแอป $name ในตารางไม่เจอค่ะ หรือมีหลายแอปชื่อคล้ายกัน บอกชื่อเต็มอีกทีนะคะ',
+      'I could not pin down the app $name. There may be several with similar names; please say the full name.');
+  String get appEditBad => _('บอกอีกทีนะคะว่าจะตั้งเป็นอะไร', 'Please tell me again what to set it to.');
+  String get screenLooking => _('กำลังดูหน้าจอ…', 'Looking at the screen…');
+  String get screenIsMine => _(
+        'ตอนนี้จอเป็นแอปมายด์เองค่ะ สลับไปหน้าที่อยากให้ดูก่อน แล้วบอกมายด์อีกทีนะคะ',
+        'The screen is showing my own app right now. Switch to what you want me to see, then tell me again.',
+      );
+  String get screenNeedsHands => _(
+        'ยังดูจอไม่ได้ค่ะ ต้องเปิดบริการ "ให้มายด์ใช้เครื่องแทน" ก่อน เปิดได้ที่ ตั้งค่า',
+        'I cannot see the screen yet. Turn on "let Mind use the phone" in Settings first.',
+      );
+  String screenBlocked(String app) => app.isEmpty
+      ? _('หน้านี้เป็นแอปที่มายด์ห้ามอ่านค่ะ', 'This is an app I am not allowed to read.')
+      : _('$app เป็นแอปที่มายด์ห้ามอ่านค่ะ', '$app is an app I am not allowed to read.');
+  String get screenInCall => _('ติดสายอยู่ค่ะ ดูจอตอนนี้ไม่ได้', 'I cannot look at the screen during a call.');
+  String get screenPaused => _(
+        'พักการใช้เครื่องไว้ให้แอปธนาคารอยู่ค่ะ ดูจอตอนนี้ไม่ได้',
+        'Using the phone is paused for a banking app, so I cannot look right now.',
+      );
+  String get screenFailed => _('ดูจอไม่สำเร็จค่ะ', 'I could not read the screen.');
   String get quickAck => _('ได้ค่ะ', 'Sure.');
   String get recordingStop => _('หยุด', 'Stop');
   String get recordingPlayingNow => _('กำลังเปิดเสียงสายที่บันทึกไว้', 'Playing a saved call');
@@ -1056,6 +1126,8 @@ class S {
         'no_permission' => _('ยังไม่ได้สิทธิ์โทรออกค่ะ ลองเปิดแป้นโทรของ GigGok แล้วกดโทรครั้งหนึ่งเพื่อให้สิทธิ์',
             'I do not have permission to place calls yet — open the GigGok dialer and place one call to grant it'),
         'blocked' => callOutBlocked,
+        'sim_gone' => _('ไม่เจอซิมที่เลือกไว้ค่ะ อาจถูกถอดออก ลองเลือกซิมใหม่นะคะ',
+            'The SIM you picked is gone — it may have been removed. Please pick another'),
         _ => _('โทรออกไม่สำเร็จค่ะ เบอร์อาจไม่ถูกต้อง', 'The call could not be placed — the number may be wrong'),
       };
   String get callOutKickoff => _(

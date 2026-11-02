@@ -160,8 +160,10 @@ class SystemBridge(context: Context) {
             // ── น้องมายโทรออกแทนเจ้าของ · เจ้าของกดยืนยันในแอปแล้วเท่านั้น ──
             // คืน null = กดโทรแล้ว · สตริง = เหตุผลที่โทรไม่ได้ (bad_number/blocked/not_dialer/busy/no_permission)
             "mindPlaceCall" -> result.success(
-                MindInCallService.placeMindCall(context, call.argument<String>("number") ?: "")
+                MindInCallService.placeMindCall(context, call.argument<String>("number") ?: "", call.argument<String>("sim"))
             )
+            // ซิมที่โทรออกได้ · ให้เลือกในกล่องยืนยัน
+            "callSims" -> result.success(SimInfo.choices(context))
             // มีกล่องรอเจ้าของแตะตอนแอปอยู่หลังบ้าน · ดู [ComeBack]
             "comeBack" -> {
                 ComeBack.now(context, call.argument<String>("title").orEmpty(), call.argument<String>("body").orEmpty())
@@ -172,6 +174,15 @@ class SystemBridge(context: Context) {
                 result.success(true)
             }
             "deviceStatus" -> offMain(result) { deviceStatus() }
+            "deviceControl" -> offMain(result) {
+                DeviceControl(context).run(
+                    call.argument<String>("action") ?: "",
+                    call.argument<Int>("level"),
+                    call.argument<String>("stream"),
+                )
+            }
+            "processes" -> com.xjanova.videogirl.direct.setup.DirectAudioSetup.processes(context) { result.success(it) }
+            "installedApps" -> offMain(result) { com.xjanova.videogirl.hands.HandsPolicy.appRows(context) }
             "savePhoto" -> offMain(result) { savePhoto(call.argument<ByteArray>("jpeg")) }
             "findContacts" -> result.success(calls.findContacts(call.argument<String>("name") ?: ""))
             // ── ของในเครื่องที่เธอเปิดดูตอนเจ้าของถามในแชท (ดู PhoneData) ──

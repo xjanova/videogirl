@@ -212,7 +212,6 @@ void main() {
       check('voiceModel', en.voiceModel);
       check('channelChat', en.channelChat);
       check('channelAnswer', en.channelAnswer);
-      check('channelOutgoing', en.channelOutgoing);
       check('ttsOpenAiHint', en.ttsOpenAiHint);
       check('ttsDeviceHint', en.ttsDeviceHint);
       check('ttsCloneHint', en.ttsCloneHint);

@@ -472,8 +472,15 @@ class VoiceChat extends ChangeNotifier {
     if (await state.answerPhoneAskByVoice(text)) return;
     // 🔴 "โทรเลย" / "ยกเลิก" ตัดสินจากคำของเจ้าของเองในเครื่อง ไม่ใช่จากที่โมเดลเข้าใจ
     if (state.pendingCall == null) return;
+    final sim = await state.noteCallSim(text);
     final yes = state.pendingCallReply(text);
-    if (yes == null) return;
+    if (yes == null) {
+      if (sim != null && identical(_rt, rt)) {
+        rt.remind('The owner chose ${state.s.callSimName(sim.slot, sim.label)}; the card shows it now. Nothing was dialed. '
+            'Ask exactly: "${state.s.callOutAskLine}"');
+      }
+      return;
+    }
     final asked = state.askedToDial;
     if (await state.confirmCallByVoice(text)) {
       if (identical(_rt, rt)) {

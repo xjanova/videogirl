@@ -287,7 +287,10 @@ class _MindShellState extends State<MindShell> {
     _onPhoneAsk();
 
     // รุ่นใหม่ · เช็คหลังหน้าเปิดแอปหาย และทุกครั้งที่กลับเข้าแอป
-    _life = AppLifecycleListener(onResume: () => unawaited(_checkUpdate()));
+    _life = AppLifecycleListener(onResume: () {
+      unawaited(_checkUpdate());
+      unawaited(context.read<MindState>().syncApps());
+    });
     _calls = context.read<CallWatch>()..addListener(_showUpdateIfFree);
     final gate = context.read<SplashGate?>();
     _splash = gate;
@@ -574,6 +577,20 @@ class _CallConfirmSheetState extends State<_CallConfirmSheet> {
   /// เรื่องล่าสุดที่รู้จาก [MindState] · ไม่ตรงกับช่อง = เธอแก้ตามที่เจ้าของบอกด้วยเสียง
   late String _seen = widget.call.task;
 
+  /// ซิมที่โทรออกได้ · ซิมเดียว = ไม่มีอะไรให้เลือก ไม่โชว์
+  List<SimChoice> _sims = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadSims());
+  }
+
+  Future<void> _loadSims() async {
+    final sims = await context.read<MindState>().callSims();
+    if (mounted) setState(() => _sims = sims);
+  }
+
   /// เจ้าของพิมพ์แก้ในกล่อง · พูด "โทรเลย" ต่อจากนี้ต้องได้ฉบับที่แก้ ไม่ใช่ฉบับก่อนพิมพ์
   void _typed() {
     _seen = _task.text;
@@ -612,6 +629,8 @@ class _CallConfirmSheetState extends State<_CallConfirmSheet> {
       });
     }
     final handsFree = context.select<MindState, bool>((s) => s.handsFree);
+    final asked = context.select<MindState, String?>((s) => s.pendingCall?.id == p.id ? s.pendingCall?.sim : null);
+    final sim = SimChoice.pick(_sims, asked: asked, last: context.read<MindState>().lastCallSim);
     return SafeArea(
       child: Padding(
         // คีย์บอร์ดขึ้น = ดันกล่องขึ้นตาม ปุ่มโทรไม่ถูกบัง
@@ -623,6 +642,21 @@ class _CallConfirmSheetState extends State<_CallConfirmSheet> {
           children: [
             Text(t.callOutConfirmTitle, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             Text(t.callOutTo(p.who, p.number), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            if (_sims.length > 1) ...[
+              Text(t.callOutSimLabel, style: const TextStyle(fontSize: 11, color: MindColors.ink55)),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final c in _sims)
+                    ChoiceChip(
+                      label: Text(t.callSimName(c.slot, c.label), overflow: TextOverflow.ellipsis),
+                      selected: c.id == sim?.id,
+                      onSelected: (_) => context.read<MindState>().chooseCallSim(p.id, c.id),
+                    ),
+                ],
+              ),
+            ],
             Text(t.callOutTaskLabel, style: const TextStyle(fontSize: 11, color: MindColors.ink55)),
             TextField(
               controller: _task,

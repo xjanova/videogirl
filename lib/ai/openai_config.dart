@@ -38,7 +38,7 @@ abstract final class OpenAiConfig {
   /// รายการที่ให้เลือกในหน้าตั้งค่า — ยืนยันแล้วว่าบัญชีเรียกได้จริง
   /// (ดึงจาก GET /v1/models เมื่อ 2026-08-29 ไม่ได้เดาชื่อ)
   /// ชื่อรุ่นเป็นวิสามานยนาม ไม่ต้องแปล · คำอธิบายอยู่ใน i18n/enum_labels.dart
-  /// ตรวจกับเอกสาร OpenAI เมื่อ 2026-10-06 (developers.openai.com/api/docs/models)
+  /// ตรวจกับเอกสาร OpenAI เมื่อ 2026-11-02 (developers.openai.com/api/docs/models)
   /// · ทุกตัวใช้กับ /v1/chat/completions ได้ · เรียงจากค่าตั้งต้น → ใหม่ → ถูก → แพง
   ///
   /// ถอดออก: `gpt-5.5` (เก่ากว่าและแพงกว่า 5.6 Sol) · `gpt-5.4-mini` และ
@@ -47,6 +47,7 @@ abstract final class OpenAiConfig {
   static const brainChoices = <({String id, String label})>[
     (id: 'gpt-5.6-sol', label: '5.6 Sol'),
     (id: 'gpt-6.1-sol', label: '6.1 Sol'),
+    (id: 'gpt-6.1-terra', label: '6.1 Terra'),
     (id: 'gpt-5.6-terra', label: '5.6 Terra'),
     (id: 'gpt-6-luna', label: '6 Luna'),
     (id: 'gpt-6-astra', label: '6 Astra'),
@@ -59,7 +60,7 @@ abstract final class OpenAiConfig {
   /// · เพดานคำตอบ 600 ของแอปจึงหมดไปกับการคิดได้ แล้วเธอตอบกลับมาว่างเปล่า
   /// และงานคุยเล่นไม่ต้องคิดลึก การคิดยิ่งมากยิ่งรอนาน
   ///
-  /// - 6 Astra / 6.1 Sol ไม่รับ `none` (ตอบ 400) → ต่ำสุดคือ `low`
+  /// - 6 Astra / 6.1 Sol ไม่รับ `none` (ตอบ 400) → ต่ำสุดคือ `low` · 6.1 Terra รับ `none` (เอกสารรุ่น 2026-11-02)
   /// - 5.x ที่มีจุด (5.1 ขึ้นไป) และ 6 อื่น ๆ → `none`
   /// - `gpt-5` / `gpt-5-mini` / `gpt-5-nano` รุ่นแรกไม่มี `none` → `minimal`
   /// - รุ่นอื่น (gpt-4o, รุ่นที่พิมพ์เอง) → ไม่ส่ง ไม่งั้นรุ่นที่ไม่ใช่สาย

@@ -40,6 +40,7 @@ class MindInCallService : InCallService() {
         if (claimOutgoing(call)) {
             mindOutgoing = true
             mindHandling = true
+            chooseSim(call)
         }
         call.registerCallback(callback)
         InCallActivity.show(this, call)
@@ -86,6 +87,7 @@ class MindInCallService : InCallService() {
         CallAudio.close(this)
         mindHandling = false
         mindOutgoing = false
+        armedSim = null
         OwnerAsk.clear(this)
         // จอกลับไปดับตามเวลาพักจอปกติ · ดู [CallScreen]
         MainActivity.syncCallScreen()
@@ -106,6 +108,7 @@ class MindInCallService : InCallService() {
 
     private val callback = object : Call.Callback() {
         override fun onStateChanged(call: Call, state: Int) {
+            if (state == Call.STATE_SELECT_PHONE_ACCOUNT && mindOutgoing) chooseSim(call)
             if (state == Call.STATE_ACTIVE && mindHandling) {
                 onMindCallActive()
                 // 🔴 Telephony ไม่มีสัญญาณตอนปลายสายรับ · ที่นี่ที่เดียวที่รู้ · บอก Dart ให้เธอเริ่มพูดทันที
@@ -154,6 +157,19 @@ class MindInCallService : InCallService() {
         for (delay in longArrayOf(800L, 2500L)) {
             ui.postDelayed({ CallAudio.keepSpeaker(this) }, delay)
         }
+    }
+
+    /**
+     * สายของเธอที่ระบบยังรอเลือกซิม · บาง ROM ไม่ฟัง EXTRA_PHONE_ACCOUNT_HANDLE
+     *
+     * 🔴 ไม่มีใครตอบ = สายค้างจอเลือกซิม เธอไม่ได้คุย · เจ้าของเลือกซิมในกล่องยืนยันไปแล้ว
+     * · ไม่รู้ซิมเลย (ไม่มีสิทธิ์อ่าน) = ปล่อยให้จอสายถามเจ้าของ
+     */
+    private fun chooseSim(call: Call) {
+        if (stateOf(call) != Call.STATE_SELECT_PHONE_ACCOUNT) return
+        val handle = armedSim ?: return
+        armedSim = null
+        call.phoneAccountSelected(handle, false)
     }
 
     private fun notifyChanged() {
@@ -249,15 +265,22 @@ class MindInCallService : InCallService() {
         @Volatile
         private var armed: Pair<String, Long>? = null
 
+        /** ซิมของสายที่เธอเพิ่งโทร · ดู [chooseSim] */
+        @Volatile
+        private var armedSim: android.telecom.PhoneAccountHandle? = null
+
         /**
          * ให้น้องมายโทรออก · คืนเหตุผลถ้าโทรไม่ได้ (null = กดโทรแล้ว)
          *
          * 🔴 เจ้าของกดยืนยันในแอปก่อนทุกครั้ง (ฝั่ง Dart) · ที่นี่กันเพิ่มอีกชั้น: เบอร์ฉุกเฉิน
          * และเบอร์เก็บเงินพิเศษ น้องมายไม่โทรเด็ดขาด · ต้องเป็นแอปโทรศัพท์หลัก ไม่งั้นสายไป
          * ออกแอปโทรศัพท์อื่น เธอไม่มีทางคุยในสายนั้น
+         *
+         * 🔴 ต้องระบุซิมเสมอ · เครื่องสองซิมตั้ง "ถามทุกครั้ง" แล้วไม่บอกซิม = สายค้างรอเลือก
+         * ทั้งที่เจ้าของยืนยันไปแล้ว · [sim] = id ที่เลือกในกล่อง · ว่าง = ค่าของเครื่อง แล้วซิมแรก
          */
         @JvmStatic
-        fun placeMindCall(context: android.content.Context, raw: String): String? {
+        fun placeMindCall(context: android.content.Context, raw: String, sim: String? = null): String? {
             val number = OutgoingRules.normalize(raw) ?: return "bad_number"
             if (OutgoingRules.blocked(number)) return "blocked"
             if (!SystemBridge.isDefaultDialer(context)) return "not_dialer"
@@ -268,12 +291,23 @@ class MindInCallService : InCallService() {
             ) return "no_permission"
             val tm = context.getSystemService(android.content.Context.TELECOM_SERVICE)
                 as? android.telecom.TelecomManager ?: return "no_telecom"
+            val accounts = SimInfo.accounts(context).map { it.first }
+            val handle = if (sim.isNullOrEmpty()) {
+                SimInfo.defaultAccount(context) ?: accounts.firstOrNull()
+            } else {
+                // ซิมถูกถอดระหว่างรอ · ห้ามโทรออกซิมอื่นแทนเงียบ ๆ เบอร์ที่ปลายสายเห็นจะไม่ตรงที่เจ้าของเลือก
+                accounts.firstOrNull { it.id == sim } ?: return "sim_gone"
+            }
+            val extras = android.os.Bundle()
+            if (handle != null) extras.putParcelable(android.telecom.TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle)
             armed = number to SystemClock.uptimeMillis()
+            armedSim = handle
             return try {
-                tm.placeCall(android.net.Uri.fromParts("tel", number, null), android.os.Bundle())
+                tm.placeCall(android.net.Uri.fromParts("tel", number, null), extras)
                 null
             } catch (e: SecurityException) {
                 armed = null
+                armedSim = null
                 "no_permission"
             }
         }

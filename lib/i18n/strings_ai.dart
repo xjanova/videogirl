@@ -258,6 +258,8 @@ extension AiStrings on S {
       'Smartest of 5.6 and quick to answer · default');
   String get modelSol61Hint => pick('รุ่นใหม่ล่าสุด คิดละเอียดกว่า แต่ตอบช้ากว่าเล็กน้อย',
       'Newest, more careful, a little slower to answer');
+  String get modelTerra61Hint => pick('ใหม่กว่า 5.6 Terra เร็วและถูก \$1 / \$5 ต่อล้านโทเคน เหมาะกับคุยทั่วไป',
+      'Newer than 5.6 Terra, fast and low-cost at \$1 / \$5 per million tokens, good for everyday chat');
   String get modelTerraHint =>
       pick('ระดับกลาง ราคาราวครึ่งของ Sol', 'Mid tier, about half the price of Sol');
   String get modelLunaHint => pick('เร็วและถูกที่สุด', 'Fastest and cheapest');
@@ -842,6 +844,7 @@ extension AiStrings on S {
   String brainModelHint(String id) => switch (id) {
         'gpt-5.6-sol' => modelSolHint,
         'gpt-6.1-sol' => modelSol61Hint,
+        'gpt-6.1-terra' => modelTerra61Hint,
         'gpt-5.6-terra' => modelTerraHint,
         'gpt-6-luna' => modelLunaHint,
         'gpt-6-astra' => modelAstraHint,
