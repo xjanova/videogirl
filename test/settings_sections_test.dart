@@ -209,6 +209,35 @@ void main() {
       )
       .first;
 
+  testWidgets('🔴 คุยสดเสียเงินต้องปิดได้จากหน้าเสียง และเลือกเสียงแยกจากเสียงโทร', (t) async {
+    final (state, section) = await _mount(t);
+    state.setBrain(BrainProvider.openai);
+    await t.runAsync(() => state.setOpenAiKey('sk-test-key-for-unit-tests'));
+    section.value = SettingsSection.brain;
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pump(const Duration(milliseconds: 300));
+
+    final s = _s(t);
+    await t.scrollUntilVisible(find.text(s.voiceChatWayTurns), 300);
+    await t.scrollUntilVisible(find.text('cedar'), 300);
+    await t.ensureVisible(find.text('cedar'));
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tap(find.text('cedar'));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(state.voiceChatVoice, 'cedar');
+
+    await t.ensureVisible(find.text(s.voiceChatWayTurns));
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tap(find.text(s.voiceChatWayTurns));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(state.voiceChatLive, isFalse);
+    expect(find.text('cedar'), findsNothing, reason: 'ไม่ได้คุยสด เสียงคุยสดไม่มีผล');
+    expect(t.takeException(), isNull);
+
+    await t.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
   testWidgets('🔴 ปิดรับสายอัตโนมัติ ยังเห็นสวิตช์ Realtime และ GPT-Live', (t) async {
     final (state, section) = await _mount(t);
     state.setAutoAnswer(false);

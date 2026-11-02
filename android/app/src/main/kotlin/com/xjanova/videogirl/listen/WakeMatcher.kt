@@ -30,13 +30,17 @@ import kotlin.math.sqrt
  *
  * ## กันเรียกผิด
  *
- * - ต้องเริ่มต้นช่วงเสียง (anchored) · "พี่ว่าน้องมายด์เก่ง" ไม่นับ ต้องเว้นจังหวะก่อนเรียก
+ * เจ้าของ: "ระบบเรียกปลุก มันไวเกินไปไหม ไม่ได้เรียก ก็ขานแล้ว" · คำเรียกต้องเป็น**คำโดด ๆ** ไม่ใช่ต้นประโยค
+ *
+ * - เว้นจังหวะก่อนเรียก (anchored) · "พี่ว่าน้องมายด์เก่ง" ไม่นับ
+ * - เว้นจังหวะหลังเรียกด้วย ([SETTLE_HOPS]) · ของเดิมเทียบทุกต้นประโยค ทุกคำพูดรอบตัวจึงมีโอกาสตรงหลายสิบครั้ง
+ * - ความยาวใกล้ตัวอย่าง · คำสั้นหรือประโยคยาวไม่ถูกเทียบเลย
  * - ต้องเหมือนตัวอย่างอย่างน้อยสองตัว ไม่ใช่ตัวเดียว
- * - ประโยคยาวเกินคำเรียกแล้วยังไม่ตรง = เลิกดูทั้งช่วงจนกว่าจะเงียบ
+ * - เกณฑ์มาจากค่ากลางของตัวอย่าง ([WakeWord.typical]) · ตัวอย่างแปลกตัวเดียวต้องไม่ทำให้เกณฑ์หลวมทั้งชุด
  *
  * ไม่มี import ของ Android โดยตั้งใจ · เทสต์ด้วย JVM ได้ (test/.../WakeMatcherTest)
  */
-class WakeMatcher(private var word: WakeWord?) {
+class WakeMatcher(private var word: WakeWord?, private val trace: ((String) -> Unit)? = null) {
 
     companion object {
         const val RATE = 16000
@@ -54,6 +58,13 @@ class WakeMatcher(private var word: WakeWord?) {
 
         /** เงียบเท่านี้ = จบช่วงเสียง */
         private const val HANGOVER_HOPS = 30
+
+        /** เงียบเท่านี้หลังคำ ถึงเทียบกับตัวอย่าง (0.18 วิ) · ช่องว่างในคำสั้นกว่านี้ เธอจึงยังขานทันที */
+        private const val SETTLE_HOPS = 18
+
+        /** ความยาวเทียบกับตัวอย่างที่สั้น/ยาวที่สุด */
+        private const val SHORTEST_RATIO = 0.8f
+        private const val LONGEST_RATIO = 1.25f
 
         private const val MIN_WORD_HOPS = 30 // 0.3 วิ
         private const val MAX_WORD_HOPS = 250 // 2.5 วิ
@@ -233,7 +244,6 @@ class WakeMatcher(private var word: WakeWord?) {
     private var quietRun = 0
     private var speaking = false
     private var gaveUp = false
-    private var hopsSinceCheck = 0
 
     /** ค่าที่ดีที่สุดรอบล่าสุด · ไว้ปรับเกณฑ์บนเครื่องจริงจาก log (เป็นตัวเลข ไม่ใช่เสียง) */
     @Volatile
@@ -256,7 +266,6 @@ class WakeMatcher(private var word: WakeWord?) {
         quietRun = 0
         speaking = false
         gaveUp = false
-        hopsSinceCheck = 0
         pendingFill = 0
     }
 
@@ -301,6 +310,8 @@ class WakeMatcher(private var word: WakeWord?) {
         }
 
         quietRun = if (loud) 0 else quietRun + 1
+        // เทียบตอนคำจบแล้วเท่านั้น · หยุดกลางคำก็ยังเทียบรอบถัดไปได้
+        if (quietRun == SETTLE_HOPS && !gaveUp && check()) return Hit.WORD
         if (quietRun >= HANGOVER_HOPS) {
             speaking = false
             loudRun = 0
@@ -311,7 +322,10 @@ class WakeMatcher(private var word: WakeWord?) {
         }
         if (gaveUp || frames.size > MAX_WORD_HOPS + HANGOVER_HOPS) return Hit.NONE
         addFrame(0)
-        return if (check()) Hit.WORD else Hit.NONE
+        // ยาวเกินทุกตัวอย่าง = ไม่ใช่คำเรียก · เลิกเก็บเฟรมจนกว่าจะเงียบ ไม่เปลืองไฟ
+        val w = word
+        if (w != null && frames.size > w.longest * LONGEST_RATIO + SETTLE_HOPS) gaveUp = true
+        return Hit.NONE
     }
 
     /** MFCC ของเฟรมที่จบก่อนปลายบัฟเฟอร์ [back] ก้าว */
@@ -322,26 +336,21 @@ class WakeMatcher(private var word: WakeWord?) {
 
     private fun check(): Boolean {
         val w = word ?: return false
-        // ทุก 50 มิลลิวินาที · ทีละก้าวเปลือง และคำไม่ได้เปลี่ยนใน 10 มิลลิวินาที
-        if (++hopsSinceCheck < 5) return false
-        hopsSinceCheck = 0
-        val shortest = w.shortest
-        if (frames.size < shortest * 0.85f) return false
-        // ยาวเกินทุกตัวอย่างแล้วยังไม่ตรง = ไม่ใช่คำเรียก · เลิกดูจนกว่าจะเงียบ ไม่เปลืองไฟ
-        if (frames.size > w.longest * 1.35f) {
-            gaveUp = true
-            return false
-        }
-        val s = normalize(frames)
+        val end = frames.size - SETTLE_HOPS
+        if (end < w.shortest * SHORTEST_RATIO || end > w.longest * LONGEST_RATIO) return false
+        val s = normalize(frames, end)
+        val limit = w.limit
         var best = Float.MAX_VALUE
         var votes = 0
         for (t in w.samples) {
             val v = score(t, s)
             best = min(best, v)
-            if (v <= w.limit) votes++
+            if (v <= limit) votes++
         }
         lastScore = best
-        return votes >= min(VOTES, w.samples.size)
+        val need = min(VOTES, w.samples.size)
+        trace?.invoke("wake check best=$best votes=$votes/$need limit=$limit typical=${w.typical} spread=${w.spread} frames=$end")
+        return votes >= need
     }
 }
 
@@ -350,12 +359,21 @@ class WakeWord(val samples: List<Array<FloatArray>>, val spread: Float, var sens
     val shortest = samples.minOf { it.size }
     val longest = samples.maxOf { it.size }
 
+    /** ค่ากลางของความต่างระหว่างตัวอย่าง · คำนวณจากตัวอย่าง ไฟล์ที่สอนไว้แล้วจึงใช้ต่อได้ ไม่ต้องสอนใหม่ */
+    val typical: Float by lazy {
+        val all = ArrayList<Float>()
+        for (a in samples.indices) for (b in samples.indices) {
+            if (a != b) WakeMatcher.score(samples[a], samples[b]).let { if (it < Float.MAX_VALUE) all.add(it) }
+        }
+        if (all.isEmpty()) spread else all.sorted()[all.size / 2]
+    }
+
     /** 0 = เข้ม (เรียกผิดน้อย) · 1 = ปกติ · 2 = ไว (ได้ยินจากไกล แต่เรียกผิดง่าย) */
     val limit: Float
-        get() = spread * when (sensitivity) {
-            0 -> 1.0f
-            2 -> 1.3f
-            else -> 1.15f
+        get() = min(spread, typical) * when (sensitivity) {
+            0 -> 1.1f
+            2 -> 1.45f
+            else -> 1.25f
         }
 
     fun save(file: File) {

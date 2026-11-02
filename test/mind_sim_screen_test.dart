@@ -379,7 +379,6 @@ void main() {
       final s = await mind();
       s.setVoice(VoiceChannel.answer, s.voiceFor(VoiceChannel.answer).copyWith(engine: TtsEngine.elevenlabs, voice: 'xYz12'));
       expect(s.callLiveVoice, 'marin');
-      expect(s.voiceChatVoice, 'marin');
       s.setVoice(VoiceChannel.answer, s.voiceFor(VoiceChannel.answer).copyWith(engine: TtsEngine.openai, voice: 'cedar'));
       expect(s.callLiveVoice, 'cedar');
     });

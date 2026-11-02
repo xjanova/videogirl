@@ -334,7 +334,7 @@ class ListenService : Service() {
     @Volatile var paused = false
         private set
 
-    private val matcher = WakeMatcher(null)
+    private val matcher = WakeMatcher(null) { Log.i(TAG, it) }
 
     /** ตัวอย่างที่ได้ตอนสอน · แตะบนเธรดไมค์เท่านั้น */
     private val teach = ArrayList<Array<FloatArray>>()

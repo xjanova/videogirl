@@ -94,8 +94,7 @@ class WakeMatcherTest {
         repeat(20) { i ->
             feed(m, quiet(.6, r))
             val gain = if (i % 2 == 0) 6000.0 else 2500.0
-            if (WakeMatcher.Hit.WORD in feed(m, speak(word, r, gain))) woke++
-            feed(m, quiet(.6, r))
+            if (WakeMatcher.Hit.WORD in feed(m, speak(word, r, gain)) + feed(m, quiet(.6, r))) woke++
         }
         assertTrue("woke $woke/20", woke >= 18)
     }
@@ -119,16 +118,53 @@ class WakeMatcherTest {
     }
 
     @Test
-    fun `she wakes even when the command runs straight on`() {
+    fun `the start of a sentence is not a call even if it sounds like the word`() {
         val r = Random(17)
+        val m = WakeMatcher(teach(r))
+        repeat(10) {
+            feed(m, quiet(.6, r))
+            assertFalse(WakeMatcher.Hit.WORD in feed(m, speak(word + other, r)))
+            feed(m, quiet(.6, r))
+        }
+    }
+
+    @Test
+    fun `calling the word then pausing before the command wakes her`() {
+        val r = Random(18)
         val m = WakeMatcher(teach(r))
         var woke = 0
         repeat(10) {
             feed(m, quiet(.6, r))
-            if (WakeMatcher.Hit.WORD in feed(m, speak(word + other, r))) woke++
+            val hits = feed(m, speak(word, r)) + feed(m, quiet(.25, r))
+            if (WakeMatcher.Hit.WORD in hits) woke++
+            feed(m, speak(other, r))
             feed(m, quiet(.6, r))
         }
         assertTrue("woke $woke/10", woke >= 8)
+    }
+
+    @Test
+    fun `a sample that came out odd does not loosen the limit`() {
+        val r = Random(21)
+        val taught = teach(r)
+        val m = WakeMatcher(null)
+        feed(m, quiet(.5, r))
+        feed(m, speak(other, r))
+        feed(m, quiet(.8, r))
+        val samples = taught.samples.dropLast(1) + listOf(m.lastSegment!!)
+        val odd = WakeWord(samples, WakeMatcher.spread(samples))
+        assertTrue("typical ${odd.typical} spread ${odd.spread}", odd.typical < odd.spread)
+        assertTrue(odd.limit < odd.spread * 1.25f)
+    }
+
+    @Test
+    fun `strict is tighter than normal and normal tighter than eager`() {
+        val r = Random(22)
+        val w = teach(r)
+        val strict = WakeWord(w.samples, w.spread, 0).limit
+        val normal = WakeWord(w.samples, w.spread, 1).limit
+        val eager = WakeWord(w.samples, w.spread, 2).limit
+        assertTrue(strict < normal && normal < eager)
     }
 
     @Test

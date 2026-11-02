@@ -810,8 +810,8 @@ class S {
 
   // ═══ ช่องทางเสียง ══════════════════════════════════════
   String get channelChat => _('พูดในแชท', 'In chat');
-  String get channelChatHint => _('ตอนคุยกับเราในแอป', 'When talking with you in the app');
-  String get channelAnswer => _('ในสาย', 'On calls');
+  String get channelChatHint => _('ตอนคุยกับเรา ทั้งในแอปและตอนเรียกชื่อ', 'When talking with you, in the app or after you call her name');
+  String get channelAnswer => _('เสียงตอบรับ', 'Answering');
   String get channelAnswerHint =>
       _('ตอนเธอคุยในสาย ทั้งรับสายแทนเราและโทรออก', 'When she talks on a call, answering for you or calling out');
 

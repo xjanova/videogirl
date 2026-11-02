@@ -1370,6 +1370,7 @@ class MindState extends ChangeNotifier {
     _voiceChatLive = p.getBool('voiceChatLive') ?? true;
     _callSim = p.getString('callSim');
     unawaited(syncApps());
+    _voiceChatVoicePick = p.getString('voiceChatVoice') ?? '';
     _liveCalls = p.getBool('liveCalls') ?? false;
     _ringSeconds = p.getInt('ringSeconds') ?? 15;
 
@@ -2962,14 +2963,41 @@ class MindState extends ChangeNotifier {
   /// คุยสดได้ไหมตอนนี้ · OpenAI ด้วยคีย์ของเจ้าของเท่านั้น (เหมือนในสาย · ไม่ยืมคีย์ข้ามสมอง)
   bool get voiceChatLiveReady => _voiceChatLive && _brain == BrainProvider.openai && hasOwnKey;
 
-  /// เสียงของเธอตอนคุยสด · เสียงแชทเป็นของ OpenAI และ Realtime รู้จัก = ใช้ · ไม่งั้นใช้เสียงที่ตั้งไว้ในสาย ·
-  /// ตัวนั้นก็ไม่รู้จัก = marin
-  String get voiceChatVoice {
-    final chat = voiceFor(VoiceChannel.chat);
-    if (chat.engine == TtsEngine.openai && RealtimeCall.voices.contains(chat.voice)) return chat.voice;
-    final v = voiceFor(VoiceChannel.answer).voice;
-    return RealtimeCall.voices.contains(v) ? v : 'marin';
+  /// เสียงที่เจ้าของเลือกให้คุยสด · ว่าง = ยังไม่เคยเลือก
+  String _voiceChatVoicePick = '';
+
+  void setVoiceChatVoice(String v) {
+    if (!RealtimeCall.voices.contains(v) || v == _voiceChatVoicePick) return;
+    _voiceChatVoicePick = v;
+    _save('voiceChatVoice', v);
+    _notify();
   }
+
+  /// เสียงของเธอตอนคุยสด · เลือกเอง > เสียงแชท > ค่าตั้งต้น
+  ///
+  /// เจ้าของ: "ฉันรู้สึกว่าเธอเลือกใช้เสียง เดียวกับการโทรเข้าหรือออก" · ของเดิมตกไปเสียงรับสายจริง ·
+  /// 🔴 ห้ามหยิบเสียงของช่องโทร · คนละช่อง เจ้าของตั้งแยกไว้คนละเหตุผล
+  String get voiceChatVoice {
+    if (RealtimeCall.voices.contains(_voiceChatVoicePick)) return _voiceChatVoicePick;
+    final chat = voiceFor(VoiceChannel.chat).voice;
+    return RealtimeCall.voices.contains(chat) ? chat : VoiceProfile.openAiDefaults.voice;
+  }
+
+  /// เสียงคุยสดในรูปที่สังเคราะห์เป็นไฟล์ได้ · ลองฟังกับเสียงขาน ซึ่งไม่ได้ผ่าน Realtime
+  VoiceProfile get voiceChatLiveProfile {
+    final chat = voiceFor(VoiceChannel.chat);
+    final base = chat.engine == TtsEngine.openai
+        ? chat
+        : VoiceProfile.defaultFor(VoiceChannel.chat, lang).copyWith(engine: TtsEngine.openai);
+    return base.copyWith(voice: voiceChatVoice);
+  }
+
+  /// เสียงที่เธอจะขาน · ต้องเป็นเสียงเดียวกับที่คุยต่อ ไม่งั้นขานคนละคน
+  VoiceProfile get _wakeReplyProfile =>
+      voiceChatLiveReady ? voiceChatLiveProfile : voiceFor(VoiceChannel.chat);
+
+  /// เปลี่ยนเมื่อเสียงขานที่อัดไว้ใช้ไม่ได้แล้ว ([renderWakeReplies] ต้องอัดใหม่)
+  int get wakeReplyKey => Object.hash(lang, _wakeReplyProfile);
 
   RealtimeChat openVoiceChat({required ChatToolRunner tools}) => RealtimeChat(
         apiKey: effectiveOpenAiKey,
@@ -3033,7 +3061,7 @@ class MindState extends ChangeNotifier {
   /// เสียงขานรับเมื่อถูกเรียกชื่อ · สังเคราะห์ล่วงหน้าด้วยเสียงแชทของเธอ ขานได้ทันทีโดยไม่รอเน็ต ·
   /// ทางไหนล้มก็ตกไปเสียงเครื่องเหมือนการพูดปกติ · ได้ไม่ครบ = คืนเท่าที่ได้
   Future<List<Utterance>> renderWakeReplies() async {
-    final profile = voiceFor(VoiceChannel.chat);
+    final profile = _wakeReplyProfile;
     final out = <Utterance>[];
     for (final word in s.wakeReplyWords) {
       try {
@@ -3831,12 +3859,13 @@ class MindState extends ChangeNotifier {
   /// [onPlaying] ถูกเรียกตอนสร้างเสียงเสร็จและเริ่มเล่น (หน้าจอบอกขั้นตอนได้)
   Future<String?> previewVoice(
     VoiceChannel channel, {
+    VoiceProfile? as,
     void Function()? onPlaying,
   }) async {
     final out = speaker;
     if (out == null) return s.errVoiceNoOutput;
     await hush();
-    final profile = voiceFor(channel);
+    final profile = as ?? voiceFor(channel);
     final seq = ++_speechSeq;
     try {
       debugPrint('เสียง: ลองฟัง ${profile.engine.name} · ${profile.model} · ${profile.voice}');
