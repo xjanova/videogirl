@@ -12,6 +12,7 @@ import '../store/mind_kv.dart';
 import '../store/mind_vault.dart';
 import '../license/mind_license.dart';
 import '../store/mind_store.dart';
+import '../store/knowledge_pack.dart';
 
 import '../memory/chat_recall.dart';
 import '../memory/distiller.dart';
@@ -94,8 +95,10 @@ class MindState extends ChangeNotifier {
     OpenAiClient? openai,
     SpeechService? speech,
     MindMemory? memory,
+    KnowledgePacks? knowledgePacks,
   })  : _clock = clock ?? DateTime.now,
-        memory = memory ?? MindMemory() {
+        memory = memory ?? MindMemory(),
+        knowledgePacks = knowledgePacks ?? KnowledgePacks() {
     // ส่งเป็นฟังก์ชัน ไม่ใช่ค่า — ผู้ใช้กรอก/แก้/ลบคีย์ได้ตลอดขณะแอปเปิดอยู่
     // ถ้าอ่านค่าตอนสร้าง client จะต้องสร้างใหม่ทุกครั้งที่แก้ ซึ่งลืมง่ายและเงียบ
     //
@@ -138,6 +141,9 @@ class MindState extends ChangeNotifier {
   /// เป็น public เพราะหน้าตั้งค่าต้องเปิดดูและลบได้ — ความจำที่เจ้าของ
   /// เปิดดูไม่ได้ ไม่ใช่ผู้ช่วย
   final MindMemory memory;
+
+  /// แพ็กความรู้ที่ซื้อ/ติดตั้งไว้ (ดู KnowledgePacks) · ค้นทุกข้อความในแชท ไม่เข้าสายโทรศัพท์
+  final KnowledgePacks knowledgePacks;
 
   /// ปฏิทินของเครื่อง — ต่อเข้ามาทีหลังด้วย [attachCalendar]
   ///
@@ -1442,6 +1448,10 @@ class MindState extends ChangeNotifier {
       _loadContext();
     }
     await memory.load();
+    // ดัชนีแพ็กความรู้สร้างในเธรดแยกไว้ก่อน · ข้อความแรกจะได้ไม่ต้องรอ · ไม่ขวางการเปิดแอป
+    unawaited(knowledgePacks.load().then((_) => knowledgePacks.warm()).then((_) {}, onError: (Object e) {
+      debugPrint('แพ็กความรู้: เตรียมดัชนีไม่สำเร็จ — ${e.runtimeType}');
+    }));
     _seedConversation();
 
     // เคยเชื่อมสมอง BrainX ไว้ → ตรวจกับคลาวด์ แล้วกู้ของเดิมถ้าในเครื่องว่าง
@@ -3472,7 +3482,11 @@ class MindState extends ChangeNotifier {
   RealtimeChat openVoiceChat({required ChatToolRunner tools}) => RealtimeChat(
         apiKey: effectiveOpenAiKey,
         instructions: voiceChatPrompt(),
-        tools: chatVoiceTools(web: _webSearch && _webSearcher() != null, phone: _phoneControl),
+        tools: chatVoiceTools(
+          web: _webSearch && _webSearcher() != null,
+          phone: _phoneControl,
+          knowledge: knowledgePacks.enabled.isNotEmpty,
+        ),
         runChatTool: tools,
         voice: voiceChatVoice,
         language: _sttLang,
@@ -3504,7 +3518,11 @@ class MindState extends ChangeNotifier {
       phone: _phoneControl,
       mailApps: _mailApps == null ? null : [for (final a in _mailApps!) a.name],
     );
-    return '$system\n$block';
+    // แพ็กความรู้ · คุยสดแนบท่อนทีละตาเหมือนแชทไม่ได้ เธอเรียก knowledge_lookup เอง
+    final packs = knowledgePacks.briefs(thai: s.isThai);
+    if (packs.isEmpty) return '$system\n$block';
+    final knowledge = MindPersona.knowledgeBlock(_lang, packs, webSearch: _webSearch, lookupTool: true);
+    return '$system\n$block\n$knowledge';
   }
 
   /// บทล่าสุดในแชท ให้เซสชันเสียงรู้ว่าคุยอะไรกันอยู่ · ว่าง = ยังไม่ได้คุย
@@ -3614,6 +3632,17 @@ class MindState extends ChangeNotifier {
         var q = arg('query');
         if (q.length > PhoneLookup.argChars) q = q.substring(0, PhoneLookup.argChars);
         return phoneLookup.run(PhoneLookupCall(kind, q), last: true);
+      case 'knowledge_lookup':
+        final query = arg('query');
+        if (query.isEmpty) return 'Ask the owner what they want to know.';
+        final hits = await knowledgePacks.lookup(query).timeout(const Duration(seconds: 5), onTimeout: () => const []);
+        if (hits.isEmpty) {
+          return 'The installed knowledge packs have nothing on this. Say so honestly in one short sentence, then '
+              'answer carefully from general knowledge; never invent numbers, doses or steps and never say they came '
+              'from a pack.';
+        }
+        return '${s.recallPacks}\n${packNotes(hits)}\n'
+            'Answer from this in short spoken sentences, the most urgent step first.';
       case 'web_search':
         final web = _webSearch ? _webSearcher() : null;
         if (web == null) return 'Web search is not available right now. Say so briefly.';
@@ -4664,13 +4693,16 @@ class MindState extends ChangeNotifier {
           ? MindPersona.cloudNudgeBlock(_lang,
               survivesUninstall: _store?.vault.stage == VaultStage.ready)
           : '',
+      packs: knowledgePacks.briefs(thai: s.isThai),
     );
     final history = [
       for (final m in _context) (fromHer: m.fromHer, text: m.text),
     ];
-    // สมองก้อนเดียวกับมายด์บนคอม · ค้นพร้อมกันกับความจำในเครื่อง เกินสามวิก็ตอบจากที่มี
+    // แพ็กความรู้ค้นในเครื่อง (ใช้ได้ตอนออฟไลน์) พร้อมกับสมองก้อนเดียวกับมายด์บนคอม ·
+    // สมองเกินสามวิก็ตอบจากที่มี
+    final packHits = _packHits(history);
     final brainHits = linked ? await _brainHits(history) : const <BrainXHit>[];
-    final recall = recallFor(history, brain: brainHits);
+    final recall = recallFor(history, brain: brainHits, packs: await packHits);
     var answer = await _askBrain(system, history, onPartial: _showPartial, recall: recall);
     if (nudge) _noteNudge(answer);
 
@@ -5056,14 +5088,14 @@ class MindState extends ChangeNotifier {
   /// บันทึกช่วยจำสำหรับข้อความล่าสุดของเจ้าของ · ว่าง = ไม่มีอะไรเกี่ยวพอ
   @visibleForTesting
   String recallFor(List<({bool fromHer, String text})> history,
-      {List<BrainXHit> brain = const []}) {
+      {List<BrainXHit> brain = const [], List<KnowledgeHit> packs = const []}) {
     final query = recallQuery(history);
     if (query.isEmpty) return '';
 
     final core = {for (final f in memory.forPrompt(limit: coreMemories)) f.id};
     final facts = memory.recall(query, skip: core, limit: 6);
     final past = _chatRecall.search(query, limit: 3, skipNewest: _contextLimit);
-    if (facts.isEmpty && past.isEmpty && brain.isEmpty) return '';
+    if (facts.isEmpty && past.isEmpty && brain.isEmpty && packs.isEmpty) return '';
 
     String clip(String? t) {
       final v = (t ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
@@ -5094,8 +5126,42 @@ class MindState extends ChangeNotifier {
         b.writeln('- ${h.title}: ${clip(h.text)}');
       }
     }
+    if (packs.isNotEmpty) {
+      b.writeln(s.recallPacks);
+      b.writeln(packNotes(packs));
+    }
     b.write(s.recallClose);
     return b.toString();
+  }
+
+  /// ท่อนจากแพ็กเป็นบรรทัดสำหรับ prompt · `- [ชื่อแพ็ก › หัวข้อ] เนื้อหา` · ใช้ทั้งแชทและคุยสด
+  ///
+  /// ทั้งท่อน (ไม่เกิน ~600 ตัว ดู KnowledgeIndex.chunkChars) · ตัดสั้นแบบความจำ = ขั้นตอนกับ "ที่มา:" ท้ายท่อนหาย
+  String packNotes(List<KnowledgeHit> hits) => [
+        for (final h in hits) '- [${_packName(h.tag)} › ${h.title}] ${_packText(h.text)}',
+      ].join('\n');
+
+  String _packName(String id) => knowledgePacks.byId(id)?.manifest.name.of(s.isThai) ?? id;
+
+  static String _packText(String raw) {
+    final text = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+    return text.length <= 700 ? text : '${text.substring(0, 699)}…';
+  }
+
+  /// ท่อนจากแพ็กความรู้ที่เปิดอยู่ซึ่งตรงกับข้อความล่าสุด · ว่าง = ไม่มีแพ็ก หรือไม่เกี่ยว
+  ///
+  /// เกินสองวิ (ดัชนียังสร้างไม่เสร็จหลังเพิ่งติดตั้ง) = ตานี้ตอบไปก่อน ดัชนีสร้างต่อให้ตาถัดไป ·
+  /// ค้นพลาด = ไม่เจอ ห้ามทำให้แชทล้ม
+  Future<List<KnowledgeHit>> _packHits(List<({bool fromHer, String text})> history) async {
+    if (knowledgePacks.enabled.isEmpty) return const [];
+    final query = recallQuery(history);
+    if (query.isEmpty) return const [];
+    try {
+      return await knowledgePacks.search(query).timeout(const Duration(seconds: 2));
+    } on Object catch (e) {
+      debugPrint('แพ็กความรู้: ค้นไม่ทันหรือพลาด — ${e.runtimeType}');
+      return const [];
+    }
   }
 
   /// คำค้นของตานี้ · ข้อความล่าสุดของเจ้าของ (+ข้อความก่อนหน้า ถ้าล่าสุดสั้นเกินบอกเรื่อง)
@@ -5621,6 +5687,7 @@ class MindState extends ChangeNotifier {
     if (hasLocalBrain) _lazyLocal!.dispose();
     _lazyWebTools?.close();
     _lazyKnowledge?.dispose();
+    knowledgePacks.dispose();
     memory.removeListener(_queueMemory);
     _soul?.removeListener(_queueSoul);
     final link = _lazyBrainX;

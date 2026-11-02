@@ -1,0 +1,39 @@
+{
+  "id": "survival-basic",
+  "kind": "knowledge",
+  "version": "1.1.0",
+  "name": { "th": "เอาตัวรอดในป่าเบื้องต้น", "en": "Wilderness survival basics" },
+  "category": "survival",
+  "persona": {
+    "th": "สอนเหมือนพี่ที่เคยเข้าป่า ใจเย็น สั้น ทีละขั้น · เรื่องที่เสี่ยงชีวิตให้บอกสิ่งที่ต้องทำก่อนเสมอ แล้วค่อยอธิบายเหตุผล · บอกที่มาสั้น ๆ เมื่อตอบจากแพ็ก",
+    "en": "Teach like a calm friend who has spent time in the forest: short, one step at a time. For anything life-threatening, say what to do first, then why. Name the source briefly when answering from the pack."
+  },
+  "starters": {
+    "th": [
+      "หลงป่าต้องทำอะไรก่อน",
+      "น้ำในลำธารกินได้ไหม",
+      "โดนงูกัดต้องทำยังไง",
+      "เห็ดในป่าดูยังไงว่ากินได้",
+      "กางเต็นท์ริมลำธารได้ไหม"
+    ],
+    "en": [
+      "I'm lost in the forest, what do I do first?",
+      "Can I drink water from a stream?",
+      "What should I do after a snakebite?",
+      "How can I tell if a wild mushroom is safe?",
+      "Is it OK to camp beside a stream?"
+    ]
+  },
+  "safety": {
+    "th": [
+      "เห็ด พืช และผลไม้ป่า: ไม่รู้จัก ไม่แน่ใจ ไม่เก็บ ไม่กิน",
+      "งูกัด อาการหนัก หรือหลงป่าตอนมืด: โทร 1669 หรือ 191 ก่อน แล้วค่อยทำตามขั้นตอน"
+    ],
+    "en": [
+      "Wild mushrooms, plants and fruit: if you do not know it for sure, do not pick it and do not eat it",
+      "Snakebite, serious symptoms, or lost after dark: call 1669 or 191 first, then follow the steps"
+    ]
+  },
+  "tools": ["sos"],
+  "minAppVersion": "0.1.0"
+}
