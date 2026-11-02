@@ -24,6 +24,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -34,14 +35,18 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../ai/openai_client.dart';
+import '../ai/speech_service.dart' show Utterance;
 import '../avatar/stage_bridge.dart';
 import '../i18n/strings_ai.dart';
+import '../i18n/strings_hold.dart';
 import '../state/mind_state.dart';
 import '../system/permissions.dart';
 import 'call_hangup.dart';
 import 'call_notes.dart';
 import 'call_lessons.dart';
 import 'call_tags.dart';
+import 'call_transfer.dart';
+import 'hold_audio.dart';
 import 'owner_gate.dart';
 import 'call_phone.dart';
 import 'identity_gate.dart';
@@ -360,7 +365,12 @@ class CallSession extends ChangeNotifier {
     // ไมค์ (และไฟล์บันทึก) เปิดก่อนเธอทัก · คำทักกับคำแรกของคู่สายอยู่ในบันทึกด้วย
     unawaited(() async {
       await _startRecording();
-      if (_state.realtimeCallsReady && !_directMode) await _startDirect();
+      // 🔴 ต่อสายตรงทุกทาง ไม่ใช่เฉพาะคุยสด · เครื่องที่ตั้งตัวช่วยไว้คือเครื่องที่ทางลำโพงไม่ได้ยิน
+      // (AEC ลบเสียงเธอ · ไมค์ถูกปิดเงียบระหว่างสาย) · ของเดิมเลือกเสียงอื่นที่ไม่ใช่คุยสด OpenAI
+      // = ทางผลัดกันพูดออกลำโพง ปลายสายไม่ได้ยินเธอ และเธอไม่ได้ยินปลายสาย
+      // ส่งสายคืนหลังเจ้าของแทรก = ตัวช่วยเลิกเล่นเข้าสายไปแล้ว (takeover) · เริ่มใหม่ ไม่งั้นเสียงเธอถูกทิ้งเงียบ ๆ
+      if (!first && _directMode) await _stopDirect();
+      if (!_directMode) await _startDirect();
       if (!_live || !_mind || _disposed) { await _stopDirect(); return; }
       if (!_directMode) await _openMic();
       await _converse();
@@ -426,6 +436,8 @@ class CallSession extends ChangeNotifier {
     _canAskOwner = false;
     _ownerAway = false;
     _holdMuted = false;
+    _dropHold();
+    _transferTried = false;
     _startedAt = null;
     // สายถัดไปอาจเป็นเบอร์ซ่อน · ไม่ล้าง = ได้บทเรียนของเบอร์สายก่อน
     _number = '';
@@ -460,6 +472,7 @@ class CallSession extends ChangeNotifier {
     _notify();
     // ปิดไมค์จริง ไม่ใช่แค่เลิกฟัง · เจ้าของคุยเองแล้ว ไม่ใช่สิ่งที่เธอควรอัดต่อ
     _endRealtime();
+    _stopHold();
     if (_directMode) await _takeOverDirect();
     await _invoke('liveAudioStop');
     await _closeMic();
@@ -591,13 +604,8 @@ class CallSession extends ChangeNotifier {
         done = r == _RtResult.ended;
       }
       if (!done && _live && _mind && !_disposed) {
-        if (_directMode) {
-          await _stopDirect();
-          await _invoke('callSpeakerOn');
-          await _openMic();
-          _audioPath = 'speaker';
-          _mute = false;
-        }
+        // ทางผลัดกันพูดใช้สายตรงต่อได้ · ลงลำโพงเฉพาะตอนตัวช่วยหลุดไปแล้ว
+        if (_directMode && _directFailed) await _toSpeaker();
         await _talk(greet: !greeted);
       }
     } on OpenAiFailure catch (e) {
@@ -723,6 +731,8 @@ class CallSession extends ChangeNotifier {
 
   Future<String?> _askOwner(String question) async {
     if (_ownerAway) return null;
+    // ถอดไฟล์ระหว่างเธอพูด "ขอพักสายสักครู่" · เพลงเริ่มเมื่อเสียงเธอจบ (ดูนาฬิกาใน [_talkRealtime])
+    unawaited(_prepareHold());
     final done = Completer<String?>();
     final id = ++_ownerAskId;
     _ownerAnswer = done;
@@ -762,6 +772,7 @@ class CallSession extends ChangeNotifier {
         _ownerAnswer = null;
         // ไมค์ต้องคืนก่อนอย่างอื่น · เจ้าของที่แทรกสายต่อจากนี้ต้องพูดแล้วปลายสายได้ยิน
         _setHold(false);
+        _stopHold();
         unawaited(_invoke('askOwnerDone'));
         _notify();
       }
@@ -780,6 +791,244 @@ class CallSession extends ChangeNotifier {
     final done = _ownerAnswer;
     if (t.isEmpty || done == null || done.isCompleted) return;
     done.complete(t.length > 500 ? t.substring(0, 500) : t);
+  }
+
+  // ── เพลงพักสาย ──────────────────────────────────────────
+  //
+  // เจ้าของ: "ทางคู่สนทนาจะได้ยินสิ่งที่เราตั้งไว้ให้เขาฟังเช่นเพลง หรือโฆษณาต่างๆ" · ดู hold_audio.dart
+  //
+  // สายตรง: ป้อนชิ้นสั้น ๆ ต่อคิวเสียงเธอ ([HoldFeed]) · ไมค์ของสายปิดไว้เหมือนเดิม (เพลงเข้าทางตัวช่วย ไม่ผ่านไมค์)
+  // ทางลำโพง: เล่นไฟล์ออกลำโพงให้ไมค์รับ · 🔴 ต้องเปิดไมค์ของสายระหว่างเพลงเล่น ไม่งั้นคนโทรไม่ได้ยินเพลง
+  // (เสียงในห้องหลุดไปด้วย) · ส่งเสียงไมค์ให้เธอไม่ได้ เธอจะได้ยินเพลงเป็นคำของคนโทร
+
+  HoldFeed? _holdFeed;
+  Uint8List? _holdPcm;
+  String? _holdPath;
+  File? _holdTemp;
+  bool _holdLoading = false;
+  bool _holdSpeaker = false;
+  bool _holdSpeakerFailed = false;
+  int _holdGen = 0;
+
+  /// เพลงพักสายกำลังเล่นให้คนโทรฟัง
+  bool get holdMusic => (_holdFeed != null && !_holdFeed!.paused) || _holdSpeaker;
+
+  Future<void> _prepareHold() async {
+    final sound = _state.holdSound;
+    if (sound == HoldSound.none || _holdLoading || _holdPcm != null || _holdPath != null) return;
+    _holdLoading = true;
+    try {
+      final file = sound == HoldSound.file ? _state.holdFilePath : null;
+      final exists = file != null && await File(file).exists();
+      if (_directMode) {
+        Uint8List? pcm;
+        if (exists) {
+          final raw = await _invoke<Uint8List>(
+              'decodePcm', {'path': file, 'rate': _directRate, 'maxMs': HoldMusic.maxFileMs});
+          if (raw != null && raw.isNotEmpty) pcm = HoldMusic.loopable(raw);
+        }
+        // ไฟล์หาย/ถอดไม่ได้ = เพลงในแอป · ดีกว่าเงียบใส่คนโทร
+        _holdPcm = pcm ?? await HoldMusic.load();
+      } else if (exists) {
+        _holdPath = file;
+      } else {
+        final f = await _writeTemp(HoldMusic.wav(await HoldMusic.load()), 'wav');
+        _holdTemp = f;
+        _holdPath = f.path;
+      }
+    } on Object catch (e) {
+      debugPrint('call: เตรียมเพลงพักสายไม่ได้ — ${e.runtimeType}');
+    } finally {
+      _holdLoading = false;
+    }
+  }
+
+  /// เรียกจากนาฬิกา 100 ms · [play] = กำลังพักสายและเธอไม่ได้พูด · [pending] = คิวสายตรง (ms)
+  void _holdPlay(bool play, int pending) {
+    if (!play) {
+      _holdFeed?.pause();
+      _stopHoldSpeaker();
+      return;
+    }
+    if (_directMode) {
+      final pcm = _holdPcm;
+      if (pcm == null || !_direct.active) return;
+      final feed = _holdFeed ??= HoldFeed(pcm);
+      feed.resume();
+      final piece = feed.next(pending);
+      if (piece != null) unawaited(_direct.write(piece));
+    } else {
+      final path = _holdPath;
+      if (path != null && !_holdSpeaker && !_holdSpeakerFailed) unawaited(_holdSpeakerLoop(path));
+    }
+  }
+
+  Future<void> _holdSpeakerLoop(String path) async {
+    final gen = ++_holdGen;
+    _holdSpeaker = true;
+    _notify();
+    while (gen == _holdGen && _live && _mind && !_disposed) {
+      final started = DateTime.now();
+      final ok = await _invoke<bool>('callSpeak', {'path': path});
+      if (ok == true) continue;
+      // เล่นไม่ได้เลย (ไม่ใช่ถูกสั่งหยุด) = ไม่ลองใหม่ทุก 100 ms ทั้งสาย
+      if (gen == _holdGen && DateTime.now().difference(started) < const Duration(seconds: 1)) {
+        _holdSpeakerFailed = true;
+      }
+      break;
+    }
+    if (gen == _holdGen) {
+      _holdSpeaker = false;
+      _notify();
+    }
+  }
+
+  void _stopHoldSpeaker() {
+    if (!_holdSpeaker) return;
+    _holdGen++;
+    _holdSpeaker = false;
+    unawaited(_invoke('callStopSpeak'));
+  }
+
+  /// เลิกพักสาย · ตำแหน่งเพลงไม่ต้องจำ ครั้งหน้าเริ่มต้นเพลงใหม่
+  void _stopHold() {
+    _holdFeed = null;
+    _stopHoldSpeaker();
+  }
+
+  /// สายจบ · คืนหน่วยความจำ (เพลงสองนาทีถอดแล้วราว 6 MB) และไฟล์ชั่วคราว
+  void _dropHold() {
+    _stopHold();
+    _holdPcm = null;
+    _holdPath = null;
+    _holdSpeakerFailed = false;
+    final temp = _holdTemp;
+    _holdTemp = null;
+    if (temp != null) unawaited(temp.delete().then((_) {}, onError: (Object _) {}));
+  }
+
+  // ── โอนสายหาเจ้าของ ─────────────────────────────────────
+  //
+  // ดู call_transfer.dart (ลำดับบทพูด) กับ CallTransfer.kt (ฝั่งสาย)
+
+  bool _transferring = false;
+  bool _transferTried = false;
+
+  /// เจ้าของรับสายที่สองแล้ว (เธอกำลังบอกว่าใครโทรมา) · false = ยังดังอยู่
+  bool _transferTalking = false;
+
+  /// เธอกำลังโทรหาเจ้าของ · คนโทรถูกพักสายในเครือข่าย
+  bool get transferring => _transferring;
+  bool get transferTalking => _transferTalking;
+
+  /// เสียงที่สังเคราะห์ไว้ล่วงหน้าระหว่างรอเจ้าของรับ · [_speak] หยิบไปใช้ก่อน
+  final Map<String, Future<Utterance>> _prepared = {};
+
+  /// โอนสาย · คืนข้อความให้เธอบอกคนโทร · null = ต่อให้เจ้าของแล้ว เธอออกจากสายไปแล้ว
+  Future<String?> _transferToOwner(String name, String reason) async {
+    if (_transferring || _transferTried || !_live || !_mind || _disposed || !_state.transferReady) {
+      return _transferNote(const TransferResult(TransferOutcome.unavailable, 'not_now'));
+    }
+    _transferTried = true;
+    _transferring = true;
+    _transferTalking = false;
+    _stopHold();
+    _notify();
+    // 🔴 ประโยค "ขอไปดูก่อนนะคะ" ต้องถึงคนโทรก่อนกดโทร · กดโทร = ระบบพักสายคนโทรทันที เสียงที่ค้างคิวไปไม่ถึงเขา
+    await _drainHer();
+    final mic = _onChunk;
+    _onChunk = null;
+    final who = _state.callCharacter(live: _rt != null);
+    var result = const TransferResult(TransferOutcome.callerGone);
+    try {
+      if (_live && _mind && !_disposed && _turn != CallTurn.handedOver) {
+        final flow = TransferFlow(
+          line: NativeTransferLine(_ch),
+          say: (t) async {
+            _transferTalking = true;
+            await _speak(t);
+          },
+          listen: () => _listen(owner: true),
+          prepare: (t) => _prepared[t] = _state.speakForCall(t),
+          alive: () => _live && _mind && !_disposed && _turn != CallTurn.handedOver,
+        );
+        result = await flow.run(
+            _state.transferNumber,
+            _state.s.transferScript(
+                me: who.name,
+                male: who.male,
+                name: TransferFlow.clip(name, 40),
+                reason: TransferFlow.clip(reason, 120)));
+      }
+    } on Object catch (e) {
+      debugPrint('call: โอนสายพัง — ${e.runtimeType}');
+      result = const TransferResult(TransferOutcome.unavailable, 'failed');
+    } finally {
+      _transferring = false;
+      _transferTalking = false;
+      _prepared.clear();
+    }
+    // ไม่ลงชื่อหรือเรื่อง · log นี้ไหลเข้ารายงานดีบัคได้
+    debugPrint('call: โอนสายหาเจ้าของ · $result');
+    if (result.outcome == TransferOutcome.connected) {
+      _lines.add(CallLine.her(_state.s.transferDoneLine));
+      _handToOwner();
+      return null;
+    }
+    if (_live && _mind && !_disposed && _turn != CallTurn.handedOver) {
+      // ไมค์ของทางคุยสดกลับไปส่งเข้าเซสชันเหมือนเดิม · ทางเดิมรอบฟังถัดไปตั้งใหม่เอง
+      _onChunk = mic;
+      _turn = CallTurn.thinking;
+    }
+    _notify();
+    return _transferNote(result);
+  }
+
+  /// รอเสียงเธอที่ค้างคิวเล่นจบ (ไม่เกินแปดวิ) · คำตอบที่เรียกเครื่องมือมาพร้อมเสียงที่ยังมาไม่ครบ
+  Future<void> _drainHer() async {
+    final until = DateTime.now().add(const Duration(seconds: 8));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    while (_live && _mind && !_disposed && DateTime.now().isBefore(until)) {
+      final pending = _directMode ? await _direct.pending() : await _invoke<int>('liveAudioPending') ?? 0;
+      if (pending <= 0 && !_rtResponding) break;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  }
+
+  /// รวมสายแล้ว · เธอเงียบ ปล่อยสายเหมือนเจ้าของแทรกสาย (สายเหลือของเจ้าของ เครื่องนี้ปิดไมค์อยู่ในวง)
+  void _handToOwner() {
+    _handOverSeq++;
+    _turn = CallTurn.handedOver;
+    _mind = false;
+    _notify();
+    _endRealtime();
+    unawaited(() async {
+      if (_directMode) await _takeOverDirect();
+      await _invoke('liveAudioStop');
+      await _closeMic();
+      await _invoke('callStopSpeak');
+      await _invoke('transferDone');
+    }());
+  }
+
+  /// บอกเธอว่าโอนไม่สำเร็จเพราะอะไร และต้องทำอะไรต่อ · ภาษาอังกฤษเพราะเป็นคำสั่งให้โมเดล
+  static String _transferNote(TransferResult r) {
+    const message = 'take a clear message (name, number, what it is about, a good time to call back) and say the '
+        'owner will get back to them. Do not try to put them through again.';
+    final what = switch (r.outcome) {
+      TransferOutcome.busy => "The owner's line was busy. Thank the caller for holding, say the owner is on "
+          'another call right now, then',
+      TransferOutcome.noAnswer => 'The owner did not pick up. Thank the caller for holding, say the owner cannot '
+          'come to the phone right now, then',
+      TransferOutcome.declined => 'The owner cannot take the call right now. Thank the caller for holding and say '
+          'the owner is not available at the moment (never say they refused), then',
+      TransferOutcome.callerGone => 'The caller is no longer on the line. If they are still there,',
+      TransferOutcome.unavailable => r.detail == 'not_now'
+          ? 'You cannot put this call through. Say so kindly, then'
+          : 'The call could not be put through on this phone or network. Apologise briefly for the wait, then',
+      TransferOutcome.connected => '',
+    };
+    return jsonEncode({'transferred': false, 'result': r.outcome.name, 'note': '$what $message'});
   }
 
   Future<_RtResult> _talkRealtime({bool live = false, bool greet = true}) async {
@@ -802,7 +1051,8 @@ class CallSession extends ChangeNotifier {
 
     rt.onAudio = (pcm) {
       _rtAudioBytes += pcm.length;
-      if (!_mind || !_live) return;
+      // ระหว่างโอน สายที่คุยอยู่คือสายเจ้าของ · เสียงเธอจากเซสชันนี้ (ที่พูดกับคนโทร) ห้ามไปเข้าหูเจ้าของ
+      if (!_mind || !_live || _transferring) return;
       // Store 20 ms waveform slices. The playback queue reports how far the
       // speaker still is from these slices; the mouth follows that position.
       for (var offset = 0; offset + 1 < pcm.length; offset += 960) {
@@ -835,6 +1085,8 @@ class CallSession extends ChangeNotifier {
     rt.onResponseStart = () {
       _rtResponding = true;
       _rtGated = true;
+      // เธอกลับมาพูดกับคนโทร · เพลงหยุดป้อนทันที (ที่ส่งไปแล้วไม่เกินครึ่งวิ)
+      _holdPlay(false, 0);
     };
     rt.onResponseDone = () {
       _rtResponding = false;
@@ -875,11 +1127,15 @@ class CallSession extends ChangeNotifier {
     rt.onAlertOwner = (reason) => unawaited(_state.alertOwner(who: _who, reason: reason));
     // โทรออกแทนเจ้าของ = ถามเจ้าของกลางสายได้ · สายเข้าไม่ได้ (ดู callTools) ·
     // เจ้าของสั่ง "ห้ามถามฉัน" ก่อนโทร = ไม่มีเครื่องมือเลย prompt สอนให้รับเรื่องเอง
-    _canAskOwner = outgoing && _state.outgoingMayAskOwner;
+    _canAskOwner = _state.callMayAskOwner(outgoing: outgoing);
     if (_canAskOwner) {
       rt.onAskOwner = _askOwner;
       rt.ownerAvailable = !_ownerAway;
+      // มีเพลงให้ฟัง = คนโทรรู้ว่าสายยังอยู่ · ชวนคุยห่างขึ้น ไม่พูดทับเพลงทุกสิบวิ
+      if (_state.holdSound != HoldSound.none) rt.ownerChat = const Duration(seconds: 28);
     }
+    // โอนสายหาเจ้าของ · สายเข้า เจ้าของเปิดไว้และตั้งเบอร์แล้ว (ดู MindState.callMayTransfer)
+    if (_state.callMayTransfer(outgoing: outgoing)) rt.onTransfer = _transferToOwner;
     // โค้ดลับ · เจ้าของไม่ได้ตั้ง = null ไม่มีเครื่องมือ (ดู OwnerGate) · ตัวเดียวทั้งสาย:
     // เปลี่ยนเซสชันกลางสาย (GPT-Live → Realtime) ต้องไม่ล้างว่าบอกถูกแล้ว และไม่แจกสิทธิ์ลองใหม่
     rt.ownerGate = _gate ??= _state.ownerGateForCall(who: _who);
@@ -945,7 +1201,8 @@ class CallSession extends ChangeNotifier {
     _onChunk = (chunk, level) {
       _micLevel = level;
       // พักสายถามเจ้าของ (ทางลำโพง) = ไมค์ได้ยินเจ้าของในห้อง · ไม่ส่งให้เธอ ไม่งั้นเธอฟังเป็นคำของปลายสาย
-      if (_directMode || (!_rtGated && !_holdMuted)) rt.sendMic(chunk);
+      // · เพลงพักสายออกลำโพงอยู่ = ไมค์ได้ยินเพลง ไม่ส่งเหมือนกัน
+      if (_directMode || (!_rtGated && !_holdMuted && !_holdSpeaker)) rt.sendMic(chunk);
     };
     _turn = CallTurn.talking;
     _notify();
@@ -958,15 +1215,20 @@ class CallSession extends ChangeNotifier {
       try {
         final pending = _directMode ? await _direct.pending() : await _invoke<int>('liveAudioPending') ?? 0;
         if (ended.isCompleted || !_live || !_mind) return;
-        _herPlaying = pending > 0;
+        // เพลงพักสายอยู่คิวเดียวกับเสียงเธอ (สายตรง) · ระหว่างป้อนเพลง คิวที่เหลือไม่ใช่เสียงเธอ
+        final feed = _holdFeed;
+        final herPending = feed != null && !feed.paused ? 0 : pending;
+        _herPlaying = herPending > 0;
         if (_herPlaying) _herSpoke = true;
         final now = DateTime.now();
-        final speaking = _rtResponding || pending > 0;
+        final speaking = _rtResponding || herPending > 0;
         if (speaking) _rtOpenAt = now.add(_echoTail);
         _rtGated = speaking || now.isBefore(_rtOpenAt);
         // รอเจ้าของตอบ = ปิดไมค์ของสายไว้ · เปิดเฉพาะตอนเธอพูดกับปลายสาย (ทางลำโพงเสียงเธอขึ้นสายผ่านไมค์นี้)
         // เจ้าของ: "เธอจะถามเราต้อง Mute เสียง ไมค์ไม่ให้ปลายสายได้ยิน"
-        _setHold(_ownerAnswer != null && !_ownerAway && !_rtGated && _turn != CallTurn.handedOver);
+        final waiting = _ownerAnswer != null && !_ownerAway && _turn != CallTurn.handedOver && !_transferring;
+        _holdPlay(waiting && !_rtGated, pending);
+        _setHold(waiting && !_rtGated && !_holdSpeaker);
 
         // เธอลาแล้ว เสียงจบ และคู่สายเงียบครบสามวินาที · กันไว้ห้าวินาทีแรก (โมเดลเรียกพลาดตอนทัก)
         final leave = _leaving.due(
@@ -974,7 +1236,7 @@ class CallSession extends ChangeNotifier {
           age: now.difference(started),
           herVoice: speaking,
           callerTalking: rt.callerTalking,
-          held: _ownerAnswer != null,
+          held: _ownerAnswer != null || _transferring,
         );
         if (leave && _turn != CallTurn.handedOver) {
           debugPrint('call: เสียงลาจบแล้ว คู่สายเงียบ เธอวางสาย');
@@ -982,7 +1244,7 @@ class CallSession extends ChangeNotifier {
           return;
         }
 
-        final audible = pending > 0;
+        final audible = herPending > 0;
         if (audible != _rtLips) {
           _rtLips = audible;
           unawaited(_lips?.setBabble(audible));
@@ -1013,6 +1275,7 @@ class CallSession extends ChangeNotifier {
     await ended.future;
     tick.cancel();
     _setHold(false);
+    _stopHold();
     for (final t in wrapUp) {
       t.cancel();
     }
@@ -1187,6 +1450,25 @@ class CallSession extends ChangeNotifier {
         _alertedOwner = true;
         unawaited(_state.alertOwner(who: _who, reason: c.urgent!));
       }
+      // ขอโอนสาย (ทางเดิม · แท็ก) · ไม่ได้เปิดไว้ = ไม่สนแท็ก เธอคุยต่อตามปกติ
+      final ask = c.transfer;
+      if (ask != null && _state.callMayTransfer(outgoing: outgoing) && _live && _mind) {
+        final note = await _transferToOwner(ask.name, ask.reason);
+        if (note == null || !_live || !_mind || _disposed) break;
+        _turn = CallTurn.thinking;
+        _notify();
+        // เธอกลับมาบอกคนโทรตามผล · ข้อความผลเข้า prompt คำตอบนี้คำตอบเดียว ไม่ลงบทสนทนา
+        final back = CallTags.parse(await _state.replyOnCall([
+          for (final l in _lines) (fromHer: l.fromHer, text: l.text),
+        ], outgoing: outgoing, contact: _contact, note: 'Result of putting the call through to the owner: $note'));
+        if (!_live || !_mind || _disposed) break;
+        if (back.text.isNotEmpty) {
+          _lines.add(CallLine.her(back.text));
+          _notify();
+          await _speak(back.text);
+        }
+        continue;
+      }
       final age = DateTime.now().difference(_startedAt ?? DateTime.now());
       leaving = (c.hangUp || CallGoodbye.says(c.text)) && age > CallHangUp.guard;
     }
@@ -1232,7 +1514,7 @@ class CallSession extends ChangeNotifier {
     // ไมค์ต้องปิดตอนเธอพูด ไม่งั้นจะได้ยินเสียงตัวเองกลับเข้ามาเป็นคำถาม
     await _stopListening();
 
-    final utterance = await _state.speakForCall(text);
+    final utterance = await (_prepared.remove(text) ?? _state.speakForCall(text));
 
     // ปากของเธอบนเวทีอ่านคลื่นจากไฟล์เดียวกันนี้ (เล่นแบบปิดเสียง) · เตรียม
     // ก่อนเช็กซ้ำ เพราะการถอดไฟล์ฝั่งเวทีกินเวลาเหมือนกัน
@@ -1252,13 +1534,17 @@ class CallSession extends ChangeNotifier {
 
     final file = await _writeTemp(utterance.bytes, _extFor(utterance.mime));
 
+    if (_directMode && _directFailed) await _toSpeaker();
+    // สายตรงรับแต่ PCM · ถอดก่อนปล่อยปาก ไม่งั้นปากออกตัวก่อนเสียงเท่าเวลาที่ถอด
+    final pcm = _directMode ? await _decodeForDirect(file.path) : null;
+
     // ปล่อยปากพร้อมสั่งเล่น ไม่รอ · รอ = ปากออกตัวทีหลังเสียงเสมอ
     if (lipsReady) unawaited(lips.startLips(lead: lipLead));
     _herPlaying = true;
     _herSpoke = true;
-    final ok = await _invoke<bool>('callSpeak', {
-      'path': file.path,
-    });
+    final ok = _directMode
+        ? pcm != null && await _playDirect(pcm)
+        : await _invoke<bool>('callSpeak', {'path': file.path});
     _herPlaying = false;
     // ปิดปากทุกครั้ง ทั้งจบปกติ ถูกแทรกสาย และวางสาย · ไม่ปิด = ปากค้าง
     // พึมพำต่อ (กรณีเตรียมไม่สำเร็จ) ทั้งที่เธอเงียบไปแล้ว
@@ -1284,6 +1570,40 @@ class CallSession extends ChangeNotifier {
   }
 
   static String _extFor(String mime) => mime.contains('wav') ? 'wav' : 'mp3';
+
+  /// อัตราที่ตัวช่วยต่อสายตรงเล่นเข้าสาย · ตรงกับ `ShellAudio.RATE`
+  static const _directRate = 24000;
+
+  /// ไฟล์เสียงของเจ้าไหนก็ได้ (mp3 · wav) → PCM 24 kHz ช่องเดียว · null = ถอดไม่ได้ (ดู PcmDecoder.kt)
+  Future<Uint8List?> _decodeForDirect(String path) =>
+      _invoke<Uint8List>('decodePcm', {'path': path, 'rate': _directRate});
+
+  /// ส่งเสียงเธอเข้าสายตรง แล้วรอจนเล่นหมดจริง · false = ตัวช่วยหลุดระหว่างทาง / ไม่มีเสียง
+  ///
+  /// ตัวช่วยรับล่วงหน้าไม่เกินสองวินาที (ที่เหลือรอคิวตามจังหวะสาย) · [DirectAudio.write] จึงกลับมา
+  /// ตอนยังเหลือเสียงราวสองวินาที · ต้องรอคิวหมดก่อนคืน ไม่งั้นเธอเริ่มฟังตั้งแต่ยังพูดไม่จบ
+  /// แล้วตัดคำพูดของคู่สายที่ตอบเร็วเป็นสองเทิร์น
+  Future<bool> _playDirect(Uint8List pcm) async {
+    if (pcm.isEmpty) return false;
+    await _direct.write(withHeadroom(pcm));
+    // เพดาน = ความยาวเสียง + เผื่อ · ตัวช่วยที่ค้างต้องไม่ทำให้เทิร์นค้างทั้งสาย
+    final until = DateTime.now()
+        .add(Duration(milliseconds: pcm.length * 1000 ~/ (_directRate * 2) + 3000));
+    while (_direct.active && _live && _mind && !_disposed && DateTime.now().isBefore(until)) {
+      if (await _direct.pending() <= 0) break;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return _direct.active;
+  }
+
+  /// ตัวช่วยต่อสายตรงหลุดกลางสาย · กลับไปทางลำโพงกับไมค์ ซึ่งเป็นทางเดียวที่เหลือ
+  Future<void> _toSpeaker() async {
+    await _stopDirect();
+    await _invoke('callSpeakerOn');
+    await _openMic();
+    _audioPath = 'speaker';
+    _mute = false;
+  }
 
   Future<File> _writeTemp(Uint8List bytes, String ext) async {
     final dir = await getTemporaryDirectory();
@@ -1419,16 +1739,22 @@ class CallSession extends ChangeNotifier {
   }
 
   /// [patience] = รอเสียงแรกนานเท่านี้แทนค่าปกติ · ใช้ตอนเธอลาแล้ว
-  Future<String?> _listen({Duration? patience}) async {
-    if (!await _openMic()) {
+  ///
+  /// [owner] = ฟังเจ้าของในสายที่สอง (โอนสาย) · ไม่นับรอบ ไม่ตัดสินว่าเครื่องหูหนวก · ถอดไม่ได้ = ไม่ได้ยิน
+  Future<String?> _listen({Duration? patience, bool owner = false}) async {
+    if (owner) patience ??= const Duration(seconds: 6);
+    if (_directMode && _directFailed) await _toSpeaker();
+    // 🔴 สายตรง = เสียงคู่สายมาจากตัวช่วย ([_startDirect] ส่งเข้า [_onChunk]) · เปิดไมค์ด้วย =
+    // ก้อนจากสองทางสลับกันเข้าเทิร์นเดียว (ไมค์ที่ถูกปิดเงียบส่งศูนย์มาแทรก) ประโยคแหว่ง
+    if (!_directMode && !await _openMic()) {
       // ไม่มีไมค์ก็ยังต้องรอครบ · คู่สายอาจยังพูดอยู่ แค่เราไม่ได้ยิน
       if (patience != null) await Future<void>.delayed(patience);
-      _markDeaf();
+      if (!owner) _markDeaf();
       return null;
     }
 
     _turn = CallTurn.listening;
-    _rounds++;
+    if (!owner) _rounds++;
     _notify();
 
     final pcm = BytesBuilder(copy: false);
@@ -1495,16 +1821,20 @@ class CallSession extends ChangeNotifier {
     // เครื่องที่ไม่ให้อัดระหว่างสายคืนไฟล์ครบ ขนาดถูกต้อง แต่ทุกตัวอย่าง
     // เป็นศูนย์ · ถ้าดูแต่ผลถอดเสียง จะแยกไม่ออกจาก "ปลายสายไม่ได้พูด"
     // แล้วเราจะยิงค่าใช้จ่ายการถอดเสียงทิ้งไปเรื่อย ๆ โดยไม่มีวันได้อะไร
-    if (peak < _floorMin) {
-      _silentRounds++;
-      if (_silentRounds >= _deafAfter) _markDeaf();
-      _notify();
-      return null;
-    }
-    _silentRounds = 0;
+    if (owner) {
+      if (!speechStarted || peak < _floorMin) return null;
+    } else {
+      if (peak < _floorMin) {
+        _silentRounds++;
+        if (_silentRounds >= _deafAfter) _markDeaf();
+        _notify();
+        return null;
+      }
+      _silentRounds = 0;
 
-    if (!speechStarted) return null;
-    _heardRounds++;
+      if (!speechStarted) return null;
+      _heardRounds++;
+    }
 
     final bytes = pcm.takeBytes();
     if (bytes.length < _bytesPerSecond ~/ 3) return null; // สั้นกว่า 0.3 วิ
@@ -1513,6 +1843,8 @@ class CallSession extends ChangeNotifier {
       final text = await _state.transcribeCall(wavOf(bytes));
       return text.isEmpty ? null : text;
     } on OpenAiFailure catch (e) {
+      // เจ้าของในสายที่สอง · ถอดไม่ได้ = ฟังไม่ชัด ถามซ้ำแล้วต่อสายให้ (ดู TransferFlow) ไม่ตัดสินเรื่องเครื่องทั้งสาย
+      if (owner) return null;
       _error = e.message;
       // เน็ตหลุด ≠ เครื่องไม่ให้ฟัง · [_markDeaf] จะเขียนทับเป็นคำแนะนำการช่วยเหลือพิเศษที่ผิดเรื่อง
       if (e.offline) {
@@ -1546,7 +1878,8 @@ class CallSession extends ChangeNotifier {
     _micLevel = 0;
     // 🔴 สาเหตุที่พบบ่อยที่สุดบอกได้ตรง ๆ · Android 10+ ให้ความเงียบกับแอปที่อัด
     // ระหว่างสาย เว้นแต่เปิดบริการการช่วยเหลือพิเศษ (android MindAccessibility.kt)
-    if (!_perms.of(MindPermission.accessibility)) _error = _state.s.callNeedsA11y;
+    // สายตรงไม่ผ่านไมค์ · เงียบตรงนั้นคือคู่สายไม่พูด ไม่ใช่เรื่องการช่วยเหลือพิเศษ
+    if (!_directMode && !_perms.of(MindPermission.accessibility)) _error = _state.s.callNeedsA11y;
     _notify();
   }
 

@@ -14,6 +14,7 @@ import 'brain_voice_frames.dart';
 import 'call_character_panel.dart';
 import '../i18n/enum_labels.dart';
 import '../i18n/strings.dart';
+import '../i18n/strings_hold.dart';
 import '../i18n/strings_ai.dart';
 import '../ai/device_capability.dart';
 import '../ai/local_brain.dart';
@@ -27,6 +28,7 @@ import '../ai/voice_profile.dart';
 import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
 import '../background/mind_watch.dart';
+import 'call_hold_panel.dart';
 import 'call_knowledge_panel.dart';
 import 'call_lessons_panel.dart';
 import 'call_personality_panel.dart';
@@ -402,6 +404,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             _liveTalkCard(state, mode),
             // เจ้าของ: "เราต้องการให้เธอรู้เรื่องที่เราเปิดไว้ให้ไปดึงมาตอบได้ ทำหน้าตั้งค่านั้นให้ดี"
             _card(mode: mode, label: t.kbCard, child: CallKnowledgePanel(accent: mode.accent)),
+            // เจ้าของ: "แก้เรื่องให้เธอ พักสายได้ เพื่อถามเรา ... มายด์สามารถโอนสาย ได้ ตั้งเบอร์ที่โอนสายได้"
+            _card(mode: mode, label: t.holdCardTitle, child: CallHoldPanel(accent: mode.accent)),
             _card(mode: mode, label: t.cpCard, child: CallPersonalityPanel(accent: mode.accent)),
             // เจ้าของ: "ยิ่งคุย ยิ่งเจอ ยิ่งสั่ง ก็ยิ่งเก่ง" · "หลอกถามให้พูดไม่ได้ ยกเว้น คนมีโค๊ดลับ"
             _card(mode: mode, label: t.clCard, child: CallLessonsPanel(accent: mode.accent)),

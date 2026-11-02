@@ -208,12 +208,15 @@ void main() {
       expect(p, isNot(contains('[[')), reason: 'แท็กในโหมดสดจะถูกอ่านออกเสียง');
     });
 
-    test('ทางเดิม (ไม่มีเครื่องมือ) ไม่สัญญาว่าจะถามเจ้าของกลางสาย · สายเข้าไม่มี ask_owner', () async {
+    test('ทางเดิม (ไม่มีเครื่องมือ) ไม่สัญญาว่าจะถามเจ้าของกลางสาย · สายเข้าที่เจ้าของปิดการพักสายถาม ไม่มี ask_owner', () async {
       final s = await loaded();
       s.debugSetOutgoing((who: 'ร้าน', number: '02', task: 'จอง'));
       expect(s.callPrompt(outgoing: true), isNot(contains('ask_owner')));
       expect(s.callPrompt(outgoing: true), contains('จะเช็กกับเจ้านายแล้วติดต่อกลับ'));
       s.debugSetOutgoing(null);
+      expect(s.callPrompt(), isNot(contains('ask_owner')), reason: 'ทางเดิมของสายเข้าไม่มีเครื่องมือ');
+      // เจ้าของ (2026-11-02): "แก้เรื่องให้เธอ พักสายได้ เพื่อถามเรา" · สายเข้าถามได้เมื่อเปิดไว้ (ดู call_hold_transfer_test)
+      s.setIncomingAskOwner(false);
       expect(s.callPrompt(live: true), isNot(contains('ask_owner')));
     });
 

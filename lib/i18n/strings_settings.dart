@@ -47,8 +47,9 @@ extension SettingsStrings on S {
       'Ready · $sources of your sources${scopes > 0 ? ' · $scopes BrainX folders' : ''} · she looks it up before answering');
   String get kbEmpty => pick('ยังว่าง · คนโทรถามราคา บริการ เวลาเปิด เธอจะบอกว่าไม่ทราบแล้วรับเรื่องไว้',
       'Empty · asked about prices, services or hours, she says she does not know and takes a message');
-  String get kbNeedsLive => pick('ใช้ได้ตอนคุยสด (สมอง OpenAI ด้วยคีย์ของคุณ + เปิดคุยสดในสาย)',
-      'Works on live calls only (OpenAI brain with your own key + live calls on)');
+  String get kbNeedsLive => pick(
+      'ไม่ได้คุยสด: เธอค้นจากคำล่าสุดของคนโทรให้เองก่อนตอบ · คุยสด (เปิดคุยสดในสาย) ค้นได้ตรงกว่า',
+      "Without live talk she searches the caller's latest words before each answer · live calls search more precisely");
   String get kbMine => pick('ข้อมูลของคุณ', 'Your information');
   String get kbAddLink => pick('ลิงก์เว็บ', 'Web link');
   String get kbAddFile => pick('ไฟล์', 'File');

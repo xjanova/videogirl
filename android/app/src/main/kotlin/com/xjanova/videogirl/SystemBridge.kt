@@ -117,6 +117,14 @@ class SystemBridge(context: Context) {
                 call.argument<String>("stream"),
                 result
             )
+            // ทางต่อสายตรงรับแต่ PCM · ไฟล์เสียงเธอถอดก่อนส่ง (ดู PcmDecoder) · ถอดนอกเธรดหลัก
+            "decodePcm" -> {
+                val path = call.argument<String>("path")
+                val rate = call.argument<Int>("rate") ?: 24000
+                val maxMs = call.argument<Int>("maxMs") ?: 0
+                if (path.isNullOrEmpty()) result.success(null)
+                else offMain(result) { PcmDecoder.decode(path, rate, maxMs) }
+            }
             "mediaVolume" -> result.success(mediaVolume())
             "callStopSpeak" -> {
                 CallAudio.stop()
@@ -168,6 +176,28 @@ class SystemBridge(context: Context) {
             )
             // ซิมที่โทรออกได้ · ให้เลือกในกล่องยืนยัน
             "callSims" -> result.success(SimInfo.choices(context))
+            // ── โอนสายคนโทรไปหาเจ้าของอีกเบอร์ · ดู [CallTransfer] ──
+            // คืน null = กดโทรหาเจ้าของแล้ว · สตริง = เหตุผลที่โทรไม่ได้
+            "transferStart" -> result.success(CallTransfer.start(context, call.argument<String>("number") ?: ""))
+            "transferStatus" -> result.success(if (CallTransfer.active) CallTransfer.status() else null)
+            "transferConnect" -> result.success(CallTransfer.connect(call.argument<Boolean>("retry") == true))
+            "transferCancel" -> {
+                CallTransfer.cancel()
+                result.success(true)
+            }
+            "transferUnhold" -> {
+                CallTransfer.unholdCaller()
+                result.success(true)
+            }
+            "transferDone" -> {
+                CallTransfer.done(context)
+                result.success(true)
+            }
+            // เลิกถือสายคนโทร (กลับมาคุยแล้ว) · สายเจ้าของยังไม่หายไป = รอหายก่อนค่อยล้าง
+            "transferEnd" -> {
+                CallTransfer.finish()
+                result.success(true)
+            }
             // มีกล่องรอเจ้าของแตะตอนแอปอยู่หลังบ้าน · ดู [ComeBack]
             "comeBack" -> {
                 ComeBack.now(context, call.argument<String>("title").orEmpty(), call.argument<String>("body").orEmpty())
