@@ -63,6 +63,12 @@ class _HomeScreenState extends State<HomeScreen>
   /// ลายเซ็นของสิ่งที่อยู่ในแผงรอบที่แล้ว — เปลี่ยนเมื่อไหร่ค่อยเลื่อน
   /// เลื่อนทุก build = กระชากมือคนที่กำลังเลื่อนอ่านย้อนอยู่
   String _logMark = '';
+
+  /// คนอ่านอยู่ที่ท้ายบทสนทนาไหม — ถ้าใช่ แผงที่โตหรือฟองที่ขยายต้องลากตามไปด้วย
+  ///
+  /// 🔴 [_pinLogIfNew] เลื่อนครั้งเดียวหลังเฟรมแรก แต่ฟองใหม่กับแผงที่เพิ่งกาง
+  /// ยังโตต่ออีกหลายเฟรม (SizeTransition) · ข้อความล่าสุดจึงโดนขอบแผงตัดครึ่ง
+  bool _logStick = true;
   late final AnimationController _ring;
 
   /// ไมค์ของช่องแชท — เกิดที่นี่เพราะมันมีอายุเท่าหน้าจอนี้
@@ -757,10 +763,30 @@ class _HomeScreenState extends State<HomeScreen>
   void _pinLogIfNew(String mark) {
     if (mark == _logMark) return;
     _logMark = mark;
+    _logStick = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_log.hasClients) return;
       _log.jumpTo(_log.position.maxScrollExtent);
     });
+  }
+
+  /// ความสูงของบทสนทนาหรือของแผงเปลี่ยน · คนเลื่อนอ่านเอง
+  ///
+  /// [ScrollMetricsNotification] มาหลังเฟรม จึงเลื่อนตรงนี้ได้เลย
+  /// · คนเลื่อนอ่านย้อน = ไม่ได้ทิ้งแผง ต้องนับเวลาพับใหม่ ไม่งั้นแผงหุบใส่มือ
+  bool _onLogNote(Notification n, MindState state) {
+    if (n is ScrollMetricsNotification) {
+      final p = n.metrics;
+      if (_logStick && _log.hasClients && p.pixels < p.maxScrollExtent) {
+        _log.jumpTo(p.maxScrollExtent);
+      }
+    } else if (n is UserScrollNotification) {
+      state.openChat();
+    } else if (n is ScrollEndNotification) {
+      final p = n.metrics;
+      _logStick = p.pixels >= p.maxScrollExtent - 24;
+    }
+    return false;
   }
 
   /// ส่วนของจอที่แผงแชทกินได้มากที่สุด
@@ -829,7 +855,9 @@ class _HomeScreenState extends State<HomeScreen>
           // สองอย่างนี้ต้องแยกกัน ไม่งั้นข้อความยาว ๆ จะดันช่องพิมพ์
           // ตกขอบจอไป แล้วคนจะพิมพ์ตอบไม่ได้ทั้งที่แผงยังเปิดอยู่
           Flexible(
-            child: SingleChildScrollView(
+            child: NotificationListener<Notification>(
+              onNotification: (n) => _onLogNote(n, state),
+              child: SingleChildScrollView(
               controller: _log,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -872,6 +900,7 @@ class _HomeScreenState extends State<HomeScreen>
                   _proposal(mode),
                 ],
               ),
+            ),
             ),
           ),
 
