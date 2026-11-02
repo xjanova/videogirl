@@ -1,6 +1,6 @@
 /// สิ่งที่คุยสดในสายทุกแบบมีเหมือนกัน · [CallSession] รู้จักแค่ชั้นนี้
 ///
-/// สองแบบคือ RealtimeCall (OpenAI Realtime) กับ LiveCall (GPT-Live) · โปรโตคอลต่างกันทั้งชุด
+/// สามแบบคือ RealtimeCall (OpenAI Realtime) · LiveCall (GPT-Live) · GeminiLiveCall (Gemini Live) · โปรโตคอลต่างกันทั้งชุด
 /// แต่เครื่องมือในสาย การกันหลุดภาษา และข้อความที่ส่งออกไปต้องเหมือนกันทุกตัวอักษร
 /// ไม่งั้นเปลี่ยนรุ่นแล้วเธอจะวางสายไม่เป็นหรือเลิกค้นข้อมูลโดยไม่มีใครรู้
 library;
@@ -38,6 +38,12 @@ typedef RtConnect = Future<RtSocket> Function(Uri url, Map<String, String> heade
 Future<RtSocket> rtConnectIo(Uri url, Map<String, String> headers) async =>
     _IoSocket(await WebSocket.connect(url.toString(), headers: headers)
         .timeout(const Duration(seconds: 10)));
+
+/// รหัสปิดท่อจากเซิร์ฟเวอร์ (เช่น ` 1007`) · ลงรายงานแยก "คีย์ผิด" ออกจาก "setup ผิด" · ท่อปลอม = ว่าง
+String rtCloseCode(RtSocket s) => s is _IoSocket && s._ws.closeCode != null ? ' ${s._ws.closeCode}' : '';
+
+/// เจ้าที่คุยสดในสาย · ตามสมอง ไม่ยืมคีย์ข้ามสมอง (ดู MindState.callLiveEngine)
+enum CallLiveEngine { openai, gemini }
 
 /// ค้นข้อมูลที่เจ้าของเปิดให้คนโทรรู้ (MindState.callLookup)
 typedef CallLookup = Future<List<({String title, String text})>> Function(String query);
@@ -654,6 +660,11 @@ abstract class VoiceSession {
 
   /// ค้นนานกว่านี้ = เธอพูดอะไรสักอย่าง ไม่เงียบใส่คนโทร
   static const lookupChatAfter = Duration(milliseconds: 2000);
+
+  static const lookupWaitLine = 'You are still looking this up and the result is not back yet. Keep the caller company '
+      'in ONE short, warm sentence, like a real person on the phone: say you are still checking, and if their question '
+      'was broad, ask one short detail that would help (which product, which branch, which day). Do not answer the '
+      'question itself yet and do not repeat what you said a moment ago.';
 
   /// ค้นแล้วส่งผลกลับเข้าสาย · ช้า/พลาด = ตอบว่าไม่เจอ (เงียบรอในสายนานไม่ได้)
   Future<void> _lookup(Object? callId, String query) async {

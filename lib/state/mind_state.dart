@@ -63,6 +63,7 @@ import '../hands/phone_agent.dart';
 import '../hands/phone_macro.dart';
 import '../hands/phone_task.dart';
 import '../i18n/strings_hands.dart';
+import '../phone/gemini_live_call.dart';
 import '../phone/live_call.dart';
 import '../phone/realtime_call.dart';
 import '../brainx/brainx_cloud.dart';
@@ -2842,9 +2843,12 @@ class MindState extends ChangeNotifier {
   CallCharacter _maiDefault() =>
       CallCharacter(id: CallCharacter.maiId, name: MindPersona.callName(_lang));
 
-  /// เจ้าเสียงที่คนปลายสายได้ยินจริง · คุยสดพูดด้วยเสียง OpenAI เสมอ
-  TtsEngine callVoiceEngine({bool live = false}) =>
-      live ? TtsEngine.openai : voiceFor(VoiceChannel.answer).engine;
+  /// เจ้าเสียงที่คนปลายสายได้ยินจริง · คุยสดพูดด้วยเสียงของเจ้าคุยสด (OpenAI / Gemini) เสมอ
+  TtsEngine callVoiceEngine({bool live = false}) => !live
+      ? voiceFor(VoiceChannel.answer).engine
+      : callLiveEngine == CallLiveEngine.gemini
+          ? TtsEngine.gemini
+          : TtsEngine.openai;
 
   /// ตัวละครที่ใช้ในสายตอนนี้
   CallCharacter callCharacter({bool live = false, bool outgoing = false}) =>
@@ -3261,10 +3265,11 @@ class MindState extends ChangeNotifier {
   Future<Utterance> speakForCall(String text) =>
       synthesizeWithFallback(text, voiceFor(VoiceChannel.answer));
 
-  // ═══ คุยสดในสาย (OpenAI Realtime) ═════════════════════════
+  // ═══ คุยสดในสาย (OpenAI Realtime · Gemini Live) ═══════════════
   //
   // เจ้าของ: "ต้องทำ real time พูดคุยเลย ถ้าตั้งค่าเป็น open ai" · ใช้เมื่อสมองเป็น
   // OpenAI ด้วยคีย์ของเจ้าของ · ต่อไม่ได้ = ตกไปทางเดิม (ฟัง → ถอด → คิด → พูด)
+  // เจ้าของ (2026-11-02): "คุยสดในสายใช้ได้แค่ OpenAI หรือ" · สมอง Gemini คุยสดด้วย Gemini Live
 
   /// เปิดเป็นค่าตั้งต้น · ปิดได้ (Realtime คิดเงินตามเสียง แพงกว่าทางเดิม)
   bool _realtimeCalls = true;
@@ -3277,9 +3282,33 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
-  /// สายนี้คุยสดได้ไหม · ไม่ใช่ OpenAI ด้วยคีย์ตัวเอง = ไม่ได้ (ไม่ยืมคีย์ข้ามสมอง)
-  bool get realtimeCallsReady =>
-      _realtimeCalls && _brain == BrainProvider.openai && hasOwnKey;
+  /// เจ้าที่คุยสดในสายได้ตอนนี้ · ตามสมอง ไม่ยืมคีย์ข้ามสมอง (คุยสดคือสมองของสายนั้นเอง ·
+  /// เลือก Claude แล้วสายคิดด้วย Gemini = เจ้าของไม่ได้เลือก) · null = ไม่มี ใช้ทางผลัดกันพูด
+  ///
+  /// Grok มีคุยสดแบบเดียวกับ Realtime แต่ภาษาไทยไม่อยู่ในรายการที่รองรับ (ตรวจ 2026-11-02) · Claude ไม่มี
+  CallLiveEngine? get callLiveEngine => switch (_brain) {
+        BrainProvider.openai when hasOwnKey => CallLiveEngine.openai,
+        BrainProvider.gemini when _geminiKey.isNotEmpty => CallLiveEngine.gemini,
+        _ => null,
+      };
+
+  /// สายนี้คุยสดได้ไหม · สมองไม่มีคุยสด ไม่มีคีย์ของเจ้าของเอง หรือเสียงรับสายเป็นเสียงที่คุยสดพูดไม่ได้ = ไม่ได้
+  bool get realtimeCallsReady => _realtimeCalls && callLiveEngine != null && answerVoiceLive;
+
+  /// เสียงรับสายที่เลือกไว้ คุยสดพูดได้ไหม · ไม่ได้ = สายผลัดกันพูดด้วยเสียงนั้น
+  ///
+  /// เจ้าของ (2026-11-02) เลือกเอง: "เลือกเสียงอื่น = ผลัดกันพูด" · ของเดิมข้ามเสียงที่เลือก (ElevenLabs ·
+  /// Azure · Gemini ตอนสมองเป็น OpenAI) เงียบ ๆ แล้วพูดด้วย marin · คนโทรต้องได้ยินเสียงที่เลือกเสมอ ·
+  /// เสียงเครื่อง = ค่าตั้งต้นที่ยังไม่ได้เลือกเสียงจริง · คุยสดใช้เสียงของตัวเอง (หน้าเสียงบอกไว้)
+  bool get answerVoiceLive {
+    final a = voiceFor(VoiceChannel.answer);
+    return switch (callLiveEngine) {
+      null => false,
+      _ when a.engine == TtsEngine.device => true,
+      CallLiveEngine.openai => a.engine == TtsEngine.openai && RealtimeCall.voices.contains(a.voice),
+      CallLiveEngine.gemini => a.engine == TtsEngine.gemini && GeminiLiveCall.voices.contains(a.voice),
+    };
+  }
 
   /// คุยด้วย GPT-Live แทน Realtime · ปิดเป็นค่าตั้งต้น เพราะ OpenAI ยังไม่ระบุว่ารองรับภาษาไทย
   /// และคิดเงินตามนาทีตลอดสาย · เจ้าของเปิดเองเมื่ออยากลอง ใช้ได้ก็ต่อเมื่อคุยสดเปิดอยู่
@@ -3293,12 +3322,28 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
-  /// ต้องต่อสายตรงอยู่ด้วย · ผู้เรียกเช็กเอง ([CallSession] รู้ทางเสียงของสายนั้น)
-  bool get callLiveReady => _liveCalls && realtimeCallsReady;
+  /// ต้องต่อสายตรงอยู่ด้วย · ผู้เรียกเช็กเอง ([CallSession] รู้ทางเสียงของสายนั้น) · GPT-Live เป็นของ OpenAI ·
+  /// เสียงที่เลือกไม่อยู่ในชุดของ GPT-Live = ใช้ Realtime ที่พูดเสียงนั้นได้ (ดู [answerVoiceLive])
+  bool get callLiveReady {
+    if (!_liveCalls || !realtimeCallsReady || callLiveEngine != CallLiveEngine.openai) return false;
+    final a = voiceFor(VoiceChannel.answer);
+    return a.engine == TtsEngine.device || LiveCall.voices.contains(a.voice);
+  }
 
-  /// เสียงที่ได้ยินจริงตอนคุยสดในสาย · เสียงที่รุ่นนั้นไม่รู้จักกลายเป็น marin (ดู [RealtimeCall] · [LiveCall])
+  /// ชื่อที่เจ้าของเห็นของสิ่งที่คุยสดในสาย
+  String get callLiveName => callLiveEngine == CallLiveEngine.gemini
+      ? 'Gemini Live'
+      : callLiveReady
+          ? 'GPT-Live'
+          : 'OpenAI Realtime';
+
+  /// เสียงที่ได้ยินจริงตอนคุยสดในสาย · เสียงที่รุ่นนั้นไม่รู้จักกลายเป็นเสียงตั้งต้นของรุ่นนั้น
+  /// (ดู [RealtimeCall] · [LiveCall] · [GeminiLiveCall])
   String get callLiveVoice {
     final v = voiceFor(VoiceChannel.answer).voice;
+    if (callLiveEngine == CallLiveEngine.gemini) {
+      return GeminiLiveCall.voices.contains(v) ? v : GeminiLiveCall.defaultVoice;
+    }
     return (callLiveReady ? LiveCall.voices : RealtimeCall.voices).contains(v) ? v : 'marin';
   }
 
@@ -3330,6 +3375,23 @@ class MindState extends ChangeNotifier {
       lookup: _lookupForCall,
       connect: debugRealtimeConnect,
     )..onSttFallback = _noteSttFallback;
+  }
+
+  /// เซสชัน Gemini Live ของสายนี้ · prompt เดียวกับ Realtime ทุกตัวอักษร (ไม่มีข้อมูลส่วนตัว — [callPrompt])
+  ///
+  /// [greet] = false เมื่อเปิดเซสชันใหม่กลางสาย (เซสชันเดิมหลุดแล้วต่อต่อไม่ได้)
+  GeminiLiveCall openGeminiLiveCall({bool outgoing = false, bool greet = true, String? contact}) {
+    unawaited(callKnowledge.warm());
+    return GeminiLiveCall(
+      apiKey: _geminiKey,
+      instructions: callPrompt(live: true, outgoing: outgoing, contact: contact),
+      greeting: outgoing || !greet ? '' : callGreeting(live: true),
+      // เสียงที่ตั้งไว้ให้ "ตอบรับสาย" · ไม่ใช่เสียงที่ Gemini รู้จัก = เสียงตั้งต้นของ Gemini
+      voice: callLiveVoice,
+      languageReminder: MindPersona.callLanguageReminder(_lang),
+      lookup: _lookupForCall,
+      connect: debugRealtimeConnect,
+    );
   }
 
   /// เซสชัน GPT-Live ของสายนี้ · prompt เดียวกับ Realtime ทุกตัวอักษร (ไม่มีข้อมูลส่วนตัว — [callPrompt])
