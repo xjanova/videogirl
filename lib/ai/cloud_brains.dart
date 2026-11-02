@@ -9,6 +9,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:http/http.dart' as http;
@@ -314,13 +315,26 @@ class ClaudeClient extends OpenAiClient {
   bool get usable => currentKey.isNotEmpty;
 
   @override
-  Future<String> reply({required String system, required List<Turn> history, String? model}) async {
+  Future<String> reply({required String system, required List<Turn> history, String? model}) =>
+      _send(system: system, history: history, model: model);
+
+  @override
+  Future<String> see({
+    required String system,
+    required List<Turn> history,
+    required Uint8List image,
+    String? model,
+  }) =>
+      _send(system: system, history: history, model: model, image: image);
+
+  Future<String> _send({required String system, required List<Turn> history, String? model, Uint8List? image}) async {
     final key = currentKey;
     if (key.isEmpty) throw OpenAiFailure(strings.errNoKey);
     final body = buildBody(
       system: system,
       history: history,
       model: model ?? CloudBrains.defaultModel(BrainProvider.claude),
+      image: image,
     );
 
     final http.Response res;
@@ -352,13 +366,16 @@ class ClaudeClient extends OpenAiClient {
   /// 🔴 Messages API บังคับให้ข้อความแรกเป็น user และสลับ user/assistant
   /// · ประวัติของแอปอาจขึ้นต้นด้วยคำทักของเธอ หรือมีฝั่งเดียวกันติดกัน
   /// → รวมข้อความฝั่งเดียวกันที่ติดกัน และตัดของเธอที่นำหน้าทิ้ง
+  ///
+  /// [image] = JPEG แนบกับข้อความสุดท้ายของเจ้าของ (บล็อก `image` แบบ base64 นำหน้าข้อความ)
   @visibleForTesting
   static Map<String, Object> buildBody({
     required String system,
     required List<Turn> history,
     required String model,
+    Uint8List? image,
   }) {
-    final msgs = <Map<String, String>>[];
+    final msgs = <Map<String, Object>>[];
     for (final t in history) {
       final role = t.fromHer ? 'assistant' : 'user';
       final text = t.text.trim();
@@ -371,6 +388,19 @@ class ClaudeClient extends OpenAiClient {
       }
     }
     if (msgs.isEmpty) msgs.add({'role': 'user', 'content': '…'});
+    if (image != null) {
+      final last = msgs.lastIndexWhere((m) => m['role'] == 'user');
+      msgs[last] = {
+        'role': 'user',
+        'content': [
+          {
+            'type': 'image',
+            'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': base64Encode(image)},
+          },
+          {'type': 'text', 'text': msgs[last]['content']!},
+        ],
+      };
+    }
     return {
       'model': model,
       // เพดานรวมการคิดภายใน · รุ่นที่คิดตลอด (Opus / Fable) ต้องมีที่ให้คิดก่อนตอบ

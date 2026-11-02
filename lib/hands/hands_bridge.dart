@@ -116,6 +116,22 @@ class PhoneScreen {
     }
     return null;
   }
+
+  /// ชิ้นที่เล็กที่สุดที่ครอบจุดนี้ (พิกเซลจริงบนจอ) · null = จุดนี้ไม่มีอะไรในภาพจอตัวหนังสือ
+  ScreenNode? at(int x, int y) {
+    ScreenNode? best;
+    var bestArea = 0;
+    for (final n in nodes) {
+      final b = n.bounds;
+      if (b.length != 4 || x < b[0] || x >= b[2] || y < b[1] || y >= b[3]) continue;
+      final area = (b[2] - b[0]) * (b[3] - b[1]);
+      if (best == null || area < bestArea) {
+        best = n;
+        bestArea = area;
+      }
+    }
+    return best;
+  }
 }
 
 /// คำตอบของคำสั่งหนึ่งครั้ง · [error] = รหัสจาก Android ('stopped' 'blocked' 'stale' 'password'
@@ -215,11 +231,15 @@ abstract class Hands {
   Future<(HandsReply, PhoneScreen?)> snapshot({int maxNodes = 120});
 
   /// ถ่ายภาพจอเป็น JPEG (`data['jpeg']`) · Android 11 ขึ้นไป · แอปที่ห้ามอ่านตอบ 'blocked' ·
-  /// หน้าต่างกันถ่ายจอตอบ 'secure'
-  Future<HandsReply> screenshot({int maxEdge = 1024});
+  /// หน้าต่างกันถ่ายจอตอบ 'secure' · `w`/`h` = ขนาดภาพ · `sw`/`sh` = ขนาดจอจริง ·
+  /// [marks] = ตีกรอบและเลข [id] ของปุ่มจาก [snapshot] ล่าสุดลงบนภาพ
+  Future<HandsReply> screenshot({int maxEdge = 1024, bool marks = false});
 
   /// ทำหนึ่งอย่าง · [action] ดู [PhoneAgent] ('tap' 'long_press' 'type' 'submit' 'scroll' 'back' 'home' 'recents' 'notifications')
   Future<HandsReply> act(String action, {int? id, String? text, String? dir});
+
+  /// แตะจุดบนจอ (พิกเซลจริง) · ได้เฉพาะหลัง [screenshot] · 'no_look' 'bad_point' 'blocked' 'password'
+  Future<HandsReply> tapAt(int x, int y);
 
   Future<HandsReply> openApp(String name);
   Future<HandsReply> setAlarm({required int hour, required int minute, String label = ''});
@@ -279,8 +299,11 @@ class HandsBridge implements Hands {
   }
 
   @override
-  Future<HandsReply> screenshot({int maxEdge = 1024}) async =>
-      HandsReply.fromMap(await _call('screenshot', {'maxEdge': maxEdge}));
+  Future<HandsReply> screenshot({int maxEdge = 1024, bool marks = false}) async =>
+      HandsReply.fromMap(await _call('screenshot', {'maxEdge': maxEdge, 'marks': marks}));
+
+  @override
+  Future<HandsReply> tapAt(int x, int y) async => HandsReply.fromMap(await _call('tapAt', {'x': x, 'y': y}));
 
   @override
   Future<HandsReply> act(String action, {int? id, String? text, String? dir}) async => HandsReply.fromMap(

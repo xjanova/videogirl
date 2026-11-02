@@ -23,6 +23,8 @@ extension HandsStrings on S {
   String handsStepAlarm(String time) => pick('ตั้งปลุก $time', 'Set an alarm for $time');
   String get handsStepEvent => pick('เปิดหน้าเพิ่มนัดในปฏิทิน', 'Open the add-event screen');
   String get handsStepEmail => pick('เปิดหน้าเขียนอีเมล', 'Open an email draft');
+  String get handsStepLook => pick('ดูภาพหน้าจอ', 'Look at the screen');
+  String handsStepTapAt(String what) => pick('กดตรง «$what»', 'Tap on “$what”');
 
   // ── ถามก่อนทำ ──
   String get handsAskTitle => pick('ให้ทำขั้นนี้ไหมคะ?', 'OK to do this?');

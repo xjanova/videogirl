@@ -822,6 +822,10 @@ class MindState extends ChangeNotifier {
       hands: hands,
       findApp: (name) => apps.find(name)?.pkg,
       think: (system, turns) => _askBrain(system, turns, cap: ReplyCap.background),
+      // ภาพจอไปที่สมองเดียวกับตัวหนังสือของจอ · สมองในเครื่องดูภาพไม่ได้
+      see: _brain == BrainProvider.onDevice
+          ? null
+          : (system, turns, jpeg) => _askBrain(system, turns, cap: ReplyCap.background, image: jpeg),
       lang: _lang,
       clock: _clock,
       routines: _macros,
@@ -5195,8 +5199,11 @@ class MindState extends ChangeNotifier {
     void Function(String partial)? onPartial,
     ReplyCap cap = ReplyCap.chat,
     String recall = '',
+    Uint8List? image,
   }) async {
     if (_brain == BrainProvider.onDevice) {
+      // สลับเป็นสมองในเครื่องกลางงาน · ผู้เรียก (PhoneAgent) กลับไปอ่านจอเป็นตัวหนังสือเอง
+      if (image != null) throw StateError('no_vision');
       debugPrint('สมอง: ในเครื่อง ${localBrain.variant.label}');
       return localBrain.reply(
           system: system,
@@ -5208,11 +5215,13 @@ class MindState extends ChangeNotifier {
 
     final (:client, :model, :ours) = _networkBrain();
     try {
-      final answer = await client.reply(
-        system: system,
-        history: withRecall(history, recall),
-        model: model,
-      );
+      final answer = image != null
+          ? await client.see(system: system, history: withRecall(history, recall), model: model, image: image)
+          : await client.reply(
+              system: system,
+              history: withRecall(history, recall),
+              model: model,
+            );
       // หลอดเครดิตขยับตามจริงทุกข้อความ · หลังบ้านแนบยอดใหม่มากับคำตอบ
       final billing = client.lastBilling;
       final account = _proxyAccount;
