@@ -43,6 +43,8 @@ class SystemBridge(context: Context) {
     private val context: Context = context.applicationContext
     private val calls = CallBridge(this.context)
     private val phoneData = PhoneData(this.context, calls)
+    private val sensors = MindSensors(this.context)
+    private val health = MindHealth(this.context)
     private val main = Handler(Looper.getMainLooper())
 
     /// ช่องสำหรับ **ยิงกลับ** หา Dart ตอนสถานะสายเปลี่ยน
@@ -187,6 +189,18 @@ class SystemBridge(context: Context) {
             "findContacts" -> result.success(calls.findContacts(call.argument<String>("name") ?: ""))
             // ── ของในเครื่องที่เธอเปิดดูตอนเจ้าของถามในแชท (ดู PhoneData) ──
             "smsGranted" -> result.success(phoneData.canReadSms())
+            "activityGranted" -> result.success(sensors.canCountSteps())
+            "bodySensorsGranted" -> result.success(sensors.canReadHeart())
+            "sensorsRead" -> offMain(result) {
+                sensors.read(call.argument<List<String>>("names") ?: emptyList())
+            }
+            "healthRead" -> offMain(result) {
+                health.read(
+                    call.argument<List<String>>("types") ?: emptyList(),
+                    (call.argument<Number>("from") ?: 0).toLong(),
+                    (call.argument<Number>("to") ?: 0).toLong(),
+                )
+            }
             "searchContacts" -> offMain(result) {
                 phoneData.contacts(call.argument<String>("query") ?: "", call.argument<Int>("limit") ?: 12)
             }

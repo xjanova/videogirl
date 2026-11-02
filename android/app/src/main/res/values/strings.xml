@@ -142,4 +142,7 @@
     <string name="listen_stop_talk">ปิดไมค์</string>
     <string name="listen_resume_title">มายด์ยังไม่ได้ฟังชื่อเธอ</string>
     <string name="listen_resume_text">แตะเพื่อให้กลับมารอฟัง</string>
+    <string name="health_rationale_title">มายด์ใช้ข้อมูลสุขภาพยังไง</string>
+    <string name="health_rationale_body">มายด์อ่านเฉพาะเรื่องที่คุณถาม ตอนคุณถามเท่านั้น และอ่านอย่างเดียว ไม่เขียนหรือแก้ข้อมูลสุขภาพ\n\nไม่อ่านตอนเครื่องล็อกอยู่ และไม่อ่านระหว่างมีสาย คนโทรเข้ามาไม่มีทางเห็น\n\nถ้าคุณใช้สมองบนคลาวด์ จะส่งไปเฉพาะตัวเลขที่เธอเปิดดูในคำถามนั้น ถ้าใช้สมองในเครื่อง ข้อมูลไม่ออกนอกเครื่อง\n\nถอนสิทธิ์ได้ทุกเมื่อในแอป Health Connect</string>
+    <string name="health_rationale_close">ปิด</string>
 </resources>

@@ -289,6 +289,16 @@ class S {
         'Turns numbers into names and lets her find a number when you ask — read-only, never edited · '
         'with a cloud brain, only the entries she looks up go out with that message',
       );
+  String get permActivity => _('นับก้าว', 'Step counting');
+  String get permActivityWhy => _(
+        'ใช้ตัวนับก้าวของเครื่อง ตอนคุณถามว่าเดินไปกี่ก้าว · ขอเมื่อคุณถามเท่านั้น · ไม่ต้องกดตอนนี้ก็ได้',
+        'Uses the phone\'s step counter when you ask about steps · asked only when you ask · no need to allow it now',
+      );
+  String get permBody => _('ชีพจรจากเครื่อง', 'Heart rate from the phone');
+  String get permBodyWhy => _(
+        'เฉพาะเครื่องที่มีตัววัดชีพจร · ขอเมื่อคุณถามเท่านั้น · ไม่ต้องกดตอนนี้ก็ได้',
+        'Only on phones with a heart rate sensor · asked only when you ask · no need to allow it now',
+      );
   String get permSms => _('ข้อความ SMS', 'Text messages (SMS)');
   String get permSmsWhy => _(
         'ให้เธอเล่า SMS ที่เข้ามาหรือส่งออกตอนคุณถาม · อ่านอย่างเดียว ไม่ส่ง ไม่ลบ · '
@@ -1022,6 +1032,8 @@ class S {
   String get lookingDevice => _('กำลังดูข้อมูลเครื่อง…', 'Checking the phone…');
   String get lookingProcesses => _('กำลังดูโปรเซสในเครื่อง…', 'Checking what is running…');
   String get lookingApps => _('กำลังเปิดตารางแอป…', 'Checking the app table…');
+  String get lookingSensors => _('กำลังอ่านเซ็นเซอร์…', 'Reading the sensors…');
+  String get lookingHealth => _('กำลังดูข้อมูลสุขภาพ…', 'Checking your health data…');
 
   String deviceVolumeSet(int percent) => _('ตั้งเสียงไว้ที่ $percent% แล้วค่ะ', 'Volume is at $percent%.');
   String get deviceMuted => _('ปิดเสียงแล้วค่ะ', 'Muted.');

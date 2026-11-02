@@ -237,6 +237,61 @@ void main() {
             '${unused.join(', ')}');
   });
 
+  /// 🔴 สิทธิ์ Health Connect ที่ขอแต่ไม่ได้ประกาศ = ไม่ขึ้นในหน้าขอสิทธิ์เลย และตอบกลับเหมือนกดปฏิเสธ
+  ///
+  /// ชื่อมีจุดกลาง (`android.permission.health.READ_STEPS`) จึงไม่เข้าด่านสองตัวบนนี้
+  test('สิทธิ์ Health Connect ใน manifest ตรงกับ MindHealth.PERMISSIONS และอ่านอย่างเดียว', () {
+    final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    final health = RegExp(r'android\.permission\.health\.([A-Z_]+)');
+
+    final declared = RegExp(r'<uses-permission[^>]*android:name="android\.permission\.health\.([A-Z_]+)"')
+        .allMatches(manifest)
+        .map((m) => m.group(1)!)
+        .toSet();
+    final used = health.allMatches(kotlin).map((m) => m.group(1)!).toSet();
+
+    expect(declared, isNotEmpty, reason: 'อ่านสิทธิ์จาก manifest ไม่เจอเลย — รูปแบบเปลี่ยนไป');
+    expect(declared, used);
+    expect(declared.where((p) => !p.startsWith('READ_')), isEmpty, reason: 'เธออ่านอย่างเดียว ห้ามขอสิทธิ์เขียน');
+    expect(declared, isNot(contains('READ_HEALTH_DATA_IN_BACKGROUND')), reason: 'อ่านตอนเจ้าของถามเท่านั้น');
+  });
+
+  /// 🔴 ขาดตัวใดตัวหนึ่ง กล่องขอสิทธิ์ Health Connect ไม่ขึ้นเลย โดยไม่มี error
+  test('manifest มีหน้าเหตุผลของ Health Connect ครบทั้งสองรุ่น Android', () {
+    final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    expect(manifest, contains('androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE'));
+    expect(manifest, contains('android.intent.action.VIEW_PERMISSION_USAGE'));
+    expect(manifest, contains('android.intent.category.HEALTH_PERMISSIONS'));
+    expect(manifest, contains('android:permission="android.permission.START_VIEW_PERMISSION_USAGE"'));
+    expect(manifest, contains('<package android:name="com.google.android.apps.healthdata"/>'),
+        reason: 'Android 13 ลงมาไม่ประกาศ = ตอบว่าไม่มี Health Connect ทั้งที่ลงอยู่');
+    expect(manifest, contains('android.permission.BODY_SENSORS" android:maxSdkVersion="35"'),
+        reason: 'แอปตั้งเป้า API 36 · Android 16 ขึ้นไปใช้ READ_HEART_RATE แทน');
+  });
+
+  /// ชื่อชนิดข้ามสองฝั่งเป็นสตริงล้วน · ไม่ตรง = Kotlin ตัดทิ้งเงียบ ๆ แล้วเธอบอกว่าไม่มีข้อมูล
+  test('ชื่อเซ็นเซอร์และชนิดสุขภาพฝั่ง Dart ต้องมีใน Kotlin', () {
+    final lookup = File('lib/phone/phone_lookup.dart').readAsStringSync();
+    List<String> keys(String table) {
+      final block = RegExp('$table = <String, RegExp>\\{([\\s\\S]*?)\\n  \\};').firstMatch(lookup)?.group(1);
+      expect(block, isNotNull, reason: 'หา $table ไม่เจอ — ต้องแก้เทสต์นี้ ไม่ใช่ปล่อยผ่าน');
+      return RegExp(r"^\s*'(\w+)':", multiLine: true).allMatches(block!).map((m) => m.group(1)!).toList();
+    }
+
+    final sensors = File('${kotlinDir.path}/MindSensors.kt').readAsStringSync();
+    final health = File('${kotlinDir.path}/MindHealth.kt').readAsStringSync();
+    expect(keys('_sensorWords').where((k) => !sensors.contains('"$k" to Sensor.TYPE_')), isEmpty);
+    expect(keys('_healthWords').where((k) => !health.contains('"$k" to ')), isEmpty);
+  });
+
+  test('เมธอดอ่านเซ็นเซอร์และสุขภาพ · อ่านอยู่ที่ SystemBridge ขอสิทธิ์อยู่ที่ MainActivity', () {
+    final bridge = File('${kotlinDir.path}/SystemBridge.kt').readAsStringSync();
+    expect(bridge, contains('"sensorsRead" ->'));
+    expect(bridge, contains('"healthRead" ->'));
+    expect(activity, contains('"requestHealth" ->'));
+    expect(activity, contains('requestCode == REQ_HEALTH'), reason: 'ไม่ตอบ = Future ฝั่ง Dart ค้างจนหมดเวลา');
+  });
+
   /// 🔴 อารมณ์ที่ฝั่ง JS ไม่รู้จักถูกปัดเป็น neutral **เงียบ ๆ**
   ///
   /// `setMood()` ใน avatar.js เขียนว่า `m in MOOD_EXPRESSION ? m : 'neutral'`

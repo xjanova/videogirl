@@ -159,13 +159,49 @@ class MindState extends ChangeNotifier {
       (_lazyPhoneLookup ??= PhoneLookup(askPermission: _askPhonePermission, targets: callTargets))
         ..readScreen = lookAtScreen
         ..readApps = readAppTable
-        ..barred = _lookupBarred;
+        ..barred = _lookupBarred
+        ..askHealth = _askHealthPermission
+        ..healthBarred = _healthBarred;
 
   @visibleForTesting
   set debugPhoneLookup(PhoneLookup l) => _lazyPhoneLookup = l;
 
   /// รายการโปรเซสและแอปบอกได้ว่าเจ้าของใช้อะไรอยู่ · คำเรียกไม่ใช่การยืนยันตัวตน ([_voiceBarred])
   Future<String?> _lookupBarred() async => await _voiceBarred() ? _lockedResult : null;
+
+  /// 🔴 ข้อมูลสุขภาพ · แน่นกว่า [_voiceBarred] ซึ่งดูแค่ตอนเรียกเธอด้วยเสียง: เครื่องล็อกอยู่ = ไม่อ่านทุกทาง ·
+  /// มีสายอยู่ = ไม่อ่าน เสียงเธออาจออกไปถึงปลายสาย · ถามสถานะล็อกไม่ได้ = ถือว่าล็อก
+  Future<String?> _healthBarred() async {
+    if ((_calls?.state ?? CallState.idle) != CallState.idle) {
+      return 'Health data is not read during a phone call. Tell the owner to ask again after the call.';
+    }
+    bool locked;
+    try {
+      locked = await phoneLocked?.call() ?? false;
+    } on Object catch (e) {
+      debugPrint('health gate: ${e.runtimeType}');
+      locked = true;
+    }
+    if (!locked) return null;
+    // _lockedResult บอกเธอว่าเจ้าของรู้แล้ว · ไม่มีคุยเสียงอยู่ = ยังไม่มีใครบอก เธอต้องบอกเอง
+    final tell = onHerNotice;
+    if (tell == null) return 'The phone is locked, so health data was not read. Tell the owner to unlock it first.';
+    tell(s.healthUnlockFirst);
+    return _lockedResult;
+  }
+
+  /// เหมือน [_askPhonePermission] · แต่ Health Connect ขอแยกทีละชนิด จึงไม่ผ่านการ์ดสิทธิ์
+  Future<bool> _askHealthPermission(List<String> types) async {
+    if (_disposed || !_appVisible) return false;
+    try {
+      final v = await kSystemChannel
+          .invokeMethod<Object?>('requestHealth', {'types': types}).timeout(const Duration(seconds: 90));
+      return v == 'granted';
+    } on Object catch (e) {
+      debugPrint('health permission: ${e.runtimeType}');
+      return false;
+    }
+  }
 
   // ═══ ตารางแอป (ดู AppTable) ═════════════════════════════════════════
 
@@ -3073,6 +3109,8 @@ class MindState extends ChangeNotifier {
           'device' => PhoneLookupKind.device,
           'processes' => PhoneLookupKind.processes,
           'apps' => PhoneLookupKind.apps,
+          'sensors' => PhoneLookupKind.sensors,
+          'health' => PhoneLookupKind.health,
           _ => PhoneLookupKind.calls,
         };
         var q = arg('query');
@@ -4141,6 +4179,8 @@ class MindState extends ChangeNotifier {
               PhoneLookupKind.screen => s.screenLooking,
               PhoneLookupKind.processes => s.lookingProcesses,
               PhoneLookupKind.apps => s.lookingApps,
+              PhoneLookupKind.sensors => s.lookingSensors,
+              PhoneLookupKind.health => s.lookingHealth,
             };
       _notify();
       final last = round == maxLookups;

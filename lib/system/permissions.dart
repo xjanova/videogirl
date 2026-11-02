@@ -57,6 +57,12 @@ enum MindPermission {
   /// ด้วย `dumpsys package` ก่อนสรุปว่ากล่องขอจะขึ้น
   sms(check: 'smsGranted', ask: 'requestSms', inApp: true),
 
+  /// ตัวนับก้าวของเครื่อง — ทางสำรองเมื่อ Health Connect ไม่มีข้อมูล (ดู PhoneLookup)
+  activity(check: 'activityGranted', ask: 'requestActivity', inApp: true, onDemand: true),
+
+  /// ตัววัดชีพจรบนเครื่อง · มีน้อยเครื่อง · Android 16 ขึ้นไปขอผ่าน Health Connect แทน
+  bodySensors(check: 'bodySensorsGranted', ask: 'requestBodySensors', inApp: true, onDemand: true),
+
   /// รับสายแทน · เธอยังพูดในสายไม่ได้ ดู [CallWatch]
   answerCalls(check: 'answerGranted', ask: 'requestAnswer', inApp: true),
 
@@ -99,6 +105,7 @@ enum MindPermission {
     required this.check,
     required this.ask,
     required this.inApp,
+    this.onDemand = false,
   });
 
   final String check;
@@ -109,6 +116,11 @@ enum MindPermission {
   /// `false` = ต้องพาไปหน้าตั้งค่าของระบบ ซึ่งแปลว่า**รู้ผลทันทีไม่ได้**
   /// ผู้ใช้ออกไปแล้วค่อยกลับมา ผู้เรียกต้อง [MindPermissions.refresh] อีกที
   final bool inApp;
+
+  /// ขอตอนเจ้าของถามเรื่องนั้นครั้งแรกเท่านั้น · ปุ่มขอทีเดียวไม่แตะ และไม่นับเป็น "ยังขาด"
+  ///
+  /// ข้อมูลร่างกายไม่ใช่สิ่งที่แอปต้องมีถึงจะทำงาน · เจ้าของที่ไม่เคยถามเรื่องนี้ต้องไม่เคยเห็นกล่องขอ
+  final bool onDemand;
 }
 
 class MindPermissions extends ChangeNotifier {
@@ -123,10 +135,12 @@ class MindPermissions extends ChangeNotifier {
 
   bool of(MindPermission p) => _granted[p] ?? false;
 
-  /// ให้ครบทุกตัวแล้วหรือยัง
-  bool get allGranted => _granted.values.every((v) => v);
+  Iterable<MindPermission> get _needed => MindPermission.values.where((p) => !p.onDemand);
 
-  int get missing => _granted.values.where((v) => !v).length;
+  /// ให้ครบทุกตัวแล้วหรือยัง
+  bool get allGranted => _needed.every(of);
+
+  int get missing => _needed.where((p) => !of(p)).length;
 
   /// ตัวที่ผู้ใช้ปฏิเสธถาวรจนกล่องขอไม่ขึ้นอีกแล้ว
   final Set<MindPermission> _blocked = {};
@@ -177,7 +191,7 @@ class MindPermissions extends ChangeNotifier {
   /// หยุดที่ตัวแรกที่ต้องออกไปหน้าตั้งค่าของระบบ — ยิงทุกตัวรวดเดียวจะทำให้
   /// หน้าตั้งค่าซ้อนกันหลายชั้น แล้วผู้ใช้กดย้อนกลับหลงทาง
   Future<void> requestAllMissing() async {
-    for (final p in MindPermission.values) {
+    for (final p in _needed) {
       if (of(p) || isBlocked(p)) continue;
       await request(p);
       if (!p.inApp) return;

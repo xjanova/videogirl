@@ -1379,6 +1379,9 @@ You really can use this phone for the owner: open apps, read the screen, tap, ty
 [[โปรเซส: ชื่อ]]  — โปรเซสที่รันอยู่ทั้งเครื่อง ใช้แรมเยอะสุดก่อน (เว้นว่าง = ทั้งหมด) · ดูได้อย่างเดียว ปิดโปรเซสไม่ได้
 [[แอป: หมวด ชื่อแอป หรือ ใหม่]]  — ตารางแอปในเครื่องแยกตามหมวด (เว้นว่าง = ทุกหมวด · ใหม่ = แอปที่เพิ่งลงหรือเพิ่งถอด)
 [[หน้าจอ]]  — อ่านว่าตอนนี้มีอะไรบนจอมือถือ ใช้เมื่อเจ้าของบอกให้ดูจอหรือแคปหน้าจอเท่านั้น ห้ามตอบว่ามองไม่เห็นก่อนลอง
+[[เซ็นเซอร์: แสง ความใกล้ ความเร่ง ไจโร เข็มทิศ ความกดอากาศ อุณหภูมิ ความชื้น]]  — ค่าจากเซ็นเซอร์ตอนนี้ ระบุเฉพาะตัวที่เจ้าของถาม (เว้นว่าง = ทุกตัวที่เครื่องมี)
+[[สุขภาพ: ก้าว ระยะทาง แคลอรี หัวใจ การนอน น้ำหนัก ความดัน ออกซิเจน วันนี้ เมื่อวาน]]  — ข้อมูลสุขภาพ ระบุเฉพาะเรื่องที่เจ้าของถามในคำถามนี้ ห้ามขอเผื่อ · เว้นว่าง = ไม่อ่านอะไร
+- ข้อมูลสุขภาพบอกตามผลเท่านั้น ห้ามวินิจฉัยโรคหรือสั่งยา · ผลบอกว่าอ่านไม่ได้เพราะอะไร ให้บอกเหตุผลนั้นตรง ๆ ห้ามเดาตัวเลข
 - เจ้าของให้เปิดเสียงสายที่บันทึกไว้ให้ฟัง ตอบสั้น ๆ แล้วต่อท้ายบรรทัดนี้ แอปเปิดให้เอง: [[เปิดเสียงสาย: ชื่อ เบอร์ หรือคำในสาย]] (เว้นว่าง = ล่าสุด)
 - เจ้าของสั่งถ่ายรูป ตอบสั้น ๆ แล้วต่อท้าย [[ถ่ายรูป: หน้า]] หรือ [[ถ่ายรูป: หลัง]] · ในแชทพิมพ์คุณมองไม่เห็นรูป · อยากให้มองเห็นเจ้าของ ให้แตะไมค์คุยสด
 - สายของวันนี้ที่อยู่ข้างบนแล้ว ตอบได้เลยไม่ต้องขอ · เรื่องเก่ากว่านั้น ใครโทรมา หรือ SMS ต้องขอดูก่อนเสมอ ห้ามเดา
@@ -1396,6 +1399,9 @@ You really can look at this phone's contacts, call log and SMS when the owner as
 [[processes: name]]  — every process running on the phone, biggest memory first (empty = all) · you can look but not stop them
 [[apps: category, app name, or new]]  — your table of installed apps by category (empty = all · new = lately installed or removed)
 [[screen]]  — read what is on the phone screen now, only when the owner tells you to look at it or take a screenshot; never say you cannot see it before trying
+[[sensors: light, proximity, accelerometer, gyroscope, compass, pressure, temperature, humidity]]  — sensor readings now; name only the one the owner asked about (empty = every sensor this phone has)
+[[health: steps, distance, calories, heart rate, sleep, weight, blood pressure, oxygen, today, yesterday]]  — health data; name only what the owner asked in this question, never extra · empty = nothing is read
+- Report health data as the result gives it; never diagnose or prescribe · if the result says why it could not be read, say that reason plainly and never guess a number
 - If the owner wants to hear a saved call recording, reply briefly and end with this line; the app plays it: [[play recording: name, number or a word from the call]] (empty = the latest)
 - If the owner asks for a photo, reply briefly and end with [[take photo: front]] or [[take photo: back]] · in typed chat you cannot see the photo · for you to see the owner, they tap the mic for live voice
 - Today's calls listed above you may answer right away · anything older, who called, or any text: look first, never guess
@@ -1414,8 +1420,8 @@ You really can look at this phone's contacts, call log and SMS when the owner as
     final mail = mailApps == null || mailApps.isEmpty ? 'Gmail' : mailApps.first.replaceAll('"', "'");
     final tools = [
       s.pick('call_someone (โทรออกแทน)', 'call_someone (place a call for the owner)'),
-      s.pick('phone_lookup (สมุดโทรศัพท์ สายล่าสุด SMS แรม พื้นที่ แบต สเปคเครื่อง โปรเซสที่รันอยู่ และตารางแอปตามหมวด)',
-          'phone_lookup (contacts, recent calls, SMS, RAM, storage, battery, phone specs, running processes, and the app table by category)'),
+      s.pick('phone_lookup (สมุดโทรศัพท์ สายล่าสุด SMS แรม พื้นที่ แบต สเปคเครื่อง โปรเซสที่รันอยู่ ตารางแอปตามหมวด เซ็นเซอร์ และสุขภาพ เช่น ก้าวเดิน)',
+          'phone_lookup (contacts, recent calls, SMS, RAM, storage, battery, phone specs, running processes, the app table by category, sensors, and health such as steps)'),
       s.pick('play_recording (เปิดเสียงสายที่บันทึกไว้ให้ฟัง)', 'play_recording (play a saved call recording aloud)'),
       if (phone)
         s.pick('device_control (ปรับเสียง ปิดเสียง ไฟฉาย เพลง โหมดสั่น ได้ทันที)',

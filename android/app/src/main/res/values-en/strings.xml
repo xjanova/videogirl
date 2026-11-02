@@ -126,4 +126,7 @@
     <string name="listen_stop_talk">Mic off</string>
     <string name="listen_resume_title">Mind is not listening for her name</string>
     <string name="listen_resume_text">Tap to bring her back</string>
+    <string name="health_rationale_title">How Mind uses your health data</string>
+    <string name="health_rationale_body">Mind reads only what you ask about, only when you ask, and only reads: she never writes or changes health data.\n\nShe does not read it while the phone is locked or during a call, and callers can never see it.\n\nWith a cloud brain, only the numbers she looked up for that question are sent. With the on-device brain, nothing leaves the phone.\n\nYou can take these permissions back at any time in Health Connect.</string>
+    <string name="health_rationale_close">Close</string>
 </resources>

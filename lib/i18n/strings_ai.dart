@@ -710,6 +710,11 @@ extension AiStrings on S {
   String get wakePaused => pick('พักฟังอยู่ เพราะมีสายหรือแอปอื่นใช้ไมค์', 'Paused: a call or another app is using the mic');
   String get wakeListening => pick('กำลังรอฟังอยู่', 'Listening for your word');
   String get wakeOffNow => pick('ไม่ได้รอฟัง', 'Not listening');
+  String get healthUnlockFirst => pick(
+        'ปลดล็อกเครื่องก่อนนะคะ ข้อมูลสุขภาพต้องเป็นเจ้าของเครื่องถามเท่านั้น',
+        'Please unlock your phone first. Health data is only for you.',
+      );
+
   String get wakeUnlockFirst => pick(
         'ปลดล็อกเครื่องก่อนนะคะ ขั้นนี้ย้อนกลับไม่ได้ ต้องเป็นเจ้าของเครื่องสั่งเท่านั้น',
         "Please unlock your phone first. This can't be undone, so it has to come from you.",
