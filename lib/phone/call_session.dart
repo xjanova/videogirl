@@ -46,6 +46,7 @@ import 'owner_gate.dart';
 import 'call_phone.dart';
 import 'identity_gate.dart';
 import 'call_watch.dart';
+import 'gemini_live_call.dart';
 import 'live_call.dart';
 import 'realtime_call.dart';
 import 'direct_audio.dart';
@@ -573,20 +574,29 @@ class CallSession extends ChangeNotifier {
   Future<void> _converse() async {
     try {
       if (!_directMode) await _awaitSpeaker();
-      // คุยสด (OpenAI Realtime) ก่อน ถ้าตั้งไว้ · ต่อไม่ได้ = ทางเดิม · หลุดกลางสาย =
-      // ทางเดิมต่อจากที่ค้าง (ไม่ทักซ้ำ)
+      // คุยสด (OpenAI Realtime / Gemini Live ตามสมอง) ก่อน ถ้าตั้งไว้ · ต่อไม่ได้ = ทางเดิม ·
+      // หลุดกลางสาย = ทางเดิมต่อจากที่ค้าง (ไม่ทักซ้ำ)
       var greeted = false;
       var done = false;
       if (_state.realtimeCallsReady) {
-        // GPT-Live ฟังพร้อมพูด ต้องมีเสียงคู่สายที่ไม่ปนเสียงเธอ = ต่อสายตรงเท่านั้น
-        var r = _state.callLiveReady && _directMode
-            ? await _talkRealtime(live: true)
-            : _RtResult.couldNotStart;
-        greeted = r != _RtResult.couldNotStart;
-        // GPT-Live ต่อไม่ได้/หลุด แต่ทางเสียงยังดี = Realtime รับช่วงต่อ (ไม่ทักซ้ำถ้าทักไปแล้ว)
-        if (r != _RtResult.ended && !_directFailed && _live && _mind && !_disposed) {
-          r = await _talkRealtime(greet: !greeted);
-          greeted = greeted || r != _RtResult.couldNotStart;
+        _RtResult r;
+        if (_state.callLiveEngine == CallLiveEngine.gemini) {
+          // ต่อสายตรง = ฟังพร้อมพูด คู่สายแทรกได้ · ทางลำโพง = พูดทีละฝั่งเหมือน Realtime
+          r = await _talkRealtime(gemini: true);
+          greeted = r != _RtResult.couldNotStart;
+          // ต่อท่อเดิมต่อไม่ได้ (หลุดก่อนได้ handle / ต่อซ้ำไม่ขึ้น) = เซสชันใหม่ครั้งเดียว ไม่ทักซ้ำ
+          if (r == _RtResult.dropped && !_directFailed && _live && _mind && !_disposed) {
+            r = await _talkRealtime(gemini: true, greet: false);
+          }
+        } else {
+          // GPT-Live ฟังพร้อมพูด ต้องมีเสียงคู่สายที่ไม่ปนเสียงเธอ = ต่อสายตรงเท่านั้น
+          r = _state.callLiveReady && _directMode ? await _talkRealtime(live: true) : _RtResult.couldNotStart;
+          greeted = r != _RtResult.couldNotStart;
+          // GPT-Live ต่อไม่ได้/หลุด แต่ทางเสียงยังดี = Realtime รับช่วงต่อ (ไม่ทักซ้ำถ้าทักไปแล้ว)
+          if (r != _RtResult.ended && !_directFailed && _live && _mind && !_disposed) {
+            r = await _talkRealtime(greet: !greeted);
+            greeted = greeted || r != _RtResult.couldNotStart;
+          }
         }
         done = r == _RtResult.ended;
       }
@@ -782,13 +792,19 @@ class CallSession extends ChangeNotifier {
     done.complete(t.length > 500 ? t.substring(0, 500) : t);
   }
 
-  Future<_RtResult> _talkRealtime({bool live = false, bool greet = true}) async {
+  Future<_RtResult> _talkRealtime({bool live = false, bool gemini = false, bool greet = true}) async {
     final outgoing = _outgoingCall;
     final contact = _contact;
-    final VoiceSession rt = live
-        ? _state.openLiveCall(outgoing: outgoing, contact: contact)
-        : _state.openRealtimeCall(outgoing: outgoing, greet: greet, contact: contact);
-    _rtEngine = live ? LiveCall.defaultModel : RealtimeCall.defaultModel;
+    final VoiceSession rt = gemini
+        ? _state.openGeminiLiveCall(outgoing: outgoing, greet: greet, contact: contact)
+        : live
+            ? _state.openLiveCall(outgoing: outgoing, contact: contact)
+            : _state.openRealtimeCall(outgoing: outgoing, greet: greet, contact: contact);
+    _rtEngine = gemini
+        ? GeminiLiveCall.defaultModel
+        : live
+            ? LiveCall.defaultModel
+            : RealtimeCall.defaultModel;
     rt.fullDuplex = _directMode;
     final ended = Completer<void>();
     var dropped = false;
@@ -905,8 +921,11 @@ class CallSession extends ChangeNotifier {
       await rt.start();
     } on Object catch (e) {
       debugPrint('สาย: คุยสดต่อไม่ได้ ใช้ทางเดิม — ${e.runtimeType}');
-      // ลงรายงานแค่รหัส · ตัวตกไป Realtime เงียบ ๆ แล้วไม่มีทางรู้ว่า GPT-Live ล้มเพราะอะไร
-      if (live) _rtError = 'live_start_${'$e'.replaceFirst('Bad state: ', '').split(':').first.trim().replaceAll(RegExp(r'\s+'), '_')}';
+      // ลงรายงานแค่รหัส · ตัวตกไปทางอื่นเงียบ ๆ แล้วไม่มีทางรู้ว่า GPT-Live / Gemini Live ล้มเพราะอะไร
+      if (live || gemini) {
+        _rtError = '${gemini ? 'gemini' : 'live'}_start_'
+            '${'$e'.replaceFirst('Bad state: ', '').split(':').first.trim().replaceAll(RegExp(r'\s+'), '_')}';
+      }
       await _invoke('liveAudioStop');
       await rt.close();
       _rt = null;

@@ -3033,6 +3033,16 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: 6),
             Text(channel.hintOf(S.of(context)),
                 style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
+            // เสียงที่เลือกคือเสียงที่คนโทรได้ยิน · บอกตรงนี้ว่าสายจะคุยสดหรือผลัดกันพูด
+            // (ของเดิมคุยสดข้ามเสียงที่เลือกเงียบ ๆ · เจ้าของเลือก 2026-11-02: เลือกเสียงอื่น = ผลัดกันพูด)
+            if (channel == VoiceChannel.answer && state.realtimeCalls && state.callLiveEngine != null) ...[
+              const SizedBox(height: 6),
+              Text(_callLiveNote(state),
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.5,
+                      color: state.answerVoiceLive ? MindColors.ink55 : const Color(0xFFB46A00))),
+            ],
             // คุยสดมีเสียงของตัวเอง · ต้องเห็นตรงนี้ ไม่งั้นเลือกเสียงแล้วไม่ได้ยินโดยไม่รู้ทำไม
             if (channel == VoiceChannel.chat && state.brain == BrainProvider.openai) ...[
               const SizedBox(height: 12),
@@ -3448,6 +3458,18 @@ class _SettingsScreenState extends State<SettingsScreen>
     return [engine, if (p.model.isNotEmpty) p.model, if (voice.isNotEmpty) voice].join(' · ');
   }
 
+  /// ช่องรับสาย: คนโทรได้ยินเสียงนี้ทางไหน · คุยสด (เสียงไหน) หรือผลัดกันพูด
+  String _callLiveNote(MindState state) {
+    final t = S.of(context);
+    final picked = state.voiceFor(VoiceChannel.answer);
+    if (!state.answerVoiceLive) {
+      return t.voiceCallNotLive(state.callLiveName, state.callVoiceEngine(live: true).labelOf(t));
+    }
+    return picked.engine == TtsEngine.device
+        ? t.voiceCallDeviceLive(state.callLiveName, state.callLiveVoice)
+        : t.voiceCallLive(state.callLiveName, state.callLiveVoice);
+  }
+
   /// ตอนอยู่ในสาย เธอใช้อะไรจริง — ฟัง · คิด · พูด
   ///
   /// ตอบคำถาม "โมเดลตอนอยู่ในสายคืออะไร" ด้วยค่าที่เลือกไว้จริง ไม่ใช่รายการ
@@ -3509,7 +3531,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             line(
               Icons.bolt_rounded,
               t.inCallLive,
-              t.inCallLiveWhat(state.callLiveReady ? 'GPT-Live' : 'OpenAI Realtime', state.callLiveVoice),
+              t.inCallLiveWhat(state.callLiveName, state.callLiveVoice),
             ),
           Text(t.inCallWhere,
               style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
@@ -3546,9 +3568,18 @@ class _SettingsScreenState extends State<SettingsScreen>
                         style: const TextStyle(
                             fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
                     if (state.realtimeCalls && !state.realtimeCallsReady)
-                      Text(s.realtimeNeedsOpenAi,
+                      Text(
+                          state.callLiveEngine == null
+                              ? s.realtimeNeedsOpenAi
+                              : s.realtimeOffForVoice(state.voiceFor(VoiceChannel.answer).engine.labelOf(s),
+                                  state.callVoiceEngine(live: true).labelOf(s)),
                           style: const TextStyle(
                               fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
+                    // เสียงคนโทรไปที่ Google · คีย์ฟรีถูกเอาไปปรับปรุงบริการ (หน้า pricing) · คนโทรไม่ได้ยินยอมเรื่องนี้
+                    if (state.realtimeCallsReady && state.callLiveEngine == CallLiveEngine.gemini)
+                      Text(s.geminiLiveFreeKey,
+                          style: const TextStyle(
+                              fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
                   ],
                 ),
               ),
@@ -3574,6 +3605,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Text(s.liveCallsHint,
                         style: const TextStyle(
                             fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                    if (state.callLiveEngine == CallLiveEngine.gemini)
+                      Text(s.liveCallsOpenAiOnly,
+                          style: const TextStyle(
+                              fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
                   ],
                 ),
               ),

@@ -34,6 +34,18 @@ extension SettingsStrings on S {
   String get directPauseConfirmButton => pick('พักตอนนี้', 'Pause now');
   String get liveTalkCard => pick('คุยสดในสาย', 'Live talk on calls');
   String get liveCalls => pick('คุยด้วย GPT-Live (ทดลอง)', 'Talk with GPT-Live (trial)');
+  String get liveCallsOpenAiOnly => pick(
+      'ใช้กับสมอง OpenAI เท่านั้น · ตอนนี้สายคุยสดด้วย Gemini Live',
+      'OpenAI brain only · calls now talk live with Gemini Live');
+  String realtimeOffForVoice(String voiceEngine, String liveEngine) => pick(
+      'ตอนนี้ไม่ได้ใช้ เพราะเสียงรับสายเป็นเสียง $voiceEngine ที่คุยสดพูดไม่ได้ · สายผลัดกันพูดด้วยเสียงนั้น · '
+          'อยากคุยสด เลือกเสียง $liveEngine ที่ เสียงพูด › แท็บในสาย',
+      'Not in use: the call voice is a $voiceEngine voice that live talk cannot speak · calls take turns in that voice · '
+          'for live talk, pick a $liveEngine voice under Voice › the On calls tab');
+  String get geminiLiveFreeKey => pick(
+      'Gemini Live กับคีย์แบบฟรี: Google นำข้อมูลที่ส่งไป รวมเสียงคนโทร ไปปรับปรุงบริการ · ไม่ต้องการ ใช้คีย์แบบเสียเงิน',
+      'Gemini Live on a free key: Google uses what is sent, including the voices of callers, to improve its products · '
+          'use a paid key if you do not want that');
   String get liveCallsHint => pick(
       'ฟังพร้อมพูด คู่สายแทรกเธอได้เหมือนคุยกับคนจริง · ใช้ตอนต่อสายตรงอยู่เท่านั้น · คิดเงินราว \$0.05 ต่อนาทีจากคีย์ของคุณ · '
           'OpenAI ยังไม่ระบุว่ารองรับภาษาไทย · ต่อไม่ได้หรือหลุด จะใช้คุยสดแบบเดิมต่อให้เอง',
