@@ -797,8 +797,8 @@ class S {
   String listenTo(String what) => _('ลองฟัง$what', 'Preview $what');
 
   String noInstructionSupport(String model) => _(
-        '$model ไม่รับคำสั่งน้ำเสียง — เลือก gpt-4o-mini-tts ถ้าอยากสั่งอารมณ์เสียงได้',
-        '$model ignores tone instructions — pick gpt-4o-mini-tts to steer how she sounds',
+        '$model ไม่รับคำสั่งน้ำเสียง — เลือก gpt-realtime-2.1-mini ถ้าอยากสั่งอารมณ์เสียงได้',
+        '$model ignores tone instructions — pick gpt-realtime-2.1-mini to steer how she sounds',
       );
 
   String toneEditorHint(String model) => _(

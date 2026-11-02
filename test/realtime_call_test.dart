@@ -11,6 +11,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:videogirl/ai/brain_provider.dart';
+import 'package:videogirl/ai/openai_config.dart';
 import 'package:videogirl/phone/realtime_call.dart';
 import 'package:videogirl/state/mind_state.dart';
 
@@ -106,7 +107,7 @@ void main() {
       expect(out['instructions'], contains('ปลายสายรับแล้ว'));
     });
 
-    test('ต่อด้วยคีย์ของเจ้าของ · ตั้งเสียง 24 kHz · ถอดเสียงภาษาไทย · แล้วทักด้วยประโยคที่กำหนด', () {
+    test('ต่อด้วยคีย์ของเจ้าของ · ตั้งเสียง 24 kHz · ถอดเสียงภาษาไทย · แล้วทักด้วยประโยคที่กำหนด', () async {
       expect(url!.scheme, 'wss');
       expect(url!.queryParameters['model'], RealtimeCall.defaultModel);
       expect(headers!['Authorization'], 'Bearer sk-test');
@@ -116,8 +117,14 @@ void main() {
       expect(s['instructions'], 'คุณคือผู้ช่วยรับสาย');
       final audio = s['audio'] as Map;
       expect(((audio['input'] as Map)['format'] as Map)['rate'], 24000);
-      expect(((audio['input'] as Map)['transcription'] as Map)['language'], 'th');
+      final stt = (audio['input'] as Map)['transcription'] as Map;
+      expect(stt['model'], 'gpt-transcribe');
+      expect(stt['languages'], ['th']);
+      expect(stt.containsKey('language'), isFalse, reason: 'ส่งทั้งคู่ = เซิร์ฟเวอร์ปฏิเสธ');
       expect(((audio['output'] as Map)['voice']), 'shimmer');
+      expect(socket.sent, hasLength(1), reason: 'ทักได้เมื่อเซสชันรับค่าแล้วเท่านั้น');
+      socket.push({'type': 'session.updated'});
+      await Future<void>.delayed(Duration.zero);
       final greet = socket.sent[1];
       expect(greet['type'], 'response.create');
       expect('${(greet['response'] as Map)['instructions']}', contains('สวัสดีค่ะ มายด์รับสายแทนค่ะ'));
@@ -184,6 +191,92 @@ void main() {
     });
   });
 
+  group('🔴 เซิร์ฟเวอร์ไม่รับตัวถอดเสียง · เอกสารไม่ได้ยืนยันว่า gpt-transcribe รับภาษาไทย', () {
+    late _FakeSocket socket;
+    late RealtimeCall rt;
+    late List<SttRung> told;
+    late List<String> errors;
+
+    Map<dynamic, dynamic> stt(Map<String, Object?> update) =>
+        (((update['session'] as Map)['audio'] as Map)['input'] as Map)['transcription'] as Map;
+    List<Map<String, Object?>> updates() => socket.sent.where((e) => e['type'] == 'session.update').toList();
+    List<Map<String, Object?>> greets() => socket.sent.where((e) => e['type'] == 'response.create').toList();
+    Future<void> reject() async {
+      socket.push({
+        'type': 'error',
+        'error': {'code': 'invalid_value', 'param': 'session.audio.input.transcription.languages', 'event_id': 'giggok_session'},
+      });
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    setUp(() async {
+      socket = _FakeSocket();
+      told = [];
+      errors = [];
+      rt = RealtimeCall(apiKey: 'k', instructions: 'prompt ของสาย', greeting: 'สวัสดีค่ะ', connect: (_, _) async => socket)
+        ..onSttFallback = told.add
+        ..onError = errors.add;
+      await rt.start();
+    });
+
+    tearDown(() => rt.close());
+
+    test('ถูกปฏิเสธ = ลองรุ่นเดิมที่รู้ว่าฟังไทยได้ ก่อนทัก · prompt ของสายยังอยู่ · บอกเจ้าของ', () async {
+      await reject();
+      expect(greets(), isEmpty, reason: 'ทักก่อน = ล็อกเสียงตั้งต้น แล้วเซสชันไม่มี prompt');
+      expect(errors, isEmpty, reason: 'ยังไม่ใช่ความล้มเหลว');
+      final next = updates().last;
+      expect(stt(next)['model'], 'gpt-4o-mini-transcribe');
+      expect(stt(next)['language'], 'th');
+      expect(stt(next).containsKey('languages'), isFalse);
+      expect((next['session'] as Map)['instructions'], 'prompt ของสาย');
+
+      socket.push({'type': 'session.updated'});
+      await Future<void>.delayed(Duration.zero);
+      expect(greets(), hasLength(1));
+      expect(told.single, (model: 'gpt-4o-mini-transcribe', hint: true));
+    });
+
+    test('รุ่นเดิมปิดแล้วด้วย = เดาภาษาเอง', () async {
+      await reject();
+      await reject();
+      final last = stt(updates().last);
+      expect(last['model'], 'gpt-transcribe');
+      expect(last.containsKey('languages'), isFalse);
+      expect(last.containsKey('language'), isFalse);
+      socket.push({'type': 'session.updated'});
+      await Future<void>.delayed(Duration.zero);
+      expect(told.single, (model: 'gpt-transcribe', hint: false));
+    });
+
+    test('🔴 ถูกปฏิเสธทุกขั้น = ปิดท่อให้ผู้เรียกตกไปทางเดิม ห้ามรับสายด้วยเซสชันเปล่า', () async {
+      await reject();
+      await reject();
+      await reject();
+      expect(rt.connected, isFalse);
+      expect(greets(), isEmpty);
+      expect(errors, hasLength(1));
+    });
+
+    test('ข้อผิดพลาดเรื่องอื่นกลางสาย ไม่ทำให้ตั้งค่าเซสชันซ้ำ', () async {
+      socket.push({'type': 'error', 'error': {'code': 'rate_limit_exceeded', 'message': 'x'}});
+      await Future<void>.delayed(Duration.zero);
+      expect(updates(), hasLength(1));
+      expect(rt.connected, isTrue);
+    });
+
+    test('เซิร์ฟเวอร์ไม่ตอบเลย = ทักเมื่อครบเวลา คู่สายไม่นั่งฟังความเงียบ', () async {
+      await Future<void>.delayed(RealtimeCall.configLimit + const Duration(milliseconds: 50));
+      expect(greets(), hasLength(1));
+    });
+
+    test('วางสายก่อนเซสชันตอบ = ไม่ทักใส่ท่อที่ปิดแล้ว', () async {
+      await rt.close();
+      await Future<void>.delayed(RealtimeCall.configLimit + const Duration(milliseconds: 50));
+      expect(greets(), isEmpty);
+    });
+  });
+
   group('🔴 ตัวกันหลุดไปพูดอังกฤษ (สายจริง 2026-10-07: คู่สายพูด "ครับ" เธอตอบอังกฤษห้าตา)', () {
     const reminder = 'คนปลายสายยังพูดภาษาไทยอยู่ ตอบเป็นภาษาไทยต่อ';
     late _FakeSocket socket;
@@ -221,7 +314,7 @@ void main() {
 
     test('คำใบ้ไปถึงตัวถอดเสียงพร้อมภาษา', () {
       final t = (((socket.sent.first['session'] as Map)['audio'] as Map)['input'] as Map)['transcription'] as Map;
-      expect(t['language'], 'th');
+      expect(t['languages'], ['th']);
       expect(t['prompt'], 'บทสนทนาทางโทรศัพท์ภาษาไทย');
     });
 

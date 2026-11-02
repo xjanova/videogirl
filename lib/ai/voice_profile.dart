@@ -30,10 +30,10 @@ class VoiceProfile {
   /// ชื่อเสียงของ OpenAI (coral, shimmer, …) — ไม่มีผลกับเสียงเครื่อง Android
   final String voice;
 
-  /// โมเดลเสียง เช่น gpt-4o-mini-tts, tts-1-hd
+  /// โมเดลเสียง เช่น gpt-realtime-2.1-mini
   final String model;
 
-  /// คำสั่งน้ำเสียง — เฉพาะ gpt-4o-mini-tts ที่รับพารามิเตอร์นี้
+  /// คำสั่งน้ำเสียง — ดู [OpenAiConfig.supportsInstructions]
   final String instructions;
 
   VoiceProfile copyWith({
@@ -82,8 +82,9 @@ class VoiceProfile {
           (e) => e.name == j['engine'],
           orElse: () => fallback.engine,
         ),
-        voice: j['voice'] as String? ?? fallback.voice,
-        // รุ่นที่เลิกเสนอแล้ว (tts-1 · tts-1-hd) ย้ายมารุ่นที่ใช้ได้กับทุกเสียง
+        // รุ่นที่ปิดแล้ว (tts-1 · gpt-4o-mini-tts) ย้ายมารุ่นปัจจุบัน และรุ่นนั้นไม่มีบางเสียง
+        // · MindState บอกเจ้าของตอนโหลด (ดู _voiceMoved)
+        voice: OpenAiConfig.migrateVoice(j['voice'] as String? ?? fallback.voice),
         model: OpenAiConfig.migrateTts(j['model'] as String? ?? fallback.model),
         instructions: j['instructions'] as String? ?? fallback.instructions,
       );
@@ -102,7 +103,7 @@ class VoiceProfile {
   static const openAiDefaults = VoiceProfile(
     engine: TtsEngine.openai,
     voice: 'coral',
-    model: 'gpt-4o-mini-tts',
+    model: OpenAiConfig.ttsModel,
     instructions: '',
   );
 
@@ -111,7 +112,7 @@ class VoiceProfile {
         VoiceChannel.chat => VoiceProfile(
             engine: TtsEngine.device,
             voice: 'coral',
-            model: 'gpt-4o-mini-tts',
+            model: OpenAiConfig.ttsModel,
             instructions: MindPersona.defaultVoiceInstructions(lang),
           ),
 
@@ -119,7 +120,7 @@ class VoiceProfile {
         VoiceChannel.answer => VoiceProfile(
             engine: TtsEngine.device,
             voice: 'sage',
-            model: 'gpt-4o-mini-tts',
+            model: OpenAiConfig.ttsModel,
             instructions: MindPersona.answerVoiceInstructions(lang),
           ),
       };

@@ -1,12 +1,15 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:http/http.dart' as http;
 
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
+import '../phone/call_session.dart';
+import '../phone/voice_session.dart';
 import 'openai_config.dart';
+import 'realtime_speech.dart';
 
 /// ข้อผิดพลาดที่เอาไปโชว์ผู้ใช้ได้เลย — ไม่มี stack trace ไม่มีคำว่า Exception
 /// และไม่มีคีย์หลุดออกมา
@@ -43,14 +46,25 @@ class OpenAiClient {
     String Function()? apiKeyOf,
     String Function()? baseUrlOf,
     S Function()? strings,
+    RtConnect? rtConnect,
     this.upstream = Upstream.openai,
   })  : _s = strings ?? _thai,
+        _rtConnect = rtConnect,
         _http = httpClient ?? http.Client(),
         _timeout = timeout ?? const Duration(seconds: 30),
         _baseUrlOf = baseUrlOf ?? (() => baseUrl ?? OpenAiConfig.baseUrl),
         _apiKeyOf = apiKeyOf ?? (() => apiKey ?? OpenAiConfig.apiKey);
 
   final Upstream upstream;
+
+  /// ทางต่อ WebSocket ของเสียง Realtime · เทสต์ฉีดของปลอม
+  final RtConnect? _rtConnect;
+
+  /// ถอดเสียงตกลงมาขั้นอื่นของ [OpenAiConfig.sttLadder] แล้ว · ผู้เรียกบอกเจ้าของ
+  void Function(SttRung rung)? onSttFallback;
+
+  /// ขั้นที่ใช้ได้ล่าสุด · ไม่ต้องล้มขั้นบนซ้ำทุกตา
+  int _sttRung = 0;
 
   /// อ่านภาษา ณ ตอนที่ error เกิดจริง ไม่ใช่ตอนสร้าง client
   /// เพราะผู้ใช้สลับภาษาได้ระหว่างแอปเปิดอยู่
@@ -170,6 +184,9 @@ class OpenAiClient {
             'user_location': {'type': 'approximate', 'country': country, 'timezone': ?timezone},
         },
       ],
+      // 🔴 ไม่ส่ง = รุ่นสาย reasoning คิดระดับ medium ซึ่งกินเพดาน `max_output_tokens`
+      // เดียวกับคำตอบ · `none` ของ [OpenAiConfig.effortFor] เป็นของงานคุย งานค้นต้องคิดบ้าง
+      if (OpenAiConfig.effortFor(model) != null) 'reasoning': {'effort': 'low'},
       'input': 'Search the web and give a short factual summary (max ~8 lines) '
           'that answers: $query\nInclude dates and numbers exactly as found.',
       'max_output_tokens': 1200,
@@ -215,10 +232,10 @@ class OpenAiClient {
     return (text: text.toString().trim(), sources: sources);
   }
 
-  /// แปลงข้อความเป็นเสียงพูด คืน mp3 เป็นไบต์
+  /// แปลงข้อความเป็นเสียงพูด · รุ่น Realtime คืน wav · รุ่นอื่นคืน mp3
   ///
   /// ตัดอิโมจิออกก่อนเสมอ ไม่งั้น TTS จะอ่านชื่ออิโมจิออกมาดัง ๆ
-  Future<Uint8List> speak(
+  Future<({Uint8List bytes, String mime})> speak(
     String text, {
     required String voice,
     required String instructions,
@@ -233,6 +250,24 @@ class OpenAiClient {
 
     final ttsModel = model ?? OpenAiConfig.ttsModel;
 
+    if (OpenAiConfig.speaksOverRealtime(ttsModel)) {
+      // ส่งไปก็ถูกปฏิเสธทั้งเซสชัน · บอกตั้งแต่ตรงนี้ ไม่เสียเวลาต่อเน็ต
+      if (!OpenAiConfig.realtimeVoices.contains(voice)) {
+        throw OpenAiFailure(_s().errVoiceNotRealtime(voice));
+      }
+      final pcm = await RealtimeSpeech(strings: _s, connect: _rtConnect).speak(
+        clean,
+        apiKey: _apiKeyOf(),
+        model: ttsModel,
+        voice: voice,
+        instructions: instructions,
+      );
+      return (
+        bytes: CallSession.wavOf(pcm, rate: RealtimeSpeech.rate),
+        mime: 'audio/wav',
+      );
+    }
+
     final body = jsonEncode({
       'model': ttsModel,
       'voice': voice,
@@ -244,7 +279,15 @@ class OpenAiClient {
       'response_format': 'mp3',
     });
 
-    return _post('/audio/speech', body);
+    try {
+      return (bytes: await _post('/audio/speech', body), mime: 'audio/mpeg');
+    } on OpenAiFailure catch (e) {
+      // รุ่นที่พิมพ์เองและถูกปิดไปแล้ว · ข้อความดิบของ OpenAI ไม่บอกว่าต้องไปทำอะไร
+      if (e.status == 404) {
+        throw OpenAiFailure(_s().errVoiceModelGone(ttsModel), status: 404);
+      }
+      rethrow;
+    }
   }
 
   /// ถอดเสียงเป็นข้อความ · คืนสตริงว่างเมื่อไม่มีเสียงพูดอยู่ในไฟล์
@@ -254,7 +297,9 @@ class OpenAiClient {
   /// สองกรณีนี้เอง (ดูระดับเสียงที่วัดได้ ไม่ใช่ดูข้อความที่ถอดได้)
   ///
   /// ส่งเป็น multipart ไม่ใช่ JSON — endpoint นี้รับไฟล์ ไม่ใช่ base64
-  /// และ `response_format: text` ทำให้ได้ข้อความเปล่า ๆ ไม่ต้องแกะ JSON
+  ///
+  /// ยิง OpenAI ตรงใช้บันได [OpenAiConfig.sttLadder] · พร็อกซีกับเซิร์ฟเวอร์ในบ้าน
+  /// พูด API แบบ whisper-1 ส่งรุ่นเดียว · ส่ง [model] มา = ใช้รุ่นนั้นรุ่นเดียว
   Future<String> transcribe(
     Uint8List wav, {
     String? model,
@@ -263,6 +308,42 @@ class OpenAiClient {
     if (!usable) throw OpenAiFailure(_s().errNoKey);
     if (wav.isEmpty) return '';
 
+    final direct = model == null && _baseUrl == OpenAiConfig.baseUrl;
+    if (!direct) {
+      final m = model ?? OpenAiConfig.legacySttModel;
+      final res = await _sendStt(wav, (model: m, hint: true), language);
+      if (res.statusCode >= 400) {
+        // เซิร์ฟเวอร์ในบ้านส่วนใหญ่ (Ollama) ไม่มีปลายทางถอดเสียงเลย = 404
+        if (upstream == Upstream.homeServer &&
+            (res.statusCode == 404 || res.statusCode == 405)) {
+          throw OpenAiFailure(_s().errHomeNoStt, status: res.statusCode);
+        }
+        throw OpenAiFailure(_readableError(res), status: res.statusCode);
+      }
+      return _sttText(res);
+    }
+
+    final ladder = OpenAiConfig.sttLadder();
+    for (var i = _sttRung;; i++) {
+      final res = await _sendStt(wav, ladder[i], language);
+      if (res.statusCode < 400) {
+        if (i != _sttRung) {
+          _sttRung = i;
+          onSttFallback?.call(ladder[i]);
+        }
+        return _sttText(res);
+      }
+      if (!_sttRefused(res)) {
+        throw OpenAiFailure(_readableError(res), status: res.statusCode);
+      }
+      debugPrint('ถอดเสียง: ${ladder[i].model} (hint ${ladder[i].hint}) ถูกปฏิเสธ ${res.statusCode}');
+      if (i + 1 == ladder.length) {
+        throw OpenAiFailure(_s().errSttRetired, status: res.statusCode);
+      }
+    }
+  }
+
+  Future<http.Response> _sendStt(Uint8List wav, SttRung rung, String? language) async {
     final req = http.MultipartRequest(
       'POST',
       Uri.parse('$_baseUrl/audio/transcriptions'),
@@ -273,32 +354,57 @@ class OpenAiClient {
         for (final e in _headers.entries)
           if (e.key != 'Content-Type') e.key: e.value,
       })
-      ..fields['model'] = model ?? OpenAiConfig.sttModel
-      ..fields['response_format'] = 'text'
+      ..fields['model'] = rung.model
       ..files.add(http.MultipartFile.fromBytes('file', wav, filename: 'call.wav'));
+
+    final modern = OpenAiConfig.usesLanguages(rung.model);
+    // เอกสาร gpt-transcribe แสดงแต่คำตอบ JSON · รุ่นเก่าขอข้อความเปล่าได้ ไม่ต้องแกะ
+    if (!modern) req.fields['response_format'] = 'text';
 
     // บอกภาษาไปเลยดีกว่าให้เดา · เสียงจากสายโทรศัพท์ถูกบีบจนโมเดลเดาภาษา
     // ผิดได้บ่อย แล้วผลที่ได้คือคำไทยถูกถอดเป็นอังกฤษที่อ่านไม่ออก
-    if (language != null && language.isNotEmpty) req.fields['language'] = language;
+    if (rung.hint && language != null && language.isNotEmpty) {
+      req.fields[modern ? 'languages[]' : 'language'] = language;
+    }
 
-    final http.Response res;
     try {
-      res = await http.Response.fromStream(
+      return await http.Response.fromStream(
         await _http.send(req).timeout(_timeout),
       );
     } on Exception {
       throw OpenAiFailure(_s().errOffline, offline: true);
     }
+  }
 
-    if (res.statusCode >= 400) {
-      // เซิร์ฟเวอร์ในบ้านส่วนใหญ่ (Ollama) ไม่มีปลายทางถอดเสียงเลย = 404
-      if (upstream == Upstream.homeServer &&
-          (res.statusCode == 404 || res.statusCode == 405)) {
-        throw OpenAiFailure(_s().errHomeNoStt, status: res.statusCode);
-      }
-      throw OpenAiFailure(_readableError(res), status: res.statusCode);
+  /// คำตอบถอดเสียงเป็นได้ทั้ง JSON (`{"text": …}`) และข้อความเปล่า
+  static String _sttText(http.Response res) {
+    final body = utf8.decode(res.bodyBytes).trim();
+    if (!body.startsWith('{')) return body;
+    try {
+      final j = jsonDecode(body);
+      final t = j is Map ? j['text'] : null;
+      if (t is String) return t.trim();
+    } on FormatException {
+      // คำพูดที่ขึ้นต้นด้วยวงเล็บ ไม่ใช่ JSON
     }
-    return utf8.decode(res.bodyBytes).trim();
+    return body;
+  }
+
+  /// OpenAI ไม่รับ "รุ่น/ภาษานี้" ไม่ใช่ไม่รับ "เสียงนี้"
+  ///
+  /// 🔴 400 เรื่องไฟล์ (เสียงสั้นเกิน) ต้องไม่นับ · นับ = เสียงสั้นคำเดียวทำให้ตกจากรุ่นหลักทั้งเซสชัน
+  static bool _sttRefused(http.Response res) {
+    if (res.statusCode == 403 || res.statusCode == 404) return true;
+    if (res.statusCode != 400) return false;
+    try {
+      final j = jsonDecode(utf8.decode(res.bodyBytes));
+      final err = j is Map ? j['error'] : null;
+      if (err is! Map) return false;
+      return RegExp(r'language|model', caseSensitive: false)
+          .hasMatch('${err['param'] ?? ''} ${err['code'] ?? ''} ${err['message'] ?? ''}');
+    } on Object {
+      return false;
+    }
   }
 
   Future<Uint8List> _post(String path, String body) async {

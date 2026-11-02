@@ -1,3 +1,4 @@
+import 'openai_config.dart';
 import 'speech_service.dart';
 import 'voice_profile.dart';
 
@@ -79,7 +80,7 @@ abstract final class PremiumCatalog {
 
   /// สลับเจ้าเสียง = ปรับรุ่นกับเสียงให้เป็นของเจ้าใหม่
   ///
-  /// 🔴 ไม่ปรับ = ส่ง `coral` ของ OpenAI ไปให้ Gemini หรือ `gpt-4o-mini-tts`
+  /// 🔴 ไม่ปรับ = ส่ง `coral` ของ OpenAI ไปให้ Gemini หรือ `gpt-realtime-2.1-mini`
   /// ไปให้ ElevenLabs แล้วได้ error ทุกประโยคทั้งที่ผู้ใช้แค่กดเปลี่ยนเจ้า
   /// · ค่าที่เป็นของเจ้านั้นอยู่แล้วเก็บไว้ (กลับมาเจ้าเดิมแล้วไม่ต้องเลือกใหม่)
   static VoiceProfile adapt(VoiceProfile p, TtsEngine to, {required bool thai}) {
@@ -120,5 +121,5 @@ abstract final class PremiumCatalog {
   static bool _looksGemini(String v) => RegExp(r'^[A-Z][a-z]+$').hasMatch(v);
 
   /// ชื่อเสียง OpenAI เป็นตัวเล็กล้วน (coral, marin …)
-  static bool _looksOpenAi(String v) => RegExp(r'^[a-z]+$').hasMatch(v);
+  static bool _looksOpenAi(String v) => OpenAiConfig.realtimeVoices.contains(v);
 }
