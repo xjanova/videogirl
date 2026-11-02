@@ -271,7 +271,10 @@ void main() {
       final start = src.indexOf('private fun tap(id: Int?, long: Boolean, finger: Boolean)');
       expect(start, isNonNegative);
       final fn = src.substring(start, src.indexOf('private fun firstEditable', start));
-      final fingerPart = fn.substring(fn.indexOf('if (finger) {'), fn.indexOf('} else if (can(node))'));
+      // ปุ่มในหน้าเว็บใช้นิ้วตั้งแต่ครั้งแรก (บนเครื่อง: กดครั้งแรกไม่ติด เธอไม่กดสวิตช์ไฟซ้ำ เลยยอมแพ้)
+      expect(fn, contains('if (finger || (!long && inWebPage(node))) {'));
+      expect(src, contains('contains("WebView", ignoreCase = true)'));
+      final fingerPart = fn.substring(fn.indexOf('if (finger || '), fn.indexOf('} else if (can(node))'));
       expect(fingerPart, isNot(contains('performAction')));
       expect(fingerPart, contains('nodeAtPoint'));
       expect(fingerPart, contains('blocked(hit)'));
