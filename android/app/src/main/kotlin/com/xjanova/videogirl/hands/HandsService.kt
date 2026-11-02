@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -28,6 +29,8 @@ import com.xjanova.videogirl.R
  *
  * แจ้งเตือนอีกตัว (heads-up) ถามเจ้าของก่อนทำขั้นที่ย้อนกลับไม่ได้ · คำตอบไปรอใน [HandsControl]
  * ให้ Dart มารับผ่าน `poll`
+ *
+ * จอค้างตลอดงานด้วย (ดู [keepAwake]) · ไม่รวมตอนจำขั้นตอน (เจ้าของแตะจอเองอยู่แล้ว)
  *
  * 🔒 ข้อความในแจ้งเตือนมาจาก Dart (สิ่งที่เจ้าของสั่ง) · ไม่ลง log
  */
@@ -55,12 +58,49 @@ class HandsService : Service() {
         private const val ACTION_DENY = "com.xjanova.videogirl.hands.DENY"
         private const val EXTRA_ID = "giggok.hands.ask_id"
 
+        /** จอค้างนานสุดหลังขั้นล่าสุด · ขั้นหนึ่งยาวสุดราว 2 นาที (รอเจ้าของตอบ) + สมองคิด */
+        private const val AWAKE_MS = 5 * 60_000L
+
         private val main = Handler(Looper.getMainLooper())
         @Volatile private var live: HandsService? = null
+        @Volatile private var awake: PowerManager.WakeLock? = null
+
+        /**
+         * 🔴 เจ้าของ: "ตอนมายด์ทำงาน หน้าจอต้องไม่ดับ" · จอดับกลางงาน = เครื่องล็อก เธอแตะต่อไม่ได้
+         * (จอดับเองใน 2 นาที แต่งานที่ต้องดูภาพจอยาวกว่านั้นได้)
+         *
+         * - ธงจอค้างของหน้าต่างใช้ไม่ได้ · ตอนทำงานแอปอื่นอยู่หน้าจอ ไม่ใช่หน้าของเรา ·
+         *   ใช้ wake lock ระดับจอ (เลิกแนะนำแล้วแต่ยังทำงาน)
+         * - ไม่นับจำนวน · เรียกซ้ำ = ต่อเวลาอีก [AWAKE_MS] จากตอนนี้ · ต่อทุกขั้น ([refresh]) ·
+         *   Dart ค้างไม่เรียก end = ครบเวลาแล้วจอกลับมาดับตามปกติเอง
+         * - ไม่ปลุกจอที่ดับอยู่แล้ว · ปล่อยแล้วนับเวลาจอดับใหม่ (ON_AFTER_RELEASE) ให้เจ้าของเห็นผล
+         */
+        @Suppress("DEPRECATION")
+        @Synchronized private fun keepAwake(app: Context) {
+            if (!HandsControl.running) return
+            try {
+                val lock = awake ?: (app.getSystemService(PowerManager::class.java) ?: return)
+                    .newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE, "GigGok:hands")
+                    .apply { setReferenceCounted(false) }
+                    .also { awake = it }
+                lock.acquire(AWAKE_MS)
+            } catch (e: RuntimeException) {
+                Log.w(TAG, "keep awake: ${e.javaClass.simpleName}")
+            }
+        }
+
+        @Synchronized private fun letSleep() {
+            try {
+                awake?.takeIf { it.isHeld }?.release()
+            } catch (e: RuntimeException) {
+                Log.w(TAG, "let sleep: ${e.javaClass.simpleName}")
+            }
+        }
 
         /** เริ่มงาน/เริ่มจำ · ขึ้นแจ้งเตือน */
         fun start(context: Context) {
             val app = context.applicationContext
+            keepAwake(app)
             ensureChannels(app)
             try {
                 ContextCompat.startForegroundService(app, Intent(app, HandsService::class.java).setAction(ACTION_SHOW))
@@ -74,6 +114,7 @@ class HandsService : Service() {
         /** อัปเดตบรรทัดในแจ้งเตือน (ใช้ได้ทั้งตอนเป็น foreground และตอนเป็นแจ้งเตือนธรรมดา) */
         fun refresh(context: Context) {
             if (!HandsControl.active) return
+            keepAwake(context.applicationContext)
             post(context.applicationContext)
         }
 
@@ -108,9 +149,10 @@ class HandsService : Service() {
             if (HandsSwitch.enabledByUs(app)) HandsSwitch.scheduleIdleOff(app)
         }
 
-        /** ปิดแจ้งเตือนทั้งสองตัว */
+        /** ปิดแจ้งเตือนทั้งสองตัว · ปล่อยจอค้าง */
         fun finish(context: Context) {
             val app = context.applicationContext
+            letSleep()
             main.post {
                 live?.let {
                     it.stopForeground(Service.STOP_FOREGROUND_REMOVE)
