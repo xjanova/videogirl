@@ -50,6 +50,9 @@ class ShopItem {
     this.preview,
     this.requires,
     this.owned = false,
+    this.version,
+    this.summaryTh = '',
+    this.summaryEn = '',
   });
 
   final String id;
@@ -71,7 +74,15 @@ class ShopItem {
 
   final bool owned;
 
+  /// รุ่นของไฟล์ในร้าน (แพ็กความรู้) · ต่างจากที่ติดตั้งในเครื่อง = มีปุ่มอัปเดต · null = ร้านไม่บอก
+  final String? version;
+
+  /// คำอธิบายสั้น ๆ ใต้ชื่อ (แพ็กความรู้) · ว่าง = ไม่แสดง
+  final String summaryTh;
+  final String summaryEn;
+
   String nameFor(bool thai) => thai ? nameTh : nameEn;
+  String summaryFor(bool thai) => thai ? (summaryTh.isNotEmpty ? summaryTh : summaryEn) : (summaryEn.isNotEmpty ? summaryEn : summaryTh);
 
   String get sizeLabel => '${(sizeBytes / 1048576).toStringAsFixed(0)} MB';
 
@@ -86,6 +97,9 @@ class ShopItem {
         preview: preview,
         requires: requires,
         owned: v,
+        version: version,
+        summaryTh: summaryTh,
+        summaryEn: summaryEn,
       );
 
   /// อ่านจาก JSON แบบทนความไม่เนี้ยบ — ช่องที่ขาดไม่ควรทำให้ทั้งรายการหาย
@@ -97,6 +111,8 @@ class ShopItem {
     final name = raw['name'];
     final th = name is Map ? '${name['th'] ?? id}' : '${name ?? id}';
     final en = name is Map ? '${name['en'] ?? th}' : th;
+    final summary = raw['summary'];
+    final v = raw['version'];
 
     return ShopItem(
       id: id,
@@ -108,6 +124,9 @@ class ShopItem {
       sizeBytes: _num(raw['sizeBytes'])?.toInt() ?? 0,
       preview: _str(raw['preview']),
       requires: _str(raw['requires']),
+      version: v is String || v is num ? '$v' : null,
+      summaryTh: summary is Map ? '${summary['th'] ?? ''}' : '${summary ?? ''}',
+      summaryEn: summary is Map ? '${summary['en'] ?? ''}' : '${summary ?? ''}',
     );
   }
 
@@ -148,7 +167,9 @@ class PackCatalogue extends ChangeNotifier {
     _set(ShopStage.loading, null);
     try {
       final res = await _http
-          .get(Uri.parse('$base/api/packs'),
+          // `with=knowledge` = แอปรุ่นนี้รู้จักแพ็กความรู้ · แอปรุ่นเก่าไม่ส่ง หลังบ้านจึงซ่อนได้
+          // (รุ่นเก่าอ่านชนิดที่ไม่รู้จักเป็นชุดตัวละคร แล้วกดโหลดได้ไฟล์ที่ติดตั้งไม่ได้)
+          .get(Uri.parse('$base/api/packs?with=knowledge'),
               headers: const {'Accept': 'application/json'})
           .timeout(const Duration(seconds: 15));
       if (res.statusCode >= 400) {

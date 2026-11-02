@@ -84,11 +84,19 @@ enum AvatarPackKind {
   ///
   /// ต่างจากสองอันบนตรงที่**ไม่ได้แทนที่ตัวเธอ** แต่วางเพิ่มเข้าไปในฉาก
   /// จึงใส่พร้อมกันได้หลายชิ้น ต่างจากชุดที่ใส่ได้ทีละชุด
-  prop;
+  prop,
+
+  /// แพ็กความรู้ (ทำอาหาร เอาตัวรอด เครื่องยนต์ ...) — ไม่มีโมเดล 3D เลย
+  ///
+  /// 🔴 ติดตั้งด้วย KnowledgePacks ไม่ใช่ตัวติดตั้งชุดในไฟล์นี้ · ในร้านอยู่แท็บ "ความรู้"
+  /// ถ้าตกไปที่ character เหมือนชนิดที่ไม่รู้จักอื่น ๆ ร้านจะส่ง zip ความรู้เข้าตัวติดตั้งชุด
+  /// แล้วได้ "ไม่ใช่ชุดที่ใช้ได้" ทั้งที่ซื้อมาถูกต้อง
+  knowledge;
 
   static AvatarPackKind parse(Object? v) => switch ('$v') {
         'outfit' => AvatarPackKind.outfit,
         'prop' => AvatarPackKind.prop,
+        'knowledge' => AvatarPackKind.knowledge,
         _ => AvatarPackKind.character,
       };
 }
@@ -466,8 +474,7 @@ class AvatarPacks extends ChangeNotifier {
   ///
   /// รหัสนี้มาจาก `pack.json` ใน zip ที่โหลดมาจากอินเทอร์เน็ต = ข้อมูลที่
   /// ไม่ควรเชื่อ · ถ้าปล่อยให้เป็น `../../` ได้ การติดตั้งชุดจะกลายเป็นการ
-  /// เขียนทับไฟล์ที่ไหนก็ได้ในพื้นที่ของแอป
-  @visibleForTesting
+  /// เขียนทับไฟล์ที่ไหนก็ได้ในพื้นที่ของแอป · แพ็กความรู้ใช้ด่านเดียวกัน (KnowledgePacks)
   static String? safeId(String? raw) => _safeId(raw);
 
   static String? _safeId(String? raw) {

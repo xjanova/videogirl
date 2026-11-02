@@ -190,7 +190,7 @@ class RecallIndex {
     'what', 'do you', 'remember', 'tell me', 'please',
   ];
 
-  @visibleForTesting
+  /// ใช้กับแพ็กความรู้ด้วย (KnowledgePacks.search)
   static String stripChatter(String q) {
     var s = q.toLowerCase();
     for (final w in _chatter) {

@@ -157,8 +157,8 @@ class S {
   // ═══ ร้านของมายด์ ══════════════════════════════════════
   String get shopTitle => _('ร้านของมายด์', "Mind's shop");
   String get shopSubtitle => _(
-        'ชุด ตัวละครใหม่ และของประดับเวที',
-        'Outfits, new characters and stage props',
+        'ชุด ตัวละครใหม่ ของประดับเวที และแพ็กความรู้',
+        'Outfits, new characters, stage props and knowledge packs',
       );
   String get shopOpen => _('เปิดร้าน', 'Open shop');
   String get refresh => _('รีเฟรช', 'Refresh');
@@ -194,6 +194,7 @@ class S {
   String shopKind(String kind) => switch (kind) {
         'outfit' => _('ชุดแต่งตัว', 'Outfit'),
         'prop' => _('ของประดับเวที', 'Stage prop'),
+        'knowledge' => _('แพ็กความรู้', 'Knowledge pack'),
         _ => _('ตัวละคร', 'Character'),
       };
 
