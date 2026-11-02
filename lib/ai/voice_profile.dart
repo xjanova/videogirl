@@ -10,7 +10,10 @@ import 'speech_service.dart';
 /// แยกเพราะบริบทต่างกันจริง: คุยในแอปคือคุยกับเจ้าของ จะหวานแค่ไหนก็ได้
 /// แต่ตอนรับสายคนปลายทางเป็นคนแปลกหน้า ต้องเป็นทางการและฟังชัดเป็นหลัก
 /// ป้ายที่ผู้ใช้เห็นอยู่ใน i18n/enum_labels.dart — enum เก็บแค่ตัวตน
-enum VoiceChannel { chat, answer, outgoing }
+///
+/// 🔴 เคยมีช่อง "โทรออก" แยก แต่ไม่มีทางไหนอ่านค่ามันเลย สายออกใช้เสียงเดียวกับรับสาย
+/// (speakForCall · Realtime · GPT-Live) · แท็บที่ตั้งแล้วไม่มีผลคือของปลอม จึงถอด
+enum VoiceChannel { chat, answer }
 
 /// เสียงหนึ่งชุดของหนึ่งช่องทาง
 @immutable
@@ -27,10 +30,10 @@ class VoiceProfile {
   /// ชื่อเสียงของ OpenAI (coral, shimmer, …) — ไม่มีผลกับเสียงเครื่อง Android
   final String voice;
 
-  /// โมเดลเสียง เช่น gpt-4o-mini-tts, tts-1-hd
+  /// โมเดลเสียง เช่น gpt-realtime-2.1-mini
   final String model;
 
-  /// คำสั่งน้ำเสียง — เฉพาะ gpt-4o-mini-tts ที่รับพารามิเตอร์นี้
+  /// คำสั่งน้ำเสียง — ดู [OpenAiConfig.supportsInstructions]
   final String instructions;
 
   VoiceProfile copyWith({
@@ -79,8 +82,9 @@ class VoiceProfile {
           (e) => e.name == j['engine'],
           orElse: () => fallback.engine,
         ),
-        voice: j['voice'] as String? ?? fallback.voice,
-        // รุ่นที่เลิกเสนอแล้ว (tts-1 · tts-1-hd) ย้ายมารุ่นที่ใช้ได้กับทุกเสียง
+        // รุ่นที่ปิดแล้ว (tts-1 · gpt-4o-mini-tts) ย้ายมารุ่นปัจจุบัน และรุ่นนั้นไม่มีบางเสียง
+        // · MindState บอกเจ้าของตอนโหลด (ดู _voiceMoved)
+        voice: OpenAiConfig.migrateVoice(j['voice'] as String? ?? fallback.voice),
         model: OpenAiConfig.migrateTts(j['model'] as String? ?? fallback.model),
         instructions: j['instructions'] as String? ?? fallback.instructions,
       );
@@ -99,7 +103,7 @@ class VoiceProfile {
   static const openAiDefaults = VoiceProfile(
     engine: TtsEngine.openai,
     voice: 'coral',
-    model: 'gpt-4o-mini-tts',
+    model: OpenAiConfig.ttsModel,
     instructions: '',
   );
 
@@ -108,24 +112,16 @@ class VoiceProfile {
         VoiceChannel.chat => VoiceProfile(
             engine: TtsEngine.device,
             voice: 'coral',
-            model: 'gpt-4o-mini-tts',
+            model: OpenAiConfig.ttsModel,
             instructions: MindPersona.defaultVoiceInstructions(lang),
           ),
 
-        // รับสายแทน: คนปลายสายเป็นคนแปลกหน้า ต้องสุภาพ ชัด ไม่หวาน
+        // ในสาย ทั้งรับและโทรออก: คนปลายสายเป็นคนแปลกหน้า ต้องสุภาพ ชัด ไม่หวาน
         VoiceChannel.answer => VoiceProfile(
             engine: TtsEngine.device,
             voice: 'sage',
-            model: 'gpt-4o-mini-tts',
+            model: OpenAiConfig.ttsModel,
             instructions: MindPersona.answerVoiceInstructions(lang),
-          ),
-
-        // โทรออก: ต้องฟังชัดที่สุดเพราะสายโทรศัพท์บีบเสียงอยู่แล้ว
-        VoiceChannel.outgoing => VoiceProfile(
-            engine: TtsEngine.device,
-            voice: 'shimmer',
-            model: 'gpt-4o-mini-tts',
-            instructions: MindPersona.outgoingVoiceInstructions(lang),
           ),
       };
 }

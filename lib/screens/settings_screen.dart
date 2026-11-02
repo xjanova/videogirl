@@ -863,6 +863,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       MindPermission.phone => (t.permPhone, t.permPhoneWhy),
       MindPermission.contacts => (t.permContacts, t.permContactsWhy),
       MindPermission.sms => (t.permSms, t.permSmsWhy),
+      MindPermission.activity => (t.permActivity, t.permActivityWhy),
+      MindPermission.bodySensors => (t.permBody, t.permBodyWhy),
       MindPermission.answerCalls => (t.permAnswer, t.permAnswerWhy),
       MindPermission.defaultDialer => (t.permDialer, t.permDialerWhy),
       MindPermission.accessibility => (t.permA11y, t.permA11yWhy),
@@ -2898,7 +2900,31 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: 6),
             Text(channel.hintOf(S.of(context)),
                 style: const TextStyle(fontSize: 10.5, color: MindColors.ink55)),
-
+            // คุยสดมีเสียงของตัวเอง · ต้องเห็นตรงนี้ ไม่งั้นเลือกเสียงแล้วไม่ได้ยินโดยไม่รู้ทำไม
+            if (channel == VoiceChannel.chat && state.brain == BrainProvider.openai) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 3,
+                      children: [
+                        Text(S.of(context).voiceChatLiveSwitch,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text(S.of(context).voiceChatLiveHint,
+                            style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                      ],
+                    ),
+                  ),
+                  _toggle(
+                    on: state.voiceChatLive,
+                    mode: mode,
+                    onTap: () => state.setVoiceChatLive(!state.voiceChatLive),
+                  ),
+                ],
+              ),
+            ],
             if (channel == VoiceChannel.chat &&
                 state.brain == BrainProvider.openai &&
                 state.hasOwnKey)
@@ -2955,23 +2981,31 @@ class _SettingsScreenState extends State<SettingsScreen>
                       fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00)),
                 ),
               ],
-              const SizedBox(height: 14),
-              Text(S.of(context).voiceModel,
-                  style: mindMono(
-                      size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
-              const SizedBox(height: 7),
-              for (final m in OpenAiConfig.ttsChoices)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 7),
-                  child: _choiceRow(
-                    title: m,
-                    subtitle: S.of(context).ttsModelHint(m),
-                    selected: profile.model == m,
-                    mode: mode,
-                    onTap: () =>
-                        state.setVoice(channel, profile.copyWith(model: m)),
+              // รุ่นเดียว = ไม่มีอะไรให้เลือก เหมือนเจ้าพรีเมียม · ช่องพิมพ์เองคงไว้เผื่อ OpenAI เปลี่ยนรุ่น
+              if (OpenAiConfig.ttsChoices.length == 1) ...[
+                const SizedBox(height: 10),
+                Text('${S.of(context).voiceModel}: ${OpenAiConfig.ttsChoices.single}',
+                    style: const TextStyle(fontSize: 11, color: MindColors.ink60)),
+                const SizedBox(height: 7),
+              ] else ...[
+                const SizedBox(height: 14),
+                Text(S.of(context).voiceModel,
+                    style: mindMono(
+                        size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+                const SizedBox(height: 7),
+                for (final m in OpenAiConfig.ttsChoices)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 7),
+                    child: _choiceRow(
+                      title: m,
+                      subtitle: S.of(context).ttsModelHint(m),
+                      selected: profile.model == m,
+                      mode: mode,
+                      onTap: () =>
+                          state.setVoice(channel, profile.copyWith(model: m)),
+                    ),
                   ),
-                ),
+              ],
               _customModelRow(
                 current: profile.model,
                 presets: OpenAiConfig.ttsChoices,
@@ -3320,6 +3354,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           line(Icons.hearing_rounded, t.inCallListen, listen),
           line(Icons.psychology_rounded, t.inCallThink, think),
           line(Icons.record_voice_over_rounded, t.inCallSpeak, speak),
+          if (state.realtimeCallsReady)
+            line(
+              Icons.bolt_rounded,
+              t.inCallLive,
+              t.inCallLiveWhat(state.callLiveReady ? 'GPT-Live' : 'OpenAI Realtime', state.callLiveVoice),
+            ),
           Text(t.inCallWhere,
               style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
         ],

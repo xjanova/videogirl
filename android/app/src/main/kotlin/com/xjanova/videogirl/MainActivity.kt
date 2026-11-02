@@ -24,6 +24,7 @@ import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.health.connect.client.PermissionController
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -60,6 +61,10 @@ class MainActivity : FlutterActivity() {
     /// สิทธิ์ที่ค้างอยู่ — ต้องจำไว้เพราะ shouldShowRequestPermissionRationale
     /// ถามเป็นรายสิทธิ์ ถามผิดตัวจะได้คำตอบของสิทธิ์อื่น
     private var pendingPermission: String? = null
+
+    /// คำขอ Health Connect ที่ค้าง · ไปทางหน้าของระบบ ไม่ใช่ onRequestPermissionsResult
+    private var pendingHealth: MethodChannel.Result? = null
+    private var pendingHealthAsked: Set<String> = emptySet()
 
     /**
      * engine ก้อนเดียวของทั้งแอป (ดู [MindEngine]) แทนการสร้างของตัวเอง
@@ -143,6 +148,19 @@ class MainActivity : FlutterActivity() {
                         arrayOf(Manifest.permission.ANSWER_PHONE_CALLS),
                         REQ_ANSWER, result
                     )
+                    // Android 9 ลงมาไม่มีสิทธิ์นี้ · ตัวนับก้าวอ่านได้เลย
+                    "requestActivity" -> if (Build.VERSION.SDK_INT < 29) {
+                        result.success(GRANTED)
+                    } else {
+                        ask(Manifest.permission.ACTIVITY_RECOGNITION, REQ_ACTIVITY, result)
+                    }
+                    "requestBodySensors" -> if (Build.VERSION.SDK_INT >= 36) {
+                        requestHealth(listOf("heart_rate"), result)
+                    } else {
+                        ask(Manifest.permission.BODY_SENSORS, REQ_BODY_SENSORS, result)
+                    }
+                    // เฉพาะชนิดที่เจ้าของถามในคำถามนั้น ไม่ขอเหมาทั้งชุด
+                    "requestHealth" -> requestHealth(call.argument<List<String>>("types") ?: emptyList(), result)
                     // แจ้งเหตุ · ขอตอนเจ้าของเปิดระบบเอง ไม่อยู่ในชุดที่ถามตอนเริ่มแอป
                     "requestSos" -> askMany(
                         arrayOf(
@@ -247,6 +265,31 @@ class MainActivity : FlutterActivity() {
         pending = result
         pendingPermission = permission
         ActivityCompat.requestPermissions(this, arrayOf(permission), code)
+    }
+
+    /**
+     * ขอสิทธิ์ Health Connect · ขอผ่าน requestPermissions ไม่ได้ ต้องเปิดหน้าของ Health Connect
+     *
+     * เจ้าของปฏิเสธซ้ำสองครั้ง Health Connect ตอบกลับทันทีโดยไม่ขึ้นหน้า · จากตรงนี้แยกไม่ออก
+     * ฝั่ง Dart จึงบอกทางไปเปิดเองเสมอ
+     */
+    private fun requestHealth(types: List<String>, result: MethodChannel.Result) {
+        val wanted = types.mapNotNull { MindHealth.PERMISSIONS[it] }.toSet()
+        if (wanted.isEmpty() || MindHealth(this).status() != "ok") {
+            result.success(DENIED)
+            return
+        }
+        // เหมือน [ask] · ตอบตัวเก่าก่อน ไม่งั้น Future ฝั่ง Dart ค้าง
+        pendingHealth?.success(DENIED)
+        pendingHealth = result
+        pendingHealthAsked = wanted
+        try {
+            val contract = PermissionController.createRequestPermissionResultContract()
+            startActivityForResult(contract.createIntent(this, wanted), REQ_HEALTH)
+        } catch (e: Exception) {
+            pendingHealth = null
+            result.success(DENIED)
+        }
     }
 
     /// ดู [SystemBridge.canInstall] · ขอผ่านกล่องปกติไม่ได้ ต้องพาไปหน้าตั้งค่าของระบบ
@@ -435,6 +478,13 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQ_HEALTH) {
+            val reply = pendingHealth ?: return
+            pendingHealth = null
+            val got = PermissionController.createRequestPermissionResultContract().parseResult(resultCode, data)
+            reply.success(if (got.containsAll(pendingHealthAsked)) GRANTED else DENIED)
+            return
+        }
         if (requestCode != REQ_PICK_FILE) {
             super.onActivityResult(requestCode, resultCode, data)
             return
@@ -720,6 +770,9 @@ class MainActivity : FlutterActivity() {
         private const val REQ_DIALER_ROLE = 8754
         private const val REQ_SMS = 8755
         private const val REQ_PICK_FILE = 8757
+        private const val REQ_ACTIVITY = 8758
+        private const val REQ_BODY_SENSORS = 8759
+        private const val REQ_HEALTH = 8760
         private const val REQ_SOS = 8771
 
         /// เท่ากับเพดานไฟล์ฝั่ง Dart (CallKnowledge.addFile) · ไฟล์ข้อความใหญ่กว่านี้ไม่ใช่เอกสารที่คนเขียน
@@ -730,7 +783,8 @@ class MainActivity : FlutterActivity() {
         /// ต้องครบ ไม่งั้นคำขอที่หายไปจะไม่มีใครตอบ แล้วปุ่มขอสิทธิ์
         /// ทั้งแอปค้างทั้งเซสชัน · ดู onRequestPermissionsResult
         private val KNOWN_REQUESTS = setOf(
-            REQ_CAMERA, REQ_MIC, REQ_CALENDAR, REQ_CALL, REQ_CONTACTS, REQ_ANSWER, REQ_SMS, REQ_SOS
+            REQ_CAMERA, REQ_MIC, REQ_CALENDAR, REQ_CALL, REQ_CONTACTS, REQ_ANSWER, REQ_SMS,
+            REQ_ACTIVITY, REQ_BODY_SENSORS, REQ_SOS
         )
 
         /// ต้องตรงกับ kMindChannelId ใน lib/background/mind_background.dart

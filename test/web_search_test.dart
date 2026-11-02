@@ -23,7 +23,7 @@ typedef _Found = ({String text, List<({String title, String url})> sources});
 /// สมองปลอม: ตาแรกขอค้นเว็บ ตาสองตอบจากผล · ค้นเว็บได้เฉพาะรุ่นที่บอกไว้
 class _WebBrain extends OpenAiClient {
   static const first = '[[เว็บ: ราคาทองวันนี้]]';
-  static const supports = {'gpt-4.1-mini'};
+  static const supports = {'gpt-6-luna'};
   final seen = <List<Turn>>[];
   final systems = <String>[];
   final searched = <({String query, String model})>[];
@@ -122,10 +122,10 @@ void main() {
           });
         }),
       );
-      final r = await c.webSearch('ราคาทองวันนี้', model: 'gpt-4.1-mini', country: 'TH', timezone: 'Asia/Bangkok');
+      final r = await c.webSearch('ราคาทองวันนี้', model: 'gpt-6-luna', country: 'TH', timezone: 'Asia/Bangkok');
       expect(asked!.url.path, '/v1/responses');
       final body = jsonDecode(asked!.body) as Map;
-      expect(body['model'], 'gpt-4.1-mini');
+      expect(body['model'], 'gpt-6-luna');
       final tool = (body['tools'] as List).single as Map;
       expect(tool['type'], 'web_search');
       expect((tool['user_location'] as Map)['country'], 'TH');
@@ -175,7 +175,7 @@ void main() {
       await s.setOpenAiKey('sk-test-key-for-unit-tests');
       final web = s.debugWebSearcher!;
       await web('ทอง');
-      expect(brain.searched.last.model, 'gpt-4.1-mini');
+      expect(brain.searched.last.model, 'gpt-6-luna');
       final tries = brain.searched.length;
       await web('ทองอีกที');
       expect(brain.searched.length, tries + 1, reason: 'ครั้งต่อไปไปรุ่นที่ผ่านเลย ไม่ล้มก่อน');

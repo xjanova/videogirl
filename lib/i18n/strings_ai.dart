@@ -1,3 +1,4 @@
+import '../ai/openai_config.dart';
 import 'strings.dart';
 
 /// ข้อความฝั่ง AI — สมอง, แรม, บุคลิก, ข้อผิดพลาด
@@ -29,9 +30,9 @@ extension AiStrings on S {
         'A typo will simply fail, and you will find out on your next message',
       );
   String get voiceModelCustomEditor => pick(
-        'ใส่ชื่อรุ่นเสียงให้ตรงกับที่ผู้ให้บริการใช้ เช่น gpt-4o-mini-tts\n'
+        'ใส่ชื่อรุ่นเสียงให้ตรงกับที่ผู้ให้บริการใช้ เช่น gpt-realtime-2.1-mini\n'
         'ถ้ารุ่นนั้นไม่รับคำสั่งน้ำเสียง ช่องน้ำเสียงจะหายไปเอง',
-        'Type the voice model id as the provider spells it, e.g. gpt-4o-mini-tts\n'
+        'Type the voice model id as the provider spells it, e.g. gpt-realtime-2.1-mini\n'
         'If it does not accept tone instructions, that field disappears on its own',
       );
   String get voiceNameCustomEditor => pick(
@@ -258,6 +259,8 @@ extension AiStrings on S {
       'Smartest of 5.6 and quick to answer · default');
   String get modelSol61Hint => pick('รุ่นใหม่ล่าสุด คิดละเอียดกว่า แต่ตอบช้ากว่าเล็กน้อย',
       'Newest, more careful, a little slower to answer');
+  String get modelTerra61Hint => pick('ใหม่กว่า 5.6 Terra เร็วและถูก \$1 / \$5 ต่อล้านโทเคน เหมาะกับคุยทั่วไป',
+      'Newer than 5.6 Terra, fast and low-cost at \$1 / \$5 per million tokens, good for everyday chat');
   String get modelTerraHint =>
       pick('ระดับกลาง ราคาราวครึ่งของ Sol', 'Mid tier, about half the price of Sol');
   String get modelLunaHint => pick('เร็วและถูกที่สุด', 'Fastest and cheapest');
@@ -267,17 +270,12 @@ extension AiStrings on S {
 
   String get ttsSteerable =>
       pick('สั่งอารมณ์เสียงได้ · สมจริงที่สุด', 'Tone can be steered · most lifelike');
-  String get ttsSharper =>
-      pick('คมกว่า แต่สั่งอารมณ์ไม่ได้', 'Sharper, but tone cannot be steered');
-  String get ttsCheapest => pick(
-      'เร็วและถูกที่สุด · สั่งอารมณ์ไม่ได้', 'Fastest and cheapest · no tone control');
 
 
   // ═══ เสียงของ OpenAI ═══════════════════════════════════
   String get voiceCoral => pick('Coral — นุ่ม อบอุ่น', 'Coral — soft and warm');
   String get voiceShimmer => pick('Shimmer — ใส ฟังชัด', 'Shimmer — bright and clear');
   String get voiceSage => pick('Sage — สุขุม เป็นทางการ', 'Sage — composed and formal');
-  String get voiceNova => pick('Nova — สดใส กระฉับกระเฉง', 'Nova — bright and brisk');
   String get voiceBallad => pick('Ballad — ช้า อ่อนโยน', 'Ballad — slow and gentle');
   String get voiceMarin =>
       pick('Marin — เป็นธรรมชาติที่สุด (OpenAI แนะนำ)', 'Marin — most natural (recommended by OpenAI)');
@@ -708,6 +706,11 @@ extension AiStrings on S {
   String get wakePaused => pick('พักฟังอยู่ เพราะมีสายหรือแอปอื่นใช้ไมค์', 'Paused: a call or another app is using the mic');
   String get wakeListening => pick('กำลังรอฟังอยู่', 'Listening for your word');
   String get wakeOffNow => pick('ไม่ได้รอฟัง', 'Not listening');
+  String get healthUnlockFirst => pick(
+        'ปลดล็อกเครื่องก่อนนะคะ ข้อมูลสุขภาพต้องเป็นเจ้าของเครื่องถามเท่านั้น',
+        'Please unlock your phone first. Health data is only for you.',
+      );
+
   String get wakeUnlockFirst => pick(
         'ปลดล็อกเครื่องก่อนนะคะ ขั้นนี้ย้อนกลับไม่ได้ ต้องเป็นเจ้าของเครื่องสั่งเท่านั้น',
         "Please unlock your phone first. This can't be undone, so it has to come from you.",
@@ -779,6 +782,44 @@ extension AiStrings on S {
   String get errTtsStuck => pick(
         'เสียงของเครื่องไม่ตอบ (ค้าง) · ลองอีกครั้ง หรือเปิดแอป Speech Services by Google ให้อัปเดตก่อน',
         'The phone\'s voice engine is not responding · try again, or update Speech Services by Google',
+      );
+
+  String errVoiceModelGone(String model) => pick(
+        'OpenAI ไม่เปิดรุ่นเสียง $model ให้คีย์นี้ หรือปิดรุ่นนี้ไปแล้ว · เลือกโมเดลเสียงใหม่ในหน้าตั้งค่า',
+        'OpenAI has closed the voice model $model or does not offer it to this key — pick another in Settings',
+      );
+  String errVoiceNotRealtime(String voice) => pick(
+        'เสียง $voice ใช้กับโมเดลเสียงปัจจุบันของ OpenAI ไม่ได้ · เลือกเสียงใหม่ในหน้าตั้งค่า',
+        "OpenAI's current voice model has no voice called $voice — pick another in Settings",
+      );
+  String errOpenAiVoice(String code) => pick(
+        'OpenAI สร้างเสียงให้ไม่สำเร็จ ($code)',
+        'OpenAI could not produce her voice ($code)',
+      );
+
+  /// 🔴 ทุกครั้งที่ตกมาเสียงเครื่องต้องบอกทั้งเหตุผล และว่าตอนนี้ฟังเสียงเครื่องอยู่
+  String voiceFellBack(String why) => pick(
+        'เสียงที่เลือกใช้ไม่ได้: $why · ตอนนี้ใช้เสียงเครื่องแทน',
+        'The voice you picked is not working: $why · using the phone voice for now',
+      );
+
+  /// ย้ายเสียงที่บันทึกไว้ตอนเปิดแอป · [voice] = ชื่อเสียงเดิมที่ไม่มีในรุ่นใหม่ · null = เสียงเดิมยังอยู่
+  String voiceMoved(String? voice) => pick(
+        'OpenAI กำลังปิดรุ่นเสียงเดิม จึงย้ายเสียงของเธอไปรุ่นใหม่ให้แล้ว · '
+            '${voice == null ? 'เสียงอาจต่างจากเดิมเล็กน้อย' : 'เสียง $voice ไม่มีในรุ่นใหม่ เปลี่ยนเป็น marin'}',
+        'OpenAI is closing the old voice model, so her voice moved to the new one · '
+            '${voice == null ? 'she may sound slightly different' : 'the voice $voice is not in it, so she now uses marin'}',
+      );
+
+  /// บอกเจ้าของเมื่อตัวถอดเสียงหลักใช้ไม่ได้ · [guessing] = ไม่ได้บอกภาษาแล้ว คำไทยเพี้ยนง่าย
+  String sttFellBack(String model, {required bool guessing}) => pick(
+        'OpenAI ไม่รับตัวถอดเสียงหลัก · ตอนนี้ใช้ $model${guessing ? ' แบบเดาภาษาเอง' : ''} แทน คำที่ได้ยินอาจเพี้ยนกว่าเดิม',
+        'OpenAI refused the main transcriber · using $model${guessing ? ' with language detection' : ''} instead, '
+            'so what she hears may be less accurate',
+      );
+  String get errSttRetired => pick(
+        'OpenAI ไม่รับตัวถอดเสียงทุกรุ่นที่แอปรู้จัก เธอจึงฟังไม่ได้ · ลองอัปเดตแอป',
+        'OpenAI refused every transcriber this app knows, so she cannot listen — try updating the app',
       );
 
   String get errTtsFailed =>
@@ -859,6 +900,7 @@ extension AiStrings on S {
   String brainModelHint(String id) => switch (id) {
         'gpt-5.6-sol' => modelSolHint,
         'gpt-6.1-sol' => modelSol61Hint,
+        'gpt-6.1-terra' => modelTerra61Hint,
         'gpt-5.6-terra' => modelTerraHint,
         'gpt-6-luna' => modelLunaHint,
         'gpt-6-astra' => modelAstraHint,
@@ -869,17 +911,13 @@ extension AiStrings on S {
         'coral' => voiceCoral,
         'shimmer' => voiceShimmer,
         'sage' => voiceSage,
-        'nova' => voiceNova,
         'ballad' => voiceBallad,
         'marin' => voiceMarin,
         'cedar' => voiceCedar,
         _ => id,
       };
 
-  String ttsModelHint(String id) => switch (id) {
-        'gpt-4o-mini-tts' => ttsSteerable,
-        'tts-1-hd' => ttsSharper,
-        _ => ttsCheapest,
-      };
+  String ttsModelHint(String id) =>
+      OpenAiConfig.speaksOverRealtime(id) ? ttsSteerable : modelTypedHint;
 
 }

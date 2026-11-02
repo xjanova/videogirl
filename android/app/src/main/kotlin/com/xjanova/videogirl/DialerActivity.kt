@@ -791,19 +791,7 @@ class DialerActivity : Activity() {
         }
     }
 
-    private fun simAccounts(): List<Pair<PhoneAccountHandle, SimInfo.Sim?>> {
-        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
-            return emptyList()
-        }
-        return try {
-            val tm = getSystemService(TelecomManager::class.java) ?: return emptyList()
-            tm.callCapablePhoneAccounts
-                .map { it to SimInfo.of(this, it) }
-                .sortedBy { it.second?.slot ?: 9 }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
+    private fun simAccounts(): List<Pair<PhoneAccountHandle, SimInfo.Sim?>> = SimInfo.accounts(this)
 
     private fun onCallTap(account: PhoneAccountHandle?) {
         if (digits.isEmpty()) {

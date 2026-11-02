@@ -32,6 +32,7 @@ class PhoneAgent {
     required this.hands,
     required this.think,
     required this.lang,
+    this.findApp,
     this.onView,
     this.maxSteps = defaultMaxSteps,
     this.routines = const [],
@@ -52,6 +53,9 @@ class PhoneAgent {
   final AppLang lang;
   final void Function(PhoneTaskView? view)? onView;
   final int maxSteps;
+
+  /// ชื่อที่เจ้าของเรียกแอป → แพ็กเกจ ([AppTable.find]) · null = ไม่รู้ ให้ฝั่ง Android หาเอง
+  final String? Function(String name)? findApp;
 
   /// ขั้นตอนที่เจ้าของสอนไว้ ([PhoneMacro]) · เธอเรียกด้วย `{"do":"routine","name":…}`
   final List<PhoneMacro> routines;
@@ -350,12 +354,18 @@ class PhoneAgent {
     return null;
   }
 
+  @visibleForTesting
+  Future<HandsReply> debugExecute(PhoneAction a) => _execute(a);
+
   Future<HandsReply> _execute(PhoneAction a) async {
     switch (a.kind) {
       case 'tap':
       case 'long_press':
         if (a.id == null) return const HandsReply(false, error: 'no_id');
         return hands.act(a.kind, id: a.id);
+      case 'drag':
+        if (a.id == null || (a.to.isEmpty && a.dir.isEmpty)) return const HandsReply(false, error: 'no_id');
+        return hands.act('drag', id: a.id, text: a.to, dir: a.dir);
       case 'type':
         if (a.id == null) return const HandsReply(false, error: 'no_id');
         return hands.act('type', id: a.id, text: a.text);
@@ -371,7 +381,7 @@ class PhoneAgent {
         return hands.act(a.kind);
       case 'open_app':
         if (a.name.isEmpty) return const HandsReply(false, error: 'no_name');
-        final r = await hands.openApp(a.name);
+        final r = await hands.openApp(findApp?.call(a.name) ?? a.name);
         if (r.ok) await Future<void>.delayed(settle);
         return r;
       case 'wait':
@@ -453,6 +463,8 @@ class PhoneAgent {
         return 'open_app ${a.name}';
       case 'scroll':
         return 'scroll ${a.dir.isEmpty ? 'down' : a.dir}${a.id == null ? '' : ' [${a.id}]'}';
+      case 'drag':
+        return 'drag [${a.id}]$label to ${a.to.isEmpty ? a.dir : '[${a.to}]'}';
       default:
         return '${a.kind}${a.id == null ? '' : ' [${a.id}]'}$label';
     }
@@ -467,6 +479,8 @@ class PhoneAgent {
         return label.isEmpty ? _s.handsStepTapUnnamed : _s.handsStepTap(label);
       case 'long_press':
         return label.isEmpty ? _s.handsStepTapUnnamed : _s.handsStepLong(label);
+      case 'drag':
+        return _s.handsStepDrag(label);
       case 'type':
         return _s.handsStepType;
       case 'submit':
@@ -520,6 +534,8 @@ Reply with ONE JSON object only, no other text:
 {"do":"tap","id":12,"why":"open the chat with Mum"}
 Steps:
 - {"do":"tap","id":N} · {"do":"long_press","id":N}
+- {"do":"drag","id":N,"to":M}  (hold an element and drop it on another; on the home screen, dropping one icon on another makes a folder)
+- {"do":"drag","id":N,"dir":"left|right"}  (drag an icon to the next home screen page)
 - {"do":"type","id":N,"text":"..."}  (replaces the field's text; does not send)
 - {"do":"submit","id":N}  (press the keyboard's enter/search key in that field)
 - {"do":"scroll","dir":"down|up|left|right","id":N}  (id optional)
@@ -539,6 +555,7 @@ Rules:
 - Do only what the task asks. Do not open unrelated apps, read private content you do not need, or do extra things.
 - Never type passwords, PINs, OTP codes or card numbers. Banking, finance and payment apps, password fields, app installs and permission screens are off-limits: if the task needs them, fail and say the owner must do it.
 - Use only [id] numbers from the current screen. If what you need is not visible, scroll, go back, or open the right app.
+- Arrange the home screen only when the task asks for it, one icon per step, and check the screen after each drag. Never drop an icon on Uninstall or Remove.
 - Prefer open_app to hunting for icons. After typing a message, tap the app's send button to send it.
 - Check the screen before saying done: say done only when the screen shows the task is complete.
 - Write "summary" and "question" in $reply.''';

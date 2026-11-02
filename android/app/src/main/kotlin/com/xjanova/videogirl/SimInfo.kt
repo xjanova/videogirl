@@ -107,6 +107,42 @@ object SimInfo {
         }
     }
 
+    /** ซิมที่โทรออกได้ เรียงตามช่อง · ไม่มีสิทธิ์หรือ ROM แปลก = ว่าง */
+    fun accounts(context: Context): List<Pair<PhoneAccountHandle, Sim?>> {
+        if (!canRead(context)) return emptyList()
+        return try {
+            val tm = context.getSystemService(TelecomManager::class.java) ?: return emptyList()
+            tm.callCapablePhoneAccounts
+                .map { it to of(context, it) }
+                .sortedBy { it.second?.slot ?: 9 }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** ซิมที่ตั้งเป็นค่าโทรออกในเครื่อง · null = ตั้ง "ถามทุกครั้ง" */
+    fun defaultAccount(context: Context): PhoneAccountHandle? {
+        if (!canRead(context)) return null
+        return try {
+            context.getSystemService(TelecomManager::class.java)?.getDefaultOutgoingPhoneAccount("tel")
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** รายการให้ฝั่ง Dart เลือก · ชื่อตัดคำว่าซิมซ้ำออกแล้ว · ดู [Sim.carrier] */
+    fun choices(context: Context): List<Map<String, Any?>> {
+        val preferred = defaultAccount(context)
+        return accounts(context).map { (handle, sim) ->
+            mapOf(
+                "id" to handle.id,
+                "slot" to sim?.slot,
+                "label" to sim?.carrier(context),
+                "default" to (handle == preferred),
+            )
+        }
+    }
+
     private fun subscription(
         context: Context,
         handle: PhoneAccountHandle,

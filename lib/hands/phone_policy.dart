@@ -136,6 +136,11 @@ abstract final class PhonePolicy {
       case 'long_press':
       case 'submit':
         break;
+      case 'drag':
+        // ลากลงช่อง "ถอนการติดตั้ง" หรือ "ลบ" ของตัวเปิดแอป = กดปุ่มนั้น
+        final to = int.tryParse(a.to);
+        final target = to == null ? null : screen?.byId(to);
+        return target != null && riskyText(labelOf(target));
       default:
         // พิมพ์ เลื่อน ย้อนกลับ เปิดแอป ตั้งปลุก เปิดหน้าเพิ่มนัด/เขียนอีเมล = ยังไม่มีอะไรออกไปไหน
         return false;

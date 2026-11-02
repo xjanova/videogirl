@@ -35,6 +35,7 @@ import 'package:flutter/services.dart';
 import '../system/permissions.dart';
 import 'call_notes.dart';
 import 'call_watch.dart';
+import 'outgoing_call.dart';
 
 /// คนที่อาจเป็นคนที่เจ้าของหมายถึง
 @immutable
@@ -696,6 +697,36 @@ abstract final class CallReply {
     return _askThai.hasMatch(tail) || _askEnglish.hasMatch(tail);
   }
 
+  static final _simWord = RegExp(r'ซิม|\bsim\b', caseSensitive: false);
+
+  /// "ซิมสอง" "ใช้ซิม 1" "on sim two" · ไม่มีเลขช่อง = ไม่เข้ารูปนี้
+  static final _simSlot = RegExp(
+    r'(ใช้|ด้วย|ผ่าน|ทาง|เป็น|\buse\b|\bon\b|\bwith\b|\bfrom\b)?\s*(ซิม|\bsim\b)\s*(ที่|เบอร์|หมายเลข|number)?\s*([12๑๒]|หนึ่ง|สอง|\bone\b|\btwo\b)',
+    caseSensitive: false,
+  );
+
+  static String stripSim(String text) => text.replaceAll(_simSlot, ' ');
+
+  static bool mentionsSim(String text) => _simWord.hasMatch(text);
+
+  /// พูดเรื่องซิมอย่างเดียว ไม่มีคำสั่งอื่น · "ใช้ซิมสองนะ"
+  static bool onlySim(String text) =>
+      _simSlot.hasMatch(text) && _bare(stripSim(text)).replaceAll(_softEnd, '').isEmpty;
+  static final _softEnd = RegExp('นะ|ค่ะ|คะ|ครับ|จ้า|จ้ะ|ด้วย|please', caseSensitive: false);
+
+  /// ซิมที่เจ้าของพูดถึง · ด้วยเลขช่อง หรือชื่อค่าย/ชื่อที่ตั้ง · ต้องมีคำว่าซิม ไม่งั้น "true" ในประโยคปกติจะกลายเป็นค่าย
+  static SimChoice? simIn(String text, List<SimChoice> sims) {
+    if (sims.length < 2 || !_simWord.hasMatch(text)) return null;
+    final n = _simSlot.firstMatch(text)?.group(4)?.toLowerCase();
+    if (n != null) {
+      final slot = {'1': 1, '๑': 1, 'หนึ่ง': 1, 'one': 1, '2': 2, '๒': 2, 'สอง': 2, 'two': 2}[n];
+      return sims.where((s) => s.slot == slot).firstOrNull;
+    }
+    final said = text.toLowerCase();
+    final named = sims.where((s) => s.label != null && said.contains(s.label!.toLowerCase())).toList();
+    return named.length == 1 ? named.single : null;
+  }
+
   static const _stepYes = {
     'ทำเลย', 'ทำได้', 'ทำได้เลย', 'ทำต่อ', 'ทำต่อเลย', 'ทำไปเลย', 'ส่งเลย', 'ส่งได้', 'ส่งได้เลย', 'ยืนยัน', 'ตกลงทำเลย',
     'โอเคทำเลย', 'ใช่ทำเลย', 'อนุญาต', 'goahead', 'doit', 'sendit', 'confirm', 'allow',
@@ -725,7 +756,7 @@ abstract final class CallReply {
   ///
   /// 🔴 **ทุกคำ**ในประโยคต้องเป็นคำตอบ ไม่ใช่แค่มีคำว่า "ได้" อยู่ข้างใน · "ได้ยินไหม" "ไม่รู้สิ" "โทรไปแล้ว" ต้องไม่โทร
   static bool? confirm(String text, {List<String> names = const []}) {
-    final t = _bare(text);
+    final t = _bare(stripSim(text));
     if (t.isEmpty) return null;
     if (_no.contains(t)) return false;
     final who = [

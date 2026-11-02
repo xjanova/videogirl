@@ -134,7 +134,7 @@ extension SettingsStrings on S {
   String get settingsSecYouHint => pick(
       'ข้อมูลเกี่ยวกับคุณ ขอบเขต และสิ่งที่เธอจำได้', 'About you, boundaries, and what she remembers');
   String get settingsSecCallsHint =>
-      pick('รับสายอัตโนมัติ เสียงตอบรับ ทางเสียงเข้าสาย', 'Auto-answer, answering voice, call audio path');
+      pick('รับสายอัตโนมัติ ทางเสียงเข้าสาย คุยสดในสาย', 'Auto-answer, call audio path, live talk on calls');
   String get settingsSecGeneralHint => pick(
       'ภาษา สิทธิ์ของแอป การทำงานเบื้องหลัง', 'Language, app permissions, background work');
   String get settingsSecDataHint => pick(

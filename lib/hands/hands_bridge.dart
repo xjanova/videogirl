@@ -214,6 +214,10 @@ abstract class Hands {
   /// รอจนจอนิ่ง แล้วอ่านจอเป็นตัวหนังสือ
   Future<(HandsReply, PhoneScreen?)> snapshot({int maxNodes = 120});
 
+  /// ถ่ายภาพจอเป็น JPEG (`data['jpeg']`) · Android 11 ขึ้นไป · แอปที่ห้ามอ่านตอบ 'blocked' ·
+  /// หน้าต่างกันถ่ายจอตอบ 'secure'
+  Future<HandsReply> screenshot({int maxEdge = 1024});
+
   /// ทำหนึ่งอย่าง · [action] ดู [PhoneAgent] ('tap' 'long_press' 'type' 'submit' 'scroll' 'back' 'home' 'recents' 'notifications')
   Future<HandsReply> act(String action, {int? id, String? text, String? dir});
 
@@ -273,6 +277,10 @@ class HandsBridge implements Hands {
     final r = HandsReply.fromMap(raw);
     return (r, r.ok ? PhoneScreen.fromMap(r.data) : null);
   }
+
+  @override
+  Future<HandsReply> screenshot({int maxEdge = 1024}) async =>
+      HandsReply.fromMap(await _call('screenshot', {'maxEdge': maxEdge}));
 
   @override
   Future<HandsReply> act(String action, {int? id, String? text, String? dir}) async => HandsReply.fromMap(

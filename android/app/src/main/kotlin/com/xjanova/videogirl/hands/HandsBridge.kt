@@ -107,6 +107,13 @@ object HandsBridge {
                         ?: err("not_enabled")
                 }
             }
+            "screenshot" -> {
+                HandsControl.blockReason(app)?.let { return result.success(err(it)) }
+                val edge = (num(call, "maxEdge")?.toInt() ?: 1024).coerceIn(256, 2048)
+                slow("screenshot", result) {
+                    MindHands.instance?.screenshot(edge) ?: err("not_enabled")
+                }
+            }
             "act" -> {
                 HandsControl.blockReason(app)?.let { return result.success(err(it)) }
                 val action = str(call, "do")

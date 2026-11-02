@@ -151,15 +151,37 @@ extension VoiceStrings on S {
   String get inCallThink => pick('คิดด้วย', 'Thinks with');
   String get inCallSpeak => pick('พูดด้วย', 'Speaks with');
   String get inCallWhere => pick(
-        'เปลี่ยนสมองได้ที่ สมองและเสียง › สมองของเธอ · เปลี่ยนเสียงได้ที่ เสียงพูด › แท็บรับสาย',
-        'Change the brain under Brain & voice › Her brain · change the voice under Voice › the Answering tab',
+        'เปลี่ยนสมองได้ที่ สมองและเสียง › สมองของเธอ · เปลี่ยนเสียงได้ที่ เสียงพูด › แท็บในสาย',
+        'Change the brain under Brain & voice › Her brain · change the voice under Voice › the On calls tab',
+      );
+  String get inCallLive => pick('คุยสด', 'Live');
+  String inCallLiveWhat(String engine, String voice) => pick(
+        '$engine · เสียง $voice · ใช้แทนสามอย่างข้างบนเมื่อสายต่อเสียงตรงได้',
+        '$engine · voice $voice · replaces all three above when the call has direct audio',
+      );
+
+  // ── คุยสดใช้เสียงของตัวเอง · เจ้าของต้องรู้ ไม่งั้นเลือก ElevenLabs แล้วไม่ได้ยินสักที ──
+  String voiceCallLiveNote(String voice) => pick(
+        'คุยสดในสายเปิดอยู่ สายที่คุยสดจะพูดด้วยเสียง $voice ของ OpenAI แทนเสียงนี้ · '
+            'เสียงนี้ใช้เมื่อสายไม่ได้คุยสด ปิดคุยสดได้ที่ ตั้งค่า › รับสายแทน',
+        'Live calls are on, so live calls speak with OpenAI\'s $voice instead of this voice · this voice is for calls that '
+            'are not live. Turn live calls off under Settings › Answering calls',
+      );
+  String voiceChatLiveNote(String voice) => pick(
+        'กดไมค์แล้วคุยสด เธอจะพูดด้วยเสียง $voice ของ OpenAI แทนเสียงนี้ · เสียงนี้ใช้ตอนพิมพ์คุย',
+        'With the mic she talks live with OpenAI\'s $voice instead of this voice · this voice is for typed chat',
+      );
+  String get voiceChatLiveSwitch => pick('กดไมค์แล้วคุยสด', 'Talk live with the mic');
+  String get voiceChatLiveHint => pick(
+        'ตอบทันทีแบบแอป ChatGPT แต่ใช้เสียงของ OpenAI เท่านั้น · ปิด = คุยทีละตา ด้วยเสียงที่เลือกไว้ข้างล่าง',
+        'Instant replies like the ChatGPT app, with OpenAI voices only · off = turn by turn, in the voice picked below',
       );
   String get callListenOnDevice => pick(
         'ถอดเสียงในเครื่อง (Android 13 ขึ้นไป · เสียงคู่สายไม่ออกนอกเครื่อง)',
         'On-device transcription (Android 13+ · the caller\'s voice never leaves the phone)',
       );
   String get callListenOpenAi =>
-      pick('OpenAI whisper-1 ด้วยคีย์ของคุณ', 'OpenAI whisper-1 with your key');
+      pick('OpenAI gpt-transcribe ด้วยคีย์ของคุณ', 'OpenAI gpt-transcribe with your key');
   String get callListenProxy =>
       pick('บริการของเรา (ใช้ไลเซนส์ของเครื่อง)', 'Our service (uses this device\'s license)');
   String get callListenHome => pick('เซิร์ฟเวอร์ในบ้านของคุณ', 'Your home server');

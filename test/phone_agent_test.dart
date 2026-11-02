@@ -71,6 +71,9 @@ class FakeHands implements Hands {
     return (const HandsReply(true), s);
   }
 
+  @override
+  Future<HandsReply> screenshot({int maxEdge = 1024}) async => const HandsReply(false, error: 'unsupported');
+
   void _advance() => _shown++;
 
   @override
