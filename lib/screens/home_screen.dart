@@ -374,7 +374,8 @@ class _HomeScreenState extends State<HomeScreen>
         bottom: !studio,
         left: !studio,
         right: !studio,
-        child: Column(
+        // ความสูงจริงของคอลัมน์ — หดตามคีย์บอร์ดแล้ว (ดู [_cappedDock])
+        child: LayoutBuilder(builder: (context, col) => Column(
           children: [
             Visibility(visible: !studio, child: _header(state, mode)),
             Expanded(child: _stage(state, mode, studio: studio, onCall: onCall)),
@@ -397,14 +398,14 @@ class _HomeScreenState extends State<HomeScreen>
                   : state.chatOpen
                       ? KeyedSubtree(
                           key: const ValueKey('dock'),
-                          child: _cappedDock(state, mode))
+                          child: _cappedDock(state, mode, col.maxHeight))
                       : KeyedSubtree(
                           key: const ValueKey('pill'),
                           child: _chatPill(state, mode)),
               ),
             ),
           ],
-        ),
+        )),
       ),
     );
   }
@@ -803,17 +804,24 @@ class _HomeScreenState extends State<HomeScreen>
   /// `Expanded` ยัดลงมาจึงบีบ `minHeight` เหลือ 0 ตามไปด้วย)
   static const _dockMaxShare = .58;
 
-  Widget _cappedDock(MindState state, MindMode mode) {
-    return LayoutBuilder(
-      builder: (context, box) {
-        final room = box.maxHeight.isFinite
-            ? box.maxHeight
-            : MediaQuery.sizeOf(context).height;
-        return ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: room * _dockMaxShare),
-          child: _chatDock(state, mode),
-        );
-      },
+  /// เพดานเทียบกับคอลัมน์จริง — ตอนคีย์บอร์ดเปิด ตัวนี้ชนะ เวทีกับหัวจอยังมีที่
+  static const _dockMaxOfColumn = .72;
+
+  /// 🔴 เพดานต้องคิดจากที่ที่เหลือจริง ไม่ใช่ความสูงจอ
+  ///
+  /// ในคอลัมน์ แผงได้ maxHeight อนันต์ ของเดิมจึงตกไปใช้ความสูงจอ ซึ่งไม่รู้ว่า
+  /// คีย์บอร์ดกินไปแล้ว (Scaffold ลบ viewInsets ออกจาก MediaQuery ของ body ด้วย
+  /// อ่านจากตรงนั้นก็ได้ 0) · vivo V2144: แผงสูงเกินที่เหลือ ~52dp ช่องพิมพ์จมใต้
+  /// ขอบคีย์บอร์ด 65px พิมพ์แล้วมองไม่เห็นตัวเอง · ตอนพักไม่มีคีย์บอร์ด
+  /// `_dockMaxShare` ของจอยังชนะเหมือนเดิม หน้าตาไม่เปลี่ยน
+  Widget _cappedDock(MindState state, MindMode mode, double column) {
+    final screen = MediaQuery.sizeOf(context).height;
+    final cap = column.isFinite
+        ? math.min(screen * _dockMaxShare, column * _dockMaxOfColumn)
+        : screen * _dockMaxShare;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: cap),
+      child: _chatDock(state, mode),
     );
   }
 
