@@ -407,7 +407,8 @@ class MindHands : AccessibilityService() {
             "home" -> global(GLOBAL_ACTION_HOME)
             "recents" -> global(GLOBAL_ACTION_RECENTS)
             "notifications" -> global(GLOBAL_ACTION_NOTIFICATIONS)
-            "tap", "long_press" -> tap(id, action == "long_press")
+            "tap", "long_press" -> tap(id, action == "long_press", finger = false)
+            "press" -> tap(id, long = false, finger = true)
             "type" -> type(id, text ?: "")
             "submit" -> submit(id)
             "scroll" -> scroll(id, dir ?: "down")
@@ -419,12 +420,25 @@ class MindHands : AccessibilityService() {
     private fun global(what: Int): Map<String, Any> =
         if (performGlobalAction(what)) mapOf("ok" to true) else err("failed")
 
-    private fun tap(id: Int?, long: Boolean): Map<String, Any> {
+    /**
+     * [finger] = แตะด้วยนิ้วจริงที่กลางปุ่มเลย ไม่สั่งกดผ่านระบบ · ปุ่มในหน้าเว็บของแอป (การ์ดอุปกรณ์ใน Tuya)
+     * ตอบว่ากดแล้วแต่ไม่มีอะไรเกิดขึ้น · ฝั่งแอปเลือกเองเมื่อการกดแบบปกติไม่ทำให้จอเปลี่ยน
+     */
+    private fun tap(id: Int?, long: Boolean, finger: Boolean): Map<String, Any> {
         val node = (if (id == null) null else nodeAt(id)) ?: return err("stale")
         if (blocked(node)) return err("blocked")
         val action = if (long) AccessibilityNodeInfo.ACTION_LONG_CLICK else AccessibilityNodeInfo.ACTION_CLICK
         fun can(n: AccessibilityNodeInfo) = if (long) n.isLongClickable else n.isClickable
-        if (can(node)) {
+        if (finger) {
+            // นิ้วตกที่สิ่งที่อยู่บนสุดตรงจุดนั้น · กติกาเดียวกับ tapAt
+            val r = Rect()
+            node.getBoundsInScreen(r)
+            val hit = if (r.isEmpty) null else activeRoot()?.let { nodeAtPoint(it, r.centerX(), r.centerY(), 0) }
+            if (hit != null) {
+                if (blocked(hit)) return err("blocked")
+                if (hit.isPassword) return err("password")
+            }
+        } else if (can(node)) {
             if (node.performAction(action)) return mapOf("ok" to true)
         } else {
             // ข้อความในปุ่มกดเองไม่ได้ · กดที่ตัวปุ่มที่ห่อมันอยู่

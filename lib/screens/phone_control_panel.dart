@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../hands/app_map.dart';
 import '../hands/hands_bridge.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_hands.dart';
@@ -110,6 +111,62 @@ class _PhoneControlPanelState extends State<PhoneControlPanel> with WidgetsBindi
     );
     if (!mounted || ok != true) return;
     context.read<MindState>().deleteMacro(name);
+  }
+
+  Future<void> _forget(AppPlace p) async {
+    final t = S.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        content: Text(t.appMapDeleteAsk(p.what, p.app)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(t.macroCancel)),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(t.macroDelete)),
+        ],
+      ),
+    );
+    if (!mounted || ok != true) return;
+    context.read<MindState>().forgetAppPlace(p);
+  }
+
+  Widget _appMap(BuildContext context, S t) {
+    final places = context.select<MindState, List<AppPlace>>((s) => s.appMapPlaces);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 6,
+      children: [
+        const Divider(height: 18),
+        Text(t.appMapSection, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: MindColors.ink)),
+        Text(t.appMapHint, style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+        if (places.isEmpty) Text(t.appMapNone, style: const TextStyle(fontSize: 11, color: MindColors.ink55)),
+        for (final p in places)
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 1,
+                  children: [
+                    Text('${p.what} · ${p.app}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, color: MindColors.ink)),
+                    Text(p.owner ? p.where : '${p.where} · ${t.appMapLearned}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10.5, height: 1.4, color: MindColors.ink55)),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: t.macroDelete,
+                onPressed: () => unawaited(_forget(p)),
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              ),
+            ],
+          ),
+      ],
+    );
   }
 
   Widget _macros(BuildContext context, S t) {
@@ -229,6 +286,7 @@ class _PhoneControlPanelState extends State<PhoneControlPanel> with WidgetsBindi
           if (st != null && !st.notifications)
             Text(t.handsNotificationsOff, style: const TextStyle(fontSize: 10.5, height: 1.45, color: MindColors.ink55)),
           if (st != null && st.supported) _macros(context, t),
+          if (st != null && st.supported) _appMap(context, t),
         ],
       ],
     );

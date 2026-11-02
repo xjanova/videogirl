@@ -52,6 +52,7 @@ import '../phone/call_tags.dart';
 import '../phone/call_target.dart';
 import '../phone/outgoing_call.dart';
 import '../phone/hold_audio.dart';
+import '../hands/app_map.dart';
 import '../hands/app_table.dart';
 import '../phone/phone_lookup.dart';
 import '../phone/call_knowledge.dart';
@@ -829,6 +830,7 @@ class MindState extends ChangeNotifier {
       lang: _lang,
       clock: _clock,
       routines: _macros,
+      appMap: _appMap.forTask,
       onView: (v) {
         if (_disposed) return;
         _phoneTask = v;
@@ -838,11 +840,16 @@ class MindState extends ChangeNotifier {
     _agent = agent;
     final who = (_soul?.name ?? '').trim();
     try {
-      return await agent.run(goal,
+      final r = await agent.run(goal,
           confirm: confirm,
           inCall: inCall,
           routine: routine,
           title: s.handsTitle(who.isEmpty ? s.handsDefaultWho : who));
+      // งานสำเร็จ = จดทางที่เธอเพิ่งใช้ลงแผนที่ · งานจากสายไม่จด (คนในสายวาดแผนที่ของเจ้าของใหม่ไม่ได้)
+      if (r.outcome == PhoneOutcome.done && !inCall && !_disposed && _appMap.learn(r.places, _clock()) > 0) {
+        _saveAppMap();
+      }
+      return r;
     } finally {
       if (identical(_agent, agent)) _agent = null;
       _phoneTask = null;
@@ -903,7 +910,13 @@ class MindState extends ChangeNotifier {
     _say(r.summary);
     // เธอทำงานอยู่ในแอปอื่น เจ้าของไม่เห็นแชท · บอกผลทางแจ้งเตือนด้วย
     if (r.outcome != PhoneOutcome.unavailable && !_appVisible) {
-      unawaited(_notifyOwner(s.handsDoneNotice, r.summary));
+      final title = switch (r.outcome) {
+        PhoneOutcome.done => s.handsDoneNotice,
+        PhoneOutcome.needsOwner => s.handsAskNotice,
+        PhoneOutcome.stopped => s.handsStoppedNotice,
+        _ => s.handsFailedNotice,
+      };
+      unawaited(_notifyOwner(title, r.summary));
     }
   }
 
@@ -1009,6 +1022,40 @@ class MindState extends ChangeNotifier {
     if (_macros.length == before) return;
     _save('phoneMacros', PhoneMacro.encodeAll(_macros));
     _notify();
+  }
+
+  // ── แผนที่แอป (ดู AppMap) ──
+  //
+  // เจ้าของ: "ต้องทำแผนที่แอพไงที่บอกไว้ว่าอะไรอยู่ตรงไหน มายด์จะได้ไม่งง"
+
+  AppMap _appMap = AppMap();
+  List<AppPlace> get appMapPlaces => _appMap.places;
+
+  void _saveAppMap() {
+    _save('appMap', _appMap.encode());
+    _notify();
+  }
+
+  /// เจ้าของบอกในแชทว่าอะไรอยู่ตรงไหน (หรือให้ลืม) · คืนข้อความบอกเจ้าของ · null = เครื่องล็อก บอกไปแล้ว
+  Future<String?> editAppMap(MapEdit e) async {
+    if (await _voiceBarred()) return null;
+    if (e.forget) {
+      if (_appMap.remove(e.app, e.what) == 0) return s.appMapMissing(e.what.isEmpty ? e.app : e.what);
+      _saveAppMap();
+      return s.appMapForgot(e.what.isEmpty ? e.app : e.what);
+    }
+    final had = _appMap.places.length;
+    if (!_appMap.put(app: e.app, what: e.what, where: e.where, owner: true, at: _clock())) {
+      return e.app.trim().isEmpty || e.what.trim().isEmpty || e.where.trim().isEmpty ? s.appEditBad : s.appMapSame;
+    }
+    _saveAppMap();
+    return _appMap.places.length > had ? s.appMapSaved(e.what.trim(), e.app.trim()) : s.appMapUpdated(e.what.trim());
+  }
+
+  /// ลบหนึ่งที่ (หน้าตั้งค่าถามยืนยันก่อน)
+  void forgetAppPlace(AppPlace p) {
+    if (_appMap.remove(p.app, p.what) == 0) return;
+    _saveAppMap();
   }
 
   /// ปุ่ม "ทำ" ในตั้งค่า · เล่นขั้นตอนที่สอนไว้ แล้วให้สมองดูต่อถ้าหน้าแอปเปลี่ยน · ผลขึ้นแชท
@@ -1363,6 +1410,7 @@ class MindState extends ChangeNotifier {
     _webSearch = p.getBool('webSearch') ?? true;
     _phoneControl = p.getBool('phoneControl') ?? true;
     _macros = PhoneMacro.decodeAll(p.getString('phoneMacros'));
+    _appMap = AppMap.decode(p.getString('appMap'));
     _brainxSearch = p.getBool('brainxSearch') ?? true;
     _brainxShare = p.getBool('brainxShare') ?? true;
     _callScopes = decodeScopes(p.getString('callBrainxScopes'));
@@ -3517,13 +3565,16 @@ class MindState extends ChangeNotifier {
       web: _webSearch && _webSearcher() != null,
       phone: _phoneControl,
       mailApps: _mailApps == null ? null : [for (final a in _mailApps!) a.name],
-    );
+    ) + (_voiceMapBlock.isEmpty ? '' : '\n$_voiceMapBlock');
     // แพ็กความรู้ · คุยสดแนบท่อนทีละตาเหมือนแชทไม่ได้ เธอเรียก knowledge_lookup เอง
     final packs = knowledgePacks.briefs(thai: s.isThai);
     if (packs.isEmpty) return '$system\n$block';
     final knowledge = MindPersona.knowledgeBlock(_lang, packs, webSearch: _webSearch, lookupTool: true);
     return '$system\n$block\n$knowledge';
   }
+
+  /// คุยสด · แผนที่แอปต่อท้ายวิธีใช้เครื่องมือ (ดู [voiceChatPrompt])
+  String get _voiceMapBlock => _phoneControl ? MindPersona.appMapBlock(_lang, _appMap.render(), voice: true) : '';
 
   /// บทล่าสุดในแชท ให้เซสชันเสียงรู้ว่าคุยอะไรกันอยู่ · ว่าง = ยังไม่ได้คุย
   String voiceChatRecap({int turns = 8}) {
@@ -3668,6 +3719,10 @@ class MindState extends ChangeNotifier {
         return 'Tell the owner briefly: $said';
       case 'app_table':
         final said = await editAppTable(arg('action'), arg('app'), arg('value'));
+        return said == null ? _lockedResult : 'Tell the owner briefly: $said';
+      case 'app_map':
+        final said = await editAppMap(
+            (forget: arg('action') == 'forget', app: arg('app'), what: arg('what'), where: arg('where')));
         return said == null ? _lockedResult : 'Tell the owner briefly: $said';
       case 'look_at_screen':
         return lookAtScreen(image: true);
@@ -3952,7 +4007,14 @@ class MindState extends ChangeNotifier {
   }
 
   Future<void> _quickFromChat(
-    ({String? app, String? recording, String? photo, List<DeviceOrder> device, List<AppEdit> edits}) q,
+    ({
+      String? app,
+      String? recording,
+      String? photo,
+      List<DeviceOrder> device,
+      List<AppEdit> edits,
+      List<MapEdit> maps,
+    }) q,
   ) async {
     await Future<void>.delayed(Duration.zero); // ให้คำตอบของเธอขึ้นก่อน
     for (final d in q.device) {
@@ -3961,6 +4023,10 @@ class MindState extends ChangeNotifier {
     }
     for (final e in q.edits) {
       final said = await editAppTable(e.action, e.app, e.value);
+      if (said != null && !_disposed) _say(said);
+    }
+    for (final e in q.maps) {
+      final said = await editAppMap(e);
       if (said != null && !_disposed) _say(said);
     }
     final photo = q.photo;
@@ -4685,6 +4751,7 @@ class MindState extends ChangeNotifier {
       callOut: true,
       phoneControl: _phoneControl,
       routines: [for (final m in _macros) m.name],
+      appMap: _appMap.render(),
       phoneData: true,
       mailApps: _mailApps == null ? null : [for (final a in _mailApps!) a.name],
       pcProfile: linked ? brainx.ownerProfile : '',
@@ -4772,7 +4839,8 @@ class MindState extends ChangeNotifier {
         quick.recording != null ||
         quick.photo != null ||
         quick.device.isNotEmpty ||
-        quick.edits.isNotEmpty;
+        quick.edits.isNotEmpty ||
+        quick.maps.isNotEmpty;
     if (anyQuick) {
       unawaited(_quickFromChat((
         app: quick.app,
@@ -4780,6 +4848,7 @@ class MindState extends ChangeNotifier {
         photo: quick.photo,
         device: quick.device,
         edits: quick.edits,
+        maps: quick.maps,
       )));
     }
     if (callSaid != null) return callSaid;

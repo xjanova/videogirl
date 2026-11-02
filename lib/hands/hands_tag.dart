@@ -63,6 +63,9 @@ typedef DeviceOrder = ({String action, int? level, String? stream});
 /// แก้ตารางแอปหนึ่งครั้ง · [action]: set_category set_order add_alias
 typedef AppEdit = ({String action, String app, String value});
 
+/// แก้แผนที่แอปหนึ่งครั้ง (ดู AppMap) · [forget] = ลบ ([what] ว่าง = ทั้งแอป)
+typedef MapEdit = ({bool forget, String app, String what, String where});
+
 /// แปลคำในแท็ก `[[เสียง: …]]` `[[ไฟฉาย: …]]` `[[เพลง: …]]` `[[โหมดเสียง: …]]` เป็นคำสั่ง · ไม่เข้าใจ = null ไม่ทำอะไร
 abstract final class DeviceWords {
   static const actions = [
@@ -188,7 +191,8 @@ abstract final class AppWords {
 }
 
 /// แท็กของที่เธอทำได้ทันทีไม่ต้องใช้มือ: `[[เปิดแอป: YouTube]]` · `[[เปิดเสียงสาย: ชื่อ]]` · `[[ถ่ายรูป: หลัง]]` ·
-/// `[[เสียง: เบาลง]]` · `[[ไฟฉาย: เปิด]]` · `[[เพลง: หยุด]]` · `[[หมวดแอป: LINE | งาน]]`
+/// `[[เสียง: เบาลง]]` · `[[ไฟฉาย: เปิด]]` · `[[เพลง: หยุด]]` · `[[หมวดแอป: LINE | งาน]]` ·
+/// `[[แผนที่แอป: Tuya | ไฟห้องทำงาน | หน้าแรก › ห้องทำงาน]]` · `[[ลบแผนที่แอป: Tuya | ไฟห้องทำงาน]]`
 abstract final class QuickTag {
   static final _app = RegExp(r'\[\[\s*(เปิดแอป|เปิดแอพ|open app)\s*[:：]\s*([^\]\n]{1,80})\]\]', caseSensitive: false);
   static final _recording =
@@ -206,6 +210,23 @@ abstract final class QuickTag {
     r'([^\]\n|]{1,60})\|\s*([^\]\n|]{1,40})\]\]',
     caseSensitive: false,
   );
+
+  static final _mapPut = RegExp(
+    r'\[\[\s*(แผนที่แอป|แผนที่แอพ|app map)\s*[:：]\s*([^\]\n|]{1,60})\|\s*([^\]\n|]{1,80})\|\s*([^\]\n|]{1,200})\]\]',
+    caseSensitive: false,
+  );
+
+  static final _mapForget = RegExp(
+    r'\[\[\s*(ลบแผนที่แอป|ลบแผนที่แอพ|forget app map)\s*[:：]\s*([^\]\n|]{1,60})(?:\|\s*([^\]\n|]{0,80}))?\]\]',
+    caseSensitive: false,
+  );
+
+  static List<MapEdit> _maps(String reply) => [
+        for (final m in _mapPut.allMatches(reply))
+          (forget: false, app: m.group(2)!.trim(), what: m.group(3)!.trim(), where: m.group(4)!.trim()),
+        for (final m in _mapForget.allMatches(reply))
+          (forget: true, app: m.group(2)!.trim(), what: (m.group(3) ?? '').trim(), where: ''),
+      ];
 
   static List<DeviceOrder> _devices(String reply) => [
         for (final m in _device.allMatches(reply))
@@ -239,6 +260,7 @@ abstract final class QuickTag {
     String? photo,
     List<DeviceOrder> device,
     List<AppEdit> edits,
+    List<MapEdit> maps,
   }) parse(String reply) {
     final app = _app.firstMatch(reply)?.group(2)?.trim();
     final rec = _recording.firstMatch(reply);
@@ -249,6 +271,8 @@ abstract final class QuickTag {
         .replaceAll(_photo, '')
         .replaceAll(_device, '')
         .replaceAll(_appEdit, '')
+        .replaceAll(_mapPut, '')
+        .replaceAll(_mapForget, '')
         .replaceAll(RegExp(r'\n{3,}'), '\n\n')
         .trim();
     return (
@@ -258,6 +282,7 @@ abstract final class QuickTag {
       photo: photo == null ? null : (photo.group(2) ?? '').trim(),
       device: _devices(reply),
       edits: _edits(reply),
+      maps: _maps(reply),
     );
   }
 

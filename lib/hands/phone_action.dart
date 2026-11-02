@@ -3,6 +3,8 @@ library;
 
 import 'dart:convert';
 
+import 'app_map.dart';
+
 class PhoneAction {
   const PhoneAction(
     this.kind, {
@@ -24,6 +26,7 @@ class PhoneAction {
     this.x,
     this.y,
     this.what = '',
+    this.places = const [],
   });
 
   /// ชนิดที่รู้จัก · อย่างอื่น = อ่านไม่ออก
@@ -114,6 +117,9 @@ class PhoneAction {
   /// tap_at · เธอบอกว่าจุดนั้นคืออะไร · ใช้ถามเจ้าของและให้ [PhonePolicy] ดูคำเสี่ยง
   final String what;
 
+  /// done · ที่ที่เธอจดไว้ในแผนที่แอป ("map") · ใช้เมื่องานจบสำเร็จเท่านั้น
+  final List<PlaceNote> places;
+
   /// ลายเซ็นไว้จับว่าเธอทำขั้นเดิมซ้ำ ๆ
   String get signature => '$kind|${id ?? ''}|$text|$dir|$name|$to|${x ?? ''},${y ?? ''}';
 
@@ -178,7 +184,17 @@ class PhoneAction {
       x: whole('x'),
       y: whole('y'),
       what: first(const ['what', 'target', 'label']),
+      places: kind == 'done' ? _places(m['map']) : const [],
     );
+  }
+
+  static List<PlaceNote> _places(Object? raw) {
+    if (raw is! List) return const [];
+    String field(Map<Object?, Object?> v, String k) => v[k] is String ? (v[k]! as String).trim() : '';
+    return [
+      for (final v in raw.take(AppMap.learnPerTask))
+        if (v is Map) (app: field(v, 'app'), what: field(v, 'what'), where: field(v, 'where')),
+    ];
   }
 
   /// ก้อน `{…}` แรกที่ปีกกาครบคู่ (ไม่นับปีกกาในสตริง)

@@ -4,6 +4,8 @@
 /// · ก่อนทำสิ่งที่ย้อนกลับไม่ได้ (ส่ง จ่าย ซื้อ ลบ) เธอต้องหยุดถามก่อนหนึ่งครั้ง
 library;
 
+import 'app_map.dart';
+
 /// งานจบแบบไหน
 enum PhoneOutcome {
   /// ทำเสร็จตามที่สั่ง
@@ -41,7 +43,7 @@ abstract final class PhoneUnavailable {
 }
 
 class PhoneTaskResult {
-  const PhoneTaskResult(this.outcome, this.summary, {this.steps = 0, this.reason});
+  const PhoneTaskResult(this.outcome, this.summary, {this.steps = 0, this.reason, this.places = const []});
 
   final PhoneOutcome outcome;
 
@@ -53,6 +55,9 @@ class PhoneTaskResult {
 
   /// รหัสเหตุผลสำหรับโค้ด ([PhoneUnavailable] หรือ 'step_cap' / 'brain' / 'stale')
   final String? reason;
+
+  /// [PhoneOutcome.done] · ที่ที่เธอจดไว้ให้แผนที่แอประหว่างงานนี้
+  final List<PlaceNote> places;
 
   @override
   String toString() => 'PhoneTaskResult(${outcome.name}, steps: $steps, reason: $reason)';
