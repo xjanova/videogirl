@@ -422,14 +422,15 @@ class MindHands : AccessibilityService() {
 
     /**
      * [finger] = แตะด้วยนิ้วจริงที่กลางปุ่มเลย ไม่สั่งกดผ่านระบบ · ปุ่มในหน้าเว็บของแอป (การ์ดอุปกรณ์ใน Tuya)
-     * ตอบว่ากดแล้วแต่ไม่มีอะไรเกิดขึ้น · ฝั่งแอปเลือกเองเมื่อการกดแบบปกติไม่ทำให้จอเปลี่ยน
+     * ตอบว่ากดแล้วแต่ไม่มีอะไรเกิดขึ้น · ฝั่งแอปเลือกเองเมื่อการกดแบบปกติไม่ทำให้จอเปลี่ยน ·
+     * ปุ่มที่อยู่ในหน้าเว็บใช้นิ้วตั้งแต่ครั้งแรกเลย (เจอบนเครื่อง v0.1.66: กดครั้งแรกไม่ติด เธอระวังไม่กดซ้ำสวิตช์ไฟ เลยยอมแพ้)
      */
     private fun tap(id: Int?, long: Boolean, finger: Boolean): Map<String, Any> {
         val node = (if (id == null) null else nodeAt(id)) ?: return err("stale")
         if (blocked(node)) return err("blocked")
         val action = if (long) AccessibilityNodeInfo.ACTION_LONG_CLICK else AccessibilityNodeInfo.ACTION_CLICK
         fun can(n: AccessibilityNodeInfo) = if (long) n.isLongClickable else n.isClickable
-        if (finger) {
+        if (finger || (!long && inWebPage(node))) {
             // นิ้วตกที่สิ่งที่อยู่บนสุดตรงจุดนั้น · กติกาเดียวกับ tapAt
             val r = Rect()
             node.getBoundsInScreen(r)
@@ -460,6 +461,18 @@ class MindHands : AccessibilityService() {
         HandsControl.blockReason(this)?.let { return err(it) }
         val ok = gesture(r.exactCenterX(), r.exactCenterY(), r.exactCenterX(), r.exactCenterY(), if (long) 800L else 60L)
         return if (ok) mapOf("ok" to true) else err("failed")
+    }
+
+    /** อยู่ในหน้าเว็บ (WebView หรือเว็บวิวของแอปเอง) · ปุ่มในเว็บตอบรับคำสั่งกดผ่านระบบแต่ไม่ทำอะไร */
+    private fun inWebPage(node: AccessibilityNodeInfo): Boolean {
+        var p: AccessibilityNodeInfo? = node
+        var depth = 0
+        while (p != null && depth < 40) {
+            if (p.className?.toString()?.contains("WebView", ignoreCase = true) == true) return true
+            p = p.parent
+            depth++
+        }
+        return false
     }
 
     private fun firstEditable(node: AccessibilityNodeInfo, depth: Int = 0): AccessibilityNodeInfo? {
