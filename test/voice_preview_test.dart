@@ -7,7 +7,10 @@ library;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:videogirl/ai/premium_tts.dart';
 import 'package:videogirl/ai/openai_client.dart';
 import 'package:videogirl/ai/speech_service.dart';
 import 'package:videogirl/ai/voice_profile.dart';
@@ -15,14 +18,16 @@ import 'package:videogirl/i18n/strings_ai.dart';
 import 'package:videogirl/state/mind_state.dart';
 
 class _Speech extends SpeechService {
-  _Speech({this.failWith});
+  _Speech({this.failWith, super.premium});
 
   final String? failWith;
   final engines = <TtsEngine>[];
+  final voices = <String>[];
 
   @override
   Future<Utterance> synthesize(String text, {required VoiceProfile profile}) async {
     engines.add(profile.engine);
+    voices.add(profile.voice);
     if (failWith != null && profile.engine != TtsEngine.device) {
       throw OpenAiFailure(failWith!);
     }
@@ -38,7 +43,12 @@ void main() {
     final s = MindState(speech: speech);
     s.setVoice(
       VoiceChannel.chat,
-      VoiceProfile(engine: engine, voice: 'AbCdEfGhIjKlMnOpQrSt', model: 'eleven_v4', instructions: ''),
+      VoiceProfile(
+        engine: engine,
+        voice: 'AbCdEfGhIjKlMnOpQrSt',
+        model: 'eleven_v4',
+        instructions: '',
+      ),
     );
     return s;
   }
@@ -85,5 +95,48 @@ void main() {
     s.speaker = (_) async => false;
     expect(await s.previewVoice(VoiceChannel.chat), s.s.errVoiceNoOutput);
     s.dispose();
+  });
+
+  test('first ElevenLabs preview loads and selects an account voice automatically', () async {
+    var loads = 0;
+    final premium = PremiumTts(
+      httpClient: MockClient((req) async {
+        loads++;
+        expect(req.url.path, '/v2/voices');
+        return http.Response('{"voices":[{"voice_id":"AbCdEfGhIjKlMnOpQrSt","name":"Test"}]}', 200);
+      }),
+      keyOf: (_) => 'test-key',
+      azureRegion: () => '',
+    );
+    final speech = _Speech(premium: premium);
+    final state = make(speech);
+    state.setVoice(VoiceChannel.chat, state.voiceFor(VoiceChannel.chat).copyWith(voice: ''));
+    state.speaker = (_) async => true;
+    expect(await state.previewVoice(VoiceChannel.chat), isNull);
+    expect(loads, 1);
+    expect(speech.voices, ['AbCdEfGhIjKlMnOpQrSt']);
+    expect(state.voiceFor(VoiceChannel.chat).voice, 'AbCdEfGhIjKlMnOpQrSt');
+    state.dispose();
+  });
+
+  test('failed automatic voice load returns the reason without playing fallback', () async {
+    final speech = _Speech(
+      premium: PremiumTts(
+        httpClient: MockClient((_) async => http.Response('invalid', 401)),
+        keyOf: (_) => 'test-key',
+        azureRegion: () => '',
+      ),
+    );
+    final state = make(speech);
+    state.setVoice(VoiceChannel.chat, state.voiceFor(VoiceChannel.chat).copyWith(voice: ''));
+    var played = false;
+    state.speaker = (_) async {
+      played = true;
+      return true;
+    };
+    expect(await state.previewVoice(VoiceChannel.chat), isNotNull);
+    expect(played, isFalse);
+    expect(speech.engines, isEmpty);
+    state.dispose();
   });
 }

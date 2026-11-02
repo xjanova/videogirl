@@ -432,20 +432,27 @@ class PremiumTts {
 
   Future<Uint8List> _send(TtsEngine engine, http.BaseRequest req) async {
     final name = providerName(engine);
-    http.StreamedResponse res;
+    http.Response res;
     try {
-      res = await _http.send(req).timeout(_timeout);
+      // Bound the complete download, not just the response headers. A stalled
+      // audio body used to leave Listen disabled indefinitely.
+      res = await (() async {
+        return http.Response.fromStream(await _http.send(req));
+      })().timeout(_timeout);
     } on Object catch (e) {
       debugPrint('เสียง $name: ส่งไม่ถึง — ${e.runtimeType}');
       throw OpenAiFailure(_s().errOffline);
     }
-    final body = await res.stream.toBytes();
+    final body = res.bodyBytes;
     if (res.statusCode == 200) return body;
     // ห้ามพิมพ์ body ทั้งก้อน · บางเจ้าสะท้อนข้อความที่ส่งไปกลับมาใน error
     debugPrint('เสียง $name: ตอบ ${res.statusCode}');
     throw OpenAiFailure(switch (res.statusCode) {
-      401 || 403 => _s().premiumBadKey(name),
+      401 => _s().premiumBadKey(name),
+      403 => _s().premiumForbidden(name),
       402 || 429 => _s().premiumQuota(name),
+      400 || 422 => _s().premiumSettingsRejected(name),
+      404 => _s().premiumVoiceUnavailable(name),
       _ => _s().premiumFailed(name),
     });
   }

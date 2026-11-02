@@ -220,6 +220,15 @@ extension VoiceStrings on S {
       );
   String premiumFailed(String provider) =>
       pick('$provider สร้างเสียงไม่สำเร็จ', '$provider could not make the audio');
+  String premiumForbidden(String provider) => pick(
+      '$provider ไม่อนุญาตให้ใช้เสียงนี้ · ตรวจสิทธิ์คีย์และแผนบัญชี',
+      '$provider denied access. Check API key permissions and your account plan.');
+  String premiumSettingsRejected(String provider) => pick(
+      '$provider ไม่รับค่าที่เลือก · ตรวจรุ่น เสียง และการปรับแต่ง หรือลองคืนค่าการปรับแต่ง',
+      '$provider rejected these settings. Check the model, voice and tuning, or reset tuning.');
+  String premiumVoiceUnavailable(String provider) => pick(
+      '$provider ไม่พบเสียงหรือรุ่นนี้ · โหลดรายการเสียงแล้วเลือกใหม่',
+      '$provider could not find this voice or model. Reload voices and choose again.');
 
   // ── ลองฟังเสียง ──
   String previewMaking(String what) =>

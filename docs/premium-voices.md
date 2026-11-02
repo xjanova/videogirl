@@ -4,6 +4,28 @@
 โค้ด: `lib/ai/premium_tts.dart` (เรียก API) · `lib/ai/premium_catalog.dart` (รุ่น/เสียง)
 · เจ้าของสั่งว่า **"ที่คุณภาพดี ๆ เท่านั้น"** — รายการจึงมีแต่รุ่นคุณภาพสูงที่พูดไทยได้
 
+## แก้หน้าตั้งค่าและการลองฟัง 2026-11-02
+
+- ลองฟัง ElevenLabs ครั้งแรกโดยยังไม่มี voice ID: โหลดเสียงจากบัญชีแล้วใช้เสียงแรก
+  บันทึกเป็นเสียงที่เลือกเมื่อผู้ใช้ยังไม่ได้เปลี่ยนค่าในระหว่างรอ ไม่เปลี่ยนรุ่นและไม่ใช้เสียงเครื่องแทน
+- จำกัดเวลารวมของการส่งคำขอและโหลดไฟล์เสียง ป้องกันปุ่มลองฟังค้างเมื่อได้ header แล้วแต่ไฟล์มาไม่ครบ
+  แยกข้อความคีย์ผิด สิทธิ์ไม่พอ โควตา รุ่น/เสียงไม่พบ และค่าปรับแต่งถูกปฏิเสธ โดยไม่แสดง body จากบริการ
+- พื้น surface ของธีมเป็นสีขาวทึบ เมนู dropdown จึงไม่แสดงแต่เงาดำบนตัวหนังสือ
+- เพิ่มปุ่มทดสอบข้างช่องคีย์ OpenAI, Grok, Claude, Gemini, ElevenLabs และ Azure
+  ใช้ GET รายการรุ่น/เสียงที่ต้องยืนยันตัว ไม่มีการสร้างข้อความหรือเสียงเสียเครดิต
+  ผลสำเร็จยืนยันคีย์และสิทธิ์อ่านรายการเท่านั้น การใช้แต่ละรุ่นและเครดิตต้องตรวจจากคำขอจริง
+  เปลี่ยนคีย์/ภูมิภาคแล้วล้างผลเก่า กันกดซ้ำ และปิด HTTP client เมื่อออกจากหน้า
+- การตรวจรอบนี้: Dart formatter ตรวจ syntax ผ่านและ `git diff --check` ผ่าน
+  เพิ่ม regression tests แต่ยังรัน Flutter analyze/test ไม่ได้ เพราะ sandbox ไม่อนุญาต
+  เขียน SDK `bin/cache/lockfile` และอ่าน Pub cache นอกโปรเจกต์ ยังไม่ได้ทดสอบกับคีย์จริงหรือบนมือถือ
+
+อ้างอิงปลายทางทดสอบ: [OpenAI](https://developers.openai.com/api/reference/resources/models/methods/list),
+[Grok](https://docs.x.ai/developers/rest-api-reference/inference/models),
+[Claude](https://platform.claude.com/docs/en/api/models/list),
+[Gemini](https://ai.google.dev/api/models),
+[ElevenLabs](https://elevenlabs.io/docs/api-reference/voices/search),
+[Azure](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-text-to-speech)
+
 | เจ้า | รุ่นในรายการ | เสียง | คุมน้ำเสียง |
 |---|---|---|---|
 | Google Gemini | `gemini-3.8-flash-tts` (GA 22 ก.ย. 2026) | สำเร็จรูป 8 เสียง (Sulafat ตั้งต้น) | `speech_metadata.style` — **ห้ามปนในข้อความ** รุ่นนี้อ่านทุกตัวอักษรออกเสียง |
