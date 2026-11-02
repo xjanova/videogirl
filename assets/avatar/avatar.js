@@ -66,6 +66,24 @@ const MOOD_EXPRS = [...new Set(
  */
 const QUIET_UNTIL_WAITING = 120;
 
+/**
+ * อารมณ์ที่มาจากคำตอบ ค้างได้กี่วินาทีหลังเธอพูดจบ แล้วคลายกลับเป็น neutral
+ *
+ * 🔴 แอปตั้ง `happy` หลังทุกคำตอบแล้วไม่เคยคืน · `happy` ของ VRoid ปิดตา
+ * เธอจึงยืนหลับตาไปจนกว่าจะมีข้อความใหม่ และไม่เคยเข้า waiting เพราะ
+ * mood ไม่ใช่ neutral · อารมณ์ที่แอปถือเอง (thinking, alert, calling)
+ * ไม่อยู่ในนี้ — แอปเป็นคนคืนเอง
+ */
+const MOOD_LINGER = { happy: 6, pleased: 6, concerned: 10, sorry: 10, angry: 8 };
+
+/**
+ * ยิ้ม `happy` ของรุ่นที่มี `relaxed` — ส่วนเท่าไหร่ยังใช้ `happy` ที่ปิดตา
+ * ที่เหลือไปลง `relaxed` ซึ่งยิ้มตาเปิด · รุ่นที่ไม่มี `relaxed` ใช้
+ * `happy` ล้วนแต่ไม่เกิน [HAPPY_MAX] ตาจะได้ไม่ปิดสนิท
+ */
+const HAPPY_SHARE = 0.35;
+const HAPPY_MAX = 0.6;
+
 /** The gaze expressions. Only the camera writes these, so only it cleans up. */
 const LOOK_EXPRS = ['lookUp', 'lookDown', 'lookLeft', 'lookRight'];
 
@@ -97,6 +115,9 @@ export class Avatar {
         /** เงียบมากี่วินาทีแล้ว — ดู [_frame] */
         this._quiet = 0;
         this._autoWait = false;
+
+        /** อารมณ์ปัจจุบันค้างมากี่วินาทีตอนเธอเงียบ — ดู [MOOD_LINGER] */
+        this._moodFor = 0;
 
         const w = host.clientWidth || 320, h = host.clientHeight || 300;
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -209,6 +230,7 @@ export class Avatar {
     setMood(m) {
         // มีคนสั่งอารมณ์มา = มีอะไรเกิดขึ้น = ยังไม่ถูกทิ้ง
         this._quiet = 0;
+        this._moodFor = 0;
         this._autoWait = false;
         const was = this.mood;
         this.mood = m in MOOD_EXPRESSION ? m : 'neutral';
@@ -597,6 +619,13 @@ export class Avatar {
             this._autoWait = true;   // setMood ล้างธงนี้ ต้องตั้งกลับหลังเรียก
         }
 
+        // อารมณ์จากคำตอบคลายกลับเอง · นับเฉพาะตอนเธอเงียบ ประโยคยาวไม่กินเวลา
+        const linger = MOOD_LINGER[this.mood];
+        if (linger) {
+            this._moodFor = this.speaking || this.lip.speaking ? 0 : this._moodFor + dt;
+            if (this._moodFor > linger) this.setMood('neutral');
+        }
+
         // 1 — the clip writes the bones it owns.
         this.motion?.update(dt, performance.now());
 
@@ -738,9 +767,22 @@ export class Avatar {
                 : 'happy';
         const warmAmt = warmOn ? this.idle.warmth : 0;
 
+        // 🔴 `happy` ของ VRoid ปิดตา · ยิ้มเต็มค่าค้างไว้ = ยืนหลับตา
+        // รุ่นที่มี `relaxed` ยิ้มส่วนใหญ่ไปลงตัวนั้นที่ตาเปิด
+        let moodAmt = wantAmt * cap;
+        let moodRelaxed = 0;
+        if (wantExpr === 'happy') {
+            if (this._hasRelaxed) {
+                moodRelaxed = moodAmt;
+                moodAmt *= HAPPY_SHARE;
+            } else {
+                moodAmt = Math.min(moodAmt, HAPPY_MAX);
+            }
+        }
+
         for (const expr of MOOD_EXPRS) {
             const cur = em.getValue(expr) ?? 0;
-            let want = expr === wantExpr ? wantAmt * cap : 0;
+            let want = expr === wantExpr ? moodAmt : 0;
             if (expr === warmName) want = Math.max(want, warmAmt);
             // ตกใจชนะอารมณ์ที่ค้างอยู่ชั่วขณะ · ถูก cap ตอนพูดเหมือนอารมณ์อื่น
             if (expr === 'surprised') want = Math.max(want, this.startled.level * cap);
@@ -751,7 +793,7 @@ export class Avatar {
         // ต้องเขียนเองทุกเฟรม ไม่งั้นค้างอยู่ตอนเลิกยิ้ม
         if (this._hasRelaxed) {
             const cur = em.getValue('relaxed') ?? 0;
-            const want = warmName === 'relaxed' ? warmAmt : 0;
+            const want = Math.max(warmName === 'relaxed' ? warmAmt : 0, moodRelaxed);
             em.setValue('relaxed', cur + (want - cur) * k);
         }
 

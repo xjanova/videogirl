@@ -63,6 +63,12 @@ class _HomeScreenState extends State<HomeScreen>
   /// ลายเซ็นของสิ่งที่อยู่ในแผงรอบที่แล้ว — เปลี่ยนเมื่อไหร่ค่อยเลื่อน
   /// เลื่อนทุก build = กระชากมือคนที่กำลังเลื่อนอ่านย้อนอยู่
   String _logMark = '';
+
+  /// คนอ่านอยู่ที่ท้ายบทสนทนาไหม — ถ้าใช่ แผงที่โตหรือฟองที่ขยายต้องลากตามไปด้วย
+  ///
+  /// 🔴 [_pinLogIfNew] เลื่อนครั้งเดียวหลังเฟรมแรก แต่ฟองใหม่กับแผงที่เพิ่งกาง
+  /// ยังโตต่ออีกหลายเฟรม (SizeTransition) · ข้อความล่าสุดจึงโดนขอบแผงตัดครึ่ง
+  bool _logStick = true;
   late final AnimationController _ring;
 
   /// ไมค์ของช่องแชท — เกิดที่นี่เพราะมันมีอายุเท่าหน้าจอนี้
@@ -368,7 +374,8 @@ class _HomeScreenState extends State<HomeScreen>
         bottom: !studio,
         left: !studio,
         right: !studio,
-        child: Column(
+        // ความสูงจริงของคอลัมน์ — หดตามคีย์บอร์ดแล้ว (ดู [_cappedDock])
+        child: LayoutBuilder(builder: (context, col) => Column(
           children: [
             Visibility(visible: !studio, child: _header(state, mode)),
             Expanded(child: _stage(state, mode, studio: studio, onCall: onCall)),
@@ -391,14 +398,14 @@ class _HomeScreenState extends State<HomeScreen>
                   : state.chatOpen
                       ? KeyedSubtree(
                           key: const ValueKey('dock'),
-                          child: _cappedDock(state, mode))
+                          child: _cappedDock(state, mode, col.maxHeight))
                       : KeyedSubtree(
                           key: const ValueKey('pill'),
                           child: _chatPill(state, mode)),
               ),
             ),
           ],
-        ),
+        )),
       ),
     );
   }
@@ -757,10 +764,30 @@ class _HomeScreenState extends State<HomeScreen>
   void _pinLogIfNew(String mark) {
     if (mark == _logMark) return;
     _logMark = mark;
+    _logStick = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_log.hasClients) return;
       _log.jumpTo(_log.position.maxScrollExtent);
     });
+  }
+
+  /// ความสูงของบทสนทนาหรือของแผงเปลี่ยน · คนเลื่อนอ่านเอง
+  ///
+  /// [ScrollMetricsNotification] มาหลังเฟรม จึงเลื่อนตรงนี้ได้เลย
+  /// · คนเลื่อนอ่านย้อน = ไม่ได้ทิ้งแผง ต้องนับเวลาพับใหม่ ไม่งั้นแผงหุบใส่มือ
+  bool _onLogNote(Notification n, MindState state) {
+    if (n is ScrollMetricsNotification) {
+      final p = n.metrics;
+      if (_logStick && _log.hasClients && p.pixels < p.maxScrollExtent) {
+        _log.jumpTo(p.maxScrollExtent);
+      }
+    } else if (n is UserScrollNotification) {
+      state.openChat();
+    } else if (n is ScrollEndNotification) {
+      final p = n.metrics;
+      _logStick = p.pixels >= p.maxScrollExtent - 24;
+    }
+    return false;
   }
 
   /// ส่วนของจอที่แผงแชทกินได้มากที่สุด
@@ -777,17 +804,24 @@ class _HomeScreenState extends State<HomeScreen>
   /// `Expanded` ยัดลงมาจึงบีบ `minHeight` เหลือ 0 ตามไปด้วย)
   static const _dockMaxShare = .58;
 
-  Widget _cappedDock(MindState state, MindMode mode) {
-    return LayoutBuilder(
-      builder: (context, box) {
-        final room = box.maxHeight.isFinite
-            ? box.maxHeight
-            : MediaQuery.sizeOf(context).height;
-        return ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: room * _dockMaxShare),
-          child: _chatDock(state, mode),
-        );
-      },
+  /// เพดานเทียบกับคอลัมน์จริง — ตอนคีย์บอร์ดเปิด ตัวนี้ชนะ เวทีกับหัวจอยังมีที่
+  static const _dockMaxOfColumn = .72;
+
+  /// 🔴 เพดานต้องคิดจากที่ที่เหลือจริง ไม่ใช่ความสูงจอ
+  ///
+  /// ในคอลัมน์ แผงได้ maxHeight อนันต์ ของเดิมจึงตกไปใช้ความสูงจอ ซึ่งไม่รู้ว่า
+  /// คีย์บอร์ดกินไปแล้ว (Scaffold ลบ viewInsets ออกจาก MediaQuery ของ body ด้วย
+  /// อ่านจากตรงนั้นก็ได้ 0) · vivo V2144: แผงสูงเกินที่เหลือ ~52dp ช่องพิมพ์จมใต้
+  /// ขอบคีย์บอร์ด 65px พิมพ์แล้วมองไม่เห็นตัวเอง · ตอนพักไม่มีคีย์บอร์ด
+  /// `_dockMaxShare` ของจอยังชนะเหมือนเดิม หน้าตาไม่เปลี่ยน
+  Widget _cappedDock(MindState state, MindMode mode, double column) {
+    final screen = MediaQuery.sizeOf(context).height;
+    final cap = column.isFinite
+        ? math.min(screen * _dockMaxShare, column * _dockMaxOfColumn)
+        : screen * _dockMaxShare;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: cap),
+      child: _chatDock(state, mode),
     );
   }
 
@@ -829,7 +863,9 @@ class _HomeScreenState extends State<HomeScreen>
           // สองอย่างนี้ต้องแยกกัน ไม่งั้นข้อความยาว ๆ จะดันช่องพิมพ์
           // ตกขอบจอไป แล้วคนจะพิมพ์ตอบไม่ได้ทั้งที่แผงยังเปิดอยู่
           Flexible(
-            child: SingleChildScrollView(
+            child: NotificationListener<Notification>(
+              onNotification: (n) => _onLogNote(n, state),
+              child: SingleChildScrollView(
               controller: _log,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -872,6 +908,7 @@ class _HomeScreenState extends State<HomeScreen>
                   _proposal(mode),
                 ],
               ),
+            ),
             ),
           ),
 
