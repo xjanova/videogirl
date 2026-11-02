@@ -14,6 +14,15 @@ enum BrainProvider {
   /// คีย์ของผู้ใช้เอง กรอกในหน้าตั้งค่า เก็บใน Keystore ของเครื่องเขา
   openai,
 
+  /// xAI Grok — คีย์ของผู้ใช้เอง · พูด /v1/chat/completions แบบ OpenAI
+  grok,
+
+  /// Anthropic Claude — คีย์ของผู้ใช้เอง · Messages API ของ Anthropic
+  claude,
+
+  /// Google Gemini — คีย์ AI Studio ของผู้ใช้ (ตัวเดียวกับเสียง Gemini)
+  gemini,
+
   homeServer,
   onDevice;
 
@@ -22,8 +31,14 @@ enum BrainProvider {
   /// ข้อความหลุดออกนอกเครื่องไหม — ใช้เตือนตอนเปิดใช้กับข้อมูลอ่อนไหว
   bool get leavesDevice => this != BrainProvider.onDevice;
 
-  /// ต้องมีคีย์ของผู้ใช้เองไหม — มีแค่ทางเดียวที่ต้อง
-  bool get needsOwnKey => this == BrainProvider.openai;
+  /// ต้องมีคีย์ของผู้ใช้เองไหม — เจ้าคลาวด์ที่ผู้ใช้จ่ายเองทุกเจ้า
+  bool get needsOwnKey => isCloudKey || this == BrainProvider.openai;
+
+  /// เจ้าคลาวด์ใหม่ที่เพิ่มทีหลัง (ไม่รวม OpenAI ซึ่งมีของพิเศษ เช่นคุยสด)
+  bool get isCloudKey =>
+      this == BrainProvider.grok ||
+      this == BrainProvider.claude ||
+      this == BrainProvider.gemini;
 }
 
 /// ค่าตั้งต้นของเซิร์ฟเวอร์ในบ้าน

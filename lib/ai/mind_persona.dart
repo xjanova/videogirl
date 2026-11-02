@@ -1,4 +1,5 @@
 import '../i18n/strings.dart';
+import '../persona/call_character.dart';
 import '../persona/mind_soul.dart';
 import '../phone/outgoing_call.dart';
 import '../theme/tokens.dart';
@@ -396,8 +397,12 @@ Never, under any circumstances:
     OutgoingTask? outgoing,
     bool askOwner = true,
     String callerName = '',
+    CallCharacter? character,
   }) {
     final s = S(lang);
+    // ตัวละครมีผลเฉพาะในสาย · ในแอปเธอคือตัวตนที่เจ้าของรู้จัก
+    final who = onCall ? character : null;
+    final male = who?.male ?? false;
 
     // ชื่อที่เจ้าของตั้งให้ · ยังไม่ได้ตั้งก็ใช้ชื่อเดิม
     //
@@ -407,7 +412,10 @@ Never, under any circumstances:
     //
     // ในสาย = เลขาชื่อ "น้องมาย" เสมอ (เจ้าของ: "บอกว่าตัวเองเป็นเลขา ชื่อน้องมาย") ·
     // ชื่อในตัวตนเป็นเรื่องระหว่างเธอกับเจ้าของ คนโทรมาไม่ต้องรู้
-    final her = onCall ? callName(lang) : (soul?.name ?? s.pick('มายด์', 'Mind'));
+    final her = onCall
+        ? (who?.name ?? callName(lang))
+        : (soul?.name ?? s.pick('มายด์', 'Mind'));
+    final end = male ? 'ครับ' : 'ค่ะ';
 
     final buffer = StringBuffer()
       ..writeln(s.pick(
@@ -417,7 +425,7 @@ Never, under any circumstances:
       // ในสาย = ภาษาตั้งต้นเท่านั้น · คนโทรพูดภาษาไหน ตอบภาษานั้น ([phoneStyle])
       ..writeln(onCall
           ? s.pick(
-              'ภาษาตั้งต้นคือภาษาไทย ลงท้าย "ค่ะ" เรียกตัวเองว่า "$her"',
+              'ภาษาตั้งต้นคือภาษาไทย ลงท้าย "$end" เรียกตัวเองว่า "$her"',
               'Default to English. Refer to yourself as "$her".',
             )
           : s.pick(
@@ -453,9 +461,9 @@ Never, under any circumstances:
           'You are currently **answering a phone call on the owner\'s behalf**.',
         ))
         ..writeln(s.pick(
-          'คนปลายสายไม่ใช่เจ้าของ · คุณคือ "$her" เลขาผู้หญิงของเจ้าของเบอร์นี้ '
+          'คนปลายสายไม่ใช่เจ้าของ · คุณคือ "$her" ${_roleTh(who)}ของเจ้าของเบอร์นี้ '
               'คุยเรื่องทั่วไปหรือรับฝากเรื่องไว้ให้เจ้าของได้',
-          'The caller is not the owner. You are "$her", the owner\'s secretary; '
+          'The caller is not the owner. You are "$her", the owner\'s ${_roleEn(who)}; '
               'you can chat with the caller or take a message for the owner.',
         ))
         // คำทักเป็นประโยคที่เจ้าของตั้งไว้ และพูดไปแล้วก่อนตาแรกของคุณ · แนะนำตัวซ้ำ = พูดเยอะ
@@ -677,12 +685,63 @@ Never, under any circumstances:
         ..writeln(nudge.trim());
     }
 
+    // ตัวละครในสาย · ไว้ท้าย ๆ เพื่อให้ทับตัวอย่างประโยค "ค่ะ" ในบล็อกก่อนหน้า
+    if (who != null) {
+      buffer
+        ..writeln()
+        ..writeln(characterBlock(lang, who));
+    }
+
     buffer
       ..writeln()
       ..writeln(s.pick('=== ขอบเขตที่ทำได้ ===', '=== What you may do ==='))
       ..writeln(boundaries.trim());
 
     return buffer.toString();
+  }
+
+  static String _roleTh(CallCharacter? c) {
+    final r = c?.role.trim() ?? '';
+    if (r.isNotEmpty) return r;
+    return (c?.male ?? false) ? 'เลขาผู้ชาย' : 'เลขาผู้หญิง';
+  }
+
+  static String _roleEn(CallCharacter? c) {
+    final r = c?.role.trim() ?? '';
+    return r.isNotEmpty ? r : 'secretary';
+  }
+
+  /// ตัวตนในสาย: ชื่อ เพศ บทบาท นิสัย ที่เจ้าของตั้ง
+  ///
+  /// 🔴 ตัวผู้ชายต้องสั่งตรง ๆ ว่าตัวอย่างประโยค "ค่ะ/คะ" ข้างบนให้เปลี่ยนเป็น "ครับ"
+  /// · ไม่สั่ง = ชื่อผู้ชายแต่พูด "ค่ะ" ตามตัวอย่าง ซึ่งคนปลายสายจับได้ทันที
+  static String characterBlock(AppLang lang, CallCharacter c) {
+    final s = S(lang);
+    final b = StringBuffer()
+      ..writeln(s.pick('=== ตัวตนของคุณในสายนี้ ===', '=== Who you are on this call ==='))
+      ..writeln(s.pick(
+        'ชื่อ "${c.name}" · ${c.male ? 'ผู้ชาย' : 'ผู้หญิง'} · ${_roleTh(c)}ของเจ้าของเบอร์',
+        'Name "${c.name}" · ${c.male ? 'male' : 'female'} · the owner\'s ${_roleEn(c)}',
+      ));
+    if (c.male) {
+      b.writeln(s.pick(
+        'คุณเป็นผู้ชาย: เรียกตัวเองว่า "ผม" หรือ "${c.name}" ลงท้าย "ครับ" เสมอ · '
+            'ตัวอย่างประโยคข้างบนที่ลงท้าย "ค่ะ/คะ/นะคะ" ให้พูดเป็น "ครับ/นะครับ" แทนทุกครั้ง ห้ามพูด "ค่ะ"',
+        'You are male: speak as a man would, and never use feminine phrasing.',
+      ));
+    } else {
+      b.writeln(s.pick(
+        'คุณเป็นผู้หญิง: เรียกตัวเองว่า "${c.name}" หรือ "ดิฉัน" ลงท้าย "ค่ะ/คะ"',
+        'You are female.',
+      ));
+    }
+    if (c.traits.trim().isNotEmpty) {
+      b
+        ..writeln(s.pick('นิสัยและวิธีพูดที่เจ้าของตั้งให้ (ทำตามนี้ แต่กฎความปลอดภัยและขอบเขตข้างบนยังมาก่อน):',
+            'Personality and manner set by the owner (follow it, but the safety rules and limits above still come first):'))
+        ..writeln(c.traits.trim());
+    }
+    return b.toString().trimRight();
   }
 
   /// ชวนเจ้าของเก็บความทรงจำไว้บน BrainX Cloud — **เนียน ๆ และพูดแต่เรื่องจริง**

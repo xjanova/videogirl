@@ -28,6 +28,10 @@ abstract final class SecretStore {
   static const kElevenLabsKey = 'elevenlabs_api_key';
   static const kAzureSpeechKey = 'azure_speech_key';
 
+  /// คีย์สมองของเจ้าอื่น — ดู CloudBrains.keySlot · Gemini ใช้ [kGeminiKey] ร่วมกับเสียง
+  static const kXaiKey = 'xai_api_key';
+  static const kAnthropicKey = 'anthropic_api_key';
+
   /// คีย์ BrainX Cloud ของบัญชี (มาจากหลังบ้านหรือผู้ใช้กรอก) · เก็บไว้ล็อกอินใหม่
   /// เองเมื่อ token ถูกเพิกถอน ไม่ต้องให้ผู้ใช้ทำอะไร
   static const kBrainXKey = 'brainx_cloud_key';

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../i18n/strings.dart';
+import 'eleven_tuning.dart';
 import 'mind_persona.dart';
 import 'openai_config.dart';
 import 'speech_service.dart';
@@ -23,6 +24,7 @@ class VoiceProfile {
     required this.voice,
     required this.model,
     required this.instructions,
+    this.eleven = const ElevenTuning(),
   });
 
   final TtsEngine engine;
@@ -36,17 +38,23 @@ class VoiceProfile {
   /// คำสั่งน้ำเสียง — ดู [OpenAiConfig.supportsInstructions]
   final String instructions;
 
+  /// ปรับแต่งของ ElevenLabs (ความนิ่ง · ความเหมือน · สไตล์ · ความเร็ว · อารมณ์ · เอฟเฟกต์)
+  /// · ไม่มีผลกับเจ้าอื่น · ค่าตั้งต้น = ค่าตั้งต้นของ ElevenLabs
+  final ElevenTuning eleven;
+
   VoiceProfile copyWith({
     TtsEngine? engine,
     String? voice,
     String? model,
     String? instructions,
+    ElevenTuning? eleven,
   }) =>
       VoiceProfile(
         engine: engine ?? this.engine,
         voice: voice ?? this.voice,
         model: model ?? this.model,
         instructions: instructions ?? this.instructions,
+        eleven: eleven ?? this.eleven,
       );
 
   /// 🔴 ต้องเทียบด้วยค่า · `setLang` ถามว่า "ยังเป็นค่าตั้งต้นของภาษาเดิมไหม"
@@ -58,16 +66,18 @@ class VoiceProfile {
       other.engine == engine &&
       other.voice == voice &&
       other.model == model &&
-      other.instructions == instructions;
+      other.instructions == instructions &&
+      other.eleven == eleven;
 
   @override
-  int get hashCode => Object.hash(engine, voice, model, instructions);
+  int get hashCode => Object.hash(engine, voice, model, instructions, eleven);
 
   Map<String, Object> toJson() => {
         'engine': engine.name,
         'voice': voice,
         'model': model,
         'instructions': instructions,
+        'eleven': eleven.toJson(),
       };
 
   static VoiceProfile fromJson(Map<String, dynamic> j, VoiceProfile fallback) =>
@@ -87,6 +97,7 @@ class VoiceProfile {
         voice: OpenAiConfig.migrateVoice(j['voice'] as String? ?? fallback.voice),
         model: OpenAiConfig.migrateTts(j['model'] as String? ?? fallback.model),
         instructions: j['instructions'] as String? ?? fallback.instructions,
+        eleven: j.containsKey('eleven') ? ElevenTuning.fromJson(j['eleven']) : fallback.eleven,
       );
 
   /// ค่าตั้งต้นของแต่ละช่อง — ต่างกันโดยตั้งใจ ไม่ใช่ก๊อปกัน

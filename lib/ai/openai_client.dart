@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
+import '../i18n/strings_voice.dart';
 import '../phone/call_session.dart';
 import '../phone/voice_session.dart';
 import 'openai_config.dart';
@@ -35,7 +36,10 @@ class OpenAiFailure implements Exception {
 typedef Turn = ({bool fromHer, String text});
 
 /// ปลายทางที่ client นี้คุยด้วย · ใช้เลือกข้อความผิดพลาดให้ตรงกับที่ผู้ใช้เลือก
-enum Upstream { openai, proxy, homeServer }
+///
+/// `cloud` = เจ้าอื่นที่พูด /v1/chat/completions แบบเดียวกับ OpenAI (Grok · Gemini)
+/// หรือ client ลูกที่แปลงให้ (Claude) · ใช้คีย์ของผู้ใช้เอง ชื่อเจ้าอยู่ใน [OpenAiClient.cloudName]
+enum Upstream { openai, proxy, homeServer, cloud }
 
 class OpenAiClient {
   OpenAiClient({
@@ -48,7 +52,10 @@ class OpenAiClient {
     S Function()? strings,
     RtConnect? rtConnect,
     this.upstream = Upstream.openai,
+    this.cloudName = '',
+    String? Function(String model)? effortOf,
   })  : _s = strings ?? _thai,
+        _effortOf = effortOf,
         _rtConnect = rtConnect,
         _http = httpClient ?? http.Client(),
         _timeout = timeout ?? const Duration(seconds: 30),
@@ -56,6 +63,13 @@ class OpenAiClient {
         _apiKeyOf = apiKeyOf ?? (() => apiKey ?? OpenAiConfig.apiKey);
 
   final Upstream upstream;
+
+  /// ชื่อเจ้าที่ผู้ใช้เห็นในข้อความผิดพลาด (Grok · Gemini · Claude) · ใช้กับ [Upstream.cloud]
+  final String cloudName;
+
+  /// ระดับการคิดของเจ้าอื่น · ชื่อพารามิเตอร์เหมือน OpenAI แต่ค่าที่รับต่างกันรายรุ่น
+  /// (ดู CloudBrains.effortFor) · null = ใช้กฎของ OpenAI ตามเดิม
+  final String? Function(String model)? _effortOf;
 
   /// ทางต่อ WebSocket ของเสียง Realtime · เทสต์ฉีดของปลอม
   final RtConnect? _rtConnect;
@@ -97,6 +111,15 @@ class OpenAiClient {
     };
   }
 
+  /// คีย์ที่ใช้อยู่ตอนนี้ · ให้ client ลูกที่ส่ง header เองอ่าน (Claude ใช้ `x-api-key`)
+  String get currentKey => _apiKeyOf();
+
+  /// ข้อความผิดพลาดที่ผู้ใช้อ่านเข้าใจ · client ลูกใช้แปลคำตอบ error แบบเดียวกัน
+  String describeError(http.Response res) => _readableError(res);
+
+  /// ภาษาปัจจุบันของข้อความ
+  S get strings => _s();
+
   /// ใช้คีย์อยู่ไหม — เซิร์ฟเวอร์ในบ้านไม่ต้องมีคีย์ก็เรียกได้
   bool get usable =>
       _apiKeyOf().isNotEmpty || _baseUrl != OpenAiConfig.baseUrl;
@@ -116,8 +139,11 @@ class OpenAiClient {
     final m = model ?? OpenAiConfig.brainModel;
     // ส่งระดับการคิดเฉพาะตอนคุยกับ OpenAI ตรง ๆ · พร็อกซีของเราเลือกรุ่นเอง
     // ฝั่งเซิร์ฟเวอร์ และเซิร์ฟเวอร์ในบ้าน (Ollama ฯลฯ) ไม่รู้จักฟิลด์นี้
-    final effort =
-        _baseUrl == OpenAiConfig.baseUrl ? OpenAiConfig.effortFor(m) : null;
+    final effort = _effortOf != null
+        ? _effortOf(m)
+        : _baseUrl == OpenAiConfig.baseUrl
+            ? OpenAiConfig.effortFor(m)
+            : null;
     final body = jsonEncode({
       'model': m,
       'messages': [
@@ -470,6 +496,12 @@ class OpenAiClient {
         return s.errProxyDown;
       case (Upstream.homeServer, >= 500):
         return s.errHomeDown;
+      case (Upstream.cloud, 401 || 403):
+        return s.premiumBadKey(cloudName);
+      case (Upstream.cloud, 402):
+        return s.premiumQuota(cloudName);
+      case (Upstream.cloud, >= 500):
+        return s.premiumFailed(cloudName);
     }
     try {
       final m = jsonDecode(utf8.decode(res.bodyBytes));
@@ -491,6 +523,7 @@ class OpenAiClient {
       Upstream.openai => s.errRequestFailed(res.statusCode),
       Upstream.proxy => s.errProxyFailed(res.statusCode),
       Upstream.homeServer => s.errHomeFailed(res.statusCode),
+      Upstream.cloud => s.premiumFailed(cloudName),
     };
   }
 

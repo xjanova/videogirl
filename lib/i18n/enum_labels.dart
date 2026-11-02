@@ -2,6 +2,7 @@ import '../ai/brain_provider.dart';
 import '../ai/device_capability.dart';
 import '../ai/local_brain.dart';
 import '../ai/speech_service.dart';
+import '../ai/stt_engine.dart';
 import '../ai/voice_profile.dart';
 import 'strings_voice.dart';
 import '../persona/mind_name.dart';
@@ -10,6 +11,7 @@ import '../state/mind_state.dart';
 import '../theme/tokens.dart';
 import 'strings.dart';
 import 'strings_ai.dart';
+import 'strings_brains.dart';
 
 /// ป้ายชื่อของ enum ตามภาษา
 ///
@@ -20,6 +22,9 @@ extension BrainProviderLabels on BrainProvider {
   String labelOf(S s) => switch (this) {
         BrainProvider.mindProxy => s.brainProxy,
         BrainProvider.openai => s.brainOpenAi,
+        BrainProvider.grok => s.brainGrok,
+        BrainProvider.claude => s.brainClaude,
+        BrainProvider.gemini => s.brainGemini,
         BrainProvider.homeServer => s.brainHome,
         BrainProvider.onDevice => s.brainOnDevice,
       };
@@ -27,6 +32,9 @@ extension BrainProviderLabels on BrainProvider {
   String summaryOf(S s) => switch (this) {
         BrainProvider.mindProxy => s.brainProxySummary,
         BrainProvider.openai => s.brainOpenAiSummary,
+        BrainProvider.grok => s.brainGrokSummary,
+        BrainProvider.claude => s.brainClaudeSummary,
+        BrainProvider.gemini => s.brainGeminiSummary,
         BrainProvider.homeServer => s.brainHomeSummary,
         BrainProvider.onDevice => s.brainOnDeviceSummary,
       };
@@ -34,6 +42,9 @@ extension BrainProviderLabels on BrainProvider {
   String tradeoffOf(S s) => switch (this) {
         BrainProvider.mindProxy => s.brainProxyTradeoff,
         BrainProvider.openai => s.brainOpenAiTradeoff,
+        BrainProvider.grok => s.brainGrokTradeoff,
+        BrainProvider.claude => s.brainClaudeTradeoff,
+        BrainProvider.gemini => s.brainGeminiTradeoff,
         BrainProvider.homeServer => s.brainHomeTradeoff,
         BrainProvider.onDevice => s.brainOnDeviceTradeoff,
       };
@@ -143,5 +154,23 @@ extension BondLabels on Bond {
         Bond.close => s.bondClose,
         Bond.courting => s.bondCourting,
         Bond.together => s.bondTogether,
+      };
+}
+
+extension SttEngineLabels on SttEngine {
+  String labelOf(S s) => switch (this) {
+        SttEngine.auto => s.sttAuto,
+        SttEngine.device => s.sttDevice,
+        SttEngine.openai => s.sttOpenAi,
+        SttEngine.elevenlabs => s.sttEleven,
+        SttEngine.grok => s.sttGrok,
+      };
+
+  String hintOf(S s) => switch (this) {
+        SttEngine.auto => '',
+        SttEngine.device => s.sttDeviceHint,
+        SttEngine.openai => s.sttOpenAiHint,
+        SttEngine.elevenlabs => s.sttElevenHint,
+        SttEngine.grok => s.sttGrokHint,
       };
 }
