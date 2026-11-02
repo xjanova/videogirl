@@ -110,7 +110,8 @@ class SettingsFrame extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(t.frameStep(number),
-                                  style: mindMono(size: 9.5, color: color, weight: FontWeight.w700)),
+                                  style: MindType.fit(
+                                      mindMono(size: 9.5, color: color, weight: FontWeight.w700), t.frameStep(number))),
                             ),
                             Flexible(
                               child: Text(title,
@@ -714,7 +715,8 @@ class _Switch extends StatelessWidget {
                 ],
               ),
             ),
-            Switch(value: on, activeThumbColor: FrameColors.tts, onChanged: onChanged),
+            // สีที่ track · thumb สีชมพูบน track ชมพูของธีมโหมดส่วนตัว = ปุ่มกลมหาย
+            Switch(value: on, activeTrackColor: FrameColors.tts, onChanged: onChanged),
           ],
         ),
       );

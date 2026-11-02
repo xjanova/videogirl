@@ -701,8 +701,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(t.memKind(f.kind.name),
-                    style: MindType.overline
-                        .copyWith(fontSize: 9.5, color: mode.accent)),
+                    style: MindType.fit(MindType.overline
+                        .copyWith(fontSize: 9.5, color: mode.accent), t.memKind(f.kind.name))),
                 const SizedBox(height: 3),
                 Text(f.text, style: MindType.body.copyWith(fontSize: 12.5)),
               ],
@@ -1591,8 +1591,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           ] else ...[
             const SizedBox(height: 14),
             Text(t.bubbleDuration,
-                style: mindMono(
-                    size: 10, color: mode.accent, letterSpacing: .1)),
+                style: MindType.fit(mindMono(
+                    size: 10, color: mode.accent, letterSpacing: .1), t.bubbleDuration)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 7,
@@ -1934,8 +1934,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(S.of(context).gemmaVariant,
-                style: mindMono(
-                    size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+                style: MindType.fit(mindMono(
+                    size: 9.5, color: MindColors.ink50, letterSpacing: .1), S.of(context).gemmaVariant)),
             const SizedBox(height: 7),
 
             // เครื่องเล็กเกินจะรันอะไรได้เลย — บอกตรง ๆ ดีกว่าโชว์รายการเปล่า
@@ -2446,7 +2446,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               children: [
                 Expanded(
                   child: Text(t.proxyCreditTitle,
-                      style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+                      style: MindType.fit(
+                          mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1), t.proxyCreditTitle)),
                 ),
                 IconButton(
                   tooltip: t.proxyRefresh,
@@ -2517,7 +2518,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       Text(a != null && !a.linked ? t.proxyLinkNote : t.proxyTopupNote, style: note),
       const SizedBox(height: 12),
       Text(t.proxyModelsTitle,
-          style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+          style: MindType.fit(mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1), t.proxyModelsTitle)),
       const SizedBox(height: 7),
       if (a != null && a.models.isEmpty)
         Text(t.proxyNoModels, style: const TextStyle(fontSize: 11, color: warn)),
@@ -2676,7 +2677,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (models != null && models.isNotEmpty) ...[
         const SizedBox(height: 8),
         Text(t.homeModelsHere,
-            style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+            style: MindType.fit(mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1), t.homeModelsHere)),
         const SizedBox(height: 7),
         for (final m in models)
           Padding(
@@ -2901,7 +2902,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (models.length > 1) ...[
         const SizedBox(height: 14),
         Text(t.premiumModel,
-            style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+            style: MindType.fit(mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1), t.premiumModel)),
         const SizedBox(height: 7),
         for (final m in models)
           Padding(
@@ -2916,7 +2917,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       ],
       const SizedBox(height: 7),
       Text(t.premiumVoice,
-          style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+          style: MindType.fit(mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1), t.premiumVoice)),
       const SizedBox(height: 7),
       for (final v in voices)
         Padding(
@@ -3146,8 +3147,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               ] else ...[
                 const SizedBox(height: 14),
                 Text(S.of(context).voiceModel,
-                    style: mindMono(
-                        size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+                    style: MindType.fit(mindMono(
+                        size: 9.5, color: MindColors.ink50, letterSpacing: .1), S.of(context).voiceModel)),
                 const SizedBox(height: 7),
                 for (final m in OpenAiConfig.ttsChoices)
                   Padding(
@@ -3173,8 +3174,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               const SizedBox(height: 7),
               Text(S.of(context).voicePick,
-                  style: mindMono(
-                      size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+                  style: MindType.fit(mindMono(
+                      size: 9.5, color: MindColors.ink50, letterSpacing: .1), S.of(context).voicePick)),
               const SizedBox(height: 7),
               for (final v in OpenAiConfig.voiceChoices)
                 Padding(
@@ -3286,7 +3287,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     return [
       const SizedBox(height: 14),
       Text(t.voiceChatWay,
-          style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+          style: MindType.fit(mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1), t.voiceChatWay)),
       const SizedBox(height: 7),
       Padding(
         padding: const EdgeInsets.only(bottom: 7),
@@ -3308,7 +3309,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (live) ...[
         const SizedBox(height: 14),
         Text(t.voiceChatLiveVoice,
-            style: mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1)),
+            style: MindType.fit(mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1), t.voiceChatLiveVoice)),
         const SizedBox(height: 7),
         for (var i = 0; i < voices.length; i += 3)
           Padding(
@@ -3854,7 +3855,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           if (state.autoAnswer) ...[
             const SizedBox(height: 14),
             Text(S.of(context).ringDelayTitle,
-                style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
+                style: MindType.fit(
+                    mindMono(size: 10, color: mode.accent, letterSpacing: .1), S.of(context).ringDelayTitle)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 7,
@@ -3978,7 +3980,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           _soulBar(t.soulSweetness, temper.sweetness, mode),
           const SizedBox(height: 16),
           Text(t.soulBondTitle,
-              style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
+              style: MindType.fit(mindMono(size: 10, color: mode.accent, letterSpacing: .1), t.soulBondTitle)),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -4592,7 +4594,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(width: MindSpace.sm),
               Expanded(
                 child: Text(label.toUpperCase(),
-                    style: MindType.overline.copyWith(color: mode.accent)),
+                    style: MindType.fit(MindType.overline.copyWith(color: mode.accent), label.toUpperCase())),
               ),
             ],
           ),
@@ -4750,7 +4752,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             ),
             if (trailing != null)
-              Text(trailing, style: mindMono(size: 9.5, color: MindColors.ink45)),
+              Text(trailing, style: MindType.fit(mindMono(size: 9.5, color: MindColors.ink45), trailing)),
           ],
         ),
       ),
@@ -4793,7 +4795,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             Row(
               children: [
                 Text(S.of(context).lines(lines),
-                    style: mindMono(size: 10, color: MindColors.ink45)),
+                    style: MindType.fit(mindMono(size: 10, color: MindColors.ink45), S.of(context).lines(lines))),
                 const Spacer(),
                 Text(S.of(context).tapToEdit,
                     style: TextStyle(

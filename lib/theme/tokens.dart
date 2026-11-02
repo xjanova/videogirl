@@ -174,6 +174,18 @@ abstract final class MindType {
     fontWeight: FontWeight.w600,
     letterSpacing: .1,
   );
+
+  /// [style] สำหรับ [text] · มีอักษรไทย = ไม่ถ่างตัว
+  ///
+  /// Flutter ถ่างทีละ glyph ไม่ใช่ทีละตัวอักษร · สระบน สระล่าง และวรรณยุกต์ไทยเป็น glyph
+  /// แยกจากพยัญชนะ เลยถูกดันหลุดไปข้างหลัง (เห็นบนเครื่องจริง: ป้ายในร้าน หัวการ์ดตั้งค่า) ·
+  /// ป้ายภาษาอังกฤษยังถ่างเหมือนเดิม
+  static TextStyle fit(TextStyle style, String text) =>
+      (style.letterSpacing ?? 0) > 0 && _thai.hasMatch(text)
+          ? style.copyWith(letterSpacing: 0)
+          : style;
+
+  static final _thai = RegExp(r'[\u0E00-\u0E7F]');
 }
 
 // ─────────────────────────────────────────────────────────────

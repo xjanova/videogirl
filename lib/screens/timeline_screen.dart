@@ -246,8 +246,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
                           style: mindMono(size: 10.5, color: MindColors.ink50)),
                       Expanded(
                         child: Text(_kindLabel(e.kind, t),
-                            style: MindType.overline.copyWith(
-                                fontSize: 9.5, color: dot, letterSpacing: .6)),
+                            style: MindType.fit(MindType.overline.copyWith(
+                                fontSize: 9.5, color: dot, letterSpacing: .6), _kindLabel(e.kind, t))),
                       ),
                     ],
                   ),
@@ -317,7 +317,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
           children: [
             Text(t.callNoteSheetTitle,
-                style: MindType.overline.copyWith(color: mode.accent)),
+                style: MindType.fit(MindType.overline.copyWith(color: mode.accent), t.callNoteSheetTitle)),
             const SizedBox(height: 6),
             Text(t.callNoteTitle(note.who),
                 style: const TextStyle(
@@ -466,7 +466,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: MindType.overline.copyWith(fontSize: 9.5, letterSpacing: .6)),
+              style: MindType.fit(MindType.overline.copyWith(fontSize: 9.5, letterSpacing: .6), label)),
         ],
       ),
     );
