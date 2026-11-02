@@ -91,19 +91,20 @@ void main() {
   });
 
   group('ค่าที่เคยเลือกไว้', () {
-    test('tts-1 / tts-1-hd ย้ายไป gpt-4o-mini-tts (ใช้ได้กับทุกเสียง)', () {
+    test('tts-1 / tts-1-hd / gpt-4o-mini-tts ย้ายไปรุ่นปัจจุบัน', () {
       const fallback = VoiceProfile(
-          engine: TtsEngine.openai, voice: 'coral', model: 'gpt-4o-mini-tts', instructions: '');
-      for (final old in ['tts-1', 'tts-1-hd']) {
+          engine: TtsEngine.openai, voice: 'coral', model: OpenAiConfig.ttsModel, instructions: '');
+      for (final old in ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts']) {
         final p = VoiceProfile.fromJson({'engine': 'openai', 'voice': 'ballad', 'model': old}, fallback);
-        expect(p.model, 'gpt-4o-mini-tts', reason: old);
+        expect(p.model, OpenAiConfig.ttsModel, reason: old);
         expect(p.voice, 'ballad');
       }
     });
 
     test('รายการเสียงไม่มีรุ่นที่ถูกประกาศเลิกใช้', () {
-      expect(OpenAiConfig.ttsChoices, isNot(contains('tts-1')));
-      expect(OpenAiConfig.ttsChoices, isNot(contains('tts-1-hd')));
+      for (final old in ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts']) {
+        expect(OpenAiConfig.ttsChoices, isNot(contains(old)));
+      }
     });
 
     test('เสียงใหม่ marin / cedar มีชื่อที่อ่านออก ไม่ใช่ตกไปเป็นเสียงอื่น', () {

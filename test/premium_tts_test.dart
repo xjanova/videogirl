@@ -12,6 +12,7 @@ import 'package:videogirl/ai/openai_client.dart';
 import 'package:videogirl/ai/premium_catalog.dart';
 import 'package:videogirl/ai/premium_tts.dart';
 import 'package:videogirl/ai/speech_service.dart';
+import 'package:videogirl/ai/openai_config.dart';
 import 'package:videogirl/ai/voice_profile.dart';
 import 'package:videogirl/i18n/strings.dart';
 import 'package:videogirl/i18n/strings_voice.dart';
@@ -217,7 +218,7 @@ void main() {
 
   group('สลับเจ้าเสียง', () {
     const openai = VoiceProfile(
-        engine: TtsEngine.openai, voice: 'coral', model: 'gpt-4o-mini-tts', instructions: 'อบอุ่น');
+        engine: TtsEngine.openai, voice: 'coral', model: OpenAiConfig.ttsModel, instructions: 'อบอุ่น');
 
     test('🔴 OpenAI → Gemini ได้รุ่นและเสียงของ Gemini ไม่ใช่ coral', () {
       final g = PremiumCatalog.adapt(openai, TtsEngine.gemini, thai: true);
@@ -235,7 +236,7 @@ void main() {
     test('กลับมา OpenAI ได้ค่าของ OpenAI คืน', () {
       final g = PremiumCatalog.adapt(openai, TtsEngine.gemini, thai: true);
       final back = PremiumCatalog.adapt(g, TtsEngine.openai, thai: true);
-      expect(back.model, 'gpt-4o-mini-tts');
+      expect(back.model, OpenAiConfig.ttsModel);
       expect(back.voice, 'coral');
     });
 

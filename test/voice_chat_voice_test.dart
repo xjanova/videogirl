@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:videogirl/ai/brain_provider.dart';
 import 'package:videogirl/ai/speech_service.dart';
+import 'package:videogirl/ai/openai_config.dart';
 import 'package:videogirl/ai/voice_profile.dart';
 import 'package:videogirl/state/mind_state.dart';
 
@@ -38,7 +39,7 @@ void main() {
   }
 
   VoiceProfile call(String voice) =>
-      VoiceProfile(engine: TtsEngine.openai, voice: voice, model: 'gpt-4o-mini-tts', instructions: '');
+      VoiceProfile(engine: TtsEngine.openai, voice: voice, model: OpenAiConfig.ttsModel, instructions: '');
 
   test('🔴 คุยสดไม่หยิบเสียงรับสาย', () async {
     final (s, _) = await mind();

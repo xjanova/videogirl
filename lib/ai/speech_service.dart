@@ -104,14 +104,11 @@ class SpeechService {
     if (clean.isEmpty) throw OpenAiFailure(_s().errNothingToSay);
 
     return switch (profile.engine) {
-      TtsEngine.openai => (
-          bytes: await _openai.speak(
-            clean,
-            voice: profile.voice,
-            instructions: profile.instructions,
-            model: profile.model,
-          ),
-          mime: 'audio/mpeg',
+      TtsEngine.openai => await _openai.speak(
+          clean,
+          voice: profile.voice,
+          instructions: profile.instructions,
+          model: profile.model,
         ),
       TtsEngine.device => await _synthesizeOnDevice(clean),
 

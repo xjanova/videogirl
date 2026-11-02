@@ -17,7 +17,7 @@
 | เจ้าของแทรกสายกลางทาง | ✅ | `CallSession.bargeIn` · ปุ่มบนจอสายทั้งสองจอ |
 | เจ้าของพิมพ์ให้เธอพูดเข้าสาย | ✅ | `CallSession.say` — ทำงานได้ทุกเครื่อง |
 | ถอดเสียงสด — สมองในเครื่อง | ⚠️ Android 13+ และต้องมีชุดภาษา | `MindSpeech.transcribeFile` ป้อนเสียงที่อัดผ่าน `EXTRA_AUDIO_SOURCE` |
-| ถอดเสียงสด — สมองผ่านเน็ต | ⚠️ ตามข้อ "เธอได้ยิน" | `whisper-1` ผ่าน `OpenAiClient.transcribe` |
+| ถอดเสียงสด — สมองผ่านเน็ต | ⚠️ ตามข้อ "เธอได้ยิน" | `gpt-transcribe` ผ่าน `OpenAiClient.transcribe` (บันไดสำรองดู docs/openai-models.md) |
 | **รับฝากเรื่อง + บันทึกสาย** | ✅ | `MindState.takeCallNote` · ตาราง `call_notes` · ไทม์ไลน์ · แจ้งเตือน |
 | ปากเธอบนจอขยับตามคำที่พูดเข้าสาย | ✅ | `MindLips` — ดู [studio.md](studio.md) |
 
@@ -332,7 +332,7 @@ WebSocket `wss://api.openai.com/v1/live/sessions` · รุ่น `gpt-live-1` �
 ## ปลายสาย → เธอ (กลไก)
 
 ```
-เสียงคู่สายออกลำโพง → ไมค์ → AudioRecord (voiceRecognition) → VAD → whisper-1 → ข้อความ
+เสียงคู่สายออกลำโพง → ไมค์ → AudioRecord (voiceRecognition) → VAD → gpt-transcribe → ข้อความ
 ```
 
 หลายเครื่อง **คืนความเงียบสนิท** ให้แอปที่อัดเสียงระหว่างมีสาย

@@ -35,7 +35,7 @@ class _IoSocket implements RtSocket {
 
 typedef RtConnect = Future<RtSocket> Function(Uri url, Map<String, String> headers);
 
-Future<RtSocket> _ioConnect(Uri url, Map<String, String> headers) async =>
+Future<RtSocket> rtConnectIo(Uri url, Map<String, String> headers) async =>
     _IoSocket(await WebSocket.connect(url.toString(), headers: headers)
         .timeout(const Duration(seconds: 10)));
 
@@ -224,7 +224,7 @@ List<Map<String, Object?>> callTools({
 
 abstract class VoiceSession {
   VoiceSession({this.languageReminder = '', this.lookup, RtConnect? connect})
-      : connectSocket = connect ?? _ioConnect;
+      : connectSocket = connect ?? rtConnectIo;
 
   /// ข้อความเตือนเมื่อเธอหลุดภาษา (MindPersona.callLanguageReminder) · ว่าง = ไม่เตือน
   final String languageReminder;

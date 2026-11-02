@@ -26,6 +26,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../ai/openai_config.dart';
 import 'voice_session.dart';
 
 export 'voice_session.dart';
@@ -53,7 +54,12 @@ class RealtimeCall extends VoiceSession {
   static const defaultModel = 'gpt-realtime-2.1';
 
   /// เสียงที่ Realtime รู้จัก · เสียงที่ตั้งไว้ไม่อยู่ในนี้ = ใช้ marin
-  static const voices = {'alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'marin', 'cedar'};
+  static const voices = OpenAiConfig.realtimeVoices;
+
+  /// รอ `session.updated` ก่อนทักนานสุดเท่านี้ · คู่สายรับสายแล้วเงียบนานกว่านี้จะคิดว่าสายหลุด
+  static const configLimit = Duration(milliseconds: 1500);
+
+  static const _sessionEvent = 'giggok_session';
 
   final String apiKey;
   final String instructions;
@@ -64,6 +70,17 @@ class RealtimeCall extends VoiceSession {
 
   /// บริบทให้ตัวถอดเสียงคู่สาย (MindPersona.callTranscriptionHint) · ว่าง = ไม่ส่ง
   final String transcriptionHint;
+
+  /// ถอดเสียงคู่สายตกลงมาขั้นอื่นของบันไดแล้ว · ผู้เรียกบอกเจ้าของ · ต้องตั้งก่อน [start]
+  void Function(SttRung rung)? onSttFallback;
+
+  final _stt = OpenAiConfig.sttLadder(legacy: OpenAiConfig.legacyRealtimeSttModel);
+  int _sttRung = 0;
+
+  /// คำทักที่รอเซสชันรับค่า · 🔴 เสียงเปลี่ยนไม่ได้หลังเธอพูดคำแรก และเซสชันที่ถูกปฏิเสธไม่มี prompt
+  /// ของสายเลย · ทักก่อนรู้ผล = ลอง `session.update` ขั้นถัดไปไม่ได้แล้ว
+  String? _greeting;
+  Timer? _configWait;
 
   String? _audioItem;
   int _audioContentIndex = 0;
@@ -93,8 +110,35 @@ class RealtimeCall extends VoiceSession {
       _closed = true;
     });
 
+    _sendSession();
+    // รับสาย = เธอทักก่อน · ประโยคทักกำหนดตายตัว (มีเรื่องบันทึกเสียงอยู่ในนั้น ต้องพูดครบ)
+    // โทรออก (ไม่มีคำทัก) = รอปลายสาย "ฮัลโหล" ก่อน · เซิร์ฟเวอร์ตอบเองเมื่อเขาพูดจบ
+    if (greeting.trim().isNotEmpty) {
+      _greeting = greeting;
+      _configWait = Timer(configLimit, _greetNow);
+    }
+  }
+
+  void _greetNow() {
+    _configWait?.cancel();
+    final line = _greeting;
+    _greeting = null;
+    if (line == null) return;
+    _send({
+      'type': 'response.create',
+      'response': {
+        'output_modalities': ['audio'],
+        'instructions': 'Greet the caller now, saying exactly this and nothing else: $line',
+      },
+    });
+  }
+
+  /// ตั้งค่าเซสชันด้วยขั้นปัจจุบันของบันไดถอดเสียง
+  void _sendSession() {
+    final stt = _stt[_sttRung];
     _send({
       'type': 'session.update',
+      'event_id': _sessionEvent,
       'session': {
         'type': 'realtime',
         'model': model,
@@ -103,9 +147,11 @@ class RealtimeCall extends VoiceSession {
         'audio': {
           'input': {
             'format': {'type': 'audio/pcm', 'rate': 24000},
+            // gpt-live-transcribe ไม่ได้ · ไม่รองรับ server_vad / semantic_vad ที่เซสชันนี้ใช้
             'transcription': {
-              'model': 'gpt-4o-mini-transcribe',
-              'language': language,
+              'model': stt.model,
+              if (stt.hint)
+                if (OpenAiConfig.usesLanguages(stt.model)) 'languages': [language] else 'language': language,
               if (transcriptionHint.isNotEmpty) 'prompt': transcriptionHint,
             },
             // เสียงจากลำโพงมือถือมีเสียงห้องปน · เกณฑ์สูงกว่าค่าตั้งต้นเล็กน้อย
@@ -130,17 +176,23 @@ class RealtimeCall extends VoiceSession {
         'tool_choice': 'auto',
       },
     });
-    // รับสาย = เธอทักก่อน · ประโยคทักกำหนดตายตัว (มีเรื่องบันทึกเสียงอยู่ในนั้น ต้องพูดครบ)
-    // โทรออก (ไม่มีคำทัก) = รอปลายสาย "ฮัลโหล" ก่อน · เซิร์ฟเวอร์ตอบเองเมื่อเขาพูดจบ
-    if (greeting.trim().isNotEmpty) {
-      _send({
-        'type': 'response.create',
-        'response': {
-          'output_modalities': ['audio'],
-          'instructions': 'Greet the caller now, saying exactly this and nothing else: $greeting',
-        },
-      });
+  }
+
+  /// เซิร์ฟเวอร์ไม่รับค่าเซสชัน · true = ลองขั้นถัดไปแล้ว · หมดบันได = ปิดท่อ ผู้เรียกตกไปทางเดิม
+  /// (อยู่ต่อ = เซสชันไม่มี prompt ของสาย ไม่มีเครื่องมือ เธอรับสายในฐานะผู้ช่วยเปล่า ๆ)
+  bool _onSessionRejected(Map<dynamic, dynamic> err) {
+    final mine = err['event_id'] == _sessionEvent || '${err['param'] ?? ''}'.contains('transcription');
+    if (!mine) return false;
+    if (_sttRung + 1 < _stt.length) {
+      debugPrint('realtime: ${_stt[_sttRung].model} ถูกปฏิเสธ · ลองขั้นถัดไป');
+      _sttRung++;
+      _sendSession();
+      return true;
     }
+    _greeting = null;
+    _configWait?.cancel();
+    _closed = true;
+    return false;
   }
 
   @override
@@ -222,6 +274,9 @@ class RealtimeCall extends VoiceSession {
       return;
     }
     switch (e['type']) {
+      case 'session.updated':
+        if (_sttRung > 0) onSttFallback?.call(_stt[_sttRung]);
+        _greetNow();
       case 'response.created':
         _responding = true;
         _lastCreate = null;
@@ -280,6 +335,7 @@ class RealtimeCall extends VoiceSession {
         if (next != null) _respond(next);
       case 'error':
         final err = e['error'];
+        if (err is Map && _onSessionRejected(err)) return;
         if (err is Map && err['code'] == 'conversation_already_has_active_response') _onBusyRejected();
         final msg = err is Map ? '${err['code'] ?? err['type'] ?? ''}: ${err['message'] ?? ''}' : '$err';
         debugPrint('realtime: $msg');
@@ -373,6 +429,7 @@ class RealtimeCall extends VoiceSession {
 
   @override
   Future<void> close() async {
+    _configWait?.cancel();
     if (_closed && _socket == null) return;
     _closed = true;
     await _sub?.cancel();

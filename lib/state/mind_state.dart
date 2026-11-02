@@ -119,6 +119,7 @@ class MindState extends ChangeNotifier {
             strings: () => s,
           ),
         );
+    _openai.onSttFallback = _noteSttFallback;
     // ความจำเปลี่ยน = ไฟล์ความจำบนสมอง BrainX ต้องตาม (ถ้าเชื่อมอยู่)
     this.memory.addListener(_queueMemory);
   }
@@ -1104,10 +1105,10 @@ class MindState extends ChangeNotifier {
         continue;
       }
       try {
-        _voices[c] = VoiceProfile.fromJson(
-          jsonDecode(raw) as Map<String, dynamic>,
-          VoiceProfile.defaultFor(c, _lang),
-        );
+        final saved = jsonDecode(raw) as Map<String, dynamic>;
+        final p = VoiceProfile.fromJson(saved, VoiceProfile.defaultFor(c, _lang));
+        _voices[c] = p;
+        _voiceMoved(c, saved, p);
       } on FormatException {
         // ค่าที่บันทึกไว้เสีย ปล่อยให้ใช้ค่าตั้งต้นแทน ดีกว่าแอปเปิดไม่ขึ้น
       }
@@ -1200,6 +1201,17 @@ class MindState extends ChangeNotifier {
     'ringSeconds',
     'lang',
   };
+
+  /// ค่าเสียงที่บันทึกไว้เป็นของรุ่นที่ OpenAI ปิด ([VoiceProfile.fromJson] ย้ายให้แล้ว) ·
+  /// บันทึกค่าใหม่ทันที เพื่อบอกเจ้าของครั้งเดียว ไม่ใช่ทุกครั้งที่เปิดแอป ·
+  /// 🔴 เจ้าที่ใช้อยู่เป็น OpenAI = ต้องบอก · เธอเปลี่ยนเสียงเงียบ ๆ คือเรื่องที่เจ้าของบ่นซ้ำมาตลอด
+  void _voiceMoved(VoiceChannel c, Map<String, dynamic> saved, VoiceProfile now) {
+    final voice = saved['voice'], model = saved['model'];
+    final voiceGone = voice is String && voice != now.voice;
+    if (!voiceGone && (model is! String || model == now.model)) return;
+    _save('voice_${c.name}', jsonEncode(now.toJson()));
+    if (now.engine == TtsEngine.openai) reportError(s.voiceMoved(voiceGone ? voice : null));
+  }
 
   void _save(String key, Object value) {
     _kv?.let(key, value);
@@ -2640,7 +2652,7 @@ class MindState extends ChangeNotifier {
       languageReminder: MindPersona.callLanguageReminder(_lang),
       lookup: _lookupForCall,
       connect: debugRealtimeConnect,
-    );
+    )..onSttFallback = _noteSttFallback;
   }
 
   /// เซสชัน GPT-Live ของสายนี้ · prompt เดียวกับ Realtime ทุกตัวอักษร (ไม่มีข้อมูลส่วนตัว — [callPrompt])
@@ -2722,7 +2734,7 @@ class MindState extends ChangeNotifier {
         voice: voiceChatVoice,
         language: _sttLang,
         connect: debugRealtimeConnect,
-      );
+      )..onSttFallback = _noteSttFallback;
 
   /// บุคลิกในแชทเดิมทั้งหมด (ความจำ ตาราง โปรไฟล์ สายวันนี้) ไม่มีแท็ก + วิธีคุยด้วยเสียงและเครื่องมือ
   String voiceChatPrompt() {
@@ -3500,7 +3512,7 @@ class MindState extends ChangeNotifier {
             '— ตกมาใช้เสียงของเครื่อง');
         // 🔴 บอกเจ้าของว่าทำไมเสียงเปลี่ยน · เงียบ ๆ = เขาเลือกเสียงพรีเมียม
         // ไว้ (คีย์ผิด/เครดิตหมด) แล้วได้ยินเสียงเครื่องโดยไม่รู้ว่าต้องแก้อะไร
-        reportError(e.message);
+        reportError(s.voiceFellBack(e.message));
       }
     }
     return _speech.synthesize(
@@ -3879,8 +3891,9 @@ class MindState extends ChangeNotifier {
 
   String? _searchModel;
 
-  /// รุ่นที่ OpenAI ระบุว่าใช้ web_search ได้ (ตรวจ 2026-10-06) · ถูกก่อน แพงทีหลัง
-  static const webSearchModels = ['gpt-4.1-mini', 'gpt-6-astra'];
+  /// รุ่นที่ OpenAI ระบุว่าใช้ web_search ได้ (ตรวจ 2026-11-02) · ถูกก่อน แพงทีหลัง ·
+  /// `gpt-4.1-mini` ปิด 2027-01-14 · ตัวแทนที่ประกาศคือ 6 Luna
+  static const webSearchModels = ['gpt-6-luna', 'gpt-6-astra'];
 
   @visibleForTesting
   WebSearcher? get debugWebSearcher => _webSearcher();
@@ -4187,6 +4200,10 @@ class MindState extends ChangeNotifier {
 
   /// ภาษาที่บอกตัวถอดเสียง — เดาเองมักได้คำไทยที่ถูกถอดเป็นอังกฤษที่อ่านไม่ออก
   String get _sttLang => _lang == AppLang.th ? 'th' : 'en';
+
+  /// ตัวถอดเสียงหลักใช้ไม่ได้ · ไม่บอก = เจ้าของเจอแค่ "เธอฟังเพี้ยนลง" โดยไม่รู้ว่าเพราะอะไร
+  void _noteSttFallback(SttRung rung) =>
+      reportError(s.sttFellBack(rung.model, guessing: !rung.hint));
 
   /// [ephemeral] = ขึ้นจอให้เห็นอย่างเดียว ไม่ลงความจำ ไม่ลงไทม์ไลน์
   /// ไม่ส่งกลับเข้าโมเดล · ใช้กับประโยค "คิดไม่ได้" ตอนสมองล้ม

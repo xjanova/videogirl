@@ -159,7 +159,7 @@ extension VoiceStrings on S {
         'On-device transcription (Android 13+ · the caller\'s voice never leaves the phone)',
       );
   String get callListenOpenAi =>
-      pick('OpenAI whisper-1 ด้วยคีย์ของคุณ', 'OpenAI whisper-1 with your key');
+      pick('OpenAI gpt-transcribe ด้วยคีย์ของคุณ', 'OpenAI gpt-transcribe with your key');
   String get callListenProxy =>
       pick('บริการของเรา (ใช้ไลเซนส์ของเครื่อง)', 'Our service (uses this device\'s license)');
   String get callListenHome => pick('เซิร์ฟเวอร์ในบ้านของคุณ', 'Your home server');
