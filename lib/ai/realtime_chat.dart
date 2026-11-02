@@ -286,6 +286,30 @@ List<Map<String, Object?>> chatVoiceTools({required bool web, required bool phon
       if (phone)
         {
           'type': 'function',
+          'name': 'app_map',
+          'description': 'Remember where something is on this phone, only when the owner tells you: the app and the way '
+              'there inside it (for example the work room light is in the Tuya app, Home › Work room). Your phone tasks '
+              'check this map first. Use forget when the owner says it is wrong or asks you to forget it.',
+          'parameters': {
+            'type': 'object',
+            'properties': {
+              'action': {
+                'type': 'string',
+                'enum': ['save', 'forget'],
+              },
+              'app': {'type': 'string', 'description': 'The app name.'},
+              'what': {
+                'type': 'string',
+                'description': 'What is there, e.g. "work room light". Leave it empty with forget to forget the whole app.',
+              },
+              'where': {'type': 'string', 'description': 'For save: the way there, e.g. "Home › Work room › left switch".'},
+            },
+            'required': ['action', 'app'],
+          },
+        },
+      if (phone)
+        {
+          'type': 'function',
           'name': 'look_at_screen',
           'description': 'Look at what is on the phone screen right now, and take a screenshot if the owner asks for one. '
               'Use it when the owner tells you to look at the screen; you read the text and see the picture. Never '

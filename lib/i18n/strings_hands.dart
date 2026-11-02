@@ -97,6 +97,24 @@ extension HandsStrings on S {
       'Show her once, then ask her to repeat it (in chat or with Run here) · if the app changed and a button is gone, '
           'she reads the screen and carries on · passwords and banking apps are never recorded');
   String get macroNone => pick('ยังไม่ได้สอน', 'None yet');
+
+  // ── แผนที่แอป (AppMap) ──
+  String appMapSaved(String what, String app) =>
+      pick('จำแล้วค่ะ $what อยู่ในแอป $app', 'Got it. $what is in $app.');
+  String appMapUpdated(String what) => pick('แก้ทางไป $what ให้แล้วค่ะ', 'Updated the way to $what.');
+  String get appMapSame => pick('จำไว้แบบนี้อยู่แล้วค่ะ', 'I already have it that way.');
+  String appMapForgot(String what) => pick('ลืม $what ในแผนที่แอปแล้วค่ะ', 'Forgot $what in the app map.');
+  String appMapMissing(String what) => pick('ในแผนที่แอปไม่มี $what ค่ะ', 'There is no $what in the app map.');
+  String get appMapSection => pick('แผนที่แอป', 'App map');
+  String get appMapHint => pick(
+      'อะไรอยู่ตรงไหนในแอปไหน เธอดูก่อนลงมือทุกครั้ง · บอกเองในแชทได้ เช่น "จำไว้ว่าไฟห้องทำงานอยู่ในแอป Tuya ห้องทำงาน" · '
+          'ทำงานในเครื่องสำเร็จ เธอจดทางที่ใช้ไว้เอง',
+      'What is where, in which app · she checks it before she starts · tell her in chat, e.g. "remember the work room '
+          'light is in the Tuya app, room Work room" · after a task works she notes the way herself');
+  String get appMapNone => pick('ยังว่างอยู่', 'Empty for now');
+  String get appMapLearned => pick('เธอจดเอง', 'she noted');
+  String appMapDeleteAsk(String what, String app) =>
+      pick('ลบ "$what" ($app) ออกจากแผนที่แอปไหมคะ?', 'Remove "$what" ($app) from the app map?');
   String get macroTeach => pick('สอนขั้นตอนใหม่', 'Teach a routine');
   String get macroNameLabel => pick('ชื่อขั้นตอน', 'Routine name');
   String get macroNameHint => pick('เช่น ส่งรายงานเช้าใน LINE', 'e.g. Morning report in LINE');
@@ -117,6 +135,9 @@ extension HandsStrings on S {
   String get handsWorking => pick('กำลังทำในเครื่อง', 'Working on your phone');
   String get handsStop => pick('หยุด', 'Stop');
   String get handsDoneNotice => pick('น้องมายทำในเครื่องเสร็จแล้ว', 'She finished on your phone');
+  String get handsFailedNotice => pick('น้องมายทำในเครื่องไม่สำเร็จ', "She couldn't finish on your phone");
+  String get handsStoppedNotice => pick('น้องมายหยุดงานในเครื่องแล้ว', 'She stopped working on your phone');
+  String get handsAskNotice => pick('น้องมายต้องถามบอสก่อนทำต่อ', 'She needs you before she can go on');
 
   // ── ตั้งค่า ──
   String get handsCard => pick('ใช้เครื่องแทน', 'Use the phone for me');

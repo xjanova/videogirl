@@ -235,7 +235,8 @@ abstract class Hands {
   /// [marks] = ตีกรอบและเลข [id] ของปุ่มจาก [snapshot] ล่าสุดลงบนภาพ
   Future<HandsReply> screenshot({int maxEdge = 1024, bool marks = false});
 
-  /// ทำหนึ่งอย่าง · [action] ดู [PhoneAgent] ('tap' 'long_press' 'type' 'submit' 'scroll' 'back' 'home' 'recents' 'notifications')
+  /// ทำหนึ่งอย่าง · [action] ดู [PhoneAgent] ('tap' 'long_press' 'type' 'submit' 'scroll' 'back' 'home' 'recents' 'notifications') ·
+  /// 'press' = แตะด้วยนิ้วจริงที่กลางปุ่ม (ปุ่มในหน้าเว็บที่สั่งกดผ่านระบบแล้วไม่มีผล)
   Future<HandsReply> act(String action, {int? id, String? text, String? dir});
 
   /// แตะจุดบนจอ (พิกเซลจริง) · ได้เฉพาะหลัง [screenshot] · 'no_look' 'bad_point' 'blocked' 'password'
