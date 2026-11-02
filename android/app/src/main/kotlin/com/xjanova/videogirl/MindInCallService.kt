@@ -41,6 +41,10 @@ class MindInCallService : InCallService() {
             mindOutgoing = true
             mindHandling = true
             chooseSim(call)
+        } else if (CallTransfer.claim(call)) {
+            // สายที่เธอโทรหาเจ้าของกลางสาย (โอนสาย) · ซิมเดียวกับสายคนโทร
+            armedSim = CallTransfer.caller?.details?.accountHandle
+            chooseSim(call)
         }
         call.registerCallback(callback)
         InCallActivity.show(this, call)
@@ -53,6 +57,7 @@ class MindInCallService : InCallService() {
         call.unregisterCallback(callback)
         postDial.remove(call)
         detailsSeen.remove(call)
+        CallTransfer.onRemoved(call)
         // 🔴 สายซ้อนจบไปหนึ่งสาย ≠ ไม่มีสายแล้ว · ของเดิมตั้ง null ทิ้ง จอสาย
         // จึงปิดตัวเองทั้งที่สายแรกยังคุยอยู่ และวางสายจากจอนี้ไม่ได้อีก
         // · เลือกจากสายระดับบนเท่านั้น · คนในสายประชุมก็อยู่ใน `calls` (สถานะ ACTIVE) ชี้ไปที่คน
@@ -88,6 +93,7 @@ class MindInCallService : InCallService() {
         mindHandling = false
         mindOutgoing = false
         armedSim = null
+        CallTransfer.reset()
         OwnerAsk.clear(this)
         // จอกลับไปดับตามเวลาพักจอปกติ · ดู [CallScreen]
         MainActivity.syncCallScreen()
@@ -108,7 +114,8 @@ class MindInCallService : InCallService() {
 
     private val callback = object : Call.Callback() {
         override fun onStateChanged(call: Call, state: Int) {
-            if (state == Call.STATE_SELECT_PHONE_ACCOUNT && mindOutgoing) chooseSim(call)
+            if (state == Call.STATE_SELECT_PHONE_ACCOUNT && (mindOutgoing || call === CallTransfer.leg)) chooseSim(call)
+            CallTransfer.onState(call, state)
             if (state == Call.STATE_ACTIVE && mindHandling) {
                 onMindCallActive()
                 // 🔴 Telephony ไม่มีสัญญาณตอนปลายสายรับ · ที่นี่ที่เดียวที่รู้ · บอก Dart ให้เธอเริ่มพูดทันที
@@ -333,8 +340,9 @@ class MindInCallService : InCallService() {
             service?.calls?.firstOrNull { stateOf(it) == Call.STATE_ACTIVE }
 
         /** เธอถือสายที่ต่อติดแล้วอยู่ตอนนี้ (ไม่ใช่แค่กำลังดัง/กำลังโทรออก) */
+        /** · ระหว่างโอนสายคนโทรถูกพักไว้ สายหาเจ้าของยังดัง = ไม่มีสายที่คุยอยู่ แต่เธอยังถือสาย */
         @JvmStatic
-        fun mindLive(): Boolean = mindHandling && activeCall() != null
+        fun mindLive(): Boolean = mindHandling && (activeCall() != null || CallTransfer.active)
 
         /** มีมากกว่าหนึ่งสายอยู่ตอนนี้ไหม — สายซ้อน */
         @JvmStatic
@@ -386,12 +394,15 @@ class MindInCallService : InCallService() {
             // · สายซ้อนดังขึ้นมาระหว่างที่เธอคุยสายแรก = `current` ชี้ไปสายที่ดัง
             // แล้วฝั่ง Dart เห็น live=false → ปิดบทสนทนาและคืนเสียงกลางสายแรก
             val talking = activeCall()
-            val call = talking ?: current
+            // 🔴 ระหว่างโอนสาย สายที่คุยอยู่คือสายเจ้าของ · ถือสายคนโทรไว้เป็นตัวหลัก ไม่งั้น Dart เห็นเบอร์เจ้าของ
+            // แล้วคิดว่าคุยกับคนใหม่ · ตอนสายเจ้าของยังดัง สายคนโทรพักอยู่ = ไม่มีสายคุยเลย → live=false → ปิดบทสนทนา
+            val held = CallTransfer.caller?.takeIf { stateOf(it) != Call.STATE_DISCONNECTED }
+            val call = held ?: talking ?: current
             val state = stateOf(call)
             val number = call?.details?.handle?.schemeSpecificPart
             return mapOf(
                 "state" to state,
-                "live" to (state == Call.STATE_ACTIVE),
+                "live" to (state == Call.STATE_ACTIVE || (held != null && state == Call.STATE_HOLDING)),
                 "ringing" to (stateOf(current) == Call.STATE_RINGING),
                 "mind" to mindHandling,
                 "mindOutgoing" to mindOutgoing,
@@ -402,7 +413,9 @@ class MindInCallService : InCallService() {
                 "name" to CallBridge(context).nameFor(number),
                 "outgoing" to (state == Call.STATE_DIALING || state == Call.STATE_CONNECTING),
                 // เจ้าของตอบคำถามกลางสายจากแถบแจ้งเตือน · ส่งครั้งเดียว ([OwnerAsk])
-                "ownerReply" to OwnerAsk.take()
+                "ownerReply" to OwnerAsk.take(),
+                // สายโอนหาเจ้าของ · ดู [CallTransfer.status]
+                "transfer" to (if (CallTransfer.active) CallTransfer.status() else null)
             ) + (SimInfo.of(context, call)?.toMap() ?: emptyMap())
         }
 

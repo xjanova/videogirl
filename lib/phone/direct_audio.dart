@@ -17,20 +17,26 @@ class DirectAudio {
   Future<bool> start({required bool record}) async {
     unreachable = false;
     try {
-      _sub ??= _events.receiveBroadcastStream().listen((dynamic event) {
-        if (event is! Map) return;
-        final pcm = event['pcm'];
-        if (pcm is Uint8List) {
-          onAudio?.call(event['source'] as String, event['timeUs'] as int, event['rate'] as int, pcm);
-        }
-      }, onError: (Object _) { active = false; onLost?.call(); });
       final result = await _channel.invokeMethod<String>('start', {'record': record});
       active = result?.startsWith('direct:') == true;
       path = active ? result! : 'speaker';
-      if (!active) { await _sub?.cancel(); _sub = null; }
+      // Every call tries the helper now, so listen only once it carries this one: phones without
+      // it never open the stream. The listen request reaches the native side before any write,
+      // so no PLAYED frame is missed; at most a few milliseconds of downlink are.
+      if (active) {
+        _sub ??= _events.receiveBroadcastStream().listen((dynamic event) {
+          if (event is! Map) return;
+          final pcm = event['pcm'];
+          if (pcm is Uint8List) {
+            onAudio?.call(event['source'] as String, event['timeUs'] as int, event['rate'] as int, pcm);
+          }
+        }, onError: (Object _) { active = false; onLost?.call(); });
+      }
       return active;
     } on Exception catch (e) {
-      unreachable = !(e is PlatformException && e.message == 'not_configured');
+      // No channel at all (not Android, tests) means never set up, not set up and gone.
+      unreachable = e is! MissingPluginException &&
+          !(e is PlatformException && e.message == 'not_configured');
       await _sub?.cancel(); _sub = null;
       active = false;
       return false;

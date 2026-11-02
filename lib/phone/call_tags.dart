@@ -1,4 +1,4 @@
-/// แท็กท้ายคำตอบของน้องมายในสาย — วางสาย / แจ้งเรื่องด่วน
+/// แท็กท้ายคำตอบของน้องมายในสาย — วางสาย / แจ้งเรื่องด่วน / โอนสายหาเจ้าของ
 ///
 /// แยกไฟล์เพราะคำไทยในแท็ก (`วางสาย` `ด่วน`) ต้อง**จับให้ได้**จากคำตอบของโมเดล
 /// ไม่ใช่ข้อความที่ผู้ใช้เห็น (ดู test/i18n_test.dart) · คำสั่งที่สอนโมเดลอยู่ใน
@@ -32,17 +32,31 @@ abstract final class CallTags {
   static final _urgent =
       RegExp(r'\[\[\s*(ด่วน|urgent)\s*[:：]\s*([^\]\n]{1,200})\]\]', caseSensitive: false);
 
-  /// ข้อความที่จะพูด (ไม่มีแท็ก) · ขอวางสายไหม · เรื่องด่วน (null = ไม่ด่วน)
-  static ({String text, bool hangUp, String? urgent}) parse(String reply) {
+  /// `[[โอนสาย: ชื่อคนโทร | เรื่อง]]` · ไม่มีชื่อก็ได้ (`[[โอนสาย: | เรื่อง]]` / `[[โอนสาย]]`)
+  static final _transfer = RegExp(
+    r'\[\[\s*(โอนสาย|transfer)\s*(?:[:：]\s*([^\]|\n]{0,80})(?:\|([^\]\n]{0,200}))?)?\]\]',
+    caseSensitive: false,
+  );
+
+  /// ข้อความที่จะพูด (ไม่มีแท็ก) · ขอวางสายไหม · เรื่องด่วน (null = ไม่ด่วน) · ขอโอนสายหาเจ้าของ (null = ไม่โอน)
+  static ({String text, bool hangUp, String? urgent, ({String name, String reason})? transfer}) parse(
+      String reply) {
     final hang = _hang.hasMatch(reply);
     final m = _urgent.firstMatch(reply);
+    final t = _transfer.firstMatch(reply);
     final text = reply
         .replaceAll(_hang, '')
         .replaceAll(_urgent, '')
+        .replaceAll(_transfer, '')
         // แท็กแปลก ๆ ที่โมเดลแต่งเอง · ไม่อ่านวงเล็บออกเสียงไม่ว่ากรณีไหน
         .replaceAll(RegExp(r'\[\[[^\]]*\]\]'), '')
         .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
         .trim();
-    return (text: text, hangUp: hang, urgent: m?.group(2)?.trim());
+    return (
+      text: text,
+      hangUp: hang,
+      urgent: m?.group(2)?.trim(),
+      transfer: t == null ? null : (name: (t.group(2) ?? '').trim(), reason: (t.group(3) ?? '').trim()),
+    );
   }
 }
