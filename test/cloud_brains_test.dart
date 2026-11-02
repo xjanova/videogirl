@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -64,6 +65,22 @@ void main() {
     });
   });
 
+  test('แบบ OpenAI (ChatGPT · Grok · Gemini · พร็อกซี): แนบภาพจอเป็น image_url ที่ข้อความสุดท้ายของเจ้าของ', () {
+    final msgs = OpenAiClient.messages('sys', const [(fromHer: false, text: 'a'), (fromHer: true, text: 'b')],
+        image: Uint8List.fromList(const [1, 2, 3]));
+    expect(msgs.first, {'role': 'system', 'content': 'sys'});
+    expect(msgs[1]['content'], [
+      {'type': 'text', 'text': 'a'},
+      {
+        'type': 'image_url',
+        'image_url': {'url': 'data:image/jpeg;base64,AQID'},
+      },
+    ]);
+    expect(msgs[2]['content'], 'b');
+    expect(OpenAiClient.messages('sys', const [(fromHer: false, text: 'a')])[1]['content'], 'a',
+        reason: 'ไม่มีภาพ = ข้อความธรรมดาเหมือนเดิม');
+  });
+
   group('Claude', () {
     test('ข้อความแรกต้องเป็น user · ฝั่งเดียวกันติดกันรวมเป็นอันเดียว', () {
       final body = ClaudeClient.buildBody(
@@ -81,6 +98,23 @@ void main() {
       final msgs = body['messages']! as List;
       expect(msgs.map((m) => (m as Map)['role']), ['user', 'assistant', 'user']);
       expect((msgs.first as Map)['content'], 'a\n\nb');
+    });
+
+    test('แนบภาพจอ = บล็อก image base64 นำหน้าข้อความสุดท้ายของเจ้าของ', () {
+      final body = ClaudeClient.buildBody(
+        system: 'sys',
+        model: 'claude-sonnet-5-5',
+        history: const [(fromHer: false, text: 'a'), (fromHer: true, text: 'b'), (fromHer: false, text: 'c')],
+        image: Uint8List.fromList(const [1, 2, 3]),
+      );
+      final msgs = body['messages']! as List;
+      expect((msgs.first as Map)['content'], 'a', reason: 'ข้อความก่อนหน้าไม่แนบภาพ');
+      final last = (msgs.last as Map)['content'] as List;
+      expect(last.first, {
+        'type': 'image',
+        'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': 'AQID'},
+      });
+      expect(last.last, {'type': 'text', 'text': 'c'});
     });
 
     test('อ่านเฉพาะบล็อก text ไม่เอา thinking', () {

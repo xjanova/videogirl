@@ -95,8 +95,9 @@ void main() {
       expect(src, contains('stopGeneration()'),
           reason: 'เลิกฟังอย่างเดียว เนทีฟยังคิดต่อจนเครื่องร้อน');
       final state = File('lib/state/mind_state.dart').readAsStringSync();
-      expect(RegExp(r'cap: ReplyCap\.background').allMatches(state).length, 4,
-          reason: 'สกัดความจำ + สรุปสาย + สรุปบทเรียนหลังจบสาย + ใช้เครื่องแทน = งานเบื้องหลังสี่งาน');
+      expect(RegExp(r'cap: ReplyCap\.background').allMatches(state).length, 5,
+          reason: 'สกัดความจำ + สรุปสาย + สรุปบทเรียนหลังจบสาย + ใช้เครื่องแทน (ตัวหนังสือ + ภาพจอ) = '
+              'งานเบื้องหลังสี่งาน ห้าทางเรียก');
       expect(state, contains('cap: ReplyCap.call'));
     });
   });

@@ -4,8 +4,12 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -242,13 +246,21 @@ class MindHands : AccessibilityService() {
         true
     }
 
+    /** ขนาดจอจริง (พิกเซล) จากภาพจอล่าสุด · 0 = ยังไม่เคยถ่าย · [tapAt] กดได้เฉพาะในกรอบนี้ */
+    @Volatile private var shotW = 0
+    @Volatile private var shotH = 0
+
     /**
      * ถ่ายภาพจอเป็น JPEG ด้านยาวไม่เกิน [maxEdge] · เรียกนอกเธรดหลัก
      *
      * 🔴 กติกาเดียวกับ [snapshot]: แอปใน [HandsPolicy] ไม่ถ่าย · ตรวจทั้งก่อนและหลังถ่าย
      * เพราะแอปธนาคารเปิดขึ้นมาระหว่างรอภาพได้ · หน้าต่างกันถ่ายจอ (FLAG_SECURE) ตอบ `secure`
+     *
+     * [marks] = ตีกรอบและเลขของปุ่มจากภาพจอตัวหนังสือล่าสุด ([snapshot]) ลงบนภาพ · ไอคอนที่ไม่มีชื่อ
+     * เธอเห็นว่าเป็นปุ่มเลขไหน แล้วกดด้วยเลขได้ (ฝั่งแอปรู้ว่ากดอะไร ถามเจ้าของได้ถูกปุ่ม)
+     * · คืน `w`/`h` = ขนาดภาพ · `sw`/`sh` = ขนาดจอจริง ไว้แปลงจุดบนภาพเป็นจุดบนจอ
      */
-    fun screenshot(maxEdge: Int): Map<String, Any> {
+    fun screenshot(maxEdge: Int, marks: Boolean = false): Map<String, Any> {
         if (Build.VERSION.SDK_INT < 30) return err("unsupported")
         HandsControl.blockReason(this)?.let { return err(it) }
         if (blockedOnScreen()) return err("blocked")
@@ -278,23 +290,103 @@ class MindHands : AccessibilityService() {
             val soft = hardware.copy(Bitmap.Config.ARGB_8888, false)
             hardware.recycle()
             if (soft == null) return err("failed")
-            val scale = maxEdge.toFloat() / maxOf(soft.width, soft.height)
-            val small = if (scale < 1f) {
-                Bitmap.createScaledBitmap(soft, (soft.width * scale).toInt(), (soft.height * scale).toInt(), true)
+            val sw = soft.width
+            val sh = soft.height
+            val scale = maxEdge.toFloat() / maxOf(sw, sh)
+            var small = if (scale < 1f) {
+                Bitmap.createScaledBitmap(soft, (sw * scale).toInt(), (sh * scale).toInt(), true)
             } else {
                 soft
             }
+            if (marks) {
+                val drawable = if (small.isMutable) small else small.copy(Bitmap.Config.ARGB_8888, true)
+                if (drawable != null) {
+                    if (drawable !== small && small !== soft) small.recycle()
+                    small = drawable
+                    drawMarks(small, small.width.toFloat() / sw)
+                }
+            }
             val out = ByteArrayOutputStream()
             small.compress(Bitmap.CompressFormat.JPEG, 70, out)
+            val w = small.width
+            val h = small.height
             if (small !== soft) small.recycle()
             soft.recycle()
-            return mapOf("ok" to true, "jpeg" to out.toByteArray())
+            shotW = sw
+            shotH = sh
+            return mapOf("ok" to true, "jpeg" to out.toByteArray(), "w" to w, "h" to h, "sw" to sw, "sh" to sh)
         } finally {
             buffer.close()
         }
     }
 
+    /** กรอบและเลขของปุ่มที่กด/พิมพ์ได้ · ใช้กรอบที่จำไว้ตอนอ่านจอ ไม่ถามระบบซ้ำทีละปุ่ม */
+    private fun drawMarks(bmp: Bitmap, scale: Float) {
+        val nodes = synchronized(nodesLock) { lastNodes }
+        if (nodes.isEmpty()) return
+        val canvas = Canvas(bmp)
+        val box = Paint().apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+            color = Color.MAGENTA
+        }
+        val tag = Paint().apply { color = Color.MAGENTA }
+        val num = Paint().apply {
+            color = Color.WHITE
+            textSize = 18f
+            isAntiAlias = true
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        val r = Rect()
+        for ((id, n) in nodes.withIndex()) {
+            if (!(n.isClickable || n.isLongClickable || n.isCheckable || n.isEditable)) continue
+            n.getBoundsInScreen(r)
+            if (r.isEmpty) continue
+            val left = r.left * scale
+            val top = r.top * scale
+            canvas.drawRect(left, top, r.right * scale, r.bottom * scale, box)
+            val label = id.toString()
+            val tw = num.measureText(label)
+            canvas.drawRect(left, top, left + tw + 6f, top + 20f, tag)
+            canvas.drawText(label, left + 3f, top + 16f, num)
+        }
+    }
+
     // ── ทำ ─────────────────────────────────────────────────
+
+    /**
+     * แตะจุดบนจอ (พิกเซลจริง) · ใช้กับสิ่งที่ไม่มีในภาพจอตัวหนังสือ (แผงสั่งอุปกรณ์ที่วาดเป็นภาพ ปุ่มในเว็บ)
+     *
+     * 🔴 กดได้เฉพาะหลังถ่ายภาพจอแล้ว (เธอต้องเห็นก่อนกด) · มีแอปที่ห้ามแตะอยู่บนจอ = ไม่กดเลย ·
+     * จุดที่ตกบนช่องรหัสผ่านไม่กด · ถามเจ้าของก่อนกดเป็นหน้าที่ของ PhonePolicy ฝั่งแอป
+     */
+    fun tapAt(x: Int, y: Int): Map<String, Any> {
+        HandsControl.blockReason(this)?.let { return err(it) }
+        if (shotW <= 0 || shotH <= 0) return err("no_look")
+        if (x < 0 || y < 0 || x >= shotW || y >= shotH) return err("bad_point")
+        if (blockedOnScreen()) return err("blocked")
+        val hit = activeRoot()?.let { nodeAtPoint(it, x, y, 0) }
+        if (hit != null) {
+            if (blocked(hit)) return err("blocked")
+            if (hit.isPassword) return err("password")
+        }
+        HandsControl.blockReason(this)?.let { return err(it) }
+        val ok = gesture(x.toFloat(), y.toFloat(), x.toFloat(), y.toFloat(), 60L)
+        return if (ok) mapOf("ok" to true) else err("failed")
+    }
+
+    /** ชิ้นในสุดที่มองเห็นและครอบจุดนี้ */
+    private fun nodeAtPoint(node: AccessibilityNodeInfo, x: Int, y: Int, depth: Int): AccessibilityNodeInfo? {
+        if (depth > 64 || !node.isVisibleToUser) return null
+        val r = Rect()
+        node.getBoundsInScreen(r)
+        if (!r.contains(x, y)) return null
+        for (i in node.childCount - 1 downTo 0) {
+            val c = node.getChild(i) ?: continue
+            nodeAtPoint(c, x, y, depth + 1)?.let { return it }
+        }
+        return node
+    }
 
     /** ปุ่มจากภาพจอล่าสุด · null = เลขเก่า/ปุ่มหายไปแล้ว */
     private fun nodeAt(id: Int): AccessibilityNodeInfo? {

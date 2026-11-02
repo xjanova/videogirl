@@ -21,6 +21,9 @@ class PhoneAction {
     this.to = '',
     this.subject = '',
     this.body = '',
+    this.x,
+    this.y,
+    this.what = '',
   });
 
   /// ชนิดที่รู้จัก · อย่างอื่น = อ่านไม่ออก
@@ -42,6 +45,8 @@ class PhoneAction {
     'email',
     'ask_owner',
     'routine',
+    'look',
+    'tap_at',
     'done',
     'fail',
   };
@@ -69,6 +74,12 @@ class PhoneAction {
     'ask': 'ask_owner',
     'macro': 'routine',
     'replay': 'routine',
+    'screenshot': 'look',
+    'see': 'look',
+    'look_at_screen': 'look',
+    'tap_xy': 'tap_at',
+    'click_at': 'tap_at',
+    'tap_point': 'tap_at',
     'finish': 'done',
     'complete': 'done',
     'finished': 'done',
@@ -96,8 +107,18 @@ class PhoneAction {
   final String subject;
   final String body;
 
+  /// tap_at · จุดบนภาพจอที่แนบไป (พิกเซลของภาพ) · [PhoneAgent] แปลงเป็นพิกเซลจริงบนจอก่อนส่งต่อ
+  final int? x;
+  final int? y;
+
+  /// tap_at · เธอบอกว่าจุดนั้นคืออะไร · ใช้ถามเจ้าของและให้ [PhonePolicy] ดูคำเสี่ยง
+  final String what;
+
   /// ลายเซ็นไว้จับว่าเธอทำขั้นเดิมซ้ำ ๆ
-  String get signature => '$kind|${id ?? ''}|$text|$dir|$name|$to';
+  String get signature => '$kind|${id ?? ''}|$text|$dir|$name|$to|${x ?? ''},${y ?? ''}';
+
+  /// ขั้นเดิมที่จุดใหม่ (แปลงจากพิกเซลของภาพเป็นพิกเซลของจอ)
+  PhoneAction at(int nx, int ny) => PhoneAction(kind, why: why, risky: risky, x: nx, y: ny, what: what);
 
   /// อ่านวัตถุ JSON ก้อนแรกในคำตอบ · รับ ```json …``` และข้อความนำหน้า · ไม่ได้ = null
   static PhoneAction? parse(String reply) {
@@ -120,8 +141,14 @@ class PhoneAction {
     var kind = (str('do').isNotEmpty ? str('do') : str('action')).toLowerCase().replaceAll(' ', '_');
     kind = _alias[kind] ?? kind;
     if (!kinds.contains(kind)) return null;
+    // 1e400 / "Infinity" / "NaN" = ไม่ใช่ตัวเลข (round/toInt โยน error ทำงานพัง)
+    int? whole(String k) {
+      final v = m[k] is num ? m[k]! as num : double.tryParse(str(k));
+      return v != null && v.isFinite ? v.round() : null;
+    }
+
     final idRaw = m['id'];
-    final id = idRaw is num ? idRaw.toInt() : int.tryParse(str('id'));
+    final id = idRaw is num ? (idRaw.isFinite ? idRaw.toInt() : null) : int.tryParse(str('id'));
     final riskyRaw = m['risky'];
     String first(List<String> keys) {
       for (final k in keys) {
@@ -148,6 +175,9 @@ class PhoneAction {
       to: str('to'),
       subject: str('subject'),
       body: str('body'),
+      x: whole('x'),
+      y: whole('y'),
+      what: first(const ['what', 'target', 'label']),
     );
   }
 

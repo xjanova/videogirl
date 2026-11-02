@@ -62,7 +62,7 @@ class _Hands implements Hands {
   }
 
   @override
-  Future<HandsReply> screenshot({int maxEdge = 1024}) async {
+  Future<HandsReply> screenshot({int maxEdge = 1024, bool marks = false}) async {
     log.add('screenshot');
     return shot ?? HandsReply(true, data: {'jpeg': Uint8List.fromList([1, 2, 3])});
   }

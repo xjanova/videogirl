@@ -129,9 +129,22 @@ abstract final class PhonePolicy {
   }
 
   /// ขั้นนี้ต้องถามเจ้าของก่อนไหม
+  ///
+  /// tap_at: [a] ต้องเป็นพิกเซลจริงบนจอแล้ว (PhoneAgent แปลงให้) · ตกบนปุ่มที่มีในภาพจอตัวหนังสือ =
+  /// ดูปุ่มนั้นเหมือนกดด้วยเลข · ตกที่อื่น (ภาพ แผงที่แอปวาดเอง) = โค้ดไม่รู้ว่ากดอะไร จึงดูคำที่เธอบอก
+  /// และคำบนจอทั้งจอ · มีคำเสี่ยงที่ไหนสักที่ = ถาม
   static bool needsOwner(PhoneAction a, PhoneScreen? screen) {
     if (a.risky) return true;
     switch (a.kind) {
+      case 'tap_at':
+        if (riskyText(a.what)) return true;
+        if (screen == null || a.x == null || a.y == null) return true;
+        final hit = screen.at(a.x!, a.y!);
+        if (hit != null && (hit.click || hit.long || hit.check || hit.edit) && labelOf(hit).isNotEmpty) {
+          return _nodeNeedsOwner(hit, screen);
+        }
+        if (screen.package == settingsPackage) return true;
+        return screen.nodes.any((n) => riskyText('${n.text} ${n.desc}'));
       case 'tap':
       case 'long_press':
       case 'submit':
@@ -152,6 +165,11 @@ abstract final class PhonePolicy {
     }
     // กดโดยไม่รู้ว่ากดอะไร (id ไม่อยู่ในจอล่าสุด) · ฝั่ง Android จะตอบ stale เอง ไม่ต้องถาม
     if (node == null) return false;
+    return _nodeNeedsOwner(node, screen);
+  }
+
+  /// กดปุ่มที่รู้ว่าคืออะไร · คำบนปุ่ม · สวิตช์ในหน้าตั้งค่า · ปุ่มตกลงบนจอที่มีคำเสี่ยง
+  static bool _nodeNeedsOwner(ScreenNode node, PhoneScreen? screen) {
     final label = labelOf(node);
     if (riskyText(label)) return true;
     if (screen != null) {

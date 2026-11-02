@@ -131,6 +131,47 @@ class OpenAiClient {
     required String system,
     required List<Turn> history,
     String? model,
+  }) =>
+      _complete(system: system, history: history, model: model);
+
+  /// เหมือน [reply] แต่แนบภาพ JPEG ไปกับข้อความสุดท้ายของเจ้าของ (ภาพจอตอนเธอใช้เครื่องแทน) ·
+  /// รูปแบบ `image_url` ของ /chat/completions · Grok และ Gemini (ทางที่เข้ากันได้กับ OpenAI) รับแบบเดียวกัน ·
+  /// เจ้าที่รับภาพไม่ได้ตอบ error = ผู้เรียกกลับไปใช้ตัวหนังสือ
+  Future<String> see({
+    required String system,
+    required List<Turn> history,
+    required Uint8List image,
+    String? model,
+  }) =>
+      _complete(system: system, history: history, model: model, image: image);
+
+  /// ข้อความของคำขอ · [image] แนบกับข้อความสุดท้ายของเจ้าของ
+  @visibleForTesting
+  static List<Map<String, Object>> messages(String system, List<Turn> history, {Uint8List? image}) {
+    final last = image == null ? -1 : history.lastIndexWhere((t) => !t.fromHer);
+    return [
+      {'role': 'system', 'content': system},
+      for (final (i, t) in history.indexed)
+        {
+          'role': t.fromHer ? 'assistant' : 'user',
+          'content': i == last
+              ? [
+                  {'type': 'text', 'text': t.text},
+                  {
+                    'type': 'image_url',
+                    'image_url': {'url': 'data:image/jpeg;base64,${base64Encode(image!)}'},
+                  },
+                ]
+              : t.text,
+        },
+    ];
+  }
+
+  Future<String> _complete({
+    required String system,
+    required List<Turn> history,
+    String? model,
+    Uint8List? image,
   }) async {
     if (!usable) {
       throw OpenAiFailure(_s().errNoKey);
@@ -146,11 +187,7 @@ class OpenAiClient {
             : null;
     final body = jsonEncode({
       'model': m,
-      'messages': [
-        {'role': 'system', 'content': system},
-        for (final t in history)
-          {'role': t.fromHer ? 'assistant' : 'user', 'content': t.text},
-      ],
+      'messages': messages(system, history, image: image),
       'reasoning_effort': ?effort,
       // เพดานนับรวมการคิดภายในด้วย · คิดได้ (low/minimal หรือไม่รู้ว่ารุ่นนี้
       // คิดไหม) = เผื่อที่ให้ยังเหลือพอสำหรับคำตอบ · ไม่คิด = 600 พอสำหรับเธอ

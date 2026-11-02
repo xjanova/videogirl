@@ -110,8 +110,20 @@ object HandsBridge {
             "screenshot" -> {
                 HandsControl.blockReason(app)?.let { return result.success(err(it)) }
                 val edge = (num(call, "maxEdge")?.toInt() ?: 1024).coerceIn(256, 2048)
+                val marks = call.argument<Any>("marks") == true
                 slow("screenshot", result) {
-                    MindHands.instance?.screenshot(edge) ?: err("not_enabled")
+                    MindHands.instance?.screenshot(edge, marks) ?: err("not_enabled")
+                }
+            }
+            "tapAt" -> {
+                HandsControl.blockReason(app)?.let { return result.success(err(it)) }
+                val x = num(call, "x")?.toInt()
+                val y = num(call, "y")?.toInt()
+                if (x == null || y == null) return result.success(err("bad_point"))
+                slow("tapAt", result) {
+                    HandsControl.blockReason(app)?.let { err(it) }
+                        ?: MindHands.instance?.tapAt(x, y)
+                        ?: err("not_enabled")
                 }
             }
             "act" -> {
