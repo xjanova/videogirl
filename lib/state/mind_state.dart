@@ -51,6 +51,7 @@ import '../ai/web_tools.dart';
 import '../phone/call_tags.dart';
 import '../phone/call_target.dart';
 import '../phone/outgoing_call.dart';
+import '../phone/hold_audio.dart';
 import '../hands/app_table.dart';
 import '../phone/phone_lookup.dart';
 import '../phone/call_knowledge.dart';
@@ -63,6 +64,7 @@ import '../hands/phone_agent.dart';
 import '../hands/phone_macro.dart';
 import '../hands/phone_task.dart';
 import '../i18n/strings_hands.dart';
+import '../phone/gemini_live_call.dart';
 import '../phone/live_call.dart';
 import '../phone/realtime_call.dart';
 import '../brainx/brainx_cloud.dart';
@@ -1395,6 +1397,15 @@ class MindState extends ChangeNotifier {
     _contactsOnly = p.getBool('autoAnswerContactsOnly') ?? false;
     _showOnCall = p.getBool('showMindOnCall') ?? true;
     _recordCalls = p.getBool('recordCalls') ?? true;
+    _incomingAskOwner = p.getBool('incomingAskOwner') ?? true;
+    _holdSound = HoldSound.of(p.getString('holdSound'));
+    final holdFile = p.getString('holdFile') ?? '';
+    _holdFile = HoldStore.owns(holdFile) ? holdFile : '';
+    _holdFileName = p.getString('holdFileName') ?? '';
+    _transferOn = p.getBool('transferOn') ?? false;
+    _transferNumber = p.getString('transferNumber') ?? '';
+    _callSales = p.getBool('callSales') ?? false;
+    _callSalesNote = p.getString('callSalesNote') ?? '';
     _callerName = p.getString('callerName') ?? '';
     _callGreetingText = p.getString('callGreeting') ?? '';
     _realtimeCalls = p.getBool('realtimeCalls') ?? true;
@@ -2574,6 +2585,132 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
+  // ── พักสาย · โอนสายหาเจ้าของ · ปิดการขาย ──
+  //
+  // เจ้าของ: "แก้เรื่องให้เธอ พักสายได้ เพื่อถามเรา ทางคู่สนทนาจะได้ยินสิ่งที่เราตั้งไว้ให้เขาฟังเช่นเพลง
+  // หรือโฆษณาต่างๆ ... มายด์สามารถโอนสาย ได้ ตั้งเบอร์ที่โอนสายได้" · ทั้งหมดเป็นค่ากลาง ๆ ของแอป ·
+  // ข้อมูลธุรกิจของเจ้าของ (สินค้า ราคา) อยู่ในคลังความรู้ที่เจ้าของใส่เอง ไม่ติดมากับแอป
+
+  /// สายเข้า (คุยสด): เธอพักสายถามเจ้าของได้ (ask_owner) · จอดับ/ล็อก = ไม่ถาม รับเรื่องเอง
+  bool _incomingAskOwner = true;
+  bool get incomingAskOwner => _incomingAskOwner;
+
+  void setIncomingAskOwner(bool v) {
+    if (_incomingAskOwner == v) return;
+    _incomingAskOwner = v;
+    _save('incomingAskOwner', v);
+    _notify();
+  }
+
+  /// เสียงที่คนโทรได้ยินระหว่างพักสาย · ไฟล์หาย = กลับไปเพลงในแอป
+  HoldSound _holdSound = HoldSound.builtin;
+  String _holdFile = '';
+  String _holdFileName = '';
+  HoldSound get holdSound => _holdSound == HoldSound.file && _holdFile.isEmpty ? HoldSound.builtin : _holdSound;
+  String? get holdFilePath => _holdFile.isEmpty ? null : _holdFile;
+  String get holdFileName => _holdFileName;
+
+  void setHoldSound(HoldSound v) {
+    if (v == HoldSound.file && _holdFile.isEmpty) return;
+    if (_holdSound == v) return;
+    _holdSound = v;
+    _save('holdSound', v.name);
+    _notify();
+  }
+
+  /// เจ้าของเลือกไฟล์เสียงจากเครื่อง · คืนรหัสข้อผิดพลาด (not_audio) · null = ใช้ไฟล์นี้แล้ว
+  Future<String?> setHoldFile(String name, Uint8List bytes, {Directory? root}) async {
+    if (!HoldStore.accepts(name) || bytes.isEmpty) return 'not_audio';
+    final path = await HoldStore.save(name, bytes, root: root);
+    _holdFile = path;
+    _holdFileName = name.trim();
+    _holdSound = HoldSound.file;
+    _save('holdFile', path);
+    _save('holdFileName', _holdFileName);
+    _save('holdSound', HoldSound.file.name);
+    _notify();
+    return null;
+  }
+
+  /// ลบไฟล์ที่เลือกไว้ · กลับไปเพลงในแอป
+  Future<void> clearHoldFile({Directory? root}) async {
+    await HoldStore.clear(root: root);
+    _holdFile = '';
+    _holdFileName = '';
+    if (_holdSound == HoldSound.file) _holdSound = HoldSound.builtin;
+    _save('holdFile', '');
+    _save('holdFileName', '');
+    _save('holdSound', _holdSound.name);
+    _notify();
+  }
+
+  /// โอนสายคนโทรไปหาเจ้าของอีกเบอร์ · ปิดเป็นค่าตั้งต้น (ต้องตั้งเบอร์เอง)
+  bool _transferOn = false;
+  String _transferNumber = '';
+  bool get transferOn => _transferOn;
+  String get transferNumber => _transferNumber;
+
+  /// มีเครื่องมือ ask_owner ในสายนี้ไหม (คุยสด) · prompt กับ CallSession ใช้ตัวเดียวกัน ไม่งั้นสอนเครื่องมือที่ไม่มี ·
+  /// โทรออกตามที่เจ้าของสั่ง = สวิตช์ในกล่องยืนยัน · สายเข้า = [incomingAskOwner]
+  bool callMayAskOwner({required bool outgoing}) =>
+      outgoing && _outgoing != null ? _outgoingAskOk : _incomingAskOwner;
+
+  /// โอนสายหาเจ้าของได้ในสายนี้ไหม · สายเข้าเท่านั้น (โทรออกแทนเจ้าของมี ask_owner อยู่แล้ว)
+  bool callMayTransfer({required bool outgoing}) => !(outgoing && _outgoing != null) && transferReady;
+
+  /// โอนได้จริงในสายนี้: เปิดไว้ และเบอร์ถูกรูป ไม่ใช่เบอร์ฉุกเฉิน/1900 (ฝั่งเนทีฟกันซ้ำ)
+  bool get transferReady {
+    final n = OutgoingRules.normalize(_transferNumber);
+    return _transferOn && n != null && !OutgoingRules.blocked(n);
+  }
+
+  void setTransferOn(bool v) {
+    if (_transferOn == v) return;
+    _transferOn = v;
+    _save('transferOn', v);
+    _notify();
+  }
+
+  /// คืนรหัสข้อผิดพลาด (bad_number · blocked) · null = บันทึกแล้ว · ว่าง = ลบเบอร์
+  String? setTransferNumber(String raw) {
+    final t = raw.trim();
+    if (t.isNotEmpty) {
+      final n = OutgoingRules.normalize(t);
+      if (n == null || !OutgoingRules.looksLikeNumber(t)) return 'bad_number';
+      if (OutgoingRules.blocked(n)) return 'blocked';
+    }
+    if (t == _transferNumber) return null;
+    _transferNumber = t;
+    _save('transferNumber', t);
+    _notify();
+    return null;
+  }
+
+  /// ช่วยปิดการขายตอนคนโทรสนใจสินค้า/บริการ · ราคาจากคลังความรู้ของเจ้าของเท่านั้น
+  bool _callSales = false;
+  bool get callSales => _callSales;
+
+  void setCallSales(bool v) {
+    if (_callSales == v) return;
+    _callSales = v;
+    _save('callSales', v);
+    _notify();
+  }
+
+  /// เจ้าของสั่งเรื่องการขายสั้น ๆ ("เน้นแพ็กเกจเว็บ" "ลดได้ไม่เกิน 5%") · เข้า prompt ทุกสายที่เปิดการขาย
+  static const salesNoteMax = 600;
+  String _callSalesNote = '';
+  String get callSalesNote => _callSalesNote;
+
+  void setCallSalesNote(String v) {
+    var t = v.trim();
+    if (t.length > salesNoteMax) t = t.substring(0, salesNoteMax);
+    if (t == _callSalesNote) return;
+    _callSalesNote = t;
+    _save('callSalesNote', t);
+    _notify();
+  }
+
   /// คำตอบสำหรับคนปลายสาย
   ///
   /// ใช้ system prompt คนละตัวกับการคุยในแอป (`onCall: true`) ซึ่งกดโหมด
@@ -2590,9 +2727,35 @@ class MindState extends ChangeNotifier {
   /// สิ่งที่เธอได้ในสายจึงมีแค่: บุคลิก (ไม่รวมความสัมพันธ์) · ขอบเขตที่เจ้าของตั้ง ·
   /// ช่วงที่ไม่ว่างแบบไม่มีรายละเอียด · บทสนทนาของสายนี้ · และไม่แตะสมอง BrainX
   /// ไม่ค้นเว็บ ไม่มีบันทึกช่วยจำ (ดู [callPrompt] ที่เทสต์ยืนยันทั้งหมดนี้)
+  ///
+  /// [note] = เรื่องที่เพิ่งเกิดนอกบทสนทนา (ผลโอนสายหาเจ้าของ) · ต่อท้าย prompt ของคำตอบนี้คำตอบเดียว
   Future<String> replyOnCall(List<({bool fromHer, String text})> history,
-          {bool outgoing = false, String? contact}) =>
-      _askBrain(callPrompt(outgoing: outgoing, contact: contact), history, cap: ReplyCap.call);
+      {bool outgoing = false, String? contact, String? note}) async {
+    final parts = [
+      callPrompt(outgoing: outgoing, contact: contact),
+      // ทางเดิมไม่มีเครื่องมือ lookup_info · ค้นจากคำล่าสุดของคนโทรให้ก่อน แล้วแนบเป็นข้อมูล
+      if (!outgoing) await _callFactsFor(history),
+      if (note != null) note.trim(),
+    ];
+    return _askBrain(parts.where((p) => p.isNotEmpty).join('\n'), history, cap: ReplyCap.call);
+  }
+
+  /// ค้นช้ากว่านี้ = ตอบไปก่อนโดยไม่มีข้อมูล · คนโทรรอเงียบนานไม่ได้
+  static const _factsWait = Duration(seconds: 2);
+
+  /// ข้อมูลที่เจ้าของเตรียมไว้ที่ตรงกับคำล่าสุดของคนโทร (ทางเดิม) · ไม่มี/ค้นไม่ทัน = ว่าง
+  Future<String> _callFactsFor(List<({bool fromHer, String text})> history) async {
+    if (!callLookupReady) return '';
+    final last = history.lastWhere((l) => !l.fromHer, orElse: () => (fromHer: true, text: '')).text.trim();
+    if (last.isEmpty) return '';
+    try {
+      final hits = await callLookup(last).timeout(_factsWait);
+      return MindPersona.callFactsBlock(_lang, [for (final h in hits.take(3)) (title: h.title, text: h.text)]);
+    } on Object catch (e) {
+      debugPrint('สาย: ค้นข้อมูลให้ทางเดิมไม่ทัน — ${e.runtimeType}');
+      return '';
+    }
+  }
 
   ///
   /// [live] = คุยสด (Realtime) · วางสาย/แจ้งด่วนด้วยเครื่องมือแทนแท็ก (ดู [MindPersona.phoneStyle])
@@ -2615,7 +2778,16 @@ class MindState extends ChangeNotifier {
     final code = live && _callCode.isNotEmpty ? MindPersona.callCodeRule(_lang) : '';
     // คำถามยืนยันตัวตน = คุยสดเท่านั้น (เครื่องมือ identity_*) · คำตอบไม่เข้า prompt
     final ids = live && _quiz.ready ? MindPersona.identityRule(_lang, phone: _phoneControl) : '';
-    final withStyle = [base, style, lessons, code, ids].where((b) => b.isNotEmpty).join('\n');
+    // สายเข้าเท่านั้น · ต้องตรงกับเครื่องมือที่ CallSession ให้ (ask_owner · transfer_to_owner)
+    final incoming = !outgoing || _outgoing == null;
+    final askIn = live && incoming && callMayAskOwner(outgoing: outgoing)
+        ? MindPersona.callAskOwnerRule(_lang, music: holdSound != HoldSound.none)
+        : '';
+    final transfer = callMayTransfer(outgoing: outgoing) ? MindPersona.callTransferRule(_lang, live: live) : '';
+    final sales = incoming && _callSales
+        ? MindPersona.callSalesRule(_lang, lookup: live && callLookupReady, ask: askIn.isNotEmpty, note: _callSalesNote)
+        : '';
+    final withStyle = [base, style, lessons, code, ids, askIn, transfer, sales].where((b) => b.isNotEmpty).join('\n');
     // เรื่องที่เจ้าของเปิดให้คนโทรรู้ · เฉพาะคุยสด (มีเครื่องมือ lookup_info)
     if (!live || !callLookupReady) return withStyle;
     final index = [
@@ -2681,9 +2853,12 @@ class MindState extends ChangeNotifier {
   CallCharacter _maiDefault() =>
       CallCharacter(id: CallCharacter.maiId, name: MindPersona.callName(_lang));
 
-  /// เจ้าเสียงที่คนปลายสายได้ยินจริง · คุยสดพูดด้วยเสียง OpenAI เสมอ
-  TtsEngine callVoiceEngine({bool live = false}) =>
-      live ? TtsEngine.openai : voiceFor(VoiceChannel.answer).engine;
+  /// เจ้าเสียงที่คนปลายสายได้ยินจริง · คุยสดพูดด้วยเสียงของเจ้าคุยสด (OpenAI / Gemini) เสมอ
+  TtsEngine callVoiceEngine({bool live = false}) => !live
+      ? voiceFor(VoiceChannel.answer).engine
+      : callLiveEngine == CallLiveEngine.gemini
+          ? TtsEngine.gemini
+          : TtsEngine.openai;
 
   /// ตัวละครที่ใช้ในสายตอนนี้
   CallCharacter callCharacter({bool live = false, bool outgoing = false}) =>
@@ -3100,10 +3275,11 @@ class MindState extends ChangeNotifier {
   Future<Utterance> speakForCall(String text) =>
       synthesizeWithFallback(text, voiceFor(VoiceChannel.answer));
 
-  // ═══ คุยสดในสาย (OpenAI Realtime) ═════════════════════════
+  // ═══ คุยสดในสาย (OpenAI Realtime · Gemini Live) ═══════════════
   //
   // เจ้าของ: "ต้องทำ real time พูดคุยเลย ถ้าตั้งค่าเป็น open ai" · ใช้เมื่อสมองเป็น
   // OpenAI ด้วยคีย์ของเจ้าของ · ต่อไม่ได้ = ตกไปทางเดิม (ฟัง → ถอด → คิด → พูด)
+  // เจ้าของ (2026-11-02): "คุยสดในสายใช้ได้แค่ OpenAI หรือ" · สมอง Gemini คุยสดด้วย Gemini Live
 
   /// เปิดเป็นค่าตั้งต้น · ปิดได้ (Realtime คิดเงินตามเสียง แพงกว่าทางเดิม)
   bool _realtimeCalls = true;
@@ -3116,9 +3292,33 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
-  /// สายนี้คุยสดได้ไหม · ไม่ใช่ OpenAI ด้วยคีย์ตัวเอง = ไม่ได้ (ไม่ยืมคีย์ข้ามสมอง)
-  bool get realtimeCallsReady =>
-      _realtimeCalls && _brain == BrainProvider.openai && hasOwnKey;
+  /// เจ้าที่คุยสดในสายได้ตอนนี้ · ตามสมอง ไม่ยืมคีย์ข้ามสมอง (คุยสดคือสมองของสายนั้นเอง ·
+  /// เลือก Claude แล้วสายคิดด้วย Gemini = เจ้าของไม่ได้เลือก) · null = ไม่มี ใช้ทางผลัดกันพูด
+  ///
+  /// Grok มีคุยสดแบบเดียวกับ Realtime แต่ภาษาไทยไม่อยู่ในรายการที่รองรับ (ตรวจ 2026-11-02) · Claude ไม่มี
+  CallLiveEngine? get callLiveEngine => switch (_brain) {
+        BrainProvider.openai when hasOwnKey => CallLiveEngine.openai,
+        BrainProvider.gemini when _geminiKey.isNotEmpty => CallLiveEngine.gemini,
+        _ => null,
+      };
+
+  /// สายนี้คุยสดได้ไหม · สมองไม่มีคุยสด ไม่มีคีย์ของเจ้าของเอง หรือเสียงรับสายเป็นเสียงที่คุยสดพูดไม่ได้ = ไม่ได้
+  bool get realtimeCallsReady => _realtimeCalls && callLiveEngine != null && answerVoiceLive;
+
+  /// เสียงรับสายที่เลือกไว้ คุยสดพูดได้ไหม · ไม่ได้ = สายผลัดกันพูดด้วยเสียงนั้น
+  ///
+  /// เจ้าของ (2026-11-02) เลือกเอง: "เลือกเสียงอื่น = ผลัดกันพูด" · ของเดิมข้ามเสียงที่เลือก (ElevenLabs ·
+  /// Azure · Gemini ตอนสมองเป็น OpenAI) เงียบ ๆ แล้วพูดด้วย marin · คนโทรต้องได้ยินเสียงที่เลือกเสมอ ·
+  /// เสียงเครื่อง = ค่าตั้งต้นที่ยังไม่ได้เลือกเสียงจริง · คุยสดใช้เสียงของตัวเอง (หน้าเสียงบอกไว้)
+  bool get answerVoiceLive {
+    final a = voiceFor(VoiceChannel.answer);
+    return switch (callLiveEngine) {
+      null => false,
+      _ when a.engine == TtsEngine.device => true,
+      CallLiveEngine.openai => a.engine == TtsEngine.openai && RealtimeCall.voices.contains(a.voice),
+      CallLiveEngine.gemini => a.engine == TtsEngine.gemini && GeminiLiveCall.voices.contains(a.voice),
+    };
+  }
 
   /// คุยด้วย GPT-Live แทน Realtime · ปิดเป็นค่าตั้งต้น เพราะ OpenAI ยังไม่ระบุว่ารองรับภาษาไทย
   /// และคิดเงินตามนาทีตลอดสาย · เจ้าของเปิดเองเมื่ออยากลอง ใช้ได้ก็ต่อเมื่อคุยสดเปิดอยู่
@@ -3132,12 +3332,28 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
-  /// ต้องต่อสายตรงอยู่ด้วย · ผู้เรียกเช็กเอง ([CallSession] รู้ทางเสียงของสายนั้น)
-  bool get callLiveReady => _liveCalls && realtimeCallsReady;
+  /// ต้องต่อสายตรงอยู่ด้วย · ผู้เรียกเช็กเอง ([CallSession] รู้ทางเสียงของสายนั้น) · GPT-Live เป็นของ OpenAI ·
+  /// เสียงที่เลือกไม่อยู่ในชุดของ GPT-Live = ใช้ Realtime ที่พูดเสียงนั้นได้ (ดู [answerVoiceLive])
+  bool get callLiveReady {
+    if (!_liveCalls || !realtimeCallsReady || callLiveEngine != CallLiveEngine.openai) return false;
+    final a = voiceFor(VoiceChannel.answer);
+    return a.engine == TtsEngine.device || LiveCall.voices.contains(a.voice);
+  }
 
-  /// เสียงที่ได้ยินจริงตอนคุยสดในสาย · เสียงที่รุ่นนั้นไม่รู้จักกลายเป็น marin (ดู [RealtimeCall] · [LiveCall])
+  /// ชื่อที่เจ้าของเห็นของสิ่งที่คุยสดในสาย
+  String get callLiveName => callLiveEngine == CallLiveEngine.gemini
+      ? 'Gemini Live'
+      : callLiveReady
+          ? 'GPT-Live'
+          : 'OpenAI Realtime';
+
+  /// เสียงที่ได้ยินจริงตอนคุยสดในสาย · เสียงที่รุ่นนั้นไม่รู้จักกลายเป็นเสียงตั้งต้นของรุ่นนั้น
+  /// (ดู [RealtimeCall] · [LiveCall] · [GeminiLiveCall])
   String get callLiveVoice {
     final v = voiceFor(VoiceChannel.answer).voice;
+    if (callLiveEngine == CallLiveEngine.gemini) {
+      return GeminiLiveCall.voices.contains(v) ? v : GeminiLiveCall.defaultVoice;
+    }
     return (callLiveReady ? LiveCall.voices : RealtimeCall.voices).contains(v) ? v : 'marin';
   }
 
@@ -3169,6 +3385,23 @@ class MindState extends ChangeNotifier {
       lookup: _lookupForCall,
       connect: debugRealtimeConnect,
     )..onSttFallback = _noteSttFallback;
+  }
+
+  /// เซสชัน Gemini Live ของสายนี้ · prompt เดียวกับ Realtime ทุกตัวอักษร (ไม่มีข้อมูลส่วนตัว — [callPrompt])
+  ///
+  /// [greet] = false เมื่อเปิดเซสชันใหม่กลางสาย (เซสชันเดิมหลุดแล้วต่อต่อไม่ได้)
+  GeminiLiveCall openGeminiLiveCall({bool outgoing = false, bool greet = true, String? contact}) {
+    unawaited(callKnowledge.warm());
+    return GeminiLiveCall(
+      apiKey: _geminiKey,
+      instructions: callPrompt(live: true, outgoing: outgoing, contact: contact),
+      greeting: outgoing || !greet ? '' : callGreeting(live: true),
+      // เสียงที่ตั้งไว้ให้ "ตอบรับสาย" · ไม่ใช่เสียงที่ Gemini รู้จัก = เสียงตั้งต้นของ Gemini
+      voice: callLiveVoice,
+      languageReminder: MindPersona.callLanguageReminder(_lang),
+      lookup: _lookupForCall,
+      connect: debugRealtimeConnect,
+    );
   }
 
   /// เซสชัน GPT-Live ของสายนี้ · prompt เดียวกับ Realtime ทุกตัวอักษร (ไม่มีข้อมูลส่วนตัว — [callPrompt])

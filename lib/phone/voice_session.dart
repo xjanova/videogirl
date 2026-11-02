@@ -1,6 +1,6 @@
 /// สิ่งที่คุยสดในสายทุกแบบมีเหมือนกัน · [CallSession] รู้จักแค่ชั้นนี้
 ///
-/// สองแบบคือ RealtimeCall (OpenAI Realtime) กับ LiveCall (GPT-Live) · โปรโตคอลต่างกันทั้งชุด
+/// สามแบบคือ RealtimeCall (OpenAI Realtime) · LiveCall (GPT-Live) · GeminiLiveCall (Gemini Live) · โปรโตคอลต่างกันทั้งชุด
 /// แต่เครื่องมือในสาย การกันหลุดภาษา และข้อความที่ส่งออกไปต้องเหมือนกันทุกตัวอักษร
 /// ไม่งั้นเปลี่ยนรุ่นแล้วเธอจะวางสายไม่เป็นหรือเลิกค้นข้อมูลโดยไม่มีใครรู้
 library;
@@ -39,11 +39,20 @@ Future<RtSocket> rtConnectIo(Uri url, Map<String, String> headers) async =>
     _IoSocket(await WebSocket.connect(url.toString(), headers: headers)
         .timeout(const Duration(seconds: 10)));
 
+/// รหัสปิดท่อจากเซิร์ฟเวอร์ (เช่น ` 1007`) · ลงรายงานแยก "คีย์ผิด" ออกจาก "setup ผิด" · ท่อปลอม = ว่าง
+String rtCloseCode(RtSocket s) => s is _IoSocket && s._ws.closeCode != null ? ' ${s._ws.closeCode}' : '';
+
+/// เจ้าที่คุยสดในสาย · ตามสมอง ไม่ยืมคีย์ข้ามสมอง (ดู MindState.callLiveEngine)
+enum CallLiveEngine { openai, gemini }
+
 /// ค้นข้อมูลที่เจ้าของเปิดให้คนโทรรู้ (MindState.callLookup)
 typedef CallLookup = Future<List<({String title, String text})>> Function(String query);
 
 /// ถามเจ้าของกลางสาย แล้วรอคำตอบ · null = เจ้าของไม่ได้ตอบ (ผู้เรียกจับเวลาเอง ดู CallSession)
 typedef AskOwner = Future<String?> Function(String question);
+
+/// โอนสายคนโทรไปหาเจ้าของอีกเบอร์ · คืนผลเป็น JSON ให้เธอบอกคนโทร · null = ต่อสายให้แล้ว เธอออกจากสายไปแล้ว
+typedef TransferToOwner = Future<String?> Function(String callerName, String reason);
 
 /// เครื่องมือในสาย · prompt บอกว่าเรียกเมื่อไหร่ (MindPersona.phoneStyle)
 ///
@@ -63,6 +72,7 @@ List<Map<String, Object?>> callTools({
   bool? code,
   bool identity = false,
   bool phone = false,
+  bool transfer = false,
 }) =>
     [
       {
@@ -102,10 +112,10 @@ List<Map<String, Object?>> callTools({
         {
           'type': 'function',
           'name': 'ask_owner',
-          'description': 'Ask your boss (the owner, who sent you on this call) a short question and wait for the reply. '
-              'The other person is put on hold while you wait, so use it only for a real decision your task does '
-              'not cover and you cannot make for your boss (money or commitments beyond the limits, a choice with '
-              'nothing to go on) that must be settled on this call. Decide small details yourself. If the result '
+          'description': 'Ask your boss (the owner of this phone) a short question and wait for the reply. '
+              'The other person is put on hold while you wait, so use it only for a real decision you are not '
+              'allowed to make or cannot answer from what you know (money or commitments beyond the limits, a choice '
+              'with nothing to go on) that must be settled on this call. Decide small details yourself. If the result '
               'says your boss is not available, never call it again on this call.',
           'parameters': {
             'type': 'object',
@@ -116,6 +126,24 @@ List<Map<String, Object?>> callTools({
               },
             },
             'required': ['question'],
+          },
+        },
+      if (transfer)
+        {
+          'type': 'function',
+          'name': 'transfer_to_owner',
+          'description': 'Put this call through to your boss (the owner) on their other number. Use it only when the '
+              'caller insists on speaking to your boss in person after you offered to help or take a message. In the '
+              "same reply, first read back the caller's name and what it is about, and say you will check whether "
+              'your boss is free to take the call (one short sentence: the line goes quiet while you check). The '
+              'result says whether your boss took it; if not, tell the caller kindly and take a message.',
+          'parameters': {
+            'type': 'object',
+            'properties': {
+              'caller_name': {'type': 'string', 'description': "The caller's name as they gave it (empty if unknown)."},
+              'reason': {'type': 'string', 'description': 'What the call is about, in a few words.'},
+            },
+            'required': ['caller_name', 'reason'],
           },
         },
       if (gate && (code ?? gate))
@@ -270,6 +298,9 @@ abstract class VoiceSession {
   /// ต้องตั้งก่อน [start] เพราะรายการเครื่องมือส่งไปตอนเปิดเซสชัน
   AskOwner? onAskOwner;
 
+  /// โอนสายหาเจ้าของ · null = ไม่มีเครื่องมือ transfer_to_owner · ต้องตั้งก่อน [start]
+  TransferToOwner? onTransfer;
+
   /// เจ้าของอยู่ตอบไหม · false = เธอไม่พักสายถาม จัดการเองด้วยไหวพริบ ([ownerAwayNote]) ·
   /// ผู้เรียกเปลี่ยนได้กลางสาย (เจ้าของสั่ง / ไม่ตอบคำถามก่อนหน้า / จอดับ)
   bool ownerAvailable = true;
@@ -294,6 +325,7 @@ abstract class VoiceSession {
         code: ownerGate?.hasCode ?? false,
         identity: identityGate != null,
         phone: identityGate != null && phone != null,
+        transfer: onTransfer != null,
       );
 
   bool get connected;
@@ -416,6 +448,8 @@ abstract class VoiceSession {
           // อาร์กิวเมนต์เสีย = ถามไม่ได้ · ยังต้องตอบกลับ ไม่งั้นเธอเงียบรอค้าง
         }
         unawaited(_askOwner(callId, question));
+      case 'transfer_to_owner':
+        unawaited(_transfer(callId, _arg(item, 'caller_name'), _arg(item, 'reason')));
       case 'check_code':
         unawaited(_gateTool(callId, _arg(item, 'code'), (g, v) => g.verify(v)));
       case 'recall_owner':
@@ -501,6 +535,9 @@ abstract class VoiceSession {
   /// ระหว่างรอ ชวนคุยทุกเท่านี้ · คนถือสายรอเงียบ ๆ เกินสิบกว่าวินาทีจะคิดว่าสายหลุด
   static const ownerChatEvery = Duration(seconds: 14);
 
+  /// มีเพลงพักสายให้ฟัง = ไม่เงียบ · ชวนคุยห่างขึ้น ไม่พูดทับเพลงทุกสิบวิ · ผู้เรียกตั้งก่อนถาม
+  Duration ownerChat = ownerChatEvery;
+
   static const ownerWaitLine = 'You are still waiting for your boss to reply. Keep the other person company in ONE '
       'short, warm sentence, like a real secretary on hold: say you are checking with your boss and it will only take '
       'a moment, or ask one small detail that will help. Do not decide for your boss and do not repeat what you said '
@@ -544,7 +581,7 @@ abstract class VoiceSession {
     } else {
       _askingOwner = true;
       _ownerQuestions++;
-      final chat = Timer.periodic(ownerChatEvery, (_) => stillLookingUp(owner: true));
+      final chat = Timer.periodic(ownerChat, (_) => stillLookingUp(owner: true));
       try {
         // 🔴 ต้องห่อเป็น Future<String?> ก่อน · ผู้เรียกส่ง Future<String> มาได้ แล้ว onTimeout คืน null
         // ใส่ Future<String> ไม่ได้ (TypeError) = เจ้าของตอบแล้วแต่เธอได้ยินว่า "ไม่ได้ตอบ"
@@ -583,8 +620,51 @@ abstract class VoiceSession {
     );
   }
 
+  // ── โอนสายหาเจ้าของ ─────────────────────────────────────
+  //
+  // เจ้าของ: "สามารถส่งต่อสายไปหาเจ้าของ อีกเบอร์ได้ถ้าคู่สนทนายืนยันว่าจะคุยกับเจ้าของเท่านั้น"
+
+  bool _transferTried = false;
+
+  Future<void> _transfer(Object? callId, String name, String reason) async {
+    final go = onTransfer;
+    String? out;
+    if (go == null) {
+      out = jsonEncode({
+        'transferred': false,
+        'note': 'You cannot put calls through on this call. Say so kindly and take a message for your boss.',
+      });
+    } else if (_transferTried) {
+      // ลองแล้วรอบหนึ่ง (ไม่ว่าง/ไม่รับ) · โทรตามซ้ำ = คนโทรถูกพักสายไปเรื่อย ๆ เจ้าของถูกตาม
+      out = jsonEncode({
+        'transferred': false,
+        'note': 'You already tried your boss on this call. Do not try again: take a clear message (name, number, '
+            'what it is about, a good time to call back) and say your boss will get back to them.',
+      });
+    } else {
+      _transferTried = true;
+      try {
+        out = await go(name, reason);
+      } on Object catch (e) {
+        debugPrint('call: โอนสายไม่สำเร็จ — ${e.runtimeType}');
+        out = jsonEncode({
+          'transferred': false,
+          'note': 'The call could not be put through. Apologise briefly and take a message for your boss.',
+        });
+      }
+    }
+    // null = ต่อให้เจ้าของแล้ว · เธอไม่อยู่ในสายแล้ว ไม่มีใครรอผล
+    if (out == null || callId is! String) return;
+    toolOutput(callId, out);
+  }
+
   /// ค้นนานกว่านี้ = เธอพูดอะไรสักอย่าง ไม่เงียบใส่คนโทร
   static const lookupChatAfter = Duration(milliseconds: 2000);
+
+  static const lookupWaitLine = 'You are still looking this up and the result is not back yet. Keep the caller company '
+      'in ONE short, warm sentence, like a real person on the phone: say you are still checking, and if their question '
+      'was broad, ask one short detail that would help (which product, which branch, which day). Do not answer the '
+      'question itself yet and do not repeat what you said a moment ago.';
 
   /// ค้นแล้วส่งผลกลับเข้าสาย · ช้า/พลาด = ตอบว่าไม่เจอ (เงียบรอในสายนานไม่ได้)
   Future<void> _lookup(Object? callId, String query) async {

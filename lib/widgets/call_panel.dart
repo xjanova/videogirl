@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
+import '../i18n/strings_hold.dart';
 import '../phone/call_session.dart';
 import '../theme/tokens.dart';
 import 'glass.dart';
@@ -70,6 +71,9 @@ class _CallPanelState extends State<CallPanel> {
           if (call.micBlocked) _warn(t.callMicBlocked, const Color(0xFFD93A5B))
           else if (call.deaf) _warn(t.callDeaf, const Color(0xFFB07A16)),
           if (call.error != null) _warn(call.error!, const Color(0xFFD93A5B)),
+          // โอนสายหาเจ้าของ · คนโทรถูกพักสายในเครือข่ายอยู่ ไม่ได้ยินเธอ
+          if (call.transferring)
+            _warn(call.transferTalking ? t.transferTalking : t.transferRinging, const Color(0xFF2F6FDE)),
           if (call.lines.isNotEmpty) _transcript(call, mode),
           if (call.ownerQuestion != null && call.turn != CallTurn.handedOver) _question(t, call, mode)
           // สายงานที่เธอถามได้ · เจ้าของสลับกลางสายได้ว่าจะให้ถามไหม

@@ -439,12 +439,7 @@ class RealtimeCall extends VoiceSession {
     // เธอพูดอยู่ หรือคนโทรกำลังพูด = ไม่เงียบอยู่แล้ว ไม่ต้องแทรก
     if (_closed || _responding || _callerTalking) return;
     debugPrint(owner ? 'call: ยังรอเจ้าของตอบ · ให้เธอชวนคุยระหว่างรอ' : 'call: ค้นนานเกิน 2 วิ · ให้เธอชวนคุยระหว่างรอ');
-    final now = owner
-        ? VoiceSession.ownerWaitLine
-        : 'You are still looking this up and the result is not back yet. Keep the caller company in ONE short, '
-            'warm sentence, like a real person on the phone: say you are still checking, and if their question was '
-            'broad, ask one short detail that would help (which product, which branch, which day). Do not answer '
-            'the question itself yet and do not repeat what you said a moment ago.';
+    final now = owner ? VoiceSession.ownerWaitLine : VoiceSession.lookupWaitLine;
     _respond({
       'output_modalities': ['audio'],
       // คำสั่งของคำตอบนี้แทนที่ของทั้งเซสชัน · ต่อท้ายของเดิม บุคลิกกับภาษาจะได้ไม่หลุด

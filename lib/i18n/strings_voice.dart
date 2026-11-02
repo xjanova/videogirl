@@ -156,16 +156,26 @@ extension VoiceStrings on S {
       );
   String get inCallLive => pick('คุยสด', 'Live');
   String inCallLiveWhat(String engine, String voice) => pick(
-        '$engine · เสียง $voice · ใช้แทนสามอย่างข้างบนเมื่อสายต่อเสียงตรงได้',
-        '$engine · voice $voice · replaces all three above when the call has direct audio',
+        '$engine · เสียง $voice · ใช้แทนสามอย่างข้างบน · ต่อไม่ได้หรือหลุดจะกลับไปใช้สามอย่างข้างบน',
+        '$engine · voice $voice · replaces all three above · falls back to them if it cannot connect or drops',
       );
 
-  // ── คุยสดใช้เสียงของตัวเอง · เจ้าของต้องรู้ ไม่งั้นเลือก ElevenLabs แล้วไม่ได้ยินสักที ──
-  String voiceCallLiveNote(String voice) => pick(
-        'คุยสดในสายเปิดอยู่ สายที่คุยสดจะพูดด้วยเสียง $voice ของ OpenAI แทนเสียงนี้ · '
-            'เสียงนี้ใช้เมื่อสายไม่ได้คุยสด ปิดคุยสดได้ที่ ตั้งค่า › รับสายแทน',
-        'Live calls are on, so live calls speak with OpenAI\'s $voice instead of this voice · this voice is for calls that '
-            'are not live. Turn live calls off under Settings › Answering calls',
+  // ── เสียงในสาย × คุยสด · เจ้าของ (2026-11-02): "เลือกเสียงอื่น = ผลัดกันพูด" ──
+  // ของเดิมคุยสดข้ามเสียงที่เลือกเงียบ ๆ · ตอนนี้เสียงที่เลือกคือเสียงที่คนโทรได้ยินเสมอ ตรงนี้บอกว่าได้ทางไหน
+  String voiceCallLive(String engine, String voice) => pick(
+        'สายคุยสดด้วย $engine เสียง $voice',
+        'Calls talk live with $engine in the voice $voice',
+      );
+  String voiceCallDeviceLive(String engine, String voice) => pick(
+        'เสียงเครื่องไม่ได้ใช้ตอนคุยสด · สายคุยสดด้วย $engine เสียง $voice · อยากให้คนโทรได้ยินเสียงอื่น เลือกเจ้าเสียงข้างล่าง',
+        'The phone voice is not used for live talk · calls talk live with $engine in the voice $voice · '
+            'pick a voice engine below for a different voice on calls',
+      );
+  String voiceCallNotLive(String liveEngine, String liveVoices) => pick(
+        '$liveEngine พูดเสียงนี้ไม่ได้ สายจึงผลัดกันพูดด้วยเสียงนี้ (ตอบช้ากว่าคุยสดราว 2–5 วินาทีต่อตา) · '
+            'อยากคุยสด เลือกเสียง $liveVoices',
+        '$liveEngine cannot speak this voice, so calls take turns in it (2–5 seconds slower per turn than live talk) · '
+            'for live talk, pick a $liveVoices voice',
       );
   String voiceChatLiveNote(String voice) => pick(
         'กดไมค์แล้วคุยสด เธอจะพูดด้วยเสียง $voice ของ OpenAI แทนเสียงนี้ · เสียงนี้ใช้ตอนพิมพ์คุย',
