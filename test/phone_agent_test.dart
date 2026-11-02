@@ -503,6 +503,13 @@ void main() {
       expect(sys, contains('Never type passwords'));
     });
 
+    test('เปิด/ปิดไฟที่อ่านสถานะไม่ได้: ใช้ปุ่ม All On/All Off ไม่ใช่สวิตช์สลับ', () {
+      // Tuya ห้องทำงาน: Switch 1-3 ไม่มีคำบอกว่าเปิดอยู่ไหม · เธอหยุดทั้งที่มีปุ่ม All On
+      final sys = PhoneAgent.agentSystem(AppLang.en);
+      expect(sys, contains('All On, All Off'));
+      expect(sys, contains('Tap a plain toggle only when the screen shows its state'));
+    });
+
     test('แอปที่ห้ามแตะ: ไม่มีข้อความบนจอใน prompt', () {
       final s = screen('K PLUS', const [ScreenNode(id: 0, text: 'ยอดเงิน 12,345')], blocked: true);
       final txt = PhoneAgent.renderScreen(s);
