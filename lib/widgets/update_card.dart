@@ -53,7 +53,8 @@ class _UpdateCardState extends State<UpdateCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(S.of(context).sectionUpdate,
-              style: mindMono(size: 10, color: mode.accent, letterSpacing: .1)),
+              style: MindType.fit(
+                  mindMono(size: 10, color: mode.accent, letterSpacing: .1), S.of(context).sectionUpdate)),
           const SizedBox(height: 10),
           Row(
             children: [

@@ -43,11 +43,11 @@ class MindScreenHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(overline.toUpperCase(),
-                    style: mindMono(
+                    style: MindType.fit(mindMono(
                         size: 10.5,
                         weight: FontWeight.w600,
                         color: MindColors.ink45,
-                        letterSpacing: .16)),
+                        letterSpacing: .16), overline.toUpperCase())),
                 const SizedBox(height: MindSpace.sm),
                 Text(title, style: MindType.display),
                 if (subtitle != null) ...[
@@ -80,7 +80,7 @@ class MindSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text.toUpperCase(),
-        style: MindType.overline
-            .copyWith(color: color ?? MindColors.ink55),
+        style: MindType.fit(MindType.overline
+            .copyWith(color: color ?? MindColors.ink55), text.toUpperCase()),
       );
 }

@@ -770,6 +770,43 @@ void main() {
       expect(asked, ['ต้มน้ำ'], reason: 'กดซ้ำระหว่างหน้าปิด = ไม่ส่งคำถามซ้ำ');
     });
 
+    testWidgets('🔴 เปิดจากร้าน: ถามแล้วหน้าอ่านและร้านปิดทั้งคู่ เห็นแชทที่เพิ่งถาม', (t) async {
+      // เจอบนเครื่องจริง (v0.1.63): หน้าอ่านปิดด้วย maybePop แล้วร้านปิดตามทันที ·
+      // maybePop รอหนึ่งจังหวะ ร้านจึงยังเห็นหน้าอ่านอยู่บนสุด Flutter ทิ้งการปิดร้าน = ร้านค้างบังแชท
+      await mount(t);
+      final asked = <String>[];
+      final home = t.element(find.byType(KnowledgeReaderScreen));
+      Navigator.of(home).pushReplacement(MaterialPageRoute<void>(builder: (_) => const Text('แชท')));
+      await t.pumpAndSettle();
+      Navigator.of(t.element(find.text('แชท'))).push(MaterialPageRoute<void>(
+        builder: (shop) => Scaffold(
+          body: TextButton(
+            child: const Text('อ่าน'),
+            // เหมือน ShopScreen._read/_ask: ร้านปิดตัวเองด้วย maybePop แล้วส่งคำถามไปแชท
+            onPressed: () => Navigator.of(shop).push(MaterialPageRoute<void>(
+              builder: (_) => KnowledgeReaderScreen(
+                packId: 'demo',
+                onAsk: (q) {
+                  Navigator.of(shop).maybePop();
+                  asked.add(q);
+                },
+              ),
+            )),
+          ),
+        ),
+      ));
+      await t.pumpAndSettle();
+      await t.tap(find.text('อ่าน'));
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await t.pumpAndSettle();
+      await t.tap(find.text('ถามมายด์เรื่องนี้'));
+      await t.pumpAndSettle();
+      expect(asked, ['ต้มน้ำ']);
+      expect(find.byType(KnowledgeReaderScreen), findsNothing);
+      expect(find.text('อ่าน'), findsNothing, reason: 'ร้านต้องปิดตาม');
+      expect(find.text('แชท'), findsOneWidget);
+    });
+
     testWidgets('ไม่มีปุ่มถามเมื่อไม่มีที่ให้ถาม', (t) async {
       await mount(t);
       expect(find.text('ถามมายด์เรื่องนี้'), findsNothing);

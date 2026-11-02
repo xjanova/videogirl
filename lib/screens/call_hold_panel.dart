@@ -216,7 +216,8 @@ class _CallHoldPanelState extends State<CallHoldPanel> {
               ],
             ),
           ),
-          Switch(value: value, activeThumbColor: widget.accent, onChanged: onChanged),
+          // สีที่ track ไม่ใช่ thumb · thumb สีเดียวกับ track ของธีม = ปุ่มกลมหายตอนเปิด (เห็นบนเครื่องจริง)
+          Switch(value: value, activeTrackColor: widget.accent, onChanged: onChanged),
         ],
       );
 

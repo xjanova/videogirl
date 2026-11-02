@@ -134,7 +134,10 @@ class _KnowledgeReaderScreenState extends State<KnowledgeReaderScreen> {
                 onPressed: () {
                   if (_asked) return;
                   _asked = true;
-                  Navigator.of(context).maybePop();
+                  // pop ไม่ใช่ maybePop · maybePop รอหนึ่งจังหวะก่อนปิด ร้านที่ปิดตามทันที
+                  // ยังเห็นหน้านี้อยู่บนสุด Flutter เลยทิ้งการปิดร้าน (ร้านค้างบังแชทที่เพิ่งถาม)
+                  final nav = Navigator.of(context);
+                  if (nav.canPop()) nav.pop();
                   ask(s.title);
                 },
               ),

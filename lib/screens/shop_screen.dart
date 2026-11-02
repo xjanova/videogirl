@@ -259,8 +259,8 @@ class _ShopScreenState extends State<ShopScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(t.shopKind(item.kind.name),
-                        style: MindType.overline
-                            .copyWith(fontSize: 9.5, color: mode.accent)),
+                        style: MindType.fit(MindType.overline
+                            .copyWith(fontSize: 9.5, color: mode.accent), t.shopKind(item.kind.name))),
                     const SizedBox(height: 3),
                     Text(item.nameFor(t.isThai), style: MindType.title),
                     const SizedBox(height: 2),
@@ -490,7 +490,7 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Widget _heading(String text) => Padding(
         padding: const EdgeInsets.only(bottom: MindSpace.sm),
-        child: Text(text, style: MindType.overline.copyWith(fontSize: 10.5)),
+        child: Text(text, style: MindType.fit(MindType.overline.copyWith(fontSize: 10.5), text)),
       );
 
   List<Widget> _storeList(BuildContext context, MindMode mode, S t, KnowledgePacks kp, List<ShopItem> store) {
@@ -570,7 +570,8 @@ class _ShopScreenState extends State<ShopScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(t.kpCategory(m.category),
-                        style: MindType.overline.copyWith(fontSize: 9.5, color: mode.accent)),
+                        style: MindType.fit(
+                            MindType.overline.copyWith(fontSize: 9.5, color: mode.accent), t.kpCategory(m.category))),
                     const SizedBox(height: 3),
                     Text(m.name.of(t.isThai), style: MindType.title),
                     const SizedBox(height: 2),
@@ -633,7 +634,8 @@ class _ShopScreenState extends State<ShopScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(t.kpBundledTitle, style: MindType.overline.copyWith(fontSize: 9.5, color: mode.accent)),
+          Text(t.kpBundledTitle,
+              style: MindType.fit(MindType.overline.copyWith(fontSize: 9.5, color: mode.accent), t.kpBundledTitle)),
           const SizedBox(height: 3),
           Row(
             children: [
