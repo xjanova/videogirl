@@ -23,7 +23,7 @@ ThemeData mindTheme([MindMode mode = MindMode.work]) {
     colorScheme: ColorScheme.fromSeed(
       seedColor: MindColors.violet,
       brightness: Brightness.light,
-    ).copyWith(surface: Colors.transparent, primary: accent),
+    ).copyWith(surface: Colors.white, primary: accent),
     // ทุกหน้าจอวาดพื้นหลังไล่สีของตัวเอง Scaffold ต้องไม่ทับ
     scaffoldBackgroundColor: Colors.transparent,
     splashFactory: InkSparkle.splashFactory,

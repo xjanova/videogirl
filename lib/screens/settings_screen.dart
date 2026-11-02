@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../ai/brain_provider.dart';
+import '../ai/provider_connection.dart';
+import '../widgets/connection_test.dart';
 import '../ai/cloud_brains.dart';
 import '../ai/stt_engine.dart';
 import '../i18n/strings_brains.dart';
@@ -1659,6 +1661,15 @@ class _SettingsScreenState extends State<SettingsScreen>
               style: const TextStyle(fontSize: 10, color: MindColors.ink50)),
         ),
       _keyGuide(who, mode),
+      ConnectionTest(
+        provider: switch (b) {
+          BrainProvider.grok => ApiProvider.grok,
+          BrainProvider.claude => ApiProvider.claude,
+          _ => ApiProvider.gemini,
+        },
+        apiKey: key,
+        mode: mode,
+      ),
       FrameStepLabel('${t.frameStep(3)} · ${t.stepPickModel}', color: FrameColors.brain),
       BrainModelList(
         provider: b,
@@ -1843,6 +1854,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               onTap: () => _editOpenAiKey(state, mode),
             ),
             _keyGuide('OpenAI', mode),
+            ConnectionTest(
+              provider: ApiProvider.openai,
+              apiKey: state.effectiveOpenAiKey,
+              mode: mode,
+            ),
             const SizedBox(height: 12),
             FrameStepLabel('${t.frameStep(2)} · ${t.stepPickModel}', color: FrameColors.brain),
             BrainModelList(
@@ -2863,6 +2879,16 @@ class _SettingsScreenState extends State<SettingsScreen>
           style: const TextStyle(fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00)),
         ),
       ],
+      ConnectionTest(
+        provider: switch (e) {
+          TtsEngine.gemini => ApiProvider.gemini,
+          TtsEngine.elevenlabs => ApiProvider.elevenlabs,
+          _ => ApiProvider.azure,
+        },
+        apiKey: key,
+        region: state.azureRegion,
+        mode: mode,
+      ),
       if (models.length == 1) ...[
         const SizedBox(height: 10),
         Text('${t.premiumModel}: ${models.single}',
@@ -3084,6 +3110,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                 onTap: () => _editOpenAiKey(state, mode),
               ),
               _keyGuide('OpenAI', mode),
+              ConnectionTest(
+                provider: ApiProvider.openai,
+                apiKey: state.effectiveOpenAiKey,
+                mode: mode,
+              ),
               if (!state.hasOwnKey) ...[
                 const SizedBox(height: 7),
                 Text(
@@ -3373,6 +3404,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// หรือทำไมฟังไม่ได้ · ไม่ตกไปเสียงเครื่องเงียบ ๆ (ดู MindState.previewVoice)
   Future<void> _preview(
       MindState state, VoiceChannel channel, VoiceProfile profile, {bool live = false}) async {
+    if (_previewing) return;
     final t = S.of(context);
     final what = _voiceWhat(state, profile, t);
     setState(() {
@@ -3381,20 +3413,24 @@ class _SettingsScreenState extends State<SettingsScreen>
       _previewLive = live;
       _previewNote = (ok: true, text: t.previewMaking(what));
     });
-    final why = await state.previewVoice(channel, as: profile, onPlaying: () {
-      if (mounted) setState(() => _previewNote = (ok: true, text: t.previewPlaying(what)));
-    });
-    if (!mounted) return;
-    setState(() {
-      _previewing = false;
-      _previewNote = why == null
-          ? (ok: true, text: t.previewPlayed(what))
-          : (
-              ok: false,
-              text: t.previewFailed(what, why,
-                  fallback: profile.engine != TtsEngine.device),
-            );
-    });
+    try {
+      final why = await state.previewVoice(channel, as: profile, onPlaying: () {
+        if (mounted) {
+          setState(() => _previewNote =
+              (ok: true, text: S.of(context).previewPlaying(what)));
+        }
+      });
+      if (!mounted) return;
+      final current = S.of(context);
+      setState(() {
+        _previewNote = why == null
+            ? (ok: true, text: current.previewPlayed(what))
+            : (ok: false, text: current.previewFailed(what, why,
+                fallback: profile.engine != TtsEngine.device));
+      });
+    } finally {
+      if (mounted) setState(() => _previewing = false);
+    }
   }
 
   /// "ElevenLabs · eleven_v4 · Mali" — สิ่งที่กำลังจะได้ยินจริง

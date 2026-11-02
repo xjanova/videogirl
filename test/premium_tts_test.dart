@@ -2,6 +2,7 @@
 /// ที่ตรวจกับเอกสารทางการเมื่อ 2026-10-06 และข้อผิดพลาดต้องเป็นภาษาคน
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -15,6 +16,7 @@ import 'package:videogirl/ai/speech_service.dart';
 import 'package:videogirl/ai/openai_config.dart';
 import 'package:videogirl/ai/voice_profile.dart';
 import 'package:videogirl/i18n/strings.dart';
+import 'package:videogirl/i18n/strings_ai.dart';
 import 'package:videogirl/i18n/strings_voice.dart';
 
 const s = S(AppLang.th);
@@ -23,6 +25,28 @@ VoiceProfile _p(TtsEngine e, {String voice = '', String model = '', String style
     VoiceProfile(engine: e, voice: voice, model: model, instructions: style);
 
 void main() {
+  test('stalled audio body times out so preview can be retried', () async {
+    final body = StreamController<List<int>>();
+    final service = PremiumTts(
+      httpClient: MockClient.streaming((_, _) async => http.StreamedResponse(body.stream, 200)),
+      keyOf: (_) => 'test-key',
+      azureRegion: () => '',
+      strings: () => s,
+      timeout: const Duration(milliseconds: 20),
+    );
+    addTearDown(service.close);
+    await expectLater(
+      service.speak(
+        TtsEngine.elevenlabs,
+        'test',
+        _p(TtsEngine.elevenlabs, voice: 'AbCdEfGhIjKlMnOpQrSt', model: 'eleven_v4'),
+        thai: true,
+      ),
+      throwsA(isA<OpenAiFailure>().having((e) => e.message, 'message', s.errOffline)),
+    );
+    await body.close();
+  });
+
   late http.Request? sent;
 
   PremiumTts tts(http.Response Function(http.Request) answer,

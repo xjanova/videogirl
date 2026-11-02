@@ -4102,9 +4102,24 @@ class MindState extends ChangeNotifier {
     final out = speaker;
     if (out == null) return s.errVoiceNoOutput;
     await hush();
-    final profile = as ?? voiceFor(channel);
+    var profile = as ?? voiceFor(channel);
     final seq = ++_speechSeq;
     try {
+      // A newly selected ElevenLabs provider has no built-in voice ID. Resolve
+      // one from the account before previewing instead of leaving Listen inert.
+      if (profile.engine == TtsEngine.elevenlabs && profile.voice.trim().isEmpty) {
+        if (accountVoices(TtsEngine.elevenlabs).isEmpty) {
+          final error = await loadAccountVoices(TtsEngine.elevenlabs);
+          if (error != null) return error;
+        }
+        if (_disposed || seq != _speechSeq) return null;
+        final voices = accountVoices(TtsEngine.elevenlabs);
+        if (voices.isEmpty) return s.elevenPickVoice;
+        final resolved = profile.copyWith(voice: voices.first.id);
+        // Do not overwrite a different selection made while the list loaded.
+        if (identical(voiceFor(channel), profile)) setVoice(channel, resolved);
+        profile = resolved;
+      }
       debugPrint('เสียง: ลองฟัง ${profile.engine.name} · ${profile.model} · ${profile.voice}');
       final u = await _speech.synthesize(s.flirtSample(effectiveFlirt), profile: profile);
       if (_disposed || seq != _speechSeq) return null;
