@@ -607,7 +607,11 @@ class _HomeScreenState extends State<HomeScreen>
                       mode: mode,
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                            builder: (_) => const ShopScreen()),
+                            // ตัวอย่างคำถามของแพ็กความรู้ → ปิดร้านแล้วถามในแชทนี้ ·
+                            // ผ่าน _sendText เหมือนพิมพ์เอง (ด่านคำขอความช่วยเหลือยังทำงาน)
+                            builder: (_) => ShopScreen(onAsk: (q) {
+                              if (mounted) _sendText(context.read<MindState>(), q);
+                            })),
                       ),
                     ),
                   ],

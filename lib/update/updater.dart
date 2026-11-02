@@ -504,8 +504,7 @@ class Updater extends ChangeNotifier {
       tag.trim().replaceFirst(RegExp(r'^v', caseSensitive: false), '');
 
   /// เทียบเวอร์ชันแบบตัวเลขทีละส่วน ไม่ใช่เทียบสตริง
-  /// ("1.10.0" > "1.9.0" ซึ่งเทียบเป็นสตริงจะได้ผลกลับกัน)
-  @visibleForTesting
+  /// ("1.10.0" > "1.9.0" ซึ่งเทียบเป็นสตริงจะได้ผลกลับกัน) · แพ็กความรู้ใช้เช็ก minAppVersion ด้วย
   static bool isNewer(String candidate, String current) =>
       _isNewer(candidate, current);
 

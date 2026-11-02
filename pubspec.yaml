@@ -104,3 +104,7 @@ flutter:
     # โหลดตอนกดเปิดโหมดเท่านั้น แต่ยังต้องประกาศไว้ ไม่งั้นไม่ถูกแพ็กลง APK
     - assets/avatar/vendor/mediapipe/
     - assets/avatar/vendor/mediapipe/wasm/
+    # แพ็กความรู้ฟรีที่มากับแอป (ดู KnowledgePacks.bundled) · ข้อความล้วนไม่กี่ KB
+    - assets/knowledge/survival-basic/
+    - assets/knowledge/survival-basic/content/th/
+    - assets/knowledge/survival-basic/content/en/

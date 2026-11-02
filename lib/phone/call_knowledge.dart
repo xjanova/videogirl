@@ -12,9 +12,7 @@
 /// json html docx) · หรือพิมพ์เอง → ในสายคุยสด เธอเรียกเครื่องมือ `lookup_info` →
 /// ค้นในเครื่อง (ไม่ส่งคำถามของคนโทรออกไปไหน และเร็วพอให้ตอบในสาย) → ได้ย่อหน้าที่ตรงที่สุด
 ///
-/// ภาษาไทยไม่มีช่องว่างระหว่างคำ จึงเทียบด้วยชิ้นตัวอักษรสามตัว (trigram) แทนคำ ·
-/// ชิ้นที่พบบ่อยทั่วคลังมีน้ำหนักน้อย (idf) · ดัชนีสร้างในเธรดแยก
-/// (คลังเต็มล้านตัวอักษรสร้างบนเธรดหลัก = เสียงในสายสะดุดครึ่งวินาที)
+/// ตัวค้น (trigram + idf สร้างในเธรดแยก) อยู่ที่ KnowledgeIndex · ใช้ร่วมกับแพ็กความรู้
 ///
 /// 🔒 แยกจากสมอง BrainX ของเจ้าของโดยตั้งใจ: คนโทรเป็นคนนอก · คลังนี้มีแค่สิ่งที่
 /// เจ้าของเลือกให้คนนอกรู้ได้ · ส่วน BrainX ค้นได้เฉพาะหมวดที่เจ้าของติ๊ก (ดู MindState)
@@ -25,13 +23,16 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+
+import '../memory/knowledge_index.dart';
+
+export '../memory/knowledge_index.dart' show KnowledgeHit;
 
 /// ทำไมเพิ่มไม่ได้ · คำเหล่านี้แปลเป็นข้อความบนจอที่หน้าตั้งค่า
 class KnowledgeError implements Exception {
@@ -89,14 +90,6 @@ class KnowledgeSource {
   }
 }
 
-@immutable
-class KnowledgeHit {
-  const KnowledgeHit(this.title, this.text, this.score);
-  final String title;
-  final String text;
-  final double score;
-}
-
 class CallKnowledge extends ChangeNotifier {
   CallKnowledge({http.Client? client, Future<File> Function()? file, DateTime Function()? clock})
       : _http = client ?? http.Client(),
@@ -114,7 +107,7 @@ class CallKnowledge extends ChangeNotifier {
   final DateTime Function() _clock;
   List<KnowledgeSource> _sources = const [];
   Future<void>? _loading;
-  Future<_Index>? _index;
+  Future<KnowledgeIndex>? _index;
 
   /// งานที่เขียนไฟล์ทีละงาน · สองงานพร้อมกันเขียน .tmp ตัวเดียวกัน = ไฟล์เสีย
   Future<void> _tail = Future.value();
@@ -405,10 +398,10 @@ class CallKnowledge extends ChangeNotifier {
     if (_sources.isNotEmpty) await _indexed();
   }
 
-  Future<_Index> _indexed() {
+  Future<KnowledgeIndex> _indexed() {
     final cached = _index;
     if (cached != null) return cached;
-    final f = _build([for (final s in _sources) (s.title, s.text)]);
+    final f = KnowledgeIndex.buildInBackground([for (final s in _sources) (title: s.title, text: s.text, tag: s.id)]);
     _index = f;
     f.then((_) {}, onError: (Object _) {
       if (identical(_index, f)) _index = null;
@@ -416,112 +409,16 @@ class CallKnowledge extends ChangeNotifier {
     return f;
   }
 
-  /// static = closure ไม่ติด `this` (ตัวต่อเน็ตส่งข้ามเธรดไม่ได้)
-  static Future<_Index> _build(List<(String, String)> docs) => Isolate.run(() => _Index.build(docs));
-
   /// ย่อหน้าที่ตรงคำถามที่สุด · ว่าง = คลังไม่มีเรื่องนี้ (ให้เธอบอกตามจริง ไม่แต่ง)
   Future<List<KnowledgeHit>> search(String query, {int limit = 3}) async {
     await load();
-    final q = grams(query);
-    if (q.isEmpty || _sources.isEmpty) return const [];
-    final idx = await _indexed();
-    final n = idx.chunks.length;
-    final scored = <KnowledgeHit>[];
-    for (final c in idx.chunks) {
-      var score = 0.0, matched = 0;
-      for (final g in q) {
-        if (!c.grams.contains(g)) continue;
-        matched++;
-        score += math.log(1 + n / (idx.df[g] ?? 1));
-      }
-      // ต้องตรงพอสมควร · เจอแค่ชิ้นสองชิ้นที่บังเอิญซ้ำ = ไม่นับ
-      if (matched < math.min(2, q.length) || matched < q.length * 0.25) continue;
-      scored.add(KnowledgeHit(c.title, c.text, score / (1 + math.log(1 + c.grams.length / 50))));
-    }
-    scored.sort((a, b) => b.score.compareTo(a.score));
-    return scored.take(limit).toList(growable: false);
-  }
-
-  static final _breaks = RegExp(r'[\s\p{P}\p{S}]+', unicode: true);
-  static final _invisible = RegExp(r'[​-‍⁠﻿]');
-
-  // เขียนเป็นรหัสตัวอักษร · ตัวสแกนข้อความไทยในโค้ด (i18n_test) จะได้ไม่นับเป็นข้อความบนจอ
-  static final _amSplit = String.fromCharCodes(const [0x0E4D, 0x0E32]), _am = String.fromCharCode(0x0E33);
-  static final _aeSplit = String.fromCharCodes(const [0x0E40, 0x0E40]), _ae = String.fromCharCode(0x0E41);
-
-  /// ชิ้นตัวอักษรสามตัวของแต่ละช่วงคำ (ตัดที่ช่องว่างและเครื่องหมาย) · ช่วงสั้นกว่าสามตัวใช้ทั้งช่วง
-  ///
-  /// อัดเป็นตัวเลข (16 บิตต่อตัวอักษร) · ชุดของตัวเลขกินเครื่องน้อยกว่าชุดของสตริงหลายเท่า
-  /// · ทำให้เหมือนกันก่อน: ตัดอักขระล่องหน (เว็บไทยแทรกไว้ตัดบรรทัด) ·
-  /// นิคหิต+สระอา = สระอำ · เอ+เอ = แอ (พิมพ์ได้สองแบบ หน้าตาเหมือนกัน)
-  @visibleForTesting
-  static Set<int> grams(String text) {
-    final norm = text
-        .toLowerCase()
-        .replaceAll(_invisible, '')
-        .replaceAll(_amSplit, _am)
-        .replaceAll(_aeSplit, _ae);
-    final out = <int>{};
-    for (final run in norm.split(_breaks)) {
-      final u = run.codeUnits;
-      if (u.isEmpty) continue;
-      if (u.length < 3) {
-        out.add(u.length << 48 | (u.length > 1 ? u[1] << 16 : 0) | u[0]);
-        continue;
-      }
-      for (var i = 0; i + 3 <= u.length; i++) {
-        out.add(3 << 48 | u[i + 2] << 32 | u[i + 1] << 16 | u[i]);
-      }
-    }
-    return out;
+    if (_sources.isEmpty || KnowledgeIndex.grams(query).isEmpty) return const [];
+    return (await _indexed()).search(query, limit: limit);
   }
 
   @override
   void dispose() {
     _http.close();
     super.dispose();
-  }
-}
-
-class _Chunk {
-  _Chunk(this.title, this.text, this.grams);
-  final String title;
-  final String text;
-  final Set<int> grams;
-}
-
-class _Index {
-  _Index(this.chunks, this.df);
-  final List<_Chunk> chunks;
-  final Map<int, int> df;
-
-  /// ตัดแต่ละแหล่งเป็นท่อนละ ~600 ตัวอักษร (พอให้เธออ่านตอบในสาย) แล้วนับว่าชิ้นไหนพบในกี่ท่อน
-  static _Index build(List<(String, String)> docs) {
-    final chunks = <_Chunk>[];
-    for (final (title, text) in docs) {
-      final buf = StringBuffer();
-      void flush() {
-        final t = buf.toString().trim();
-        if (t.isNotEmpty) chunks.add(_Chunk(title, t, CallKnowledge.grams('$title $t')));
-        buf.clear();
-      }
-
-      for (final line in text.split('\n')) {
-        if (buf.length + line.length > 600 && buf.isNotEmpty) flush();
-        // บรรทัดยาวมาก (หน้าเว็บที่ไม่มีขึ้นบรรทัด) ตัดเป็นท่อน
-        for (var i = 0; i < line.length; i += 600) {
-          buf.writeln(line.substring(i, math.min(line.length, i + 600)));
-          if (buf.length >= 600) flush();
-        }
-      }
-      flush();
-    }
-    final df = <int, int>{};
-    for (final c in chunks) {
-      for (final g in c.grams) {
-        df[g] = (df[g] ?? 0) + 1;
-      }
-    }
-    return _Index(chunks, df);
   }
 }
