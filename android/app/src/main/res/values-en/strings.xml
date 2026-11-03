@@ -98,6 +98,8 @@
     <string name="direct_status_paused_wait">Paused · waiting for the call to end</string>
     <string name="direct_status_pause">Pause 5 min</string>
     <string name="direct_status_extend">Add 5 min</string>
+    <string name="direct_pause_dev_off_title">The phone switched Developer options off again</string>
+    <string name="direct_pause_dev_off_text">GigGok restored them after the banking pause, but the phone switched Developer options off again by itself. Turn them on in Settings › About phone › tap Build number 7 times.</string>
     <string name="direct_status_restore">Restore now</string>
     <string name="direct_setup_auto_reconnect_hint">After a restart or update, GigGok will reconnect when Wi-Fi is available. Pair again only if the saved key is rejected.</string>
     <string name="hands_label">GigGok — let Mind use the phone for you</string>

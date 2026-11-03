@@ -113,6 +113,8 @@
     <string name="direct_status_pause">พัก 5 นาที</string>
     <string name="direct_status_extend">เพิ่ม 5 นาที</string>
     <string name="direct_status_restore">คืนค่าตอนนี้</string>
+    <string name="direct_pause_dev_off_title">เครื่องปิดโหมดนักพัฒนาซ้ำเอง</string>
+    <string name="direct_pause_dev_off_text">GigGok คืนค่าหลังพักให้แอปธนาคารแล้ว แต่เครื่องปิดโหมดนักพัฒนาซ้ำเอง · เปิดใหม่ที่ ตั้งค่า › เกี่ยวกับโทรศัพท์ › แตะหมายเลขบิลด์ 7 ครั้ง</string>
     <string name="direct_setup_auto_reconnect_hint">หลังรีสตาร์ตหรืออัปเดต GigGok จะลองต่อเสียงตรงเองเมื่อ Wi-Fi พร้อม ถ้ากุญแจเดิมถูกปฏิเสธจริง จึงค่อยจับคู่ใหม่</string>
     <!-- ให้มายด์ใช้เครื่องแทน (hands/MindHands.kt) · บอกตรง ๆ ว่าอ่านอะไร ทำอะไร และไม่แตะอะไร -->
     <string name="hands_label">GigGok — ให้มายด์ใช้เครื่องแทน</string>

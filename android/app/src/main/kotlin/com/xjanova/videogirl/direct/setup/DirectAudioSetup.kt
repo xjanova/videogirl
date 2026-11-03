@@ -61,7 +61,7 @@ object DirectAudioSetup {
                     val answer = BankingPause.status(context.applicationContext)
                     main.post { result.success(answer) }
                 }
-                "pause" -> pause(context, call.argument<Int>("minutes") ?: 5) { result.success(it) }
+                "pause" -> pause(context, call.argument<Int>("minutes") ?: 5, "app") { result.success(it) }
                 "extendPause" -> extendPause(context) { result.success(it) }
                 "restorePause" -> restorePause(context) { result.success(it) }
                 "live" -> work.execute {
@@ -98,8 +98,8 @@ object DirectAudioSetup {
         LocalAdbIdentity(context).use { launch(context, it) }
     }
 
-    fun pause(context: Context, minutes: Int, complete: (Boolean) -> Unit) = control(context,
-        { BankingPause.pause(it, minutes) }, complete)
+    fun pause(context: Context, minutes: Int, source: String, complete: (Boolean) -> Unit) = control(context,
+        { BankingPause.pause(it, minutes, source) }, complete)
 
     fun extendPause(context: Context, complete: (Boolean) -> Unit) = control(context,
         { BankingPause.extend(it) }, complete)

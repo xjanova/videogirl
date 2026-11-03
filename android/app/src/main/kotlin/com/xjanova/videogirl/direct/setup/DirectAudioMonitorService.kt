@@ -17,9 +17,11 @@ import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.xjanova.videogirl.BackgroundWake
 import com.xjanova.videogirl.MainActivity
 import com.xjanova.videogirl.R
 
@@ -51,16 +53,24 @@ class DirectAudioMonitorService : Service() {
     private var keyRejected = false
     private var networkRegistered = false
     private var unlockRegistered = false
+    private var shown: String? = null
+    private val power by lazy { getSystemService(PowerManager::class.java) }
     private val network = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) { main.post { refresh(force = true) } }
     }
     private val unlock = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) { refresh(force = true) }
     }
+    /**
+     * Every 15 s while the screen is on, every 60 s while it is off: the owner can only see this card,
+     * or use direct audio, with the screen on, and unlocking checks at once ([unlock]). Network changes
+     * check at once too.
+     */
     private val tick = object : Runnable {
         override fun run() {
             refresh()
-            main.postDelayed(this, 15_000L)
+            BackgroundWake.drop()
+            main.postDelayed(this, if (power?.isInteractive != false) 15_000L else 60_000L)
         }
     }
 
@@ -94,7 +104,7 @@ class DirectAudioMonitorService : Service() {
             nextAttempt = 0L
         } else if (intent?.action == ACTION_PAUSE) {
             if (BankingPause.status(this)["needsConfirmation"] == false) {
-                DirectAudioSetup.pause(this, 5) { refresh(force = true) }
+                DirectAudioSetup.pause(this, 5, "notification") { refresh(force = true) }
             }
             return START_STICKY
         } else if (intent?.action == ACTION_EXTEND) {
@@ -146,9 +156,36 @@ class DirectAudioMonitorService : Service() {
         }
     }
 
+    /** Posts only a card that changed: an unchanged repost every tick woke the system and the shade for nothing. */
     private fun showNotification() {
-        try { manager.notify(NOTIFICATION, notification()) }
-        catch (_: SecurityException) { /* POST_NOTIFICATIONS may be denied; the card explains this. */ }
+        val key = "$state|${content()}|${canPause()}"
+        if (key == shown) return
+        try {
+            manager.notify(NOTIFICATION, notification())
+            shown = key
+        } catch (_: SecurityException) { /* POST_NOTIFICATIONS may be denied; the card explains this. */ }
+    }
+
+    private fun canPause(): Boolean {
+        val pause = BankingPause.status(this)
+        return pause["needsConfirmation"] == false && pause["supported"] == true
+    }
+
+    private fun content(): String {
+        if (state == "paused") {
+            val until = BankingPause.status(this)["until"] as Long
+            val remaining = ((until - System.currentTimeMillis() + 59_999L) / 60_000L).coerceAtLeast(0L)
+            return if (remaining == 0L) getString(R.string.direct_status_paused_wait)
+            else getString(R.string.direct_status_paused, remaining)
+        }
+        return getString(when (state) {
+            "ready" -> R.string.direct_status_ready
+            "in_call" -> R.string.direct_status_in_call
+            "connecting", "checking" -> R.string.direct_status_working
+            "key_rejected" -> R.string.direct_status_key_rejected
+            "not_paired" -> R.string.direct_status_not_paired
+            else -> R.string.direct_status_offline
+        })
     }
 
     private fun notification(): Notification {
@@ -158,29 +195,15 @@ class DirectAudioMonitorService : Service() {
             "paused" -> R.drawable.ic_direct_paused
             else -> R.drawable.ic_direct_offline
         }
-        val detail = when (state) {
-            "ready" -> R.string.direct_status_ready
-            "in_call" -> R.string.direct_status_in_call
-            "connecting", "checking" -> R.string.direct_status_working
-            "key_rejected" -> R.string.direct_status_key_rejected
-            "not_paired" -> R.string.direct_status_not_paired
-            else -> R.string.direct_status_offline
-        }
         val open = PendingIntent.getActivity(this, 7043,
             Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         fun action(code: Int, name: String) = PendingIntent.getService(this, code,
             Intent(this, DirectAudioMonitorService::class.java).setAction(name),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val content = if (state == "paused") {
-            val until = BankingPause.status(this)["until"] as Long
-            val remaining = ((until - System.currentTimeMillis() + 59_999L) / 60_000L).coerceAtLeast(0L)
-            if (remaining == 0L) getString(R.string.direct_status_paused_wait)
-            else getString(R.string.direct_status_paused, remaining)
-        } else getString(detail)
         val builder = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(icon)
             .setContentTitle(getString(R.string.direct_status_title))
-            .setContentText(content)
+            .setContentText(content())
             .setContentIntent(open)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
@@ -189,7 +212,7 @@ class DirectAudioMonitorService : Service() {
             builder.addAction(R.drawable.ic_direct_ready, getString(R.string.direct_status_restore), action(7046, ACTION_RESTORE))
         } else {
             builder.addAction(R.drawable.ic_direct_working, getString(R.string.direct_status_retry), action(7044, ACTION_RETRY))
-            if (BankingPause.status(this)["needsConfirmation"] == false && BankingPause.status(this)["supported"] == true) {
+            if (canPause()) {
                 builder.addAction(R.drawable.ic_direct_paused, getString(R.string.direct_status_pause), action(7047, ACTION_PAUSE))
             }
         }

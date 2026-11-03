@@ -118,6 +118,9 @@ class SosService : Service(), SensorEventListener {
     private var phase = Phase.IDLE
     private var sampling = false
     private var sampleUntil = 0L
+    /** ความเร็วถึง [MOVING_KMH] แล้วในรอบนี้ · ยังไม่ถึงเมื่อครบ [GPS_PROBE_MS] = เดินในบ้าน ไม่ใช่นั่งรถ */
+    private var travelling = false
+    private var probeAt = 0L
 
     private var armedAt = 0L
     private var tripFrom = 0L
@@ -139,7 +142,10 @@ class SosService : Service(), SensorEventListener {
         locator.onSpeed = { kmh ->
             detector.onSpeed(SystemClock.elapsedRealtime(), kmh)
             // ยังเดินทางอยู่ = เซ็นเซอร์ต้องติดต่อ
-            if (kmh >= MOVING_KMH) sampleUntil = SystemClock.elapsedRealtime() + TRIP_MS
+            if (kmh >= MOVING_KMH) {
+                travelling = true
+                sampleUntil = SystemClock.elapsedRealtime() + TRIP_MS
+            }
         }
         ensureChannels(this)
     }
@@ -314,17 +320,39 @@ class SosService : Service(), SensorEventListener {
         val t = HandlerThread("giggok-sos-sensor").also { it.start() }
         sensorThread = t
         s.registerListener(this, a, SAMPLE_US, Handler(t.looper))
-        locator.track(true)
+        travelling = false
+        probeGps()
         main.postDelayed(sampleCheck, CHECK_MS)
+    }
+
+    /**
+     * GPS เปิดแค่พอรู้ว่านั่งรถอยู่ไหม · เจ้าของ: "ตอนมันทำงานเบื้องหลัง ให้ประหยัดแบต"
+     *
+     * ทุกครั้งที่ลุกเดิน เซ็นเซอร์การเคลื่อนไหวปลุกรอบนี้ และ GPS แม่นยำสูงเคยเปิดค้างทุก 2 วินาทีตลอด 5 นาที
+     * (วัดบนเครื่อง: GPS 9 นาทีครึ่งในชั่วโมงเดียวที่อยู่ในบ้าน) · ตอนนี้เปิด [GPS_PROBE_MS] ·
+     * ไม่ถึง [MOVING_KMH] = ปิด แล้วลองใหม่ทุก [REPROBE_MS] ระหว่างที่ยังเฝ้าอยู่ · ถึงเกณฑ์ = เปิดต่อตลอดทาง ·
+     * เครื่องวัดแรงกระแทกยังเฝ้าเต็มรอบเหมือนเดิม · มีเหตุ = GPS เปิดเสมอ ([locator.track] ตอนเริ่มเหตุ)
+     */
+    private fun probeGps() {
+        probeAt = SystemClock.elapsedRealtime()
+        locator.track(true)
+        main.removeCallbacks(gpsProbeEnd)
+        main.postDelayed(gpsProbeEnd, GPS_PROBE_MS)
+    }
+
+    private val gpsProbeEnd = Runnable {
+        if (sampling && !travelling && incident == null) locator.track(false)
     }
 
     private val sampleCheck = object : Runnable {
         override fun run() {
             if (!sampling) return
             wake?.acquire(WAKE_MS)
-            if (SystemClock.elapsedRealtime() >= sampleUntil && !detector.busy && incident == null) {
+            val now = SystemClock.elapsedRealtime()
+            if (now >= sampleUntil && !detector.busy && incident == null) {
                 stopSampling()
             } else {
+                if (!travelling && incident == null && now - probeAt >= REPROBE_MS) probeGps()
                 main.postDelayed(this, CHECK_MS)
             }
         }
@@ -338,6 +366,7 @@ class SosService : Service(), SensorEventListener {
         sensorThread = null
         locator.track(false)
         main.removeCallbacks(sampleCheck)
+        main.removeCallbacks(gpsProbeEnd)
         wake?.let { if (it.isHeld) it.release() }
         wake = null
         if (tripFrom != 0L) tripTotal += SystemClock.elapsedRealtime() - tripFrom
@@ -527,7 +556,7 @@ class SosService : Service(), SensorEventListener {
         currentCall = null
         voice.quiet()
         voice.endScript()
-        if (!sampling) locator.track(false)
+        if (!sampling || !travelling) locator.track(false)
         SosStore.clearLive(this)
         lastReport = snapshot()
         // 🔴 ไม่มีอะไรออกไปจริง = ด่านซ้อมไม่ผ่าน และเหตุถัดไปต้องไม่ติดเวลาพัก
@@ -974,6 +1003,8 @@ class SosService : Service(), SensorEventListener {
         private const val SAMPLE_US = 20_000
         private const val MOVING_KMH = 8.0
         private const val TRIP_MS = 5 * 60_000L
+        private const val GPS_PROBE_MS = 60_000L
+        private const val REPROBE_MS = 5 * 60_000L
         private const val CHECK_MS = 30_000L
         private const val WAKE_MS = 90_000L
         private const val TICK_MS = 250L
