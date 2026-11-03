@@ -176,6 +176,7 @@
         <activity android:name=".direct.setup.DirectAudioSetupActivity"
             android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <receiver android:name=".direct.setup.DirectPairingReceiver" android:exported="false" />
+        <receiver android:name=".direct.setup.BankingPauseReceiver" android:exported="false" />
         <!-- The owner answers Mai's mid-call question from the notification (OwnerAsk). -->
         <receiver android:name=".OwnerReplyReceiver" android:exported="false" />
         <service android:name=".direct.setup.DirectPairingService" android:exported="false"
