@@ -186,6 +186,17 @@ extension VoiceStrings on S {
         'ตอบทันทีแบบแอป ChatGPT แต่ใช้เสียงของ OpenAI เท่านั้น · ปิด = คุยทีละตา ด้วยเสียงที่เลือกไว้ข้างล่าง',
         'Instant replies like the ChatGPT app, with OpenAI voices only · off = turn by turn, in the voice picked below',
       );
+  String get voiceChatAnyBrainSwitch => pick('คุยสดด้วย OpenAI', 'Talk live with OpenAI');
+  String voiceChatAnyBrainHint(String brain) => pick(
+        'กดไมค์แล้วตอบทันทีด้วย OpenAI ใช้คีย์ OpenAI ของคุณ · ตอนคุยสดเสียงคุณไปที่ OpenAI และ OpenAI เป็นคนคิด '
+            'ไม่ใช่ $brain · พิมพ์แชทยังใช้ $brain · ปิด = คุยทีละตาด้วย $brain',
+        'Instant replies on the mic with OpenAI, on your OpenAI key · while talking live your voice goes to OpenAI and '
+            'OpenAI does the thinking, not $brain · typed chat still uses $brain · off = turn by turn with $brain',
+      );
+  String get voiceChatAnyBrainNoKey => pick(
+        'ยังไม่มีคีย์ OpenAI · ใส่คีย์ข้างล่างก่อน ไม่งั้นยังคุยทีละตา',
+        'No OpenAI key yet · add it below, until then the mic takes turns',
+      );
   String get callListenOnDevice => pick(
         'ถอดเสียงในเครื่อง (Android 13 ขึ้นไป · เสียงคู่สายไม่ออกนอกเครื่อง)',
         'On-device transcription (Android 13+ · the caller\'s voice never leaves the phone)',

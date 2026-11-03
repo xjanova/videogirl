@@ -3048,8 +3048,36 @@ class _SettingsScreenState extends State<SettingsScreen>
                       height: 1.5,
                       color: state.answerVoiceLive ? MindColors.ink55 : const Color(0xFFB46A00))),
             ],
+            // สมองเจ้าอื่น · คุยสดยืม OpenAI ได้ต่อเมื่อเจ้าของเปิดเอง (เจ้าของ 2026-11-03: "ทำให้แยกได้")
+            if (channel == VoiceChannel.chat && state.brain != BrainProvider.openai) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 3,
+                      children: [
+                        Text(t.voiceChatAnyBrainSwitch,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text(t.voiceChatAnyBrainHint(state.brain.labelOf(t)),
+                            style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
+                        if (state.voiceChatLiveAnyBrain && !state.hasOwnKey)
+                          Text(t.voiceChatAnyBrainNoKey,
+                              style: const TextStyle(fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
+                      ],
+                    ),
+                  ),
+                  _toggle(
+                    on: state.voiceChatLiveAnyBrain,
+                    mode: mode,
+                    onTap: () => state.setVoiceChatLiveAnyBrain(!state.voiceChatLiveAnyBrain),
+                  ),
+                ],
+              ),
+            ],
             // คุยสดมีเสียงของตัวเอง · ต้องเห็นตรงนี้ ไม่งั้นเลือกเสียงแล้วไม่ได้ยินโดยไม่รู้ทำไม
-            if (channel == VoiceChannel.chat && state.brain == BrainProvider.openai) ...[
+            if (channel == VoiceChannel.chat && state.voiceChatLiveAllowed) ...[
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -3073,10 +3101,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ],
               ),
             ],
-            if (channel == VoiceChannel.chat &&
-                state.brain == BrainProvider.openai &&
-                state.hasOwnKey)
-              ..._voiceChatChoice(state, mode),
+            if (channel == VoiceChannel.chat && state.voiceChatLiveAllowed) ..._voiceChatChoice(state, mode),
 
             const SizedBox(height: 14),
             FrameStepLabel(t.voiceEngine, color: FrameColors.tts, top: 0),
@@ -3108,7 +3133,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               ElevenClonePanel(state: state),
             ],
 
-            if (usingOpenAi) ...[
+            // คุยสดข้ามสมองต้องมีคีย์ OpenAI · สมองเจ้าอื่นไม่มีช่องคีย์ OpenAI ให้ที่การ์ดสมอง
+            if (usingOpenAi ||
+                (channel == VoiceChannel.chat &&
+                    state.brain != BrainProvider.openai &&
+                    state.voiceChatLiveAnyBrain)) ...[
               // 🔴 ช่องกรอกคีย์ต้องมาอยู่ตรงนี้ด้วย
               //
               // เดิมมันอยู่ใต้การ์ดสมองเฉพาะตอนเลือกสมอง = OpenAI เท่านั้น
