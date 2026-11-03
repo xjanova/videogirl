@@ -25,6 +25,7 @@ import 'package:videogirl/diagnostics/mind_log.dart';
 import 'package:videogirl/i18n/strings.dart';
 import 'package:videogirl/i18n/strings_settings.dart';
 import 'package:videogirl/i18n/strings_brains.dart';
+import 'package:videogirl/i18n/strings_voice.dart';
 import 'package:videogirl/screens/brain_voice_frames.dart';
 import 'package:videogirl/persona/call_character.dart';
 import 'package:videogirl/persona/mind_soul.dart';
@@ -305,6 +306,31 @@ void main() {
     await t.pump(const Duration(milliseconds: 300));
     expect(state.voiceChatLive, isFalse);
     expect(find.text('cedar'), findsNothing, reason: 'ไม่ได้คุยสด เสียงคุยสดไม่มีผล');
+    expect(t.takeException(), isNull);
+
+    await t.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
+  testWidgets('🔴 สมองเจ้าอื่นเปิดคุยสดด้วย OpenAI ได้จากหน้าเสียง · เปิดแล้วเห็นช่องคีย์และตัวเลือกคุยสด', (t) async {
+    final (state, section) = await _mount(t);
+    state.setBrain(BrainProvider.claude);
+    await t.runAsync(() => state.setOpenAiKey('sk-test-key-for-unit-tests'));
+    section.value = SettingsSection.brain;
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pump(const Duration(milliseconds: 300));
+
+    final s = _s(t);
+    expect(find.text(s.voiceChatWayTurns), findsNothing, reason: 'ยังไม่เปิด = ไม่มีคุยสดให้เลือก');
+    await t.scrollUntilVisible(find.text(s.voiceChatAnyBrainSwitch), 300);
+    await t.ensureVisible(find.text(s.voiceChatAnyBrainSwitch));
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tap(toggleOf(s.voiceChatAnyBrainSwitch));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(state.voiceChatLiveAnyBrain, isTrue);
+    expect(state.voiceChatLiveReady, isTrue);
+    await t.scrollUntilVisible(find.text(s.voiceChatWayTurns), 300);
+    expect(find.text(s.voiceChatWayTurns), findsOneWidget);
     expect(t.takeException(), isNull);
 
     await t.pumpWidget(const SizedBox.shrink());

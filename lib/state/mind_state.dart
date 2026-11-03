@@ -1481,6 +1481,7 @@ class MindState extends ChangeNotifier {
     _callGreetingText = p.getString('callGreeting') ?? '';
     _realtimeCalls = p.getBool('realtimeCalls') ?? true;
     _voiceChatLive = p.getBool('voiceChatLive') ?? true;
+    _voiceChatLiveAnyBrain = p.getBool('voiceChatLiveAnyBrain') ?? false;
     _callSim = p.getString('callSim');
     unawaited(syncApps());
     _voiceChatVoicePick = p.getString('voiceChatVoice') ?? '';
@@ -3507,8 +3508,26 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
-  /// คุยสดได้ไหมตอนนี้ · OpenAI ด้วยคีย์ของเจ้าของเท่านั้น (เหมือนในสาย · ไม่ยืมคีย์ข้ามสมอง)
-  bool get voiceChatLiveReady => _voiceChatLive && _brain == BrainProvider.openai && hasOwnKey;
+  /// คุยสดด้วย OpenAI แม้สมองเป็นเจ้าอื่น · ค่าตั้งต้นปิด
+  ///
+  /// เจ้าของ (2026-11-03) ถามว่าคุยสดต้องเปิดสมอง OpenAI ไหม แล้วเลือก "ทำให้แยกได้" · ปกติไม่ยืมคีย์ข้ามสมอง
+  /// (เลือก Claude แล้วแอบคิดด้วย OpenAI = เจ้าของไม่ได้เลือก) · สวิตช์นี้คือเจ้าของเลือกเองว่าคุยสดยอมให้ OpenAI
+  /// ทั้งฟังและคิด · แชทพิมพ์ยังเป็นสมองเดิม · เฉพาะคุยในแอป สายโทรยังตามสมอง ([callLiveEngine])
+  bool _voiceChatLiveAnyBrain = false;
+  bool get voiceChatLiveAnyBrain => _voiceChatLiveAnyBrain;
+
+  void setVoiceChatLiveAnyBrain(bool v) {
+    if (_voiceChatLiveAnyBrain == v) return;
+    _voiceChatLiveAnyBrain = v;
+    _save('voiceChatLiveAnyBrain', v);
+    _notify();
+  }
+
+  /// คุยสดใช้ OpenAI ได้ไหม (ยังไม่นับสวิตช์คุยสด) · สมอง OpenAI หรือเจ้าของยอมให้ข้ามสมอง · ต้องมีคีย์ของเจ้าของ
+  bool get voiceChatLiveAllowed => hasOwnKey && (_brain == BrainProvider.openai || _voiceChatLiveAnyBrain);
+
+  /// คุยสดได้ไหมตอนนี้
+  bool get voiceChatLiveReady => _voiceChatLive && voiceChatLiveAllowed;
 
   /// เสียงที่เจ้าของเลือกให้คุยสด · ว่าง = ยังไม่เคยเลือก
   String _voiceChatVoicePick = '';
@@ -3550,7 +3569,7 @@ class MindState extends ChangeNotifier {
         apiKey: effectiveOpenAiKey,
         instructions: voiceChatPrompt(),
         tools: chatVoiceTools(
-          web: _webSearch && _webSearcher() != null,
+          web: _webSearch && _webSearcher(live: true) != null,
           phone: _phoneControl,
           knowledge: knowledgePacks.enabled.isNotEmpty,
           pages: _webSearch,
@@ -3582,7 +3601,7 @@ class MindState extends ChangeNotifier {
     );
     final block = MindPersona.voiceChatBlock(
       _lang,
-      web: _webSearch && _webSearcher() != null,
+      web: _webSearch && _webSearcher(live: true) != null,
       pages: _webSearch,
       phone: _phoneControl,
       mailApps: _mailApps == null ? null : [for (final a in _mailApps!) a.name],
@@ -3716,7 +3735,7 @@ class MindState extends ChangeNotifier {
         return '${s.recallPacks}\n${packNotes(hits)}\n'
             'Answer from this in short spoken sentences, the most urgent step first.';
       case 'web_search':
-        final web = _webSearch ? _webSearcher() : null;
+        final web = _webSearch ? _webSearcher(live: true) : null;
         if (web == null) return 'Web search is not available right now. Say so briefly.';
         return webTools.run(ToolCall(WebTool.search, arg('query')), last: true, web: web);
       case 'read_url':
@@ -5134,13 +5153,15 @@ class MindState extends ChangeNotifier {
   ///
   /// ได้เฉพาะ **OpenAI ด้วยคีย์ของเจ้าของ** (เครื่องมือ web_search ของ OpenAI) ·
   /// คำค้นไปที่เดียวกับที่ข้อความไปอยู่แล้ว ไม่ได้เปิดทางใหม่ให้ข้อมูลออก ·
-  /// สมองในเครื่อง/ในบ้านเลือกเพราะไม่อยากให้อะไรออกไปที่ OpenAI จึงไม่ยืมคีย์มาค้น
-  WebSearcher? _webSearcher() {
-    if (_brain != BrainProvider.openai || !hasOwnKey) return null;
+  /// สมองในเครื่อง/ในบ้านเลือกเพราะไม่อยากให้อะไรออกไปที่ OpenAI จึงไม่ยืมคีย์มาค้น ·
+  /// [live] = คุยสด ซึ่งเจ้าของยอมให้ OpenAI ฟังและคิดอยู่แล้ว ([voiceChatLiveAnyBrain]) · ค้นที่เดียวกันได้
+  WebSearcher? _webSearcher({bool live = false}) {
+    final openai = _brain == BrainProvider.openai;
+    if (!hasOwnKey || !(openai || (live && _voiceChatLiveAnyBrain))) return null;
     return (query) async {
       // web_search ใช้ได้บางรุ่น · รุ่นที่เลือกไว้ไม่รองรับ (400) → ลองรุ่นที่รองรับ
-      // แน่ ๆ แล้วจำรุ่นที่ผ่านไว้ ไม่ต้องล้มก่อนทุกครั้ง
-      final models = {?_searchModel, _brainModel, ...webSearchModels};
+      // แน่ ๆ แล้วจำรุ่นที่ผ่านไว้ ไม่ต้องล้มก่อนทุกครั้ง · สมองเจ้าอื่น = รุ่นของสมองไม่ใช่รุ่น OpenAI
+      final models = {?_searchModel, if (openai) _brainModel, ...webSearchModels};
       OpenAiFailure? last;
       for (final m in models) {
         try {
@@ -5169,6 +5190,9 @@ class MindState extends ChangeNotifier {
 
   @visibleForTesting
   WebSearcher? get debugWebSearcher => _webSearcher();
+
+  @visibleForTesting
+  WebSearcher? get debugLiveWebSearcher => _webSearcher(live: true);
 
   /// ลิงก์เว็บแรกในข้อความล่าสุดของเจ้าของ · null = ไม่มี หรือเธอพูดล่าสุด
   ///
