@@ -136,14 +136,17 @@ extension AiStrings on S {
   String get webSearchHint => pick(
         'ถามเรื่องที่เธอไม่รู้ อากาศ หรือค่าเงิน เธอจะไปหามาตอบ · ส่งออกไปแค่คำค้น '
             '(ไม่ใช่บทสนทนา) ที่วิกิพีเดีย · MET Norway (อากาศ) · Frankfurter (ค่าเงิน) · '
-            'ข่าวล่าสุดยังค้นไม่ได้ · ใช้สมองผ่านบริการเรา การค้นนับเป็นอีกหนึ่งข้อความ',
+            'ข่าวล่าสุดยังค้นไม่ได้ · ส่งลิงก์มา เธอเปิดอ่านหน้านั้นเองจากมือถือ (เฉพาะเว็บสาธารณะ) · '
+            'ใช้สมองผ่านบริการเรา การค้นนับเป็นอีกหนึ่งข้อความ',
         'Ask about something she does not know, the weather or exchange rates and she looks it up · '
             'only the search words leave the phone (not the conversation), to Wikipedia · '
             'MET Norway (weather) · Frankfurter (currencies) · latest news is not available yet · '
+            'send a link and she opens that page herself from the phone (public sites only) · '
             'with our service, a lookup counts as one more message',
       );
   String get lookingUpGeneric => pick('กำลังหาข้อมูล…', 'Looking it up…');
   String lookingUp(String what) => pick('กำลังหาข้อมูล: $what…', 'Looking up: $what…');
+  String readingPage(String host) => pick('กำลังอ่านหน้าเว็บ $host…', 'Reading the page on $host…');
   String get lookingContacts => pick('กำลังเปิดสมุดโทรศัพท์…', 'Opening your contacts…');
   String get lookingCalls => pick('กำลังดูประวัติการโทร…', 'Checking your call log…');
   String get lookingSms => pick('กำลังอ่าน SMS…', 'Reading your texts…');
