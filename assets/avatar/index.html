@@ -356,6 +356,14 @@ window.minde = {
   mocapStatus:    ()  => avatar?.mocapStatus() ?? null,
 };
 
+// ทุกคำสั่งจากแอป = มีอะไรเกิดขึ้นบนเวที (เปลี่ยนช็อต ท่า อารมณ์) · วาดเต็มอัตรา
+// ช่วงสั้น ๆ ให้กล้องที่กำลังเลื่อนลื่น (ดู IDLE_AFTER_MS ใน avatar.js)
+// ตัวที่แค่ถามสถานะหรือสั่งหลับ ไม่นับ
+for (const [name, fn] of Object.entries(window.minde)) {
+  if (typeof fn !== 'function' || ['probe', 'sleep', 'mocapStatus'].includes(name)) continue;
+  window.minde[name] = (...args) => { avatar?.wake?.(); return fn(...args); };
+}
+
 /**
  * บอก Flutter เมื่อสถานะกล้อง**เปลี่ยน** ไม่ใช่ให้ Flutter ยิงถามรัวข้ามสะพาน
  *
@@ -363,15 +371,21 @@ window.minde = {
  * แล้วเรายิงข้ามสะพาน 30 ครั้งต่อวินาทีเพื่อบอกเรื่องเดียวกัน
  */
 let mocapSeen = '';
-setInterval(() => {
+// 🔴 ถี่เฉพาะตอนกล้องทำงาน · กล้องปิดอยู่ (เกือบตลอดเวลา) เช็กวินาทีละครั้ง
+// ของเดิม 150ms ตลอดชีพแอป = ปลุก CPU 7 ครั้งต่อวินาทีแม้ไม่มีใครเปิดกล้อง
+(function watchMocap() {
   const st = avatar?.mocapStatus?.();
-  if (!st) return;
-  const key = [st.phase, st.active, st.tracking,
-               Math.round(st.progress * 20), st.error ?? ''].join('|');
-  if (key === mocapSeen) return;
-  mocapSeen = key;
-  post('mocap', st);
-}, 150);
+  if (st) {
+    const key = [st.phase, st.active, st.tracking,
+                 Math.round(st.progress * 20), st.error ?? ''].join('|');
+    if (key !== mocapSeen) {
+      mocapSeen = key;
+      post('mocap', st);
+    }
+  }
+  const busy = st && st.phase !== 'off' && st.phase !== 'failed';
+  setTimeout(watchMocap, busy ? 150 : 1000);
+})();
 
 // เกาะขนาดของ #stage ไว้ตลอด ไม่ใช่รอ event resize ของ window
 //

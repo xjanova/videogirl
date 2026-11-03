@@ -24,6 +24,7 @@ import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
 import '../i18n/strings_studio.dart';
 import '../theme/tokens.dart';
+import '../widgets/ambient_clock.dart';
 import '../widgets/call_panel.dart';
 import '../widgets/glass.dart';
 import '../widgets/soul_status.dart';
@@ -49,7 +50,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with WidgetsBindingObserver {
   final _draft = TextEditingController();
   final _focus = FocusNode();
 
@@ -69,7 +70,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// 🔴 [_pinLogIfNew] เลื่อนครั้งเดียวหลังเฟรมแรก แต่ฟองใหม่กับแผงที่เพิ่งกาง
   /// ยังโตต่ออีกหลายเฟรม (SizeTransition) · ข้อความล่าสุดจึงโดนขอบแผงตัดครึ่ง
   bool _logStick = true;
-  late final AnimationController _ring;
+  /// วงแหวนรอบตัวเธอ — 30 ครั้งต่อวินาที วงโตทีละพิกเซลเดียว ตาแยกไม่ออก
+  /// ดู [AmbientClock] ว่าทำไมไม่ใช้ ticker วนไม่รู้จบ
+  final _ring = AmbientClock(fps: 30);
 
   /// ไมค์ของช่องแชท — เกิดที่นี่เพราะมันมีอายุเท่าหน้าจอนี้
   /// ออกจากหน้าไปแล้วต้องหยุดอัดทันที ไม่ใช่อัดต่อไปเงียบ ๆ
@@ -83,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     // liqRing — วงแหวนขยายออกแล้วจางหาย 3 วินาทีต่อรอบ
-    _ring = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+    _ring.setRunning(widget.active);
 
     final state = context.read<MindState>();
     final perms = context.read<MindPermissions>();
@@ -180,8 +183,12 @@ class _HomeScreenState extends State<HomeScreen>
   bool _hidden = false;
 
   /// เวทีหยุดวาดเมื่อไม่มีใครเห็นเธอ · ดู [MindAvatarController.setAsleep]
-  void _applySleep() =>
-      unawaited(widget.avatar.setAsleep(_hidden || !widget.active));
+  void _applySleep() {
+    unawaited(widget.avatar.setAsleep(_hidden || !widget.active));
+    // แท็บนี้ซ่อนอยู่ใน IndexedStack = ไม่มีใครเห็นวงแหวนกับก้อนแสง ·
+    // แอปอยู่เบื้องหลังนาฬิกาหยุดเองอยู่แล้ว (ดู AmbientClock)
+    _ring.setRunning(widget.active);
+  }
 
   /// ออกจากแท็บนี้ = ปิดกล้องและไมค์ · จุดเขียวที่มุมจอค้างอยู่ตอนผู้ใช้
   /// อยู่หน้าตั้งค่า คือแอปที่แอบดูแอบฟังในสายตาเขา ไม่ว่าเจตนาจะเป็นยังไง
@@ -369,6 +376,7 @@ class _HomeScreenState extends State<HomeScreen>
     return LiquidBackground(
       gradient: onCall ? MindGradients.incomingCall : MindGradients.home,
       orbs: Orb.home,
+      animate: widget.active,
       child: SafeArea(
         top: !studio,
         bottom: !studio,
@@ -524,7 +532,7 @@ class _HomeScreenState extends State<HomeScreen>
                 child: AnimatedBuilder(
                   animation: _ring,
                   builder: (_, _) {
-                    final t = _ring.value;
+                    final t = (_ring.seconds % 3) / 3;
                     return Opacity(
                       opacity: (.5 * (1 - t)).clamp(0.0, 1.0),
                       child: Transform.scale(

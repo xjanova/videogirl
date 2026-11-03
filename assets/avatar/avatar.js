@@ -67,6 +67,23 @@ const MOOD_EXPRS = [...new Set(
 const QUIET_UNTIL_WAITING = 120;
 
 /**
+ * ประหยัดแบต — วาดช้าลงตอนเธอแค่ยืนหายใจอยู่เฉย ๆ
+ *
+ * 🔴 เวทีวาด VRM ทุก vsync ตลอดเวลาที่แอปเปิดอยู่ ซึ่งคือ GPU เต็มสูบ
+ * แม้เธอแค่ยืนหายใจ · ท่ายืนเฉย หายใจ ผมไหว อ่านไม่ออกระหว่าง 30 กับ 60
+ * แต่ GPU ทำงานครึ่งเดียว · ตอนพูด ทำท่า ตกใจ เชิดหุ่น อัดคลิป หรือเพิ่งมีคน
+ * แตะ/สั่งอะไรมา (ภายใน [IDLE_AFTER_MS]) วาดเต็มเหมือนเดิม
+ *
+ * นับ vsync ไม่ใช่สะสมเวลา — สะสมเวลาจะสลับ 2/3 เฟรมแล้วกระตุก
+ * ทุกอย่างในฉากเดินตาม dt อยู่แล้ว (นาฬิกาวัดจากเฟรมที่วาดจริง) ความเร็วไม่เปลี่ยน
+ * จอ 90/120Hz: เต็มสูบ ≈ 60 · พัก ≈ 30 · เครื่องที่ GPU ตันจน rAF ช้าลงเอง
+ * ตัวหารจะกลับเป็น 1 เอง
+ */
+const IDLE_AFTER_MS = 3500;
+const BUSY_FPS = 55;
+const IDLE_FPS = 28;
+
+/**
  * อารมณ์ที่มาจากคำตอบ ค้างได้กี่วินาทีหลังเธอพูดจบ แล้วคลายกลับเป็น neutral
  *
  * 🔴 แอปตั้ง `happy` หลังทุกคำตอบแล้วไม่เคยคืน · `happy` ของ VRoid ปิดตา
@@ -120,8 +137,11 @@ export class Avatar {
         this._moodFor = 0;
 
         const w = host.clientWidth || 320, h = host.clientHeight || 300;
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+        // จอความละเอียดสูง (≥1.75x) ขอบเรียบอยู่แล้วจากจำนวนพิกเซล · MSAA 4x
+        // ตรงนั้นกินแบนด์วิดท์ GPU ทุกเฟรมโดยตาแยกไม่ออก · มือถือแทบทุกรุ่นอยู่ในกลุ่มนี้
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        this.renderer = new THREE.WebGLRenderer({ antialias: dpr < 1.75, alpha: true });
+        this.renderer.setPixelRatio(dpr);
         // updateStyle ON: with it off the canvas gets no CSS size and lays out
         // at its BUFFER size, so on a HiDPI screen she bursts out of the panel
         // and how big she looks depends on the monitor.
@@ -143,6 +163,16 @@ export class Avatar {
         this.clock = new THREE.Clock();
         this._loop = this._loop.bind(this);
         this._t = 0;
+
+        /** ตัวนับ vsync · ดู [IDLE_AFTER_MS] */
+        this._vAt = 0;
+        this._vMs = 0;
+        this._vCount = 0;
+        this._wakeAt = performance.now();
+        const wake = () => this.wake();
+        for (const ev of ['pointerdown', 'pointermove', 'touchstart', 'wheel']) {
+            addEventListener(ev, wake, { passive: true });
+        }
 
         this.loaded = this._load();
     }
@@ -232,6 +262,7 @@ export class Avatar {
         this._quiet = 0;
         this._moodFor = 0;
         this._autoWait = false;
+        this.wake();
         const was = this.mood;
         this.mood = m in MOOD_EXPRESSION ? m : 'neutral';
         // ถูกเรียกให้ตื่นตัว (สายเข้า) · อารมณ์คงอยู่ได้นาน แต่สะดุ้งแค่ตอนเริ่ม
@@ -585,9 +616,34 @@ export class Avatar {
         return on;
     }
 
-    _loop() {
+    /** มีอะไรเกิดขึ้น — วาดเต็มอัตราไปอีก [IDLE_AFTER_MS] */
+    wake() { this._wakeAt = performance.now(); }
+
+    /** ตอนนี้ต้องวาดเต็มอัตราไหม */
+    _busy(now) {
+        return this.speaking || this.lip.speaking || this.lip.babble
+            || this.puppet || this.studio || this._recording
+            || this.startled?.active || !!this.motion?.gesture
+            || now - this._wakeAt < IDLE_AFTER_MS;
+    }
+
+    /** ข้าม vsync นี้ไหม · วัดความถี่จอจากช่วงห่าง rAF จริง */
+    _skip(now) {
+        const d = now - this._vAt;
+        this._vAt = now;
+        // ช่วงห่างนอก 2..50ms คือแท็บเพิ่งกลับมาหรือเครื่องสะดุด ไม่ใช่ vsync
+        if (d >= 2 && d <= 50) this._vMs = this._vMs ? this._vMs * 0.9 + d * 0.1 : d;
+        const hz = this._vMs ? 1000 / this._vMs : 60;
+        const every = Math.max(1, Math.floor(hz / (this._busy(now) ? BUSY_FPS : IDLE_FPS)));
+        if (++this._vCount < every) return true;
+        this._vCount = 0;
+        return false;
+    }
+
+    _loop(now = performance.now()) {
         if (this._asleep) { this._raf = 0; return; }
         this._raf = requestAnimationFrame(this._loop);
+        if (this._skip(now)) return;
         try {
             this._frame();
         } catch (err) {

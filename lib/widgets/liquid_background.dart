@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme/tokens.dart';
+import 'ambient_clock.dart';
 
 /// ก้อนแสงเบลอที่ลอยอยู่หลังทุกอย่าง — คือหัวใจของธีม Liquid Glass
 /// ตรงกับ `@keyframes liqDrift` ใน artboard: เลื่อน (16,-20) และขยาย 1.14 ที่กลางรอบ
@@ -64,28 +65,43 @@ class LiquidBackground extends StatefulWidget {
     required this.gradient,
     required this.orbs,
     required this.child,
+    this.animate = true,
   });
 
   final Gradient gradient;
   final List<Orb> orbs;
   final Widget child;
 
+  /// ก้อนแสงลอยได้ไหมตอนนี้ — แท็บที่ซ่อนอยู่ใน IndexedStack ยังมี TickerMode เปิด
+  /// เจ้าของหน้าจึงต้องบอกเองว่าไม่มีใครเห็น
+  final bool animate;
+
   @override
   State<LiquidBackground> createState() => _LiquidBackgroundState();
 }
 
-class _LiquidBackgroundState extends State<LiquidBackground>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _drift;
+class _LiquidBackgroundState extends State<LiquidBackground> {
+  /// ก้อนแสงเลื่อนแค่ ~3px ต่อวินาที · 12 ครั้งต่อวินาทีคือขยับทีละเศษพิกเซล
+  /// ตาแยกจาก 60 ไม่ออก · ดู [AmbientClock] ว่าทำไมไม่ใช้ ticker
+  final _drift = AmbientClock(fps: 12);
 
-  /// รอบร่วมของ 14/16/18 วินาที = 504 วิ ใช้ตัวเดียวคุมทุกก้อนได้โดยไม่หลุดจังหวะ
-  static const _sharedPeriod = Duration(seconds: 504);
+  /// รอบร่วมของ 14/16/18 วินาที = 504 วิ · ทุกก้อนกลับมาที่เดิมพร้อมกัน
+  static const _sharedPeriod = 504;
+
+  void _sync() => _drift.setRunning(widget.animate &&
+      widget.orbs.any((o) => o.drifts) &&
+      TickerMode.valuesOf(context).enabled);
 
   @override
-  void initState() {
-    super.initState();
-    _drift = AnimationController(vsync: this, duration: _sharedPeriod);
-    if (widget.orbs.any((o) => o.drifts)) _drift.repeat();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(LiquidBackground old) {
+    super.didUpdateWidget(old);
+    _sync();
   }
 
   @override
@@ -108,7 +124,7 @@ class _LiquidBackgroundState extends State<LiquidBackground>
                 builder: (_, _) => CustomPaint(
                   painter: _OrbPainter(
                     orbs: widget.orbs,
-                    elapsedSeconds: _drift.value * _sharedPeriod.inSeconds,
+                    elapsedSeconds: _drift.seconds % _sharedPeriod,
                   ),
                 ),
               ),
