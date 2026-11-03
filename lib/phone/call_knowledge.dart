@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import '../ai/page_reader.dart';
 import '../memory/knowledge_index.dart';
 
 export '../memory/knowledge_index.dart' show KnowledgeHit;
@@ -287,40 +288,9 @@ class CallKnowledge extends ChangeNotifier {
     return page;
   }
 
-  /// ไบต์ → ข้อความ
-  ///
-  /// 🔴 เว็บไทยรุ่นเก่าและไฟล์ .txt ที่เซฟจาก Windows ยังเป็น TIS-620 / windows-874 ·
-  /// อ่านเป็น UTF-8 = ตัวอักษรเพี้ยนทั้งหน้า แล้วค้นอะไรก็ไม่เจอ
+  /// ไบต์ → ข้อความ · TIS-620 / windows-874 ของเว็บไทยรุ่นเก่าด้วย (ดู PageText.decode)
   @visibleForTesting
-  static String decode(List<int> bytes, {String? charset}) {
-    var cs = (charset ?? '').toLowerCase();
-    if (cs.isEmpty) {
-      final head = latin1.decode(bytes.take(4096).toList(), allowInvalid: true).toLowerCase();
-      cs = RegExp(r'''charset\s*=\s*["']?([\w\-]+)''').firstMatch(head)?.group(1) ?? '';
-    }
-    if (cs.contains('874') || cs.contains('tis') || cs.contains('8859-11')) return _thaiLegacy(bytes);
-    try {
-      return utf8.decode(bytes);
-    } on FormatException catch (e) {
-      // ตัดกลางตัวอักษรตอนชนเพดานขนาด = ยังเป็น UTF-8 · เพี้ยนกลางไฟล์ + ไม่บอกว่า UTF-8 = รหัสไทยเก่า
-      final cut = e.offset != null && e.offset! >= bytes.length - 4;
-      return cut || cs.contains('utf') ? utf8.decode(bytes, allowMalformed: true) : _thaiLegacy(bytes);
-    }
-  }
-
-  static const _cp874High = {
-    0x80: 0x20AC, 0x85: 0x2026, 0x91: 0x2018, 0x92: 0x2019, //
-    0x93: 0x201C, 0x94: 0x201D, 0x95: 0x2022, 0x96: 0x2013, 0x97: 0x2014, 0xA0: 0x00A0,
-  };
-
-  static String _thaiLegacy(List<int> bytes) => String.fromCharCodes([
-        for (final b in bytes)
-          b < 0x80
-              ? b
-              : b >= 0xA1 && b <= 0xFB
-                  ? 0x0E00 + b - 0xA0
-                  : _cp874High[b] ?? 0xFFFD,
-      ]);
+  static String decode(List<int> bytes, {String? charset}) => PageText.decode(bytes, charset: charset);
 
   /// ไฟล์ Word (.docx = zip ที่มี word/document.xml) → ข้อความทีละย่อหน้า
   @visibleForTesting
@@ -372,19 +342,7 @@ class CallKnowledge extends ChangeNotifier {
     return lines.join('\n');
   }
 
-  static String _entities(String s) => s
-      .replaceAllMapped(RegExp(r'&#x([0-9a-fA-F]{1,6});'), (m) => _char(int.tryParse(m[1]!, radix: 16)))
-      .replaceAllMapped(RegExp(r'&#([0-9]{1,7});'), (m) => _char(int.tryParse(m[1]!)))
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&quot;', '"')
-      .replaceAll('&#39;', "'")
-      .replaceAll('&apos;', "'")
-      .replaceAll('&amp;', '&');
-
-  static String _char(int? code) =>
-      code == null || code <= 0 || code > 0x10FFFF ? ' ' : String.fromCharCode(code);
+  static String _entities(String s) => PageText.entities(s);
 
   /// ชื่อแหล่งข้อมูลสั้น ๆ ให้เธอรู้ว่าคลังมีเรื่องอะไร จะได้รู้ว่าเมื่อไรควรค้น
   String index() => _sources

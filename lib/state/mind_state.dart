@@ -47,6 +47,7 @@ import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
 import '../ai/proxy_account.dart';
 import '../ai/realtime_chat.dart';
+import '../ai/page_reader.dart';
 import '../ai/web_tools.dart';
 import '../phone/call_tags.dart';
 import '../phone/call_target.dart';
@@ -3534,6 +3535,7 @@ class MindState extends ChangeNotifier {
           web: _webSearch && _webSearcher() != null,
           phone: _phoneControl,
           knowledge: knowledgePacks.enabled.isNotEmpty,
+          pages: _webSearch,
         ),
         runChatTool: tools,
         voice: voiceChatVoice,
@@ -3563,6 +3565,7 @@ class MindState extends ChangeNotifier {
     final block = MindPersona.voiceChatBlock(
       _lang,
       web: _webSearch && _webSearcher() != null,
+      pages: _webSearch,
       phone: _phoneControl,
       mailApps: _mailApps == null ? null : [for (final a in _mailApps!) a.name],
     ) + (_voiceMapBlock.isEmpty ? '' : '\n$_voiceMapBlock');
@@ -3698,6 +3701,13 @@ class MindState extends ChangeNotifier {
         final web = _webSearch ? _webSearcher() : null;
         if (web == null) return 'Web search is not available right now. Say so briefly.';
         return webTools.run(ToolCall(WebTool.search, arg('query')), last: true, web: web);
+      case 'read_url':
+        if (!_webSearch) return 'Reading web pages is turned off by the owner. Say so briefly.';
+        final url = arg('url');
+        if (url.isEmpty) return 'Ask the owner which page to read.';
+        final tool = args['source'] == true ? WebTool.source : WebTool.page;
+        // คุยสดคิดราคาตามโทเค็นที่ส่งเข้า · หน้าเว็บส่งน้อยกว่าแชท
+        return webTools.run(ToolCall(tool, url, focus: arg('question')), last: true, pageChars: 4000);
       case 'phone_task':
         if (!_phoneControl) return 'You are not allowed to use the phone right now (the owner turned it off).';
         final goal = arg('goal');
@@ -4769,7 +4779,17 @@ class MindState extends ChangeNotifier {
     // สมองเกินสามวิก็ตอบจากที่มี
     final packHits = _packHits(history);
     final brainHits = linked ? await _brainHits(history) : const <BrainXHit>[];
-    final recall = recallFor(history, brain: brainHits, packs: await packHits);
+    var recall = recallFor(history, brain: brainHits, packs: await packHits);
+    // เจ้าของส่งลิงก์มา = อ่านหน้านั้นให้ก่อนถามสมอง · ไม่ต้องเสียหนึ่งตาให้เธอขออ่าน
+    // และสมองตัวเล็กที่ลืมแท็กก็ยังตอบจากหน้าจริง ไม่เดาจากชื่อลิงก์
+    final link = tools ? ownerLink(history) : null;
+    if (link != null && !_disposed) {
+      _partial = s.readingPage(link.host);
+      _notify();
+      final ask = history.last.text.replaceAll(RegExp(r'\S*' + RegExp.escape(link.host) + r'\S*'), ' ').trim();
+      final page = await webTools.run(ToolCall(WebTool.page, '$link', focus: ask), pageChars: _pageChars);
+      recall = [if (recall.isNotEmpty) recall, page].join('\n\n');
+    }
     var answer = await _askBrain(system, history, onPartial: _showPartial, recall: recall);
     if (nudge) _noteNudge(answer);
 
@@ -4787,7 +4807,7 @@ class MindState extends ChangeNotifier {
       final phoneCall = webCall == null ? PhoneLookup.parse(answer) : null;
       if (webCall == null && phoneCall == null) break;
       _partial = webCall != null
-          ? s.lookingUp(webCall.arg)
+          ? (webCall.isPage ? s.readingPage(UrlGuard.parse(webCall.arg)?.host ?? '') : s.lookingUp(webCall.arg))
           : switch (phoneCall!.kind) {
               PhoneLookupKind.contacts => s.lookingContacts,
               PhoneLookupKind.calls => s.lookingCalls,
@@ -4802,7 +4822,7 @@ class MindState extends ChangeNotifier {
       _notify();
       final last = round == maxLookups;
       final result = webCall != null
-          ? await webTools.run(webCall, last: last, web: web)
+          ? await webTools.run(webCall, last: last, web: web, pageChars: _pageChars)
           : await phoneLookup.run(phoneCall!, last: last);
       if (_disposed) break;
       turns = [
@@ -5131,6 +5151,22 @@ class MindState extends ChangeNotifier {
 
   @visibleForTesting
   WebSearcher? get debugWebSearcher => _webSearcher();
+
+  /// ลิงก์เว็บแรกในข้อความล่าสุดของเจ้าของ · null = ไม่มี หรือเธอพูดล่าสุด
+  ///
+  /// เอาแค่ที่ขึ้นต้น http(s):// หรือ www. · ชื่อไฟล์อย่าง "report.pdf" ในประโยคไม่นับเป็นลิงก์
+  static Uri? ownerLink(List<({bool fromHer, String text})> history) {
+    if (history.isEmpty || history.last.fromHer) return null;
+    final m = RegExp(r'(?:https?://|www\.)\S+', caseSensitive: false).firstMatch(history.last.text);
+    return m == null ? null : UrlGuard.parse(m[0]!);
+  }
+
+  /// เพดานข้อความหน้าเว็บที่ส่งให้สมอง · สมองในเครื่องบริบทราว 8k โทเค็น (ไทยเกือบตัวละโทเค็น)
+  int get _pageChars => switch (_brain) {
+        BrainProvider.onDevice => 2500,
+        BrainProvider.homeServer => 4000,
+        _ => 8000,
+      };
 
   // ═══ นึกออก — ความจำและบทสนทนาเก่าตามเรื่องที่คุย ═══════════
   //
