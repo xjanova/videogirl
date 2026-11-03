@@ -945,8 +945,8 @@ class S {
         'Calling $who now — I will handle it and tell you how it went.',
       );
   String callOutNoAnswer(String who) => _(
-        'โทรหา $who แล้วไม่มีคนรับค่ะ (หรือสายไม่ว่าง) จะให้ลองใหม่ทีหลังไหมคะ',
-        'I called $who but nobody picked up (or the line was busy). Want me to try again later?',
+        'โทรหา $who แล้วสายไม่ติดค่ะ (ไม่มีคนรับ สายไม่ว่าง หรือวางสายไปก่อน) จะให้ลองใหม่ทีหลังไหมคะ',
+        'I called $who but it did not connect (no answer, busy, or hung up first). Want me to try again later?',
       );
   String callOutReport(String who, String summary) =>
       _('โทรหา $who แล้วค่ะ — $summary', 'I called $who — $summary');

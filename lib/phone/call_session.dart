@@ -1118,7 +1118,6 @@ class CallSession extends ChangeNotifier {
     };
     rt.onCallerText = (t) {
       _lines.add(CallLine.them(t));
-      _leaving.callerSaid();
       _heardRounds++;
       // GPT-Live ปล่อยบทที่ค้างตอนปิด ซึ่งอาจเป็นหลังเจ้าของแทรกสายไปแล้ว
       if (_turn != CallTurn.handedOver) _turn = CallTurn.thinking;
@@ -1249,16 +1248,15 @@ class CallSession extends ChangeNotifier {
         _holdPlay(waiting && !_rtGated, pending);
         _setHold(waiting && !_rtGated && !_holdSpeaker);
 
-        // เธอลาแล้ว เสียงจบ และคู่สายเงียบครบสามวินาที · กันไว้ห้าวินาทีแรก (โมเดลเรียกพลาดตอนทัก)
+        // เธอลาแล้ว เสียงลาออกหมด = วาง · ไม่รอฟังคู่สาย · กันไว้ห้าวินาทีแรก (โมเดลเรียกพลาดตอนทัก)
         final leave = _leaving.due(
           now,
           age: now.difference(started),
           herVoice: speaking,
-          callerTalking: rt.callerTalking,
           held: _ownerAnswer != null || _transferring,
         );
         if (leave && _turn != CallTurn.handedOver) {
-          debugPrint('call: เสียงลาจบแล้ว คู่สายเงียบ เธอวางสาย');
+          debugPrint('call: เสียงลาจบแล้ว เธอวางสาย');
           unawaited(hangUp());
           return;
         }
@@ -1412,7 +1410,7 @@ class CallSession extends ChangeNotifier {
       }
     }
 
-    // เธอลาแล้ว · รอบฟังถัดไปคือสามวินาทีที่เผื่อคู่สายยังพูดไม่จบ
+    // เธอลาแล้ว · วางเมื่อเสียงลาจบ ไม่รอฟังคู่สาย (ดู [CallHangUp])
     var leaving = false;
     while (_live && _mind && !_disposed) {
       // 🔴 เจ้าของพิมพ์ให้เธอพูดอยู่ ([say]) = รอให้พูดจบก่อนค่อยเปิดไมค์
@@ -1422,7 +1420,18 @@ class CallSession extends ChangeNotifier {
       if (saying != null) await saying;
       if (!_live || !_mind || _disposed) break;
 
-      final heard = await _listen(patience: leaving ? CallHangUp.wait : null);
+      if (leaving) {
+        leaving = false;
+        // [_speak] รอเสียงลาเล่นจบแล้ว · เผื่อท้ายเสียงแล้ววาง · เจ้าของพิมพ์แทรกระหว่างนี้ = คุยต่อ
+        await Future<void>.delayed(CallHangUp.wait);
+        if (!_live || !_mind || _disposed) break;
+        if (_saying == null && _turn != CallTurn.handedOver) {
+          await hangUp();
+          break;
+        }
+      }
+
+      final heard = await _listen();
       if (!_live || !_mind || _disposed) break;
 
       // เทิร์นนี้ถูก [say] ตัดกลางคัน — ให้ประโยคของเจ้าของจบก่อนค่อยตอบ
@@ -1431,14 +1440,6 @@ class CallSession extends ChangeNotifier {
       if (cutIn != null) await cutIn;
       if (!_live || !_mind || _disposed) break;
 
-      if (leaving) {
-        leaving = false;
-        // คู่สายไม่พูดต่อ และเจ้าของไม่ได้พิมพ์แทรก = วาง · พูดต่อ = ตอบตามปกติ แล้วลาใหม่ค่อยนับใหม่
-        if ((heard == null || heard.isEmpty) && cutIn == null && _turn != CallTurn.handedOver) {
-          await hangUp();
-          break;
-        }
-      }
 
       if (heard == null || heard.isEmpty) {
         if (_netLost) {

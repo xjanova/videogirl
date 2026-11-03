@@ -23,53 +23,59 @@ abstract final class CallGoodbye {
 }
 
 /// นับเวลาหลังเสียงลาจบ · ไม่มีนาฬิกาของตัวเอง ผู้เรียกถาม [due] ทุกจังหวะ
+///
+/// 🔴 เจ้าของ (2026-11-03): "เรื่องวางสาย เธอต้องวางสายเลยไม่ต้อง รอฟัง แล้ว เพราะ เธอไม่ยอมวางสักที" ·
+/// ของเดิมรอคู่สายเงียบสามวินาที และเลิกวางเมื่อคู่สายพูดต่อ ("ค่ะ สวัสดีค่ะ") = เธอตอบ ลาใหม่ วนไม่จบ ·
+/// ตอนนี้ลาแล้ววางเมื่อเสียงลาของเธอออกลำโพงหมด ไม่ฟังคู่สายอีก
 class CallHangUp {
-  /// รอหลังเสียงลาจบ · เผื่อคู่สายยังพูดไม่จบ
-  static const wait = Duration(seconds: 3);
+  /// เผื่อหลังเสียงลาจบ · ให้ท้ายเสียงออกสายครบ ไม่ใช่รอฟัง
+  static const wait = Duration(seconds: 1);
+
+  /// เสียงเธอค้างไม่จบ (ทางเสียงพัง) = วางอยู่ดีเมื่อครบเวลานี้หลังลา
+  static const cap = Duration(seconds: 20);
 
   /// ห้าวินาทีแรกของสายไม่วาง · โมเดลเรียกพลาดตอนทักได้
   static const guard = Duration(seconds: 5);
 
-  bool _armed = false, _heardCaller = false;
-  DateTime? _quietSince;
+  bool _armed = false;
+  DateTime? _armedAt, _quietSince;
 
   bool get armed => _armed;
 
-  /// เธอลาแล้ว · ลาซ้ำไม่นับเวลาใหม่ ไม่ล้างว่าได้ยินคู่สาย
+  /// เธอลาแล้ว · ลาซ้ำไม่นับเวลาใหม่
   void arm() {
     if (_armed) return;
     _armed = true;
-    _heardCaller = false;
+    _armedAt = null;
     _quietSince = null;
   }
 
   void disarm() {
     _armed = false;
+    _armedAt = null;
     _quietSince = null;
   }
 
-  /// บทของคู่สายมาถึง · 🔴 นับเฉพาะคำที่เริ่มพูดหลังเธอลา ·
-  /// บทมาช้ากว่าเสียง คำที่พูดก่อนเธอลาจึงมาถึงหลัง end_call ได้ ถ้าเลิกวางเพราะคำนั้น สายจะค้าง
-  void callerSaid() {
-    if (_heardCaller) disarm();
-  }
-
-  /// [herVoice] เธอพูด/เสียงยังค้าง · [callerTalking] คู่สายกำลังพูด · [held] พักสายรอเจ้าของ
+  /// [herVoice] เธอพูด/เสียงยังค้าง · [held] พักสายรอเจ้าของ
   bool due(
     DateTime now, {
     required Duration age,
     bool herVoice = false,
-    bool callerTalking = false,
     bool held = false,
   }) {
-    if (!_armed) return false;
-    if (callerTalking) _heardCaller = true;
-    if (herVoice || callerTalking || held) {
+    if (!_armed || age <= guard) return false;
+    if (held) {
+      _armedAt = null;
+      _quietSince = null;
+      return false;
+    }
+    final armedAt = _armedAt ??= now;
+    if (herVoice && now.difference(armedAt) < cap) {
       _quietSince = null;
       return false;
     }
     final since = _quietSince ??= now;
-    if (now.difference(since) < wait || age <= guard) return false;
+    if (!herVoice && now.difference(since) < wait) return false;
     disarm();
     return true;
   }

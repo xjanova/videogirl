@@ -803,6 +803,9 @@ class VoiceChat extends ChangeNotifier {
     await _mic.close();
   }
 
+  /// ให้เธอบอกเรื่องนี้ด้วยเสียง (ผลโทรหลังเปิดคุยต่อกลับมา) · ปิดอยู่ = ไม่ทำอะไร
+  void announce(String text) => _onNotice(text);
+
   /// ข้อความที่ขึ้นแชทเองโดยไม่ผ่านสมอง (ผลโทร ผลงานในเครื่อง) · คนขับรถไม่ได้มองจอ ต้องได้ยิน
   void _onNotice(String text) {
     if (!active) return;

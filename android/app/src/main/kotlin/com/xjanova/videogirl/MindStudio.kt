@@ -7,6 +7,9 @@ import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
 import android.provider.MediaStore
 import android.util.Rational
 import android.view.WindowManager
@@ -31,6 +34,25 @@ class MindStudio(private val activity: MainActivity) {
     companion object {
         const val CHANNEL = "giggok/studio"
         private const val ALBUM = "GigGok"
+
+        /** จอค้างหมดอายุเองถ้าไม่ต่อ · ต่อทุก [REARM_MS] ตราบที่ยังมีคนถือ */
+        private const val HOLD_MS = 10 * 60_000L
+        private const val REARM_MS = 5 * 60_000L
+    }
+
+    /**
+     * ใครถือจอค้างอยู่ ("studio" "voice" "turn") · ปล่อยครบทุกคนจอถึงดับได้ ·
+     * ของเดิมเป็นธงตัวเดียว ออกจากสตูดิโอกลางคุยต่อเนื่อง = ธงหลุด จอดับกลางคุย
+     */
+    private val holders = mutableSetOf<String>()
+    private var screen: PowerManager.WakeLock? = null
+    private val ui = Handler(Looper.getMainLooper())
+    private val rearm = object : Runnable {
+        override fun run() {
+            if (holders.isEmpty()) return
+            holdScreen()
+            ui.postDelayed(this, REARM_MS)
+        }
     }
 
     private var channel: MethodChannel? = null
@@ -47,7 +69,7 @@ class MindStudio(private val activity: MainActivity) {
         channel!!.setMethodCallHandler { call, result ->
             when (call.method) {
                 "keepScreenOn" -> {
-                    keepScreenOn(call.argument<Boolean>("on") == true)
+                    keepScreenOn(call.argument<Boolean>("on") == true, call.argument<String>("who") ?: "studio")
                     result.success(true)
                 }
                 "pipSupported" -> result.success(pipSupported())
@@ -75,6 +97,9 @@ class MindStudio(private val activity: MainActivity) {
     fun detach() {
         channel?.setMethodCallHandler(null)
         channel = null
+        ui.removeCallbacks(rearm)
+        holders.clear()
+        letScreenSleep()
     }
 
     /** MainActivity บอกมาเมื่อเข้า/ออกจอลอย — ฝั่ง Dart ซ่อนปุ่มทั้งหมดตอนอยู่ในจอลอย */
@@ -87,11 +112,43 @@ class MindStudio(private val activity: MainActivity) {
         if (autoPip && Build.VERSION.SDK_INT < 31) enterPip()
     }
 
-    private fun keepScreenOn(on: Boolean) {
+    /**
+     * 🔴 เจ้าของ: "เรื่องที่กำลังใช้งาน มายด์ คุยงาน หรือ บังคับเครื่อง ต้องจอไม่ดับ"
+     *
+     * - ธงของหน้าต่างใช้ได้เฉพาะตอนหน้าเราอยู่บนจอ · คุยต่อเนื่องขณะเปิดแอปอื่น (แผนที่ในรถ)
+     *   ต้องมี wake lock ระดับจอด้วย แบบเดียวกับ `HandsService.keepAwake`
+     * - ไม่ปลุกจอที่ดับอยู่ (ไม่มี ACQUIRE_CAUSES_WAKEUP) · เจ้าของกดปิดจอเองยังได้ · ถูกเรียกชื่อตอนจอดับ
+     *   = จอดับต่อ
+     * - มีเวลาหมดอายุ [HOLD_MS] ต่อเองทุก [REARM_MS] · Activity หาย ([detach]) = ปล่อยทันที
+     */
+    private fun keepScreenOn(on: Boolean, who: String) {
         activity.runOnUiThread {
-            if (on) activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            if (on) holders.add(who) else holders.remove(who)
+            ui.removeCallbacks(rearm)
+            if (holders.isNotEmpty()) {
+                activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                holdScreen()
+                ui.postDelayed(rearm, REARM_MS)
+            } else {
+                activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                letScreenSleep()
+            }
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun holdScreen() {
+        try {
+            val lock = screen ?: (activity.getSystemService(PowerManager::class.java) ?: return)
+                .newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE, "GigGok:mind")
+                .apply { setReferenceCounted(false) }
+                .also { screen = it }
+            lock.acquire(HOLD_MS)
+        } catch (_: RuntimeException) { /* ธงหน้าต่างยังกันจอดับตอนหน้าเราอยู่บนจอ */ }
+    }
+
+    private fun letScreenSleep() {
+        try { screen?.takeIf { it.isHeld }?.release() } catch (_: RuntimeException) { }
     }
 
     private fun pipSupported(): Boolean =
