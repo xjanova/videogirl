@@ -52,7 +52,7 @@ class _ReadyStage implements StudioStage {
 
 class _QuietPlatform implements StudioPlatform {
   @override
-  Future<void> keepScreenOn(bool on) async {}
+  Future<void> keepScreenOn(bool on, String who) async {}
   @override
   Future<bool> enterPip(int w, int h) async => false;
   @override

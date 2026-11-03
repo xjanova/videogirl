@@ -154,12 +154,9 @@ class _HomeScreenState extends State<HomeScreen>
     if (_watch.state != CallState.idle && _chat.active) unawaited(_chat.stop());
   }
 
-  /// จอค้างระหว่างคุยต่อเนื่อง · จอดับ = แอปลงเบื้องหลัง = ไมค์ถูกปิด (ขับรถอยู่แตะจอไม่ได้)
-  Future<void> _keepAwake(bool on) async {
-    // สตูดิโอถือจอค้างของตัวเองอยู่ · ปิดตอนนี้ = จอดับกลางอัด
-    if (!on && mounted && context.read<MindStudio>().active) return;
-    await MethodChannelStudio().keepScreenOn(on);
-  }
+  /// จอค้างระหว่างคุยต่อเนื่อง · จอดับ = แอปลงเบื้องหลัง = ไมค์ถูกปิด (ขับรถอยู่แตะจอไม่ได้) ·
+  /// สตูดิโอถือของมันแยก ([MindStudio] ส่ง "studio") ปล่อยของเราไม่ทำให้จอดับกลางอัด
+  Future<void> _keepAwake(bool on) => MethodChannelStudio().keepScreenOn(on, 'voice');
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState s) {

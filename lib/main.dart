@@ -172,7 +172,7 @@ class _MindBootstrapState extends State<MindBootstrap>
     sendTurn: MindSos.instance.guarded(_state.send),
     ensureMic: _ensureMic,
     lips: _avatar,
-    keepAwake: _keepAwake,
+    keepAwake: (on) => _holdScreen(on, 'voice'),
     callActive: () => _session.onStage,
   );
 
@@ -182,15 +182,28 @@ class _MindBootstrapState extends State<MindBootstrap>
     return _perms.of(MindPermission.mic);
   }
 
-  /// จอค้างระหว่างคุยต่อเนื่อง · ไม่มีจอแล้ว (ช่องของสตูดิโอหายไปกับ Activity) = ไม่ต้องทำอะไร
-  Future<void> _keepAwake(bool on) async {
-    // สตูดิโอถือจอค้างของตัวเองอยู่ · ปิดตอนนี้ = จอดับกลางอัด
-    if (!on && _studio.active) return;
+  /// จอค้าง · [who] คือผู้ถือ ("voice" คุยต่อเนื่อง · "turn" เธอคิด/พูด/ใช้เครื่องอยู่) ·
+  /// สตูดิโอถือ "studio" ของมันเอง · จอดับได้เมื่อทุกคนปล่อย (MindStudio.kt) ·
+  /// ไม่มีจอแล้ว (ช่องของสตูดิโอหายไปกับ Activity) = ไม่ต้องทำอะไร
+  Future<void> _holdScreen(bool on, String who) async {
     try {
-      await MethodChannelStudio().keepScreenOn(on);
+      await MethodChannelStudio().keepScreenOn(on, who);
     } on Object catch (e) {
       debugPrint('จอค้าง: สั่งไม่ได้ — ${e.runtimeType}');
     }
+  }
+
+  /// 🔴 เจ้าของ: "เรื่องที่กำลังใช้งาน มายด์ คุยงาน หรือ บังคับเครื่อง ต้องจอไม่ดับ" ·
+  /// พิมพ์ถามแล้ววางเครื่องรอ · เธอคิดนาน (ค้นเว็บ ใช้มือ) เกินเวลาจอดับ 2 นาทีของเครื่อง =
+  /// จอดับกลางคำตอบ · ถือจอตั้งแต่ส่งจนพูดจบ และตลอดงานที่เธอใช้เครื่องให้ ·
+  /// ติดสาย = ไม่ถือ · จอสายจัดการเอง (เซนเซอร์ระยะดับจอตอนแนบหู)
+  bool _turnHeld = false;
+  void _watchTurn() {
+    final busy = (_state.sending || _state.speaking || _state.phoneTask != null) &&
+        _calls.state == CallState.idle;
+    if (busy == _turnHeld) return;
+    _turnHeld = busy;
+    unawaited(_holdScreen(busy, 'turn'));
   }
 
   /// ถูกเรียกชื่อ · บริการขานไปแล้ว · ติดสาย = ไม่รับ (ไมค์เป็นของสาย)
@@ -386,6 +399,7 @@ class _MindBootstrapState extends State<MindBootstrap>
       await _state.load(store: _store);
       _wakeVoice = _state.wakeReplyKey;
       _state.addListener(_watchWakeVoice);
+      _state.addListener(_watchTurn);
       await _pack.restore(preferId: _state.avatarPackId);
 
       // อยู่รอบแรกเพราะต้องกั้น **ก่อน** เชลล์เกิด ไม่งั้น WebView จะเริ่มโหลด
@@ -439,6 +453,7 @@ class _MindBootstrapState extends State<MindBootstrap>
     _state.attachCalls(_calls);
     _calls.addListener(_showCallOnStage);
     _calls.addListener(_yieldMicToCall);
+    _calls.addListener(_watchTurn);
 
     // สายที่เพิ่งวางมีผลกับอารมณ์เธอ · CallWatch เป็นคนกันไม่ให้นับซ้ำ
     // (สายเดียวยิงครั้งเดียว) ที่นี่จึงแปลงเป็นความหึงได้ตรง ๆ
@@ -479,6 +494,8 @@ class _MindBootstrapState extends State<MindBootstrap>
     _wakeVoiceWait?.cancel();
     _calls.removeListener(_showCallOnStage);
     _calls.removeListener(_yieldMicToCall);
+    _calls.removeListener(_watchTurn);
+    _state.removeListener(_watchTurn);
     _calls.onCallEnded = null;
     _session.dispose();
     _soul.dispose();

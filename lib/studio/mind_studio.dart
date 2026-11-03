@@ -31,7 +31,8 @@ class StudioSave {
 ///
 /// แยกเป็น interface เพื่อให้เทสต์ได้โดยไม่มี Android
 abstract interface class StudioPlatform {
-  Future<void> keepScreenOn(bool on);
+  /// [who] = ผู้ถือ ("studio" "voice" "turn") · จอดับได้เมื่อทุกคนปล่อย
+  Future<void> keepScreenOn(bool on, String who);
   Future<bool> enterPip(int w, int h);
 
   /// ออกจากแอปแล้วเข้าจอลอยเอง · [w]/[h] = สัดส่วนจอลอย
@@ -63,7 +64,8 @@ class MethodChannelStudio implements StudioPlatform {
   }
 
   @override
-  Future<void> keepScreenOn(bool on) => _invoke<bool>('keepScreenOn', {'on': on});
+  Future<void> keepScreenOn(bool on, String who) =>
+      _invoke<bool>('keepScreenOn', {'on': on, 'who': who});
 
   @override
   Future<bool> enterPip(int w, int h) async =>
@@ -183,7 +185,7 @@ class MindStudio extends ChangeNotifier
     await _stage.setStudio(true);
     await _stage.setBackdrop(StudioBackdrops.toStage(_state.studioBackdrop));
     final (w, h) = _aspect();
-    await _platform.keepScreenOn(true);
+    await _platform.keepScreenOn(true, 'studio');
     await _platform.autoPip(true, w, h);
     await _platform.immersive(true);
     return true;
@@ -201,7 +203,7 @@ class MindStudio extends ChangeNotifier
       await _stage.setStudio(false);
       await _stage.setBackdrop(null);
       await _platform.autoPip(false, 0, 0);
-      await _platform.keepScreenOn(false);
+      await _platform.keepScreenOn(false, 'studio');
       await _platform.immersive(false);
     } finally {
       _leaving = false;

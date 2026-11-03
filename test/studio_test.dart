@@ -78,7 +78,7 @@ class _Platform implements StudioPlatform {
   void Function(bool)? pip;
 
   @override
-  Future<void> keepScreenOn(bool on) async => log.add('screen:$on');
+  Future<void> keepScreenOn(bool on, String who) async => log.add('screen:$on');
 
   @override
   Future<bool> enterPip(int w, int h) async {
