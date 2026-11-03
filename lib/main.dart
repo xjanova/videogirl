@@ -482,10 +482,39 @@ class _MindBootstrapState extends State<MindBootstrap>
   ///
   /// 🔴 หน้าแชทก็ทำอยู่ แต่คุยเบื้องหลังตอนไม่มีจอ ไม่มีหน้าแชทให้ทำ · สั่งโทรด้วยเสียงแล้วเธอจะพูดทับเสียงรอสาย
   void _yieldMicToCall() {
-    if (_calls.state == CallState.idle) return;
-    if (_voiceChat.active) unawaited(_voiceChat.stop());
+    if (_calls.state == CallState.idle) {
+      if (_inCall) unawaited(_afterCall());
+      _inCall = false;
+      return;
+    }
+    _inCall = true;
+    if (_voiceChat.active) {
+      // สายที่เธอโทรเองตามที่สั่งกลางคุย · วางแล้วต้องคุยต่อ · สายเข้าไม่ใช่ (เจ้าของอาจเดินไปแล้ว)
+      _resumeChat = _state.outgoing != null;
+      unawaited(_voiceChat.stop());
+    }
     unawaited(_state.stopRecording());
     unawaited(_state.eyes.turnOff());
+  }
+
+  bool _inCall = false;
+  bool _resumeChat = false;
+
+  /// 🔴 เจ้าของ: "ถ้าเธอโทรไม่สำเร็จ หรือเรากดวางสายขณะเธอโทร เธอจะหายไปและเหมือนไม่ตอบรับอะไรอีกเลย" ·
+  /// ของเดิมปิดคุยต่อเนื่องตอนสายเริ่มแล้วไม่เปิดคืน · ผลโทรขึ้นแค่ตัวหนังสือ
+  /// (ตัวฟังของ [MindState] วิ่งก่อนตัวนี้ ผลโทรจึงพร้อมแล้ว)
+  Future<void> _afterCall() async {
+    final said = _state.takeCallOutcome();
+    final resume = _resumeChat;
+    _resumeChat = false;
+    if (resume && !_voiceChat.active) await _voiceChat.start();
+    if (said == null) return;
+    // เปิดคุยไม่ขึ้น (ไมค์) หรือเจ้าของเปิดคุยเองไปก่อนแล้ว · ผลโทรต้องได้ยินทุกทาง
+    if (_voiceChat.active) {
+      _voiceChat.announce(said);
+    } else {
+      await _state.speakNotice(said);
+    }
   }
 
   @override

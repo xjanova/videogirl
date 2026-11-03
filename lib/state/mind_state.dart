@@ -691,6 +691,11 @@ class MindState extends ChangeNotifier {
     final p = edited.isEmpty ? asked : asked.copyWith(task: edited);
     _pendingCall = null;
     _notify();
+    // 🔴 ตั้งก่อนกดโทร · สัญญาณ "ยกหู" ของระบบมาถึงก่อนคำสั่งโทรตอบกลับได้ · ตัวคุมคุยต่อเนื่อง
+    // ดูค่านี้ตอนปิดไมค์ให้สาย เพื่อรู้ว่าวางสายแล้วต้องเปิดคุยต่อ (main.dart `_yieldMicToCall`)
+    _outgoing = (who: p.who, number: p.number, task: p.task);
+    _outgoingAskOk = askOwner ?? p.askOwner ?? !OutgoingRules.noAsking(p.task);
+    _outgoingAnswered = false;
     String? why;
     try {
       final sim = SimChoice.pick(await callSims(), asked: p.sim, last: _callSim);
@@ -699,12 +704,10 @@ class MindState extends ChangeNotifier {
       why = 'no_telecom';
     }
     if (why != null) {
+      _outgoing = null;
       _say(s.callOutFailed(why));
       return;
     }
-    _outgoing = (who: p.who, number: p.number, task: p.task);
-    _outgoingAskOk = askOwner ?? p.askOwner ?? !OutgoingRules.noAsking(p.task);
-    _outgoingAnswered = false;
     _say(s.callOutDialing(p.who));
   }
 
@@ -1110,11 +1113,26 @@ class MindState extends ChangeNotifier {
   }
 
   /// สายจบ · ยังไม่ได้คุยเลย (ไม่รับ/สายไม่ว่าง/วางก่อน) = บอกเจ้าของ · คุยแล้วรายงานผ่าน [takeCallNote]
+  ///
+  /// 🔴 เจ้าของ: "ถ้าเธอโทรไม่สำเร็จ หรือเรากดวางสายขณะเธอโทร เธอจะหายไปและเหมือนไม่ตอบรับอะไรอีกเลย" ·
+  /// ของเดิมขึ้นแค่ตัวหนังสือ (คุยต่อเนื่องถูกปิดไปตอนสายเริ่ม ไม่มีใครพูดให้) · ข้อความเก็บไว้ให้
+  /// main.dart พูดออกเสียง หรือให้คุยต่อเนื่องที่เปิดกลับมาเป็นคนบอก ([takeCallOutcome])
   void _outgoingEnded() {
     final o = _outgoing;
     if (o == null || _outgoingAnswered) return;
     _outgoing = null;
-    _say(s.callOutNoAnswer(o.who));
+    final text = s.callOutNoAnswer(o.who);
+    _callOutcome = text;
+    _say(text);
+  }
+
+  String? _callOutcome;
+
+  /// ผลของสายที่เธอโทรแล้วไม่ได้คุย · อ่านได้ครั้งเดียว
+  String? takeCallOutcome() {
+    final t = _callOutcome;
+    _callOutcome = null;
+    return t;
   }
 
   @visibleForTesting
