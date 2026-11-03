@@ -85,6 +85,12 @@ class ListenService : Service() {
 
         private const val RATE = WakeMatcher.RATE
         private const val READ = RATE / 50 // 20 มิลลิวินาที
+        /**
+         * ตอนรอคำเรียก อ่านทีละ 100 มิลลิวินาที · เธรดตื่น 10 ครั้งต่อวินาทีแทน 50
+         * ทั้งวันที่เปิดรอฟังไว้ · ช้าลง 80 มิลลิวินาทีตอนจับคำ ซึ่งไม่มีใครรู้สึก
+         * ตอนคุยสดยังอ่านทีละ 20 เพราะเสียงต้องไปถึงสมองเร็ว
+         */
+        private const val READ_WATCH = RATE / 10
         private const val CHUNK_BYTES = RATE / 10 * 2 // ส่งให้ Dart ทีละ 100 มิลลิวินาที
 
         /** เสียงที่เก็บไว้รอ Dart เปิดรับ (เจ้าของสั่งต่อทันทีตอนคุยสดกำลังต่อเซิร์ฟเวอร์) */
@@ -741,7 +747,7 @@ class ListenService : Service() {
 
         private fun listen() {
             val am = getSystemService(AUDIO_SERVICE) as AudioManager
-            val buf = ShortArray(READ)
+            val buf = ShortArray(READ_WATCH)
             var checkedAt = 0L
             var failures = 0
             var lastMode: Mode? = null
@@ -799,7 +805,7 @@ class ListenService : Service() {
                     lastMode = null
                     continue
                 }
-                val got = rec!!.read(buf, 0, buf.size)
+                val got = rec!!.read(buf, 0, if (m == Mode.STREAM) READ else READ_WATCH)
                 if (got <= 0) {
                     Log.w(TAG, "read: $got")
                     closeRec()
