@@ -148,9 +148,9 @@ void main() {
     test('🔴 สมองเจ้าอื่น = ไม่คุยสด จนกว่าเจ้าของเปิดคุยสดด้วย OpenAI · ต้องมีคีย์', () async {
       final s = await mind();
       s.setBrain(BrainProvider.claude);
-      expect(s.voiceChatLiveAnyBrain, isFalse, reason: 'ค่าตั้งต้นปิด · ไม่ยืมคีย์ข้ามสมองเอง');
+      expect(s.voiceChatBorrow, isNull, reason: 'ค่าตั้งต้นไม่ยืม · ไม่ยืมคีย์ข้ามสมองเอง');
       expect(s.voiceChatLiveReady, isFalse);
-      s.setVoiceChatLiveAnyBrain(true);
+      s.setVoiceChatBorrow(CallLiveEngine.openai);
       expect(s.voiceChatLiveReady, isTrue);
       s.setVoiceChatLive(false);
       expect(s.voiceChatLiveReady, isFalse, reason: 'สวิตช์คุยสด/ทีละตายังคุมเหมือนเดิม');
@@ -163,18 +163,18 @@ void main() {
       final s = await mind();
       s.setBrain(BrainProvider.onDevice);
       expect(s.debugLiveWebSearcher, isNull);
-      s.setVoiceChatLiveAnyBrain(true);
+      s.setVoiceChatBorrow(CallLiveEngine.openai);
       expect(s.debugLiveWebSearcher, isNotNull);
       expect(s.debugWebSearcher, isNull, reason: 'สมองในเครื่องสัญญาว่าแชทพิมพ์ไม่ออกไป OpenAI');
     });
 
     test('ค่าคุยสดข้ามสมองจำไว้ข้ามการเปิดแอป', () async {
       final s = await mind();
-      s.setVoiceChatLiveAnyBrain(true);
+      s.setVoiceChatBorrow(CallLiveEngine.openai);
       final again = MindState(openai: _Brain('ได้ค่ะ'));
       addTearDown(again.dispose);
       await again.load();
-      expect(again.voiceChatLiveAnyBrain, isTrue);
+      expect(again.voiceChatBorrow, CallLiveEngine.openai);
     });
 
     test('prompt คุยสด = บุคลิกในแชท + เครื่องมือ · ไม่สอนแท็ก [[โทร]] (เธอจะอ่านวงเล็บออกเสียง)', () async {

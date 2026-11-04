@@ -27,7 +27,8 @@ class PremiumVoice {
 ///
 /// ตรวจกับเอกสารทางการ 2026-10-06 · เจ้าของสั่งไว้ว่า "ที่คุณภาพดี ๆ เท่านั้น"
 /// รุ่นที่ถูกกว่าแต่ไม่มีภาษาไทย (Gemini Flash Lite TTS, ElevenLabs Multilingual
-/// v2 / Flash v2.5) จึงไม่อยู่ในรายการโดยตั้งใจ · ดู docs/premium-voices.md
+/// v2 / Flash v2.5) จึงไม่อยู่ในรายการโดยตั้งใจ · ดู docs/premium-voices.md ·
+/// รุ่นครึ่งราคาของ ElevenLabs ที่พูดไทยได้ (v4 Turbo · v3 Conversational) เพิ่ม 2026-11-04
 abstract final class PremiumCatalog {
   // ── Gemini ──
   /// GA 2026-09-22 · ตารางภาษาในเอกสารให้ Thai ✔️ (รุ่น Lite ให้ "—")
@@ -48,7 +49,19 @@ abstract final class PremiumCatalog {
 
   // ── ElevenLabs ──
   /// พูดไทยได้เฉพาะตระกูล v3/v4 · v4 = คุณภาพสูงสุด (ผ่าน text-to-dialogue)
-  static const elevenModels = ['eleven_v4', 'eleven_v3'];
+  ///
+  /// เจ้าของ (2026-11-04): "eleven lab มันมีอย่างครึ่งราคาด้วยนี่เพิ่มให้หน่อย" · ตรวจเอกสาร 2026-11-04:
+  /// v4 / v3 = 0.08 ดอลลาร์ต่อพันตัวอักษร · v4 Turbo / v3 Conversational = 0.04 พูดไทยได้ ·
+  /// Flash v2.5 ก็ 0.04 แต่ไม่มีภาษาไทย จึงไม่อยู่ในรายการ
+  static const elevenModels = ['eleven_v4', 'eleven_v4_turbo', 'eleven_v3', 'eleven_v3_conversational'];
+
+  /// รุ่นครึ่งราคา · เรียกได้ทาง WebSocket ของ text-to-dialogue เท่านั้น (เอกสาร "available via the
+  /// Text to Dialogue websocket") · ส่งได้แค่ stability
+  static const elevenSocketModels = {'eleven_v4_turbo', 'eleven_v3_conversational'};
+
+  /// รุ่นนี้ไม่มี style / speed / speaker boost · v4 ทาง HTTP รับความนิ่งกับความเหมือน · รุ่นครึ่งราคารับแค่ความนิ่ง
+  static bool elevenDialogueOnly(String model) =>
+      model.startsWith('eleven_v4') || elevenSocketModels.contains(model);
 
   /// ไม่มีเสียงตั้งต้นโดยตั้งใจ · เสียง default ของ ElevenLabs หมดอายุ
   /// 2026-12-31 และ ID ใหม่ไม่ได้อยู่ในเอกสาร — ต้องดึงจากบัญชีของผู้ใช้

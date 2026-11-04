@@ -55,6 +55,7 @@ import '../i18n/strings_settings.dart';
 import '../i18n/strings_hands.dart';
 import '../i18n/strings_sos.dart';
 import '../phone/call_session.dart';
+import '../phone/gemini_live_call.dart';
 import '../phone/realtime_call.dart';
 import '../studio/mind_studio.dart';
 import '../system/app_life.dart';
@@ -2909,6 +2910,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             padding: const EdgeInsets.only(bottom: 7),
             child: _choiceRow(
               title: m,
+              subtitle: e == TtsEngine.elevenlabs ? t.elevenModelHint(m) : null,
               selected: profile.model == m,
               mode: mode,
               onTap: () => set(profile.copyWith(model: m)),
@@ -3048,34 +3050,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                       height: 1.5,
                       color: state.answerVoiceLive ? MindColors.ink55 : const Color(0xFFB46A00))),
             ],
-            // สมองเจ้าอื่น · คุยสดยืม OpenAI ได้ต่อเมื่อเจ้าของเปิดเอง (เจ้าของ 2026-11-03: "ทำให้แยกได้")
-            if (channel == VoiceChannel.chat && state.brain != BrainProvider.openai) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: 3,
-                      children: [
-                        Text(t.voiceChatAnyBrainSwitch,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                        Text(t.voiceChatAnyBrainHint(state.brain.labelOf(t)),
-                            style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
-                        if (state.voiceChatLiveAnyBrain && !state.hasOwnKey)
-                          Text(t.voiceChatAnyBrainNoKey,
-                              style: const TextStyle(fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
-                      ],
-                    ),
-                  ),
-                  _toggle(
-                    on: state.voiceChatLiveAnyBrain,
-                    mode: mode,
-                    onTap: () => state.setVoiceChatLiveAnyBrain(!state.voiceChatLiveAnyBrain),
-                  ),
-                ],
-              ),
-            ],
+            // สมองที่ไม่มีคุยสดของตัวเอง · ยืมเจ้าอื่นได้ต่อเมื่อเจ้าของเลือกเอง
+            // (เจ้าของ 2026-11-03: "ทำให้แยกได้" · 2026-11-04: "Gemini Live ในแชท")
+            if (channel == VoiceChannel.chat && !state.brainHasLiveChat) ..._voiceChatBorrow(state, mode),
             // คุยสดมีเสียงของตัวเอง · ต้องเห็นตรงนี้ ไม่งั้นเลือกเสียงแล้วไม่ได้ยินโดยไม่รู้ทำไม
             if (channel == VoiceChannel.chat && state.voiceChatLiveAllowed) ...[
               const SizedBox(height: 12),
@@ -3088,7 +3065,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                       children: [
                         Text(S.of(context).voiceChatLiveSwitch,
                             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                        Text(S.of(context).voiceChatLiveHint,
+                        Text(
+                            state.voiceChatLiveEngine == CallLiveEngine.gemini
+                                ? t.voiceChatLiveHintGemini
+                                : t.voiceChatLiveHint,
                             style: const TextStyle(fontSize: 10.5, height: 1.5, color: MindColors.ink55)),
                       ],
                     ),
@@ -3133,11 +3113,35 @@ class _SettingsScreenState extends State<SettingsScreen>
               ElevenClonePanel(state: state),
             ],
 
-            // คุยสดข้ามสมองต้องมีคีย์ OpenAI · สมองเจ้าอื่นไม่มีช่องคีย์ OpenAI ให้ที่การ์ดสมอง
+            // คุยสดยืม Gemini ต้องมีคีย์ Gemini · เสียงแชทเป็นเจ้าอื่น = ช่องคีย์ Gemini ไม่ขึ้นที่อื่นในการ์ดนี้
+            if (channel == VoiceChannel.chat &&
+                !state.brainHasLiveChat &&
+                state.voiceChatBorrow == CallLiveEngine.gemini &&
+                profile.engine != TtsEngine.gemini) ...[
+              const SizedBox(height: 14),
+              _linkRow(
+                title: t.premiumKeyTitle('Gemini'),
+                value: state.premiumKey(TtsEngine.gemini).isEmpty
+                    ? t.premiumKeyNotSet
+                    : SecretStore.mask(state.premiumKey(TtsEngine.gemini)),
+                mode: mode,
+                onTap: () => _editText(
+                  state: state,
+                  mode: mode,
+                  title: t.premiumKeyTitle('Gemini'),
+                  hint: t.premiumKeyEditorGemini,
+                  value: state.premiumKey(TtsEngine.gemini),
+                  onSave: (v) => state.setPremiumKey(TtsEngine.gemini, v),
+                  onReset: () => '',
+                ),
+              ),
+              _keyGuide('Gemini', mode),
+            ],
+            // คุยสดยืม OpenAI ต้องมีคีย์ OpenAI · สมองเจ้าอื่นไม่มีช่องคีย์ OpenAI ให้ที่การ์ดสมอง
             if (usingOpenAi ||
                 (channel == VoiceChannel.chat &&
-                    state.brain != BrainProvider.openai &&
-                    state.voiceChatLiveAnyBrain)) ...[
+                    !state.brainHasLiveChat &&
+                    state.voiceChatBorrow == CallLiveEngine.openai)) ...[
               // 🔴 ช่องกรอกคีย์ต้องมาอยู่ตรงนี้ด้วย
               //
               // เดิมมันอยู่ใต้การ์ดสมองเฉพาะตอนเลือกสมอง = OpenAI เท่านั้น
@@ -3309,10 +3313,49 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   // เจ้าของ: "เธอใช้ เสียงส่วน ไหนในการสังเคราะห์ ต้องมีตัวเลือกด้วย ... ซึ่ง เราตั้ง Open ai live แล้วมันเสียเงิน ควรตั้งได้ด้วย"
   // · อยู่ใต้ช่องแชทเพราะเป็นการคุยกับเจ้าของ · สมองอื่นไม่มีคุยสดให้เลือก จึงไม่แสดง
+  /// สมองที่ไม่มีคุยสดของตัวเอง · ไม่ยืม / OpenAI Realtime / Gemini Live
+  List<Widget> _voiceChatBorrow(MindState state, MindMode mode) {
+    final t = S.of(context);
+    final brain = state.brain.labelOf(t);
+    final pick = state.voiceChatBorrow;
+    final noKey = switch (pick) {
+      CallLiveEngine.openai when !state.hasOwnKey => 'OpenAI',
+      CallLiveEngine.gemini when state.premiumKey(TtsEngine.gemini).isEmpty => 'Gemini',
+      _ => null,
+    };
+    return [
+      const SizedBox(height: 14),
+      Text(t.voiceChatBorrowTitle,
+          style: MindType.fit(mindMono(size: 9.5, color: MindColors.ink50, letterSpacing: .1), t.voiceChatBorrowTitle)),
+      const SizedBox(height: 7),
+      for (final (e, title, hint) in [
+        (null, t.voiceChatBorrowNone(brain), t.voiceChatBorrowNoneHint(brain)),
+        (CallLiveEngine.openai, 'OpenAI Realtime', t.voiceChatBorrowOpenAiHint(brain)),
+        (CallLiveEngine.gemini, 'Gemini Live', t.voiceChatBorrowGeminiHint(brain)),
+      ])
+        Padding(
+          padding: const EdgeInsets.only(bottom: 7),
+          child: _choiceRow(
+            title: title,
+            subtitle: hint,
+            selected: pick == e,
+            mode: mode,
+            onTap: () => state.setVoiceChatBorrow(e),
+          ),
+        ),
+      if (noKey != null)
+        Text(t.voiceChatBorrowNoKey(noKey),
+            style: const TextStyle(fontSize: 10.5, height: 1.5, color: Color(0xFFB46A00))),
+    ];
+  }
+
   List<Widget> _voiceChatChoice(MindState state, MindMode mode) {
     final t = S.of(context);
     final live = state.voiceChatLive;
-    final voices = RealtimeCall.voices.toList();
+    final gemini = state.voiceChatLiveEngine == CallLiveEngine.gemini;
+    final voices = (gemini ? GeminiLiveCall.voices : RealtimeCall.voices).toList();
+    final current = gemini ? state.voiceChatGeminiVoice : state.voiceChatVoice;
+    void setVoice(String v) => gemini ? state.setVoiceChatGeminiVoice(v) : state.setVoiceChatVoice(v);
     return [
       const SizedBox(height: 14),
       Text(t.voiceChatWay,
@@ -3321,7 +3364,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       Padding(
         padding: const EdgeInsets.only(bottom: 7),
         child: _choiceRow(
-          title: t.voiceChatWayLive,
+          title: t.voiceChatWayLiveBy(gemini ? 'Gemini Live' : 'OpenAI'),
           subtitle: t.voiceChatWayLiveHint,
           selected: live,
           mode: mode,
@@ -3351,9 +3394,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                     child: j < voices.length
                         ? _segment(
                             text: voices[j],
-                            selected: state.voiceChatVoice == voices[j],
+                            selected: current == voices[j],
                             mode: mode,
-                            onTap: () => state.setVoiceChatVoice(voices[j]),
+                            onTap: () => setVoice(voices[j]),
                           )
                         : const SizedBox.shrink(),
                   ),

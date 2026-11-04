@@ -463,7 +463,7 @@ class ElevenTuningPanel extends StatelessWidget {
     const c = FrameColors.tts;
     final p = state.voiceFor(channel);
     final e = p.eleven;
-    final v4 = p.model.startsWith('eleven_v4');
+    final v4 = PremiumCatalog.elevenDialogueOnly(p.model);
     void set(ElevenTuning n) => state.setVoice(channel, p.copyWith(eleven: n));
     final fx = state.elevenEffects;
 

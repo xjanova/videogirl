@@ -737,6 +737,7 @@ extension AiStrings on S {
   String get voiceChatClose => pick('ปิดไมค์', 'Turn the mic off');
   String get voiceChatWay => pick('ตอนคุยต่อเนื่อง (แตะไมค์ หรือเรียกชื่อ)', 'Hands-free talk (mic tap or calling her name)');
   String get voiceChatWayLive => pick('คุยสด OpenAI', 'OpenAI live');
+  String voiceChatWayLiveBy(String who) => pick('คุยสด $who', '$who live');
   String get voiceChatWayLiveHint => pick(
         'ตอบไว · คิดค่าเสียงจากคีย์ของคุณ แพงกว่าแบบทีละตา · ต่อไม่ได้จะใช้แบบทีละตาให้เอง',
         'Answers fast · billed per audio on your key, more than turn by turn · falls back to it if it cannot connect',

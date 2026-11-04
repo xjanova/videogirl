@@ -186,16 +186,33 @@ extension VoiceStrings on S {
         'ตอบทันทีแบบแอป ChatGPT แต่ใช้เสียงของ OpenAI เท่านั้น · ปิด = คุยทีละตา ด้วยเสียงที่เลือกไว้ข้างล่าง',
         'Instant replies like the ChatGPT app, with OpenAI voices only · off = turn by turn, in the voice picked below',
       );
-  String get voiceChatAnyBrainSwitch => pick('คุยสดด้วย OpenAI', 'Talk live with OpenAI');
-  String voiceChatAnyBrainHint(String brain) => pick(
-        'กดไมค์แล้วตอบทันทีด้วย OpenAI ใช้คีย์ OpenAI ของคุณ · ตอนคุยสดเสียงคุณไปที่ OpenAI และ OpenAI เป็นคนคิด '
-            'ไม่ใช่ $brain · พิมพ์แชทยังใช้ $brain · ปิด = คุยทีละตาด้วย $brain',
-        'Instant replies on the mic with OpenAI, on your OpenAI key · while talking live your voice goes to OpenAI and '
-            'OpenAI does the thinking, not $brain · typed chat still uses $brain · off = turn by turn with $brain',
+  String get voiceChatLiveHintGemini => pick(
+        'ตอบทันทีด้วย Gemini Live ใช้เสียงของ Gemini เท่านั้น · ปิด = คุยทีละตา ด้วยเสียงที่เลือกไว้ข้างล่าง',
+        'Instant replies with Gemini Live, in Gemini voices only · off = turn by turn, in the voice picked below',
       );
-  String get voiceChatAnyBrainNoKey => pick(
-        'ยังไม่มีคีย์ OpenAI · ใส่คีย์ข้างล่างก่อน ไม่งั้นยังคุยทีละตา',
-        'No OpenAI key yet · add it below, until then the mic takes turns',
+
+  // ── คุยสดยืมเจ้าอื่น (สมองที่ไม่มีคุยสดของตัวเอง) ──
+  String get voiceChatBorrowTitle => pick('กดไมค์แล้วคุยสดด้วย', 'Talk live on the mic with');
+  String voiceChatBorrowNone(String brain) => pick('ไม่ยืม · คุยทีละตาด้วย $brain', 'Nothing · turn by turn with $brain');
+  String voiceChatBorrowNoneHint(String brain) => pick(
+        'ถอดเสียง แล้ว $brain คิด แล้วพูดด้วยเสียงแชทที่เลือกไว้ · ช้ากว่าคุยสด',
+        'Transcribed, thought by $brain, spoken in the chat voice · slower than live',
+      );
+  String voiceChatBorrowOpenAiHint(String brain) => pick(
+        'ตอบทันที ใช้คีย์ OpenAI ของคุณ · ตอนคุยสดเสียงคุณไปที่ OpenAI และ OpenAI เป็นคนคิด ไม่ใช่ $brain · '
+            'พิมพ์แชทยังใช้ $brain',
+        'Instant replies on your OpenAI key · while talking live your voice goes to OpenAI and OpenAI does the '
+            'thinking, not $brain · typed chat still uses $brain',
+      );
+  String voiceChatBorrowGeminiHint(String brain) => pick(
+        'ตอบทันที ใช้คีย์ Gemini (AI Studio) ของคุณ · ค้นเว็บด้วย Google Search · ตอนคุยสดเสียงคุณไปที่ Google '
+            'และ Gemini เป็นคนคิด ไม่ใช่ $brain · พิมพ์แชทยังใช้ $brain',
+        'Instant replies on your Gemini (AI Studio) key · searches with Google Search · while talking live your voice '
+            'goes to Google and Gemini does the thinking, not $brain · typed chat still uses $brain',
+      );
+  String voiceChatBorrowNoKey(String who) => pick(
+        'ยังไม่มีคีย์ $who · ใส่คีย์ข้างล่างก่อน ไม่งั้นยังคุยทีละตา',
+        'No $who key yet · add it below, until then the mic takes turns',
       );
   String get callListenOnDevice => pick(
         'ถอดเสียงในเครื่อง (Android 13 ขึ้นไป · เสียงคู่สายไม่ออกนอกเครื่อง)',

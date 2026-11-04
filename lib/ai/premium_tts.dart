@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -7,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
 import '../i18n/strings_voice.dart';
+import '../phone/voice_session.dart';
 import 'eleven_tuning.dart';
 import 'openai_client.dart';
 import 'premium_catalog.dart';
@@ -30,17 +33,20 @@ class PremiumTts {
     required String Function() azureRegion,
     S Function()? strings,
     Duration timeout = const Duration(seconds: 40),
+    RtConnect? connect,
   })  : _http = httpClient ?? http.Client(),
         _keyOf = keyOf,
         _region = azureRegion,
         _s = strings ?? _thai,
-        _timeout = timeout;
+        _timeout = timeout,
+        _connect = connect ?? rtConnectIo;
 
   final http.Client _http;
   final String Function(TtsEngine) _keyOf;
   final String Function() _region;
   final S Function() _s;
   final Duration _timeout;
+  final RtConnect _connect;
   static S _thai() => const S(AppLang.th);
 
   static String providerName(TtsEngine e) => switch (e) {
@@ -186,6 +192,7 @@ class PremiumTts {
     final voice = p.voice.trim();
     if (voice.isEmpty) throw OpenAiFailure(_s().elevenPickVoice);
     final model = p.model.startsWith('eleven_') ? p.model : PremiumCatalog.elevenModels.first;
+    if (PremiumCatalog.elevenSocketModels.contains(model)) return _elevenSocket(key, text, p, model, thai: thai);
     final dialogue = model.startsWith('eleven_v4');
     final uri = dialogue
         ? Uri.parse('https://api.elevenlabs.io/v1/text-to-dialogue?output_format=mp3_44100_128')
@@ -248,6 +255,151 @@ class PremiumTts {
         'speed': r(t.speed),
       },
     };
+  }
+
+  /// รุ่นครึ่งราคา · ต่อ WebSocket ส่งข้อความเดียว ขอปิด แล้วรวมเสียงทั้งหมดเป็น mp3 ก้อนเดียว
+  /// (ไม่ใช่สตรีม · เสียงต้องไปเล่นในเวทีเพื่อให้ปากขยับ เหมือนทุกเจ้า)
+  ///
+  /// 🔴 ล้มทุกทางต้องเป็น [OpenAiFailure] · ผู้เรียกจับเฉพาะชนิดนี้แล้วตกไปเสียงเครื่องพร้อมบอกเหตุผล
+  Future<Utterance> _elevenSocket(String key, String text, VoiceProfile p, String model,
+      {required bool thai}) async {
+    const name = 'ElevenLabs';
+    final (:url, :first) = elevenSocketRequest(text, p, model, thai: thai);
+    final RtSocket socket;
+    try {
+      socket = await _connect(url, {'xi-api-key': key});
+    } on WebSocketException catch (e) {
+      debugPrint('เสียง $name: ต่อ WebSocket ไม่ได้ — ${e.httpStatusCode}');
+      throw OpenAiFailure(_httpError(e.httpStatusCode, name));
+    } on Object catch (e) {
+      debugPrint('เสียง $name: ต่อ WebSocket ไม่ได้ — ${e.runtimeType}');
+      throw OpenAiFailure(_s().errOffline);
+    }
+
+    final done = Completer<Uint8List>();
+    final mp3 = BytesBuilder(copy: false);
+    void fail(String why) {
+      if (!done.isCompleted) done.completeError(OpenAiFailure(why));
+    }
+
+    final sub = socket.messages.listen(
+      (raw) {
+        if (raw is! String) return;
+        final Object? d;
+        try {
+          d = jsonDecode(raw);
+        } on FormatException {
+          return;
+        }
+        if (d is! Map) return;
+        final audio = d['audio'];
+        if (audio is String && audio.isNotEmpty) {
+          try {
+            mp3.add(base64Decode(audio));
+          } on FormatException {
+            // ชิ้นเสีย ข้ามไป · ดีกว่าหยุดทั้งประโยค
+          }
+        }
+        if (d['error'] != null) {
+          // ห้ามพิมพ์ข้อความของเซิร์ฟเวอร์ · อาจสะท้อนข้อความที่ส่งไป
+          final code = '${d['code'] ?? d['error']}'.toLowerCase();
+          debugPrint('เสียง $name: WebSocket ปฏิเสธ — $code');
+          fail(_socketError(code, name));
+        } else if (d['is_final'] == true) {
+          if (mp3.isEmpty) {
+            fail(_s().premiumFailed(name));
+          } else if (!done.isCompleted) {
+            done.complete(mp3.takeBytes());
+          }
+        }
+      },
+      onError: (Object e) {
+        debugPrint('เสียง $name: WebSocket หลุด — ${e.runtimeType}');
+        fail(_s().errOffline);
+      },
+      // ปิดก่อน is_final แต่ได้เสียงมาแล้วก็ใช้ได้ · ไม่ได้อะไรเลย = ล้ม
+      onDone: () {
+        if (mp3.isNotEmpty && !done.isCompleted) {
+          done.complete(mp3.takeBytes());
+        } else {
+          fail(_s().premiumFailed(name));
+        }
+      },
+    );
+
+    try {
+      socket.send(jsonEncode(first));
+      socket.send(jsonEncode({'close_socket': true}));
+      final bytes = await done.future.timeout(_timeout);
+      return (bytes: bytes, mime: 'audio/mpeg');
+    } on TimeoutException {
+      debugPrint('เสียง $name: WebSocket ไม่ตอบใน ${_timeout.inSeconds} วิ — ตัดทิ้ง');
+      throw OpenAiFailure(_s().errOffline);
+    } on OpenAiFailure {
+      rethrow;
+    } on Object catch (e) {
+      debugPrint('เสียง $name: ส่งเข้า WebSocket ไม่ได้ — ${e.runtimeType}');
+      throw OpenAiFailure(_s().errOffline);
+    } finally {
+      await sub.cancel();
+      try {
+        await socket.close();
+      } on Object {
+        // ปิดซ้ำ / หลุดไปแล้ว — ไม่ใช่เรื่องที่ต้องพัง
+      }
+    }
+  }
+
+  /// ที่อยู่กับข้อความแรกของ WebSocket text-to-dialogue · แยกให้เทสต์ตรวจได้
+  ///
+  /// ตามเอกสาร ttd-websocket (2026-11-04): model_id · output_format · language_code ·
+  /// apply_text_normalization · seed อยู่ในที่อยู่ · ข้อความแรกต้องมี `voices` (รุ่นครึ่งราคารับเสียงเดียว) ·
+  /// `voice_settings` รับแค่ stability · ไม่ส่งช่องอื่น เสี่ยงถูกปฏิเสธทั้งประโยค
+  @visibleForTesting
+  static ({Uri url, Map<String, Object> first}) elevenSocketRequest(
+      String text, VoiceProfile p, String model,
+      {required bool thai}) {
+    final t = p.eleven;
+    final tagged = t.tagged(text);
+    final said = tagged.length > elevenMaxChars ? tagged.substring(0, elevenMaxChars) : tagged;
+    final voice = p.voice.trim();
+    final url = Uri(scheme: 'wss', host: 'api.elevenlabs.io', path: '/v1/text-to-dialogue/stream-input', queryParameters: {
+      'model_id': model,
+      'output_format': 'mp3_44100_128',
+      'language_code': thai ? 'th' : 'en',
+      if (t.normalize != 'auto') 'apply_text_normalization': t.normalize,
+      if (t.seed > 0) 'seed': '${t.seed}',
+    });
+    return (
+      url: url,
+      first: {
+        'voices': [voice],
+        'voice_settings': {'stability': (t.stability * 100).roundToDouble() / 100},
+        'inputs': [
+          {'text': said, 'voice_id': voice}
+        ],
+      },
+    );
+  }
+
+  String _httpError(int? status, String name) => switch (status) {
+        null => _s().errOffline,
+        401 => _s().premiumBadKey(name),
+        403 => _s().premiumForbidden(name),
+        402 || 429 => _s().premiumQuota(name),
+        400 || 422 => _s().premiumSettingsRejected(name),
+        404 => _s().premiumVoiceUnavailable(name),
+        _ => _s().premiumFailed(name),
+      };
+
+  String _socketError(String code, String name) {
+    if (code.contains('auth') || code.contains('api_key') || code.contains('unauthorized')) {
+      return _s().premiumBadKey(name);
+    }
+    if (code.contains('quota') || code.contains('limit') || code.contains('credit')) return _s().premiumQuota(name);
+    if (code.contains('voice')) return _s().premiumVoiceUnavailable(name);
+    if (code.contains('invalid') || code.contains('param')) return _s().premiumSettingsRejected(name);
+    return _s().premiumFailed(name);
   }
 
   String _elevenKey() {

@@ -26,6 +26,7 @@ import 'package:videogirl/i18n/strings.dart';
 import 'package:videogirl/i18n/strings_settings.dart';
 import 'package:videogirl/i18n/strings_brains.dart';
 import 'package:videogirl/i18n/strings_voice.dart';
+import 'package:videogirl/phone/voice_session.dart';
 import 'package:videogirl/screens/brain_voice_frames.dart';
 import 'package:videogirl/persona/call_character.dart';
 import 'package:videogirl/persona/mind_soul.dart';
@@ -312,7 +313,7 @@ void main() {
     state.dispose();
   });
 
-  testWidgets('🔴 สมองเจ้าอื่นเปิดคุยสดด้วย OpenAI ได้จากหน้าเสียง · เปิดแล้วเห็นช่องคีย์และตัวเลือกคุยสด', (t) async {
+  testWidgets('🔴 สมองเจ้าอื่นเลือกคุยสดด้วย OpenAI หรือ Gemini Live ได้จากหน้าเสียง · เลือกแล้วเห็นตัวเลือกคุยสด', (t) async {
     final (state, section) = await _mount(t);
     state.setBrain(BrainProvider.claude);
     await t.runAsync(() => state.setOpenAiKey('sk-test-key-for-unit-tests'));
@@ -321,16 +322,25 @@ void main() {
     await t.pump(const Duration(milliseconds: 300));
 
     final s = _s(t);
-    expect(find.text(s.voiceChatWayTurns), findsNothing, reason: 'ยังไม่เปิด = ไม่มีคุยสดให้เลือก');
-    await t.scrollUntilVisible(find.text(s.voiceChatAnyBrainSwitch), 300);
-    await t.ensureVisible(find.text(s.voiceChatAnyBrainSwitch));
+    expect(find.text(s.voiceChatWayTurns), findsNothing, reason: 'ยังไม่ยืม = ไม่มีคุยสดให้เลือก');
+    await t.scrollUntilVisible(find.text('OpenAI Realtime'), 300);
+    await t.ensureVisible(find.text('OpenAI Realtime'));
     await t.pump(const Duration(milliseconds: 300));
-    await t.tap(toggleOf(s.voiceChatAnyBrainSwitch));
+    await t.tap(find.text('OpenAI Realtime'));
     await t.pump(const Duration(milliseconds: 300));
-    expect(state.voiceChatLiveAnyBrain, isTrue);
+    expect(state.voiceChatBorrow, CallLiveEngine.openai);
     expect(state.voiceChatLiveReady, isTrue);
     await t.scrollUntilVisible(find.text(s.voiceChatWayTurns), 300);
     expect(find.text(s.voiceChatWayTurns), findsOneWidget);
+
+    // Gemini ยังไม่มีคีย์ = บอกให้ใส่คีย์ · ยังคุยทีละตา
+    await t.ensureVisible(find.text('Gemini Live'));
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tap(find.text('Gemini Live'));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(state.voiceChatBorrow, CallLiveEngine.gemini);
+    expect(state.voiceChatLiveReady, isFalse);
+    expect(find.text(s.voiceChatBorrowNoKey('Gemini')), findsOneWidget);
     expect(t.takeException(), isNull);
 
     await t.pumpWidget(const SizedBox.shrink());
