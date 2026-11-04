@@ -8,8 +8,8 @@
 ///
 /// ## สามทาง เลือกเองตามสมองที่ตั้งไว้
 ///
-/// - **live** — OpenAI + คีย์ของเจ้าของ ([MindState.voiceChatLiveReady]) → [RealtimeChat] · สมองเจ้าอื่นได้เมื่อเจ้าของ
-///   เปิด [MindState.voiceChatLiveAnyBrain] เอง (OpenAI ทั้งฟังและคิด) · เซิร์ฟเวอร์ฟังว่า
+/// - **live** — OpenAI → [RealtimeChat] · Gemini → [GeminiLiveChat] · คีย์ของเจ้าของ ([MindState.voiceChatLiveEngine]) ·
+///   สมองเจ้าอื่นได้เมื่อเจ้าของเลือกยืมเอง ([MindState.voiceChatBorrow] · เจ้านั้นทั้งฟังและคิด) · เซิร์ฟเวอร์ฟังว่า
 ///   ประโยคจบหรือยัง (semantic_vad) ไม่ใช่แค่เงียบ · เสียงเธอมาเป็นสตรีม ตอบในเสี้ยววินาที
 /// - **turns** — สมองอื่นที่ถอดเสียงได้ → [TurnTaker] ฟังความเงียบ ถอดเสียงล่วงหน้า แล้วดูว่าประโยคจบไหม →
 ///   ส่งเข้าแชททางเดียวกับการพิมพ์ ([sendTurn]) → เธอตอบด้วยเสียงที่ตั้งไว้
@@ -45,6 +45,7 @@ import '../avatar/stage_bridge.dart';
 import '../hands/hands_tag.dart';
 import '../i18n/strings_ai.dart';
 import '../phone/call_session.dart';
+import '../phone/voice_session.dart';
 import '../state/mind_state.dart';
 import '../system/permissions.dart';
 import 'device_speech.dart';
@@ -239,7 +240,10 @@ class VoiceChat extends ChangeNotifier {
   int _notices = 0;
 
   // ── live ──
-  RealtimeChat? _rt;
+  ChatSession? _rt;
+
+  /// เจ้าที่คุยสดตอนเปิดท่อ · ตั้งค่าเปลี่ยนเป็นเจ้าอื่นกลางทาง = ปิด
+  CallLiveEngine? _liveBy;
   bool _liveAudio = false;
   bool _responding = false;
   int _toolsRunning = 0;
@@ -375,7 +379,7 @@ class VoiceChat extends ChangeNotifier {
   // ═══ live ═══════════════════════════════════════════════
 
   Future<bool> _startLive(int seq) async {
-    final RealtimeChat rt;
+    final ChatSession rt;
     try {
       rt = state.openVoiceChat(tools: _runTool);
     } on Object catch (e) {
@@ -384,6 +388,7 @@ class VoiceChat extends ChangeNotifier {
     }
     _rt = rt;
     _engine = VoiceChatEngine.live;
+    _liveBy = state.voiceChatLiveEngine;
     _responding = false;
     _toolsRunning = 0;
     _endWhenQuiet = false;
@@ -456,7 +461,7 @@ class VoiceChat extends ChangeNotifier {
   }
 
   /// เจ้าของพูดจบหนึ่งตา (บทจากเซิร์ฟเวอร์)
-  Future<void> _ownerSaid(RealtimeChat rt, String text) async {
+  Future<void> _ownerSaid(ChatSession rt, String text) async {
     _activity();
     _ownerTalked = true;
     state.noteVoiceLine(fromHer: false, text: text);
@@ -520,7 +525,7 @@ class VoiceChat extends ChangeNotifier {
   DateTime _lookedAt = DateTime(0);
 
   /// ส่งภาพตอนนี้ให้เธอ · ไม่เกินทุก [MindEyes.minGap]
-  Future<void> _look(RealtimeChat rt, {bool force = false}) async {
+  Future<void> _look(ChatSession rt, {bool force = false}) async {
     final eyes = state.eyes;
     final now = _clock();
     if (!eyes.on || (!force && now.difference(_lookedAt) < MindEyes.minGap)) return;
@@ -836,7 +841,8 @@ class VoiceChat extends ChangeNotifier {
       // 🔴 เจ้าของเปลี่ยนสมอง/ลบคีย์/ปิดคุยสดกลางทาง · ทางที่ใช้อยู่ไม่ตรงกับที่ตั้งแล้ว = ปิด ·
       // โดยเฉพาะเปลี่ยนเป็นสมองในเครื่อง ซึ่งสัญญาว่าเสียงไม่ออกนอกเครื่อง แต่ท่อคุยสดยังส่งเสียงไป OpenAI อยู่
       final stale = switch (_engine) {
-        VoiceChatEngine.live => !state.voiceChatLiveReady,
+        // เจ้าของเปลี่ยนเจ้าที่ยืม (OpenAI ↔ Gemini) กลางทาง = ท่อเดิมส่งเสียงไปเจ้าที่ไม่ได้เลือกแล้ว
+        VoiceChatEngine.live => !state.voiceChatLiveReady || state.voiceChatLiveEngine != _liveBy,
         VoiceChatEngine.turns => state.transcribesOnDevice || !state.canTranscribe,
         VoiceChatEngine.device => !state.transcribesOnDevice,
         null => false,

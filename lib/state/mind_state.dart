@@ -46,6 +46,7 @@ import '../ai/openai_config.dart';
 import '../ai/premium_catalog.dart';
 import '../ai/premium_tts.dart';
 import '../ai/proxy_account.dart';
+import '../ai/gemini_live_chat.dart';
 import '../ai/realtime_chat.dart';
 import '../ai/page_reader.dart';
 import '../ai/web_tools.dart';
@@ -1481,7 +1482,13 @@ class MindState extends ChangeNotifier {
     _callGreetingText = p.getString('callGreeting') ?? '';
     _realtimeCalls = p.getBool('realtimeCalls') ?? true;
     _voiceChatLive = p.getBool('voiceChatLive') ?? true;
-    _voiceChatLiveAnyBrain = p.getBool('voiceChatLiveAnyBrain') ?? false;
+    // v0.1.72 เก็บเป็นสวิตช์ "คุยสดด้วย OpenAI" · เปิดไว้ = ยืม OpenAI เหมือนเดิม
+    _voiceChatBorrow = switch (p.getString('voiceChatBorrow')) {
+      'openai' => CallLiveEngine.openai,
+      'gemini' => CallLiveEngine.gemini,
+      _ => (p.getBool('voiceChatLiveAnyBrain') ?? false) ? CallLiveEngine.openai : null,
+    };
+    _voiceChatGeminiVoicePick = p.getString('voiceChatGeminiVoice') ?? '';
     _callSim = p.getString('callSim');
     unawaited(syncApps());
     _voiceChatVoicePick = p.getString('voiceChatVoice') ?? '';
@@ -3508,23 +3515,40 @@ class MindState extends ChangeNotifier {
     _notify();
   }
 
-  /// คุยสดด้วย OpenAI แม้สมองเป็นเจ้าอื่น · ค่าตั้งต้นปิด
+  /// คุยสดยืมเจ้าไหนเมื่อสมองไม่มีคุยสดของตัวเอง · null = ไม่ยืม (ค่าตั้งต้น)
   ///
-  /// เจ้าของ (2026-11-03) ถามว่าคุยสดต้องเปิดสมอง OpenAI ไหม แล้วเลือก "ทำให้แยกได้" · ปกติไม่ยืมคีย์ข้ามสมอง
-  /// (เลือก Claude แล้วแอบคิดด้วย OpenAI = เจ้าของไม่ได้เลือก) · สวิตช์นี้คือเจ้าของเลือกเองว่าคุยสดยอมให้ OpenAI
-  /// ทั้งฟังและคิด · แชทพิมพ์ยังเป็นสมองเดิม · เฉพาะคุยในแอป สายโทรยังตามสมอง ([callLiveEngine])
-  bool _voiceChatLiveAnyBrain = false;
-  bool get voiceChatLiveAnyBrain => _voiceChatLiveAnyBrain;
+  /// เจ้าของ (2026-11-03) ถามว่าคุยสดต้องเปิดสมอง OpenAI ไหม แล้วเลือก "ทำให้แยกได้" · (2026-11-04) เพิ่ม
+  /// "Gemini Live ในแชท" · ปกติไม่ยืมคีย์ข้ามสมอง (เลือก Claude แล้วแอบคิดด้วย OpenAI = เจ้าของไม่ได้เลือก) ·
+  /// ตรงนี้คือเจ้าของเลือกเองว่าคุยสดยอมให้เจ้านั้นทั้งฟังและคิด · แชทพิมพ์ยังเป็นสมองเดิม ·
+  /// เฉพาะคุยในแอป สายโทรยังตามสมอง ([callLiveEngine])
+  CallLiveEngine? _voiceChatBorrow;
+  CallLiveEngine? get voiceChatBorrow => _voiceChatBorrow;
 
-  void setVoiceChatLiveAnyBrain(bool v) {
-    if (_voiceChatLiveAnyBrain == v) return;
-    _voiceChatLiveAnyBrain = v;
-    _save('voiceChatLiveAnyBrain', v);
+  void setVoiceChatBorrow(CallLiveEngine? e) {
+    if (_voiceChatBorrow == e) return;
+    _voiceChatBorrow = e;
+    _save('voiceChatBorrow', e?.name ?? '');
     _notify();
   }
 
-  /// คุยสดใช้ OpenAI ได้ไหม (ยังไม่นับสวิตช์คุยสด) · สมอง OpenAI หรือเจ้าของยอมให้ข้ามสมอง · ต้องมีคีย์ของเจ้าของ
-  bool get voiceChatLiveAllowed => hasOwnKey && (_brain == BrainProvider.openai || _voiceChatLiveAnyBrain);
+  /// สมองนี้มีคุยสดของตัวเอง (OpenAI → Realtime · Gemini → Gemini Live) · ไม่ต้องยืม
+  bool get brainHasLiveChat => _brain == BrainProvider.openai || _brain == BrainProvider.gemini;
+
+  /// เจ้าที่คุยสดในแชทตอนนี้ (ยังไม่นับสวิตช์คุยสด/ทีละตา) · ตามสมองก่อน แล้วค่อยที่เจ้าของยืม ·
+  /// ต้องมีคีย์ของเจ้านั้น · null = คุยทีละตา
+  CallLiveEngine? get voiceChatLiveEngine => switch (_brain) {
+        BrainProvider.openai when hasOwnKey => CallLiveEngine.openai,
+        BrainProvider.gemini when _geminiKey.isNotEmpty => CallLiveEngine.gemini,
+        _ when brainHasLiveChat => null,
+        _ => switch (_voiceChatBorrow) {
+            CallLiveEngine.openai when hasOwnKey => CallLiveEngine.openai,
+            CallLiveEngine.gemini when _geminiKey.isNotEmpty => CallLiveEngine.gemini,
+            _ => null,
+          },
+      };
+
+  /// คุยสดทำได้ไหม (ยังไม่นับสวิตช์คุยสด/ทีละตา)
+  bool get voiceChatLiveAllowed => voiceChatLiveEngine != null;
 
   /// คุยสดได้ไหมตอนนี้
   bool get voiceChatLiveReady => _voiceChatLive && voiceChatLiveAllowed;
@@ -3549,9 +3573,34 @@ class MindState extends ChangeNotifier {
     return RealtimeCall.voices.contains(chat) ? chat : VoiceProfile.openAiDefaults.voice;
   }
 
+  /// เสียงที่เจ้าของเลือกให้คุยสดด้วย Gemini Live · ว่าง = ยังไม่เคยเลือก · คนละชุดกับเสียง OpenAI
+  String _voiceChatGeminiVoicePick = '';
+
+  void setVoiceChatGeminiVoice(String v) {
+    if (!GeminiLiveCall.voices.contains(v) || v == _voiceChatGeminiVoicePick) return;
+    _voiceChatGeminiVoicePick = v;
+    _save('voiceChatGeminiVoice', v);
+    _notify();
+  }
+
+  /// เสียงของเธอตอนคุยสดด้วย Gemini · เลือกเอง > เสียงแชท (ถ้าเป็นเสียง Gemini) > ค่าตั้งต้น
+  String get voiceChatGeminiVoice {
+    if (GeminiLiveCall.voices.contains(_voiceChatGeminiVoicePick)) return _voiceChatGeminiVoicePick;
+    final chat = voiceFor(VoiceChannel.chat).voice;
+    return GeminiLiveCall.voices.contains(chat) ? chat : GeminiLiveCall.defaultVoice;
+  }
+
   /// เสียงคุยสดในรูปที่สังเคราะห์เป็นไฟล์ได้ · ลองฟังกับเสียงขาน ซึ่งไม่ได้ผ่าน Realtime
   VoiceProfile get voiceChatLiveProfile {
     final chat = voiceFor(VoiceChannel.chat);
+    // Gemini TTS ใช้ชื่อเสียงชุดเดียวกับ Live · ขานด้วยเสียงเดียวกับที่คุยต่อ
+    if (voiceChatLiveEngine == CallLiveEngine.gemini) {
+      final base = chat.engine == TtsEngine.gemini
+          ? chat
+          : PremiumCatalog.adapt(VoiceProfile.defaultFor(VoiceChannel.chat, lang), TtsEngine.gemini,
+              thai: lang == AppLang.th);
+      return base.copyWith(voice: voiceChatGeminiVoice);
+    }
     final base = chat.engine == TtsEngine.openai
         ? chat
         : VoiceProfile.defaultFor(VoiceChannel.chat, lang).copyWith(engine: TtsEngine.openai);
@@ -3565,22 +3614,39 @@ class MindState extends ChangeNotifier {
   /// เปลี่ยนเมื่อเสียงขานที่อัดไว้ใช้ไม่ได้แล้ว ([renderWakeReplies] ต้องอัดใหม่)
   int get wakeReplyKey => Object.hash(lang, _wakeReplyProfile);
 
-  RealtimeChat openVoiceChat({required ChatToolRunner tools}) => RealtimeChat(
-        apiKey: effectiveOpenAiKey,
+  /// เปิดคุยสดตามเจ้าที่ใช้ได้ตอนนี้ ([voiceChatLiveEngine]) · ผู้เรียกเช็ก [voiceChatLiveReady] มาก่อนแล้ว
+  ChatSession openVoiceChat({required ChatToolRunner tools}) {
+    final gemini = voiceChatLiveEngine == CallLiveEngine.gemini;
+    final chatTools = chatVoiceTools(
+      // Gemini ค้นด้วย Google Search ของ Live เอง · ไม่ยืมคีย์ OpenAI
+      web: !gemini && _webSearch && _webSearcher(live: true) != null,
+      phone: _phoneControl,
+      knowledge: knowledgePacks.enabled.isNotEmpty,
+      pages: _webSearch,
+    );
+    if (gemini) {
+      return GeminiLiveChat(
+        apiKey: _geminiKey,
         instructions: voiceChatPrompt(),
-        tools: chatVoiceTools(
-          web: _webSearch && _webSearcher(live: true) != null,
-          phone: _phoneControl,
-          knowledge: knowledgePacks.enabled.isNotEmpty,
-          pages: _webSearch,
-        ),
+        tools: chatTools,
         runChatTool: tools,
-        voice: voiceChatVoice,
-        language: _sttLang,
-        // 🔴 "โทรเลย" ตัดสินจากบทที่ถอดได้ในเครื่อง · ถอดเพี้ยน = เธอได้ยินแต่แอปไม่กดโทร · บอกคำที่คาดไว้ให้ตัวถอด
-        transcriptionHint: s.voiceChatTranscriptionHint,
+        webSearch: _webSearch,
+        voice: voiceChatGeminiVoice,
         connect: debugRealtimeConnect,
-      )..onSttFallback = _noteSttFallback;
+      );
+    }
+    return RealtimeChat(
+      apiKey: effectiveOpenAiKey,
+      instructions: voiceChatPrompt(),
+      tools: chatTools,
+      runChatTool: tools,
+      voice: voiceChatVoice,
+      language: _sttLang,
+      // 🔴 "โทรเลย" ตัดสินจากบทที่ถอดได้ในเครื่อง · ถอดเพี้ยน = เธอได้ยินแต่แอปไม่กดโทร · บอกคำที่คาดไว้ให้ตัวถอด
+      transcriptionHint: s.voiceChatTranscriptionHint,
+      connect: debugRealtimeConnect,
+    )..onSttFallback = _noteSttFallback;
+  }
 
   /// บุคลิกในแชทเดิมทั้งหมด (ความจำ ตาราง โปรไฟล์ สายวันนี้) ไม่มีแท็ก + วิธีคุยด้วยเสียงและเครื่องมือ
   String voiceChatPrompt() {
@@ -3599,9 +3665,11 @@ class MindState extends ChangeNotifier {
       pcProfile: linked ? brainx.ownerProfile : '',
       appNews: _appNews(),
     );
+    final gemini = voiceChatLiveEngine == CallLiveEngine.gemini;
     final block = MindPersona.voiceChatBlock(
       _lang,
-      web: _webSearch && _webSearcher(live: true) != null,
+      web: _webSearch && (gemini || _webSearcher(live: true) != null),
+      googleSearch: gemini,
       pages: _webSearch,
       phone: _phoneControl,
       mailApps: _mailApps == null ? null : [for (final a in _mailApps!) a.name],
@@ -5154,10 +5222,10 @@ class MindState extends ChangeNotifier {
   /// ได้เฉพาะ **OpenAI ด้วยคีย์ของเจ้าของ** (เครื่องมือ web_search ของ OpenAI) ·
   /// คำค้นไปที่เดียวกับที่ข้อความไปอยู่แล้ว ไม่ได้เปิดทางใหม่ให้ข้อมูลออก ·
   /// สมองในเครื่อง/ในบ้านเลือกเพราะไม่อยากให้อะไรออกไปที่ OpenAI จึงไม่ยืมคีย์มาค้น ·
-  /// [live] = คุยสด ซึ่งเจ้าของยอมให้ OpenAI ฟังและคิดอยู่แล้ว ([voiceChatLiveAnyBrain]) · ค้นที่เดียวกันได้
+  /// [live] = คุยสด ซึ่งเจ้าของยอมให้ OpenAI ฟังและคิดอยู่แล้ว ([voiceChatBorrow]) · ค้นที่เดียวกันได้
   WebSearcher? _webSearcher({bool live = false}) {
     final openai = _brain == BrainProvider.openai;
-    if (!hasOwnKey || !(openai || (live && _voiceChatLiveAnyBrain))) return null;
+    if (!hasOwnKey || !(openai || (live && voiceChatLiveEngine == CallLiveEngine.openai))) return null;
     return (query) async {
       // web_search ใช้ได้บางรุ่น · รุ่นที่เลือกไว้ไม่รองรับ (400) → ลองรุ่นที่รองรับ
       // แน่ ๆ แล้วจำรุ่นที่ผ่านไว้ ไม่ต้องล้มก่อนทุกครั้ง · สมองเจ้าอื่น = รุ่นของสมองไม่ใช่รุ่น OpenAI

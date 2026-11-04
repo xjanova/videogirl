@@ -215,9 +215,21 @@ extension BrainStrings on S {
         'A little closer to the original, at a small latency cost',
       );
   String get elV3Only => pick(
-        'ใช้ได้กับรุ่น Eleven v3 · รุ่น v4 ปรับได้แค่ความนิ่งกับความเหมือน',
-        'Eleven v3 only · v4 accepts stability and similarity only',
+        'ใช้ได้กับรุ่น Eleven v3 · รุ่น v4 ปรับได้แค่ความนิ่งกับความเหมือน · รุ่นครึ่งราคาปรับได้แค่ความนิ่ง',
+        'Eleven v3 only · v4 accepts stability and similarity only · half-price models accept stability only',
       );
+
+  /// ราคาตามหน้า API pricing ของ ElevenLabs (ตรวจ 2026-11-04) · ให้เจ้าของเห็นก่อนเลือก
+  String? elevenModelHint(String model) => switch (model) {
+        'eleven_v4' => pick('คุณภาพสูงสุด · \$0.08 ต่อพันตัวอักษร', 'Highest quality · \$0.08 per 1K characters'),
+        'eleven_v4_turbo' => pick('ครึ่งราคา · \$0.04 ต่อพันตัวอักษร · ตอบไว รุ่นใหม่',
+            'Half price · \$0.04 per 1K characters · fast, newest'),
+        'eleven_v3' => pick('รุ่นก่อน · \$0.08 ต่อพันตัวอักษร · ปรับสไตล์และความเร็วได้',
+            'Previous generation · \$0.08 per 1K characters · style and speed adjustable'),
+        'eleven_v3_conversational' => pick('ครึ่งราคา · \$0.04 ต่อพันตัวอักษร · รุ่นก่อน ตอบไว',
+            'Half price · \$0.04 per 1K characters · previous generation, fast'),
+        _ => null,
+      };
   String get elMood => pick('อารมณ์ตั้งต้น (แท็กเสียง)', 'Default mood (audio tag)');
   String get elMoodHint => pick(
         'ใส่แท็กอย่าง [warmly] นำหน้าทุกประโยค ให้เธอพูดด้วยอารมณ์นั้นเสมอ',

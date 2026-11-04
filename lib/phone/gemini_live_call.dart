@@ -75,8 +75,9 @@ class GeminiLiveCall extends VoiceSession {
   ///
   /// ค้นข้อมูล / ถามเจ้าของ / โอนสาย = นานได้ถึงนาที · รอเงียบ = คู่สายคิดว่าสายหลุด · ผลมาตอนเธอว่าง (WHEN_IDLE) ·
   /// โอนสาย: ประโยค "ขอไปดูก่อนนะคะ" ต้องพูดได้หลังเรียก ก่อนเครือข่ายพักสายคนโทร ·
-  /// วางสาย = ผลกลับแบบเงียบ (SILENT) ไม่งั้นเธอพูดอีกประโยคหลังลา
-  static const _async = {'lookup_info', 'ask_owner', 'transfer_to_owner', 'end_call'};
+  /// วางสาย = ผลกลับแบบเงียบ (SILENT) ไม่งั้นเธอพูดอีกประโยคหลังลา · end_conversation = ปิดไมค์ในแชท (GeminiLiveChat)
+  static const _async = {'lookup_info', 'ask_owner', 'transfer_to_owner', 'end_call', 'end_conversation'};
+  static const _silent = {'end_call', 'end_conversation'};
 
   /// ผลที่ต้องถึงเธอแม้เซิร์ฟเวอร์ยกเลิกการเรียกไปแล้ว · ส่งเป็นข้อความแทน
   static const _mustArrive = {
@@ -86,6 +87,18 @@ class GeminiLiveCall extends VoiceSession {
 
   /// ข้อความจากแอปส่งในบท user · บอกว่าไม่ใช่คำของคู่สาย ไม่งั้นเธอตอบเหมือนคู่สายพูด
   static const notePrefix = '(Note from your phone app, not words the caller said.) ';
+
+  /// คำนำหน้าข้อความจากแอป · คุยกับเจ้าของในแชทใช้คำว่าเจ้าของแทนคู่สาย
+  @protected
+  String get noteLead => notePrefix;
+
+  /// เงียบนานเท่านี้ = จบตา · คุยกับเจ้าของในแชทรอนานกว่า (คนขับรถพูดเป็นช่วง ๆ)
+  @protected
+  Duration get turnSilence => const Duration(milliseconds: 600);
+
+  /// เปิดเครื่องมือ Google Search ของ Live API เอง · สายโทรไม่เปิด (คนโทรไม่ได้ขอให้ค้นเว็บ)
+  @protected
+  bool get googleSearch => false;
 
   final String apiKey;
   final String instructions;
@@ -121,12 +134,14 @@ class GeminiLiveCall extends VoiceSession {
         },
         'tools': [
           {'functionDeclarations': [for (final t in sessionTools) declaration(t)]},
+          // เอกสาร live-api/tools: Google Search ใช้ร่วมกับ function calling ในเซสชันเดียวกันได้
+          if (googleSearch) {'googleSearch': <String, Object?>{}},
         ],
         'realtimeInputConfig': {
           // หยุด 600 มิลลิวินาที = จบตา เหมือน Realtime · ทางลำโพงมีเสียงห้องปน เริ่มนับเป็นคำพูดยากขึ้น
           'automaticActivityDetection': {
             'prefixPaddingMs': 300,
-            'silenceDurationMs': 600,
+            'silenceDurationMs': turnSilence.inMilliseconds,
             if (!fullDuplex) 'startOfSpeechSensitivity': 'START_SENSITIVITY_LOW',
           },
           // ทางลำโพงพูดทีละฝั่ง (Realtime: interrupt_response = fullDuplex)
@@ -341,7 +356,7 @@ class GeminiLiveCall extends VoiceSession {
             {
               'role': 'user',
               'parts': [
-                {'text': '$notePrefix${n.text}'},
+                {'text': '$noteLead${n.text}'},
               ],
             },
         ],
@@ -375,6 +390,35 @@ class GeminiLiveCall extends VoiceSession {
     if (!connected || text.trim().isEmpty) return;
     _note('Say exactly this to the caller, in the same language, and nothing else: ${text.trim()}', reply: true);
   }
+
+  /// ภาพหนึ่งใบเข้าบทสนทนา · ไม่สั่งให้ตอบ · ใช้กับคำพูดที่ตามมา (เอกสาร live-api/capabilities: `video` ·
+  /// JPEG · ไม่เกินวินาทีละภาพ · ผู้เรียกส่งตอนเจ้าของเริ่มพูดเท่านั้น ดู VoiceChat)
+  void sendImage(Uint8List jpeg) {
+    if (!connected || jpeg.isEmpty) return;
+    _send({
+      'realtimeInput': {
+        'video': {'data': base64Encode(jpeg), 'mimeType': 'image/jpeg'},
+      },
+    });
+  }
+
+  /// เจ้าของแตะให้เธอหยุดพูด · Live ไม่มีคำสั่งยกเลิกคำตอบ = ทิ้งเสียงที่เหลือของตานี้ ล้างลำโพง
+  /// แล้วบอกเธอว่าเจ้าของไม่ได้ยินที่เหลือ (ไม่บอก = ตาถัดไปเธออ้างถึงประโยคที่เจ้าของไม่ได้ยิน)
+  Future<void> interrupt() async {
+    if (!connected) return;
+    if (_speaking) {
+      _dropTurn = true;
+      _note('The owner stopped you mid-sentence and did not hear the rest of that answer.', reply: false);
+    }
+    await onInterruption?.call();
+  }
+
+  /// เจ้าของตัดตานี้แล้ว · เสียงที่ยังมา = ทิ้ง จนจบตา
+  bool _dropTurn = false;
+
+  /// เจ้าของ / คู่สาย เริ่มพูด (บทชิ้นแรกของตามาถึง) · Live ไม่มีเหตุการณ์เริ่มพูดจากเซิร์ฟเวอร์ ·
+  /// คุยกับเจ้าของใช้เป็นจังหวะส่งภาพเหมือน Realtime
+  void Function()? onSpeechStart;
 
   // ── รับ ─────────────────────────────────────────────────
 
@@ -448,11 +492,13 @@ class GeminiLiveCall extends VoiceSession {
       _speaking = true;
       onResponseStart?.call();
     }
+    if (_dropTurn) return;
     onAudio?.call(pcm);
   }
 
   /// เธอพูดจบตา / ถูกแทรก / หยุดรอผลเครื่องมือ · ข้อความที่รอคิวส่งได้แล้ว
   void _endTurn() {
+    _dropTurn = false;
     if (_speaking) {
       _speaking = false;
       onResponseDone?.call();
@@ -477,6 +523,7 @@ class GeminiLiveCall extends VoiceSession {
 
   void _onCallerDelta(String t) {
     if (t.isEmpty) return;
+    if (_callerText.isEmpty) onSpeechStart?.call();
     _callerText.write(t);
     _callerTimer?.cancel();
     _callerTimer = Timer(transcriptGap, _flushCaller);
@@ -556,7 +603,7 @@ class GeminiLiveCall extends VoiceSession {
             'response': {
               ...response,
               // เอกสาร live-api/tools: scheduling อยู่ใน response · ใช้กับเครื่องมือแบบไม่รอผลเท่านั้น
-              if (_async.contains(name)) 'scheduling': name == 'end_call' ? 'SILENT' : 'WHEN_IDLE',
+              if (_async.contains(name)) 'scheduling': _silent.contains(name) ? 'SILENT' : 'WHEN_IDLE',
             },
           },
         ],

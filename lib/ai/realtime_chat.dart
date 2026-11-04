@@ -28,29 +28,16 @@ import '../phone/realtime_call.dart';
 /// ทำงานตามเครื่องมือที่เธอเรียก แล้วคืนข้อความผลให้เธอพูดต่อ
 typedef ChatToolRunner = Future<String> Function(String name, Map<String, Object?> args);
 
-class RealtimeChat extends RealtimeCall {
-  RealtimeChat({
-    required super.apiKey,
-    required super.instructions,
-    required this.tools,
-    required this.runChatTool,
-    super.voice,
-    super.language,
-    super.transcriptionHint,
-    super.connect,
-  }) : super(greeting: '', turnDetection: chatTurnDetection);
+/// คุยสดกับเจ้าของในแชท ไม่ว่าเจ้าไหน (OpenAI Realtime · Gemini Live) · ตัวคุมฟังคือ VoiceChat ·
+/// เครื่องมือของแชทแทนเครื่องมือในสาย · ส่งภาพจากกล้องได้ · เจ้าของแตะให้หยุดพูดได้
+mixin ChatSession on VoiceSession {
+  List<Map<String, Object?>> get tools;
+  ChatToolRunner get runChatTool;
 
-  /// ใจเย็น · เซิร์ฟเวอร์รอนานขึ้นเมื่อประโยคฟังยังไม่จบ ("แล้วก็…") · ตอบเองเมื่อจบตา ·
-  /// ไม่ตัดเสียงเธอเองเมื่อได้ยินเสียง (ไมค์กับลำโพงอยู่เครื่องเดียวกัน เสียงเธอย้อนเข้าไมค์ได้)
-  static const chatTurnDetection = <String, Object?>{
-    'type': 'semantic_vad',
-    'eagerness': 'low',
-    'create_response': true,
-    'interrupt_response': false,
-  };
-
-  final List<Map<String, Object?>> tools;
-  final ChatToolRunner runChatTool;
+  Future<void> interrupt();
+  void sendImage(Uint8List jpeg);
+  void Function()? get onSpeechStart;
+  set onSpeechStart(void Function()? f);
 
   /// ผลเครื่องมือช้ากว่านี้ (ค้นเว็บ) = ตอบว่าล้ม · เธอเงียบรอในรถนาน ๆ ไม่ได้
   static const toolLimit = Duration(seconds: 25);
@@ -86,6 +73,33 @@ class RealtimeChat extends RealtimeCall {
       if (callId is String && connected) toolOutput(callId, out);
     }());
   }
+}
+
+class RealtimeChat extends RealtimeCall with ChatSession {
+  RealtimeChat({
+    required super.apiKey,
+    required super.instructions,
+    required this.tools,
+    required this.runChatTool,
+    super.voice,
+    super.language,
+    super.transcriptionHint,
+    super.connect,
+  }) : super(greeting: '', turnDetection: chatTurnDetection);
+
+  /// ใจเย็น · เซิร์ฟเวอร์รอนานขึ้นเมื่อประโยคฟังยังไม่จบ ("แล้วก็…") · ตอบเองเมื่อจบตา ·
+  /// ไม่ตัดเสียงเธอเองเมื่อได้ยินเสียง (ไมค์กับลำโพงอยู่เครื่องเดียวกัน เสียงเธอย้อนเข้าไมค์ได้)
+  static const chatTurnDetection = <String, Object?>{
+    'type': 'semantic_vad',
+    'eagerness': 'low',
+    'create_response': true,
+    'interrupt_response': false,
+  };
+
+  @override
+  final List<Map<String, Object?>> tools;
+  @override
+  final ChatToolRunner runChatTool;
 }
 
 /// เครื่องมือของแชทด้วยเสียง · prompt บอกว่าใช้เมื่อไหร่ (MindPersona.voiceChatBlock) ·
