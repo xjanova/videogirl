@@ -634,6 +634,8 @@ extension AiStrings on S {
       );
   String get callNoteUnseenTag =>
       pick('(เจ้าของยังไม่ได้อ่าน)', '(not read by the owner yet)');
+  String get callNoteToldTag => pick('(บอกเจ้าของในแชทไปแล้ว · อย่ายกมาพูดซ้ำเอง ตอบเมื่อเจ้าของถามถึง)',
+      '(already told the owner in chat · do not bring it up again unless the owner asks)');
   String get speakerCaller => pick('คู่สาย', 'Caller');
   String get callNoteSheetTitle => pick('บันทึกสาย', 'Call note');
   String get callNoteConversation => pick('บทสนทนาเต็ม', 'Full conversation');

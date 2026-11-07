@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:videogirl/i18n/strings.dart';
 import 'package:videogirl/i18n/strings_ai.dart';
 import 'package:videogirl/phone/call_notes.dart';
 import 'package:videogirl/state/mind_state.dart';
@@ -139,6 +140,56 @@ void main() {
       lines: const [(fromHer: true, text: 'สวัสดีค่ะ')],
     );
     expect(notes.notes.single.summary, state.s.callNoteSilent);
+  });
+
+  group('บอกในแชทแล้ว ไม่บอกซ้ำทุกแชท', () {
+    // เจ้าของ (2026-11-07): "มายด์มาบอกว่ามีคนพูดว่าอยากให้ตาย แล้วเธอก็พูดซ้ำในทุกแชท"
+    final now = DateTime(2026, 11, 7, 10);
+    Future<CallNotes> one() async {
+      final notes = CallNotes(clock: () => now);
+      await notes.load();
+      await notes.add(CallNote(
+          id: 'n1', at: now.subtract(const Duration(hours: 2)), who: 'คุณต้น', summary: 'ฝากเรื่อง', lines: const []));
+      return notes;
+    }
+
+    test('🔴 บอกแล้ว = ป้ายเปลี่ยนเป็น "บอกแล้ว อย่าพูดซ้ำ" · ป้ายยังไม่ได้อ่านในไทม์ไลน์ยังอยู่', () async {
+      final notes = await one();
+      expect(notes.untoldIds(), ['n1']);
+      expect(notes.promptBlock(unseenTag: '(UNSEEN)', toldTag: '(TOLD)'), contains('ฝากเรื่อง (UNSEEN)'));
+      await notes.markTold(notes.untoldIds());
+      expect(notes.untoldIds(), isEmpty);
+      final block = notes.promptBlock(unseenTag: '(UNSEEN)', toldTag: '(TOLD)');
+      expect(block, contains('ฝากเรื่อง (TOLD)'));
+      expect(block, isNot(contains('(UNSEEN)')));
+      expect(notes.unseen, 1, reason: 'เจ้าของยังไม่ได้เปิดอ่านเอง');
+    });
+
+    test('🔴 ปิดแอปเปิดใหม่ก็ยังจำว่าบอกแล้ว', () async {
+      final notes = await one();
+      await notes.markTold(['n1']);
+      final again = CallNotes(clock: () => now);
+      await again.load();
+      expect(again.told('n1'), isTrue);
+    });
+
+    test('เปิดอ่านแล้ว = ไม่มีป้ายเลย', () async {
+      final notes = await one();
+      await notes.markTold(['n1']);
+      await notes.markSeen('n1');
+      expect(notes.promptBlock(unseenTag: '(UNSEEN)', toldTag: '(TOLD)'), isNot(contains('(')));
+    });
+
+    test('🔴 แชทตอบสำเร็จแล้วจึงปิดป้าย · คุยสดเปิดแล้วก็ปิด · ป้ายบอกเธอว่าอย่ายกมาพูดเอง', () {
+      final src = File('lib/state/mind_state.dart').readAsStringSync();
+      final send = src.indexOf('Future<void> _send(String text)');
+      final told = src.indexOf('await _callNotes?.markTold(untoldCalls)', send);
+      expect(told, greaterThan(send));
+      expect(src.lastIndexOf('if (!failed) {', told), greaterThan(send), reason: 'สมองล้ม = ยังไม่ได้บอกจริง');
+      final voice = src.indexOf('String voiceChatPrompt()');
+      expect(src.indexOf('_callNotes?.markTold(untoldCalls)', voice), greaterThan(voice));
+      expect(const S(AppLang.th).callNoteToldTag, contains('อย่ายกมาพูดซ้ำ'));
+    });
   });
 }
 
