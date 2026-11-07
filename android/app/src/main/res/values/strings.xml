@@ -99,6 +99,9 @@
     <string name="direct_pair_again">กุญแจเชื่อมต่อใช้ไม่ได้แล้ว เปิด Wireless debugging เพื่อจับคู่ใหม่</string>
     <string name="direct_pairing_failed">จับคู่ไม่สำเร็จ ตรวจรหัสและลองอีกครั้ง</string>
     <string name="direct_reconnect_failed">ยังเชื่อมต่อเสียงตรงไม่ได้ จะลองอีกครั้งเมื่อ Wi-Fi พร้อม</string>
+    <string name="direct_missed_channel">มายด์ไม่ได้รับสายแทน</string>
+    <string name="direct_missed_title">มายด์ปล่อยสายให้ดัง · เสียงตรงหลุด</string>
+    <string name="direct_missed_text">ตัวช่วยเสียงตรงหายไป (รีบูต อัปเดตแอป หรือปิดการแก้ไขข้อบกพร่องไร้สาย) ถ้ารับไป คู่สายจะไม่ได้ยินเธอ · วางสายแล้วจะลองต่อให้เอง ถ้ายังไม่ติด แตะ ลองเชื่อมต่อ</string>
     <string name="direct_status_channel">สถานะเสียงตรงในสาย</string>
     <string name="direct_status_title">GigGok · เสียงตรงในสาย</string>
     <string name="direct_status_ready">เชื่อมต่อแล้ว</string>

@@ -35,11 +35,60 @@ class DirectAudioMonitorService : Service() {
         private const val ACTION_EXTEND = "com.xjanova.videogirl.direct.EXTEND"
         private const val ACTION_RESTORE = "com.xjanova.videogirl.direct.RESTORE"
 
+        private const val MISSED_CHANNEL = "giggok_direct_missed"
+        private const val MISSED = 7052
+        private const val PI_MISSED_OPEN = 7053
+        private const val PI_MISSED_RETRY = 7054
+
+        @Volatile private var instance: DirectAudioMonitorService? = null
+        @Volatile private var retryAfterCall = false
+
         fun start(context: Context) {
             try {
                 ContextCompat.startForegroundService(context.applicationContext,
                     Intent(context, DirectAudioMonitorService::class.java))
             } catch (_: RuntimeException) { /* Background-start restrictions: next resume catches up. */ }
+        }
+
+        /**
+         * She let a call ring because the helper was gone. The owner may not be at the phone, and the
+         * ongoing card is silent, so say it once out loud. The reconnect waits for the call to end
+         * ([callsGone]): setup refuses during a call, and a try while it rings only lengthens the back-off.
+         */
+        fun missedCall(context: Context) {
+            retryAfterCall = true
+            val app = context.applicationContext
+            val manager = app.getSystemService(NotificationManager::class.java) ?: return
+            try {
+                manager.createNotificationChannel(NotificationChannel(MISSED_CHANNEL,
+                    app.getString(R.string.direct_missed_channel), NotificationManager.IMPORTANCE_HIGH))
+                val open = PendingIntent.getActivity(app, PI_MISSED_OPEN,
+                    Intent(app, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                val retry = PendingIntent.getForegroundService(app, PI_MISSED_RETRY,
+                    Intent(app, DirectAudioMonitorService::class.java).setAction(ACTION_RETRY),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                val text = app.getString(R.string.direct_missed_text)
+                manager.notify(MISSED, NotificationCompat.Builder(app, MISSED_CHANNEL)
+                    .setSmallIcon(R.drawable.ic_direct_offline)
+                    .setContentTitle(app.getString(R.string.direct_missed_title))
+                    .setContentText(text)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                    .setContentIntent(open)
+                    .setAutoCancel(true)
+                    .addAction(R.drawable.ic_direct_working, app.getString(R.string.direct_status_retry), retry)
+                    .build())
+            } catch (_: RuntimeException) { /* POST_NOTIFICATIONS denied: the call screen already said it. */ }
+        }
+
+        /** No call left. Telecom can still say "in call" for a moment, so the reconnect waits a little. */
+        fun callsGone(context: Context) {
+            if (!retryAfterCall) return
+            retryAfterCall = false
+            val app = context.applicationContext
+            Handler(Looper.getMainLooper()).postDelayed({
+                val running = instance
+                if (running != null) running.retry() else start(app)
+            }, 3000)
         }
     }
 
@@ -54,6 +103,8 @@ class DirectAudioMonitorService : Service() {
     private var networkRegistered = false
     private var unlockRegistered = false
     private var shown: String? = null
+    /** A retry asked for while a check runs: run it when that check ends, not drop it. */
+    private var retryPending = false
     private val power by lazy { getSystemService(PowerManager::class.java) }
     private val network = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) { main.post { refresh(force = true) } }
@@ -78,6 +129,7 @@ class DirectAudioMonitorService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         manager.createNotificationChannel(NotificationChannel(CHANNEL,
             getString(R.string.direct_status_channel), NotificationManager.IMPORTANCE_LOW))
         startForeground(NOTIFICATION, notification())
@@ -100,8 +152,8 @@ class DirectAudioMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_RETRY) {
-            keyRejected = false
-            nextAttempt = 0L
+            retry()
+            return START_STICKY
         } else if (intent?.action == ACTION_PAUSE) {
             if (BankingPause.status(this)["needsConfirmation"] == false) {
                 DirectAudioSetup.pause(this, 5, "notification") { refresh(force = true) }
@@ -119,10 +171,18 @@ class DirectAudioMonitorService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         main.removeCallbacks(tick)
         if (unlockRegistered) unregisterReceiver(unlock)
         if (networkRegistered) try { connectivity.unregisterNetworkCallback(network) } catch (_: RuntimeException) {}
         super.onDestroy()
+    }
+
+    /** The owner's button, or the end of a call she let ring: try now, past any back-off. */
+    private fun retry() {
+        keyRejected = false
+        nextAttempt = 0L
+        if (checking) retryPending = true else refresh(force = true)
     }
 
     private fun refresh(force: Boolean = false) {
@@ -152,7 +212,10 @@ class DirectAudioMonitorService : Service() {
                 nextAttempt = SystemClock.elapsedRealtime() + (15_000L shl failures)
             }
             if (keyRejected && state == "offline") state = "key_rejected"
+            // Back up: the "she let a call ring" card is no longer true.
+            if (result == "ready") manager.cancel(MISSED)
             showNotification()
+            if (retryPending) { retryPending = false; main.post { retry() } }
         }
     }
 

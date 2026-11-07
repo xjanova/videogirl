@@ -85,6 +85,9 @@
     <string name="direct_pair_again">The saved connection key was rejected. Open Wireless debugging to pair again.</string>
     <string name="direct_pairing_failed">Pairing failed. Check the code and try again.</string>
     <string name="direct_reconnect_failed">Direct call audio is offline. GigGok will retry when Wi-Fi is available.</string>
+    <string name="direct_missed_channel">Mind did not answer</string>
+    <string name="direct_missed_title">Mind let the call ring: direct call audio is down</string>
+    <string name="direct_missed_text">The direct audio helper is gone (restart, app update or Wireless debugging off). If she answered, the caller would not hear her. It reconnects after the call; if it still fails, tap Reconnect.</string>
     <string name="direct_status_channel">Direct call audio status</string>
     <string name="direct_status_title">GigGok · Direct call audio</string>
     <string name="direct_status_ready">Connected</string>

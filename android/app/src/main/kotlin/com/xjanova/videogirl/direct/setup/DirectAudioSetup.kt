@@ -289,14 +289,22 @@ object DirectAudioSetup {
     }
 
     /** Asked while it rings. On a phone set up for direct audio a helper that is gone
-     *  means she would answer and the caller would hear nothing. Answers on the main thread. */
+     *  means she would answer and the caller would hear nothing. Answers on the main thread.
+     *
+     *  Own thread, not [work]: a monitor reconnect there (NSD discovery, then up to 25 probes) holds it for
+     *  tens of seconds, the ring check queued behind it, the call screen's 3 s wait ran out and she
+     *  answered into silence. A status read is one short session; a probe beside it just retries. */
     fun helperDown(context: Context, answer: (Boolean) -> Unit) {
         val app = context.applicationContext
-        work.execute {
-            val down = live(app) == "offline"
+        Thread({
+            val down = try { live(app) == "offline" } catch (_: Exception) { true }
             main.post { answer(down) }
-        }
+        }, "giggok-direct-ring").apply { isDaemon = true; start() }
     }
+
+    /** Paired on this phone, so its speaker path is not heard: a helper that cannot answer counts as gone. */
+    fun configured(context: Context): Boolean =
+        context.getSharedPreferences("giggok_direct_audio", Context.MODE_PRIVATE).getString("token", null) != null
 
     /** Every process on the phone, biggest first, read by the shell helper. Runs on [work] with the other
      *  helper sessions; during a call the helper's one session is the call. Answers on the main thread. */
@@ -339,7 +347,7 @@ object DirectAudioSetup {
     }
 
     /** What the settings card shows: asked of the helper now, not remembered from an earlier setup.
-     *  Runs on [work], so never alongside a setup probe. */
+     *  Runs on [work], so never alongside a setup probe, except for [helperDown] while it rings. */
     private fun live(context: Context): String {
         val prefs = context.getSharedPreferences("giggok_direct_audio", Context.MODE_PRIVATE)
         if (prefs.getString("token", null) == null) return "not_paired"

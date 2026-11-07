@@ -34,6 +34,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.xjanova.videogirl.PhoneUi.dp
+import com.xjanova.videogirl.direct.setup.DirectAudioMonitorService
 import com.xjanova.videogirl.direct.setup.DirectAudioSetup
 import java.util.Locale
 
@@ -1142,15 +1143,20 @@ class InCallActivity : Activity() {
                 autoAnswer = null
                 // กริ่งหยุด หรือสายที่ดังเปลี่ยนเป็นอีกสายแล้ว = ไม่รับแทน (mindAnswer รับ "สายปัจจุบัน")
                 if (MindInCallService.stateOf(call) != Call.STATE_RINGING || MindInCallService.current !== call) return
-                // ถามตัวช่วยยังไม่เสร็จ (ตั้งให้รับทันที) · ไม่ตอบเกินสามวิ = ไม่รู้ ไม่ขวางเธอ
+                // ถามตัวช่วยยังไม่เสร็จ (ตั้งให้รับทันที) · รอได้อีกสามวิ
                 val waited = SystemClock.uptimeMillis() - autoAt
                 if (directDown == null && waited < 3000) {
                     autoAnswer = this
                     ui.postDelayed(this, 100)
                     return
                 }
-                if (directDown == true) {
+                // 🔴 เครื่องที่ตั้งเสียงตรงไว้ ตัวช่วยตอบไม่ทัน = ถือว่าหลุด · เดิม "ไม่รู้ = รับ" แล้วคู่สายได้ยินความเงียบ
+                // (เจ้าของ: "ถ้า debug wifi หลุด ระบบรับสายเอง จะได้ยิน มายด์ ปกติไหม" → "แก้เลย")
+                // · เครื่องที่ไม่เคยตั้งเสียงตรง ใช้ทางลำโพงได้ ไม่ขวาง
+                if (directDown == true || (directDown == null && DirectAudioSetup.configured(this@InCallActivity))) {
                     skip("direct_offline", R.string.call_auto_no_direct)
+                    // บอกเจ้าของให้รู้แม้ไม่ได้อยู่หน้าเครื่อง · วางสายแล้วลองต่อให้เอง (ระหว่างสายต่อไม่ได้)
+                    DirectAudioMonitorService.missedCall(this@InCallActivity)
                     return
                 }
                 // 🔴 ไม่มีเน็ตแต่สมองต้องใช้เน็ต = รับไปแล้วทักได้คำเดียวแล้วเงียบ · ให้กริ่งดังให้เจ้าของรับเอง
