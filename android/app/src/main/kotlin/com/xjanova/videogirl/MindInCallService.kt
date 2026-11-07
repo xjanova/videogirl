@@ -103,6 +103,8 @@ class MindInCallService : InCallService() {
         MainActivity.leaveLockScreen()
         // ตัวเธอที่ถูกปลุกมาคุยสายเบื้องหลัง · ไม่มีจอแล้วก็ปล่อย (หลังสรุปสายเสร็จ)
         MindEngine.releaseWhenIdle()
+        // เธอปล่อยสายนี้ให้ดังเพราะเสียงตรงหลุด · ระหว่างสายต่อใหม่ไม่ได้ จบสายแล้วต่อให้เลย
+        com.xjanova.videogirl.direct.setup.DirectAudioMonitorService.callsGone(this)
     }
 
     override fun onCallAudioStateChanged(audioState: CallAudioState) {
