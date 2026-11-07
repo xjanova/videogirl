@@ -121,6 +121,8 @@ public final class DirectAudioServer {
         volatile boolean alive=true, injecting=false;
         AudioTrack track;
         volatile AudioRecord down, up;
+        // After the owner took over: [down] is a VOICE_CALL capture carrying both sides.
+        volatile boolean callCapture=false;
         Thread reader, writer, ownerReader;
         final ArrayBlockingQueue<byte[]> queue=new ArrayBlockingQueue<>(100);
         final AtomicLong queued=new AtomicLong(), written=new AtomicLong();
@@ -316,18 +318,35 @@ public final class DirectAudioServer {
             join(old);
             queue.clear(); queued.set(0); written.set(0);
         }
+        /**
+         * The owner took the call: record both sides from one VOICE_CALL capture in place of the downlink one.
+         * A second, concurrent VOICE_UPLINK capture is what the owner heard as "the caller is gone, only my
+         * voice with an echo": HALs that serve one in-call capture path hand both records the uplink, so the
+         * recording carried the owner twice, a few ms apart, and the caller not at all. One capture cannot
+         * double. If VOICE_CALL will not open, the downlink one comes back: the caller is kept, the owner is not.
+         */
         boolean startOwnerCapture() {
             if(down==null) return false;
-            if(up!=null) return true;
-            try { up=capture(MediaRecorder.AudioSource.VOICE_UPLINK); ownerReader=captureThread(up,AudioProtocol.UPLINK); return true; }
-            catch(Exception e) { return false; }
+            if(callCapture) return true;
+            AudioRecord old=down; down=null;
+            release(old); join(reader); reader=null;
+            try {
+                down=capture(MediaRecorder.AudioSource.VOICE_CALL);
+                callCapture=true;
+                reader=captureThread(down,AudioProtocol.DOWNLINK);
+                return true;
+            } catch(Exception e) {
+                try { down=capture(MediaRecorder.AudioSource.VOICE_DOWNLINK); reader=captureThread(down,AudioProtocol.DOWNLINK); }
+                catch(Exception again) { down=null; fail("capture_lost"); }
+                return false;
+            }
         }
         void stop() {
             stopPlayback();
             stopCapture();
         }
         void stopCapture() {
-            AudioRecord d=down,u=up; down=null; up=null;
+            AudioRecord d=down,u=up; down=null; up=null; callCapture=false;
             release(d); release(u);
             join(reader); join(ownerReader); reader=null; ownerReader=null;
         }

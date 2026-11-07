@@ -1150,7 +1150,7 @@ class MindState extends ChangeNotifier {
 
   /// ก้อน "สายเข้าวันนี้" + "ข้อความที่ฝากไว้" สำหรับ prompt
   String get _callsBlock {
-    final notes = _callNotes?.promptBlock(unseenTag: s.callNoteUnseenTag) ?? '';
+    final notes = _callNotes?.promptBlock(unseenTag: s.callNoteUnseenTag, toldTag: s.callNoteToldTag) ?? '';
     return [
       _calls?.promptBlock() ?? '',
       if (notes.isNotEmpty) '${s.callNotesPromptHeader}\n$notes',
@@ -3651,6 +3651,9 @@ class MindState extends ChangeNotifier {
   /// บุคลิกในแชทเดิมทั้งหมด (ความจำ ตาราง โปรไฟล์ สายวันนี้) ไม่มีแท็ก + วิธีคุยด้วยเสียงและเครื่องมือ
   String voiceChatPrompt() {
     final linked = _brainxSearch && brainx.connected;
+    // คุยสดเปิดแล้วเธอบอกเรื่องสายในตาแรก ๆ · ปิดป้ายตอนนี้ แชทถัดไปจะได้ไม่บอกซ้ำ (prompt นี้ได้ป้ายไปแล้ว)
+    final untoldCalls = _callNotes?.untoldIds() ?? const <String>[];
+    if (untoldCalls.isNotEmpty) scheduleMicrotask(() => _callNotes?.markTold(untoldCalls));
     final system = MindPersona.system(
       lang: _lang,
       mode: mode,
@@ -4452,6 +4455,8 @@ class MindState extends ChangeNotifier {
     // ตอนนี้ prompt มีบรรทัด "ถามว่าใครโทรมา" ไหม · ถ้ามี เธอได้โอกาสถาม
     // ไปแล้วในตานี้ ต้องปิดธงหลังตอบ ไม่งั้นถามซ้ำทุกตาไปอีกหลายวัน
     final askingAboutCall = _soul?.askAbout != null;
+    // เหมือนกัน · สายที่ prompt ตานี้บอกว่า "ยังไม่ได้อ่าน" เธอได้บอกแล้วในตานี้ · ไม่ปิด = บอกซ้ำทุกแชทสองวัน
+    final untoldCalls = _callNotes?.untoldIds() ?? const <String>[];
 
     // 🔴 ธง `sending` ต้องถูกปลด **ทุกทางออก** ไม่ใช่เฉพาะทางที่คิดไว้
     //
@@ -4511,6 +4516,7 @@ class MindState extends ChangeNotifier {
         try {
           await _soul?.talked();
           if (askingAboutCall) await _soul?.askedAboutCall();
+          if (untoldCalls.isNotEmpty) await _callNotes?.markTold(untoldCalls);
         } on Object catch (e) {
           // บันทึกความผูกพันไม่ได้ไม่ควรทำให้เธอเงียบ
           debugPrint('soul: บันทึกไม่สำเร็จ — $e');

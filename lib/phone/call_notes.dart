@@ -18,6 +18,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../store/mind_db.dart';
 import 'call_watch.dart';
@@ -168,6 +169,41 @@ class CallNotes extends ChangeNotifier {
 
   void attachDb(MindDb? db) => _db = db;
 
+  /// สายที่เธอบอกเจ้าของในแชทไปแล้ว · ยังไม่นับว่าเจ้าของเปิดอ่าน (ป้ายในไทม์ไลน์ยังอยู่)
+  ///
+  /// 🔴 เจ้าของ (2026-11-07): "มายด์มาบอกว่ามีคนพูดว่าอยากให้ตาย แล้วเธอก็พูดซ้ำในทุกแชท" · เดิมป้าย
+  /// "ยังไม่ได้อ่าน" หายแค่ตอนเปิดบันทึกในไทม์ไลน์ · บอกในแชทแล้วก็ยังติดป้าย สองวันเต็มทุกแชท
+  final Set<String> _told = {};
+  static const _toldKey = 'callNotesTold';
+
+  bool told(String id) => _told.contains(id);
+
+  /// บันทึกที่ [promptBlock] ติดป้ายว่ายังไม่ได้บอก · เก็บไว้ก่อนส่ง prompt แล้วส่งให้ [markTold] หลังเธอตอบ
+  List<String> untoldIds({int limit = 5}) =>
+      [for (final n in _recent(limit)) if (!n.seen && !_told.contains(n.id)) n.id];
+
+  Future<void> markTold(Iterable<String> ids) async {
+    final fresh = ids.where(_told.add).toList();
+    if (fresh.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final known = {for (final n in _notes) n.id};
+      // เก็บแค่ที่ยังมีบันทึกอยู่ · ไม่โตไปเรื่อย ๆ
+      await prefs.setStringList(_toldKey, [for (final id in _told) if (known.contains(id)) id]);
+    } on Object catch (e) {
+      debugPrint('call notes: จดว่าบอกแล้วไม่ได้ — $e');
+    }
+  }
+
+  Future<void> _loadTold() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _told.addAll(prefs.getStringList(_toldKey) ?? const []);
+    } on Object catch (e) {
+      debugPrint('call notes: อ่านว่าบอกอะไรไปแล้วไม่ได้ — $e');
+    }
+  }
+
   /// ใหม่สุดก่อน
   List<CallNote> get notes => List.unmodifiable(_notes);
 
@@ -181,6 +217,7 @@ class CallNotes extends ChangeNotifier {
   }
 
   Future<void> load() async {
+    await _loadTold();
     final db = _db;
     if (db == null) return;
     try {
@@ -242,16 +279,22 @@ class CallNotes extends ChangeNotifier {
   ///
   /// [unseenTag] ต่อท้ายสายที่เจ้าของยังไม่ได้เปิดอ่าน (ในภาษาของ prompt)
   /// เธอจะได้รู้ว่าต้องบอกเรื่องนี้ก่อน
-  String promptBlock({int limit = 5, String unseenTag = ''}) {
-    final since = _clock().subtract(const Duration(days: 2));
-    final recent = _notes.where((n) => n.at.isAfter(since)).take(limit);
+  /// [toldTag] ต่อท้ายสายที่บอกในแชทไปแล้วแต่เจ้าของยังไม่เปิดอ่าน = อย่ายกมาพูดซ้ำเอง
+  String promptBlock({int limit = 5, String unseenTag = '', String toldTag = ''}) {
+    final recent = _recent(limit);
     if (recent.isEmpty) return '';
     String two(int v) => v.toString().padLeft(2, '0');
     return recent.map((n) {
       final t = '${two(n.at.day)}/${two(n.at.month)} ${two(n.at.hour)}:${two(n.at.minute)}';
       final who = n.who.isEmpty ? '?' : n.who;
-      final flag = n.seen || unseenTag.isEmpty ? '' : ' $unseenTag';
+      final tag = n.seen ? '' : (_told.contains(n.id) ? toldTag : unseenTag);
+      final flag = tag.isEmpty ? '' : ' $tag';
       return '- $t $who: ${n.summary}$flag';
     }).join('\n');
+  }
+
+  Iterable<CallNote> _recent(int limit) {
+    final since = _clock().subtract(const Duration(days: 2));
+    return _notes.where((n) => n.at.isAfter(since)).take(limit);
   }
 }
