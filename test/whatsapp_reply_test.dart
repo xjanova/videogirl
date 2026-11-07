@@ -180,7 +180,7 @@ void main() {
       expect(posted, contains('msg.mine.any { mine == null || it.hashCode() !in mine }'));
       expect(inbox, contains('AUTO_MAX = 6'));
       final ask = _body(inbox, 'fun ask(');
-      expect(ask, contains('if (p.auto) {'));
+      expect(ask, contains('if (p.auto && !p.sms) {'));
       expect(inbox, isNot(contains('"com.google.android.apps.messaging"')), reason: 'SMS ไม่ตอบ (OTP/ธนาคาร)');
       expect(inbox, contains('"jp.naver.line.android"'));
       final send = _body(inbox, 'fun send(');

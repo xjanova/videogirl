@@ -35,12 +35,17 @@ import com.xjanova.videogirl.hands.AskOverlay
  * - กลุ่มไม่ตอบ · ข้อความของเจ้าของเอง (ตอบจากที่อื่น) ไม่นับ · แจ้งเตือนสรุป "3 ข้อความใหม่" ไม่นับ
  * - ไม่ลงข้อความหรือชื่อคนใน log
  * - แจ้งเตือนถามบนจอล็อกมีแค่หัวเรื่องกลาง ๆ · กล่องลอยไม่ขึ้นบนจอล็อก ([AskOverlay])
+ * - SMS: ตอบเฉพาะเบอร์จริง/คนในสมุดโทรศัพท์ ([SmsSender]) · ถามทุกครั้ง ไม่มีตอบเอง ไม่มีอนุญาตถาวร (ส่ง SMS เสียเงิน)
+ *
+ * ข้อความเสียง (🎤): แจ้งเตือนไม่มีไฟล์เสียงมาด้วย (WhatsApp/LINE ส่งมาแค่คำว่า "ข้อความเสียง (0:12)") และไฟล์ในเครื่อง
+ * อยู่ในโฟลเดอร์ของแอปนั้นที่ scoped storage กันไว้ (ต้องขอสิทธิ์อ่านไฟล์ทั้งเครื่อง) · จึงไม่ถอดความ ·
+ * ส่งธง `voice` ให้ Dart บอกเจ้าของ และร่างคำตอบว่าได้รับแล้ว จะส่งต่อให้เจ้าของฟัง
  */
 object ChatInbox {
 
     /**
      * แอปแชทที่ตอบผ่านปุ่ม "ตอบกลับ" ในแจ้งเตือนได้ · เจ้าของ: "มีการแชทเด้งมา … เธอตอบแทนเราได้เอง ทุกแชท"
-     * 🔒 ไม่รวมแอป SMS: ข้อความ OTP / ธนาคาร / โปรโมชันมาทางนั้น ตอบกลับไปมีแต่เสีย (และเสียเงิน)
+     * 🔒 แอป SMS ([SmsSender.APPS]) รวมด้วย แต่ OTP / ธนาคาร / โปรโมชันมาทางนั้น · ผ่านเฉพาะคนจริง ([SmsSender.ok]) และถามเสมอ
      */
     val APPS = setOf(
         "com.whatsapp", "com.whatsapp.w4b",
@@ -55,7 +60,7 @@ object ChatInbox {
         "com.kakao.talk",
         "com.skype.raider",
         "com.microsoft.teams",
-    )
+    ) + SmsSender.APPS
 
     private const val PREFS = "giggok_chats"
     private const val KEY_ON = "on"
@@ -101,6 +106,8 @@ object ChatInbox {
         val action: Notification.Action,
         /** ตัดสินตอนข้อความเข้า: ส่งเองได้ไม่ต้องถาม (โหมดตอบเอง / คนที่อนุญาตไว้ · เจ้าของไม่ได้เข้ามาคุยเอง · ไม่เกินโควตา) */
         val auto: Boolean,
+        /** SMS · ถามทุกครั้ง ไม่มีปุ่ม "ส่งได้เลยทุกครั้ง" */
+        val sms: Boolean = false,
         @Volatile var draft: String = "",
         @Volatile var asked: Boolean = false,
     )
@@ -194,6 +201,9 @@ object ChatInbox {
         val action = n.actions?.firstOrNull { !it.remoteInputs.isNullOrEmpty() } ?: return
         val msg = read(n) ?: return
         if (System.currentTimeMillis() - msg.at > FRESH_MS) return
+        // 🔒 SMS จากธนาคาร OTP โปรโมชัน (ชื่อเป็นตัวหนังสือ / เบอร์สั้น) = ไม่ร่าง ไม่ถาม ไม่บอก
+        val sms = SmsSender.isSms(sbn.packageName)
+        if (sms && !SmsSender.ok(msg.who, msg.title, msg.uri)) return
         val stamp = "${sbn.key}|${msg.at}|${msg.text.hashCode()}"
         val item: Map<String, Any>
         synchronized(lock) {
@@ -211,9 +221,10 @@ object ChatInbox {
             // เจ้าของพิมพ์ในห้องนี้เอง (ข้อความ "ของเรา" ที่เธอไม่ได้ส่ง) = เจ้าของรับเรื่องต่อแล้ว เหมือนรับสายต่อ · กลับไปถาม
             val mine = herSent[contact]
             val ownerSpoke = msg.mine.any { mine == null || it.hashCode() !in mine }
-            val auto = (auto(context) || trusted(context, contact)) && !ownerSpoke &&
+            // 🔒 SMS ไม่ตอบเองเด็ดขาด (เสียเงิน) · ต่อให้เปิดตอบเองทุกแชทหรืออนุญาตคนนี้ไว้
+            val auto = !sms && (auto(context) || trusted(context, contact)) && !ownerSpoke &&
                 !SENSITIVE.containsMatchIn(msg.text) && underQuota(contact, System.currentTimeMillis())
-            pending[id] = Pending(id, sbn.key, contact, sbn.packageName, msg.who, msg.text, msg.at, action, auto)
+            pending[id] = Pending(id, sbn.key, contact, sbn.packageName, msg.who, msg.text, msg.at, action, auto, sms)
             while (pending.size > KEEP) pending.remove(pending.keys.first())
             item = mapOf(
                 "id" to id,
@@ -224,6 +235,8 @@ object ChatInbox {
                 "earlier" to msg.earlier,
                 "contact" to contact,
                 "auto" to auto,
+                "sms" to sms,
+                "voice" to msg.voice,
                 "introduce" to (System.currentTimeMillis() - introAt(context, contact) > INTRO_AGAIN_MS),
             )
             queue.add(item)
@@ -236,8 +249,20 @@ object ChatInbox {
         }
     }
 
-    /** [mine] = ข้อความฝั่งเรา (เจ้าของหรือเธอ) ในห้องที่แจ้งเตือนยังโชว์อยู่ */
-    private class Msg(val who: String, val text: String, val at: Long, val earlier: List<String>, val mine: List<String>)
+    /**
+     * [mine] = ข้อความฝั่งเรา (เจ้าของหรือเธอ) ในห้องที่แจ้งเตือนยังโชว์อยู่ · [uri] / [title] = ตัวตนของผู้ส่ง (ใช้กับ SMS) ·
+     * [voice] = แอปแนบข้อมูลเสียงมากับข้อความ (ไม่ได้อ่านไฟล์ · Dart ดูคำว่า "ข้อความเสียง" เพิ่มเอง)
+     */
+    private class Msg(
+        val who: String,
+        val text: String,
+        val at: Long,
+        val earlier: List<String>,
+        val mine: List<String>,
+        val uri: String? = null,
+        val title: String? = null,
+        val voice: Boolean = false,
+    )
 
     private fun read(n: Notification): Msg? {
         val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n)
@@ -248,7 +273,8 @@ object ChatInbox {
             // ข้อความล่าสุดเป็นของเจ้าของเอง (ตอบไปแล้ว) = ไม่มีอะไรต้องตอบ
             val from = last.person ?: return null
             if (from.key != null && from.key == style.user.key) return null
-            val text = last.text?.toString()?.trim().orEmpty()
+            val voice = last.dataMimeType?.startsWith("audio/") == true
+            val text = last.text?.toString()?.trim().orEmpty().ifEmpty { if (voice) "🎤" else "" }
             if (text.isEmpty()) return null
             val who = from.name?.toString()?.trim().orEmpty()
                 .ifEmpty { style.conversationTitle?.toString()?.trim().orEmpty() }
@@ -260,14 +286,23 @@ object ChatInbox {
                 if (t.isEmpty()) null else "${if (self(m)) "me" else "them"}: ${t.take(300)}"
             }
             val mine = recent.filter(::self).mapNotNull { m -> m.text?.toString()?.trim()?.takeIf { it.isNotEmpty() } }
-            return Msg(who, text.take(1000), if (last.timestamp > 0) last.timestamp else n.`when`, earlier, mine)
+            return Msg(
+                who, text.take(1000), if (last.timestamp > 0) last.timestamp else n.`when`, earlier, mine,
+                uri = from.uri, title = style.conversationTitle?.toString()?.trim(), voice = voice,
+            )
         }
         val extras = n.extras ?: return null
         if (extras.getBoolean(NotificationCompat.EXTRA_IS_GROUP_CONVERSATION)) return null
         val who = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim().orEmpty()
         if (who.isEmpty() || text.isEmpty()) return null
-        return Msg(who, text.take(1000), n.`when`, emptyList(), emptyList())
+        val uri = if (android.os.Build.VERSION.SDK_INT >= 28) {
+            @Suppress("DEPRECATION")
+            extras.getParcelableArrayList<android.app.Person>(Notification.EXTRA_PEOPLE_LIST)?.firstOrNull()?.uri
+        } else {
+            null
+        }
+        return Msg(who, text.take(1000), n.`when`, emptyList(), emptyList(), uri = uri, title = who)
     }
 
     /** ของที่มาก่อน Dart ตื่น / ระหว่างนั้น · เอาแล้วล้าง */
@@ -287,7 +322,7 @@ object ChatInbox {
         p.asked = true
         val app = context.applicationContext
         // ตอบเองได้ (ตัดสินไว้ตอนข้อความเข้า) = ส่งเลย · Dart บอกเจ้าของในแชทว่าตอบอะไรไป
-        if (p.auto) {
+        if (p.auto && !p.sms) {
             send(app, id, null)
             return true
         }
@@ -328,22 +363,24 @@ object ChatInbox {
                 NotificationCompat.Action.Builder(R.mipmap.ic_launcher, app.getString(R.string.chat_edit), broadcast(ACTION_SEND, true))
                     .addRemoteInput(edit).setAllowGeneratedReplies(false).build()
             )
-            .addAction(R.mipmap.ic_launcher, app.getString(R.string.chat_send_trust), PendingIntent.getBroadcast(
+        // 🔒 SMS ไม่มี "ส่งได้เลยทุกครั้ง" · ถามทุกครั้ง
+        if (!p.sms) {
+            n.addAction(R.mipmap.ic_launcher, app.getString(R.string.chat_send_trust), PendingIntent.getBroadcast(
                 app, id * 4 + 3,
                 Intent(app, ChatAskReceiver::class.java).setAction(ACTION_SEND_TRUST).putExtra(EXTRA_ID, id),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             ))
-            .addAction(R.mipmap.ic_launcher, app.getString(R.string.chat_skip), broadcast(ACTION_SKIP, false))
-            .build()
+        }
+        n.addAction(R.mipmap.ic_launcher, app.getString(R.string.chat_skip), broadcast(ACTION_SKIP, false))
         try {
-            nm.notify(NOTIFICATION_BASE + (id % 8), n)
+            nm.notify(NOTIFICATION_BASE + (id % 8), n.build())
         } catch (_: SecurityException) {
             // ปิดการแจ้งเตือนไว้ · กล่องลอยยังถามได้ถ้าบริการมือเปิดอยู่
         }
         AskOverlay.show(
             id, title, body, R.string.chat_send, R.string.chat_skip,
             onAnswer = { c, allow, always -> if (allow) send(c, id, null, trust = always) else skip(c, id) },
-            always = true,
+            always = !p.sms,
             alwaysLabel = R.string.chat_always_check,
         )
         return true
@@ -362,7 +399,7 @@ object ChatInbox {
             report("answered", mapOf("id" to id, "sent" to false, "error" to "expired"))
             return
         }
-        if (trust) trust(context.applicationContext, p.contact, p.who)
+        if (trust && !p.sms) trust(context.applicationContext, p.contact, p.who)
         val text = (edited?.trim()?.takeIf { it.isNotEmpty() } ?: p.draft).take(2000)
         if (text.isBlank()) {
             report("answered", mapOf("id" to id, "sent" to false, "error" to "empty"))

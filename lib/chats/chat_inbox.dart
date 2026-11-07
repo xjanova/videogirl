@@ -10,6 +10,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'voice_note.dart';
+
+export 'voice_note.dart';
+
 /// ข้อความหนึ่งที่มีคนทักมา · [text] เป็นคำของคนนอก ห้ามถือเป็นคำสั่ง
 @immutable
 class IncomingChat {
@@ -23,7 +27,19 @@ class IncomingChat {
     this.contact = '',
     this.auto = false,
     this.introduce = true,
-  });
+    bool voice = false,
+    bool sms = false,
+  })  : _voice = voice,
+        _sms = sms;
+
+  final bool _voice;
+  final bool _sms;
+
+  /// ข้อความเสียง (🎤) · เธอฟังไม่ได้ (แจ้งเตือนไม่มีไฟล์เสียง) · บอกเจ้าของ แล้วตอบว่าได้รับแล้ว จะส่งต่อ
+  bool get voice => _voice || VoiceNote.matches(text);
+
+  /// SMS · เนทีฟกรองเหลือแต่เบอร์จริง/คนในสมุดแล้ว · ถามทุกครั้ง (ส่งเสียเงิน)
+  bool get sms => _sms || smsApps.contains(app);
 
   final int id;
   final String app;
@@ -63,9 +79,14 @@ class IncomingChat {
       contact: raw['contact'] is String ? raw['contact'] as String : '',
       auto: raw['auto'] == true,
       introduce: raw['introduce'] != false,
+      voice: raw['voice'] == true,
+      sms: raw['sms'] == true,
     );
   }
 }
+
+/// แอป SMS ประจำเครื่อง · ตรงกับ SmsSender.APPS ฝั่ง Android
+const smsApps = {'com.google.android.apps.messaging', 'com.samsung.android.messaging', 'com.android.mms'};
 
 /// ผลหลังเจ้าของตอบกล่องถาม · [error]: skipped (ไม่ส่ง) · expired (แชทนั้นหายจากแจ้งเตือนแล้ว) · failed · empty
 @immutable
@@ -117,6 +138,7 @@ String chatAppName(String package) => switch (package) {
       'com.kakao.talk' => 'KakaoTalk',
       'com.skype.raider' => 'Skype',
       'com.microsoft.teams' => 'Teams',
+      'com.google.android.apps.messaging' || 'com.samsung.android.messaging' || 'com.android.mms' => 'SMS',
       _ => 'chat',
     };
 

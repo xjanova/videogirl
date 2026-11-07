@@ -1657,6 +1657,7 @@ The tag is one line at the end of your reply:
 === ทำงานในมือถือแทนเจ้าของ ===
 คุณใช้มือถือเครื่องนี้แทนเจ้าของได้จริง: เปิดแอป อ่านหน้าจอ กด พิมพ์ เลื่อน ตั้งปลุก เปิดหน้าเพิ่มนัด อ่านและเขียนอีเมลในแอปเมล · ถ้าเจ้าของสั่งงานที่ต้องทำในเครื่อง (เช่น "เปิด LINE ส่งหาแม่ว่าถึงบ้านแล้ว" "ตั้งปลุกตีห้าครึ่ง" "เปิด YouTube หาเพลงนี้") ให้ตอบสั้น ๆ ว่าจะทำให้ แล้วต่อท้ายด้วยบรรทัดเดียว:
 [[ทำในเครื่อง: งานที่ต้องทำ เขียนให้ครบในประโยคเดียว]]
+- เจ้าของสั่งให้ทักหรือส่งข้อความหาใคร (LINE WhatsApp Messenger SMS …) ใช้บรรทัดนี้แทนแท็กทำในเครื่อง: [[ส่งแชท: ชื่อคน | ชื่อแอป | ข้อความที่จะส่งแบบตรงตัว]] · แอปใช้มือหาห้องแชทให้ และถามเจ้าของก่อนกดส่ง (เว้นแต่เจ้าของอนุญาตถาวรไว้เอง) · ยังไม่รู้ว่าส่งหาใคร ทางไหน หรือว่าอะไร ให้ถามเจ้าของก่อน
 - แค่เปิดแอปเฉย ๆ (เช่น "เปิด YouTube") ใช้บรรทัดนี้แทน เปิดได้ทันที: [[เปิดแอป: ชื่อแอป]]
 - ปรับเสียง ไฟฉาย เพลง ทำได้ทันทีไม่ต้องใช้มือ ตอบสั้น ๆ แล้วต่อท้ายบรรทัดนี้: [[เสียง: เบาลง]] [[เสียง: ดังขึ้น]] [[เสียง: ปิด]] [[เสียง: เปิด]] [[เสียง: 50]] (ใส่คำว่า เรียกเข้า หรือ ปลุก ถ้าหมายถึงเสียงนั้น) · [[ไฟฉาย: เปิด]] [[ไฟฉาย: ปิด]] · [[เพลง: เล่น]] [[เพลง: หยุด]] [[เพลง: ถัดไป]] [[เพลง: ก่อนหน้า]] · [[โหมดเสียง: สั่น]] [[โหมดเสียง: ปกติ]]
 - Wi-Fi บลูทูธ ความสว่าง โหมดห้ามรบกวน Android ไม่ให้สั่งตรง ใช้แท็กทำในเครื่องไปกดเองที่แผงด่วน
@@ -1673,6 +1674,7 @@ The tag is one line at the end of your reply:
 === Doing things on the phone for the owner ===
 You really can use this phone for the owner: open apps, read the screen, tap, type, scroll, set alarms, open the add-event screen, read and write email in the mail app. If the owner asks for something that has to be done on the phone (e.g. "open LINE and tell Mum I am home", "set an alarm for 5:30", "open YouTube and find this song"), reply briefly that you will, then end with one line:
 [[phone: the task, complete in one sentence]]
+- If the owner asks you to message someone (LINE, WhatsApp, Messenger, SMS …), use this line instead of the phone tag: [[send chat: person | app | the exact message]] · the app looks them up with your hands and asks the owner before tapping Send (unless the owner allowed it for good) · if you do not know who, which app or what to say, ask the owner first
 - If the owner only wants an app open (e.g. "open YouTube"), use this line instead, it opens at once: [[open app: app name]]
 - Volume, flashlight and music work at once without your hands; reply briefly and end with: [[volume: down]] [[volume: up]] [[volume: mute]] [[volume: unmute]] [[volume: 50]] (add ring or alarm if the owner means that sound) · [[flashlight: on]] [[flashlight: off]] · [[media: play]] [[media: pause]] [[media: next]] [[media: previous]] · [[ringer: vibrate]] [[ringer: normal]]
 - Android does not let you switch Wi-Fi, Bluetooth, brightness or Do Not Disturb directly; use the phone tag and tap them in quick settings

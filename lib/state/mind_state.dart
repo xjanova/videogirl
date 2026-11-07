@@ -23,6 +23,7 @@ import '../persona/mind_soul.dart';
 import '../phone/call_notes.dart';
 import '../chats/chat_inbox.dart';
 import '../chats/chat_reply.dart';
+import '../chats/chat_send.dart';
 import '../phone/call_watch.dart';
 import '../studio/studio_backdrop.dart';
 import '../system/permissions.dart';
@@ -951,6 +952,18 @@ class MindState extends ChangeNotifier {
 
   static String _clip(String text, int max) => text.length <= max ? text : '${text.substring(0, max)}…';
 
+  /// เธอเขียน `[[ส่งแชท: ใคร | แอป | ข้อความ]]` → งานของมือ · คืน '' = เริ่มแล้ว · ข้อความ = เหตุที่ไม่ส่ง (ใช้แทนคำตอบ)
+  ///
+  /// 🔒 ไม่มีทางส่งตรง · ไปทาง [_phoneTaskFromChat] → [runPhoneTask] (confirm: [_confirmInChat]) ·
+  /// ปุ่ม "ส่ง" ถูก PhonePolicy จับ แล้วถามเจ้าของ (หรือใช้อนุญาตถาวรที่เจ้าของกดเองไว้ · trustKey) ·
+  /// คำของเจ้าของเองต้องขอให้ส่ง ([SendWords]) · ไม่งั้นแท็กอาจมาจากหน้าเว็บที่เธออ่าน
+  String _sendChatFromChat(ChatSendOrder order, String ownerText) {
+    if (!SendWords.asks(ownerText)) return s.chatSendNotAsked;
+    if (!_phoneControl) return s.chatSendNeedsHands;
+    unawaited(_phoneTaskFromChat(s.chatSendGoal(order.who, order.app, order.text)));
+    return '';
+  }
+
   /// เธอเขียน `[[ทำในเครื่อง: …]]` ในแชท → ทำ → บอกผลในแชท
   Future<void> _phoneTaskFromChat(String goal, {PhoneMacro? routine}) async {
     // ให้คำตอบของเธอขึ้นจอก่อน แล้วค่อยผลของงาน
@@ -1286,9 +1299,11 @@ class MindState extends ChangeNotifier {
     if (_disposed || !_chatsOn) return;
     final thai = _lang == AppLang.th;
     var draft = '';
+    // ตัวเดียวกับที่รับโทรศัพท์แทน · เจ้าของ: "ก่อนตอบต้องบอกก่อนว่าตัวเองเป็นเลขาชื่ออะไร เป็นต้นรับเรื่องแทน"
+    final who = callCharacter();
+    // ข้อความเสียง: แจ้งเตือนไม่มีไฟล์เสียง (ดู ChatInbox.kt) · เธอฟังไม่ได้ · ร่างว่าได้รับแล้ว จะส่งต่อ ไม่เดาเนื้อหา
+    final voice = c.voice;
     try {
-      // ตัวเดียวกับที่รับโทรศัพท์แทน · เจ้าของ: "ก่อนตอบต้องบอกก่อนว่าตัวเองเป็นเลขาชื่ออะไร เป็นต้นรับเรื่องแทน"
-      final who = callCharacter();
       draft = cleanChatDraft(await _askBrain(
         chatReplyPrompt(
           thai,
@@ -1297,6 +1312,7 @@ class MindState extends ChangeNotifier {
           boss: _callerName,
           introduce: c.introduce,
           auto: c.auto,
+          voice: voice,
           app: c.appName,
         ),
         [(fromHer: false, text: chatBlock(c, thai: thai))],
@@ -1307,7 +1323,12 @@ class MindState extends ChangeNotifier {
       debugPrint('แชท: ร่างไม่สำเร็จ — ${e.runtimeType}');
     }
     if (_disposed) return;
-    final said = _clip(c.text, 200);
+    // สมองไม่ตอบ แต่ข้อความเสียงมีคำตอบที่ซื่อตรงอยู่แล้ว ("ได้รับแล้ว จะส่งต่อ") · ไม่ต้องทิ้งให้เจ้าของตอบเอง
+    if (draft.isEmpty && voice) {
+      draft = voiceNoteFallback(thai, her: who.name, boss: _callerName, male: who.male, introduce: c.introduce);
+    }
+    final long = voice ? VoiceNote.duration(c.text) : '';
+    final said = voice ? s.chatVoiceSaid(long) : _clip(c.text, 200);
     if (draft.isEmpty) {
       unawaited(_chats?.skip(c.id));
       _push(ChatMessage.her(s.chatDraftFailed(c.who, c.appName, said)), ephemeral: true);
@@ -1318,14 +1339,18 @@ class MindState extends ChangeNotifier {
     while (_chatSaid.length > 40) {
       _chatSaid.remove(_chatSaid.keys.first);
     }
-    final asked =
-        await _chats?.ask(id: c.id, draft: draft, title: s.chatAskTitle(c.who, c.appName), body: s.chatAskBody(said, draft)) ??
-            false;
+    final body = [
+      voice ? s.chatVoiceAskBody(long, draft) : s.chatAskBody(said, draft),
+      // 🔒 SMS เสียเงิน · เจ้าของต้องเห็นก่อนกดส่ง (เนทีฟถามทุกครั้ง ไม่มีตอบเอง)
+      if (c.sms) s.chatSmsCost,
+    ].join('\n\n');
+    final asked = await _chats?.ask(id: c.id, draft: draft, title: s.chatAskTitle(c.who, c.appName), body: body) ?? false;
     // คนเดิมทักใหม่ระหว่างร่าง = ข้อความนี้ตกไปแล้ว ร่างใหม่มาแทน · ไม่ต้องบอก ·
     // ส่งเอง = เนทีฟส่งไปแล้ว ผลมาทาง [_onChatAnswer] พร้อมข้อความที่ส่ง
     if (!asked || _disposed || c.auto) return;
     // 🔒 ขึ้นจอแต่ไม่ลงความจำ/ไม่กลับเข้าสมองตาถัดไป · คำของคนนอกต้องไม่ค้างอยู่ใน prompt ของแชทเจ้าของ
-    _push(ChatMessage.her(s.chatDrafted(c.who, c.appName, said, draft)), ephemeral: true);
+    final told = voice ? s.chatVoiceDrafted(c.who, c.appName, long, draft) : s.chatDrafted(c.who, c.appName, said, draft);
+    _push(ChatMessage.her(told), ephemeral: true);
     _notify();
   }
 
@@ -5200,9 +5225,14 @@ class MindState extends ChangeNotifier {
       _notify();
       callSaid = await _resolveCall(out.target!, out.task!);
     }
-    // สั่งให้ทำในเครื่อง → เธอทำเอง ถามเจ้าของเฉพาะขั้นที่ย้อนกลับไม่ได้ (PhonePolicy)
-    final hand = HandsTag.parse(out.text);
-    if (hand.goal != null && _phoneControl) unawaited(_phoneTaskFromChat(hand.goal!));
+    // สั่งให้ทักใครก่อน → งานของมือ · ปุ่มส่งผ่านด่าน PhonePolicy + กล่องถาม (_confirmInChat) เหมือนงานอื่น
+    final owner = history.isNotEmpty && !history.last.fromHer ? history.last.text : '';
+    final chatSend = ChatSendTag.parse(out.text);
+    final sendSaid = chatSend.order == null ? null : _sendChatFromChat(chatSend.order!, owner);
+    // สั่งให้ทำในเครื่อง → เธอทำเอง ถามเจ้าของเฉพาะขั้นที่ย้อนกลับไม่ได้ (PhonePolicy) ·
+    // มีงานส่งแชทแล้ว = ไม่เริ่มงานที่สอง (มือทำได้ทีละงาน)
+    final hand = HandsTag.parse(chatSend.text);
+    if (hand.goal != null && _phoneControl && chatSend.order == null) unawaited(_phoneTaskFromChat(hand.goal!));
     // เปิดแอป / เปิดเสียงสาย · ทำได้ทันที ไม่ต้องใช้มือ
     final quick = QuickTag.parse(hand.text);
     final anyQuick = quick.app != null ||
@@ -5222,8 +5252,11 @@ class MindState extends ChangeNotifier {
       )));
     }
     if (callSaid != null) return callSaid;
+    // ส่งไม่ได้ (เจ้าของไม่ได้สั่ง / มือปิด) = บอกเหตุแทนคำว่า "ได้ค่ะ"
+    if (sendSaid != null && sendSaid.isNotEmpty) return sendSaid;
     // เขียนแต่แท็กมา = อย่าให้เหลือฟองเปล่า
     if (quick.text.isEmpty) {
+      if (chatSend.order != null) return s.chatSendAck(chatSend.order!.who, chatSend.order!.app);
       if (out.target != null) return s.callOutAck;
       if (hand.goal != null && _phoneControl) return s.handsAck;
       if (anyQuick) return s.quickAck;
