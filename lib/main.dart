@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import 'avatar/avatar_pack.dart';
 import 'calendar/device_calendar.dart';
+import 'chats/chat_inbox.dart';
 import 'journal/mind_journal.dart';
 import 'persona/mind_soul.dart';
 import 'phone/call_notes.dart';
@@ -386,6 +387,8 @@ class _MindBootstrapState extends State<MindBootstrap>
       _callNotes.attachDb(_store?.db);
       await _callNotes.load();
       _state.attachCallNotes(_callNotes);
+      // แชท WhatsApp ที่มีคนทักมา · ต่อหลังสมุดบันทึกเพราะข้อความที่ค้างตอนเธอหลับจะถูกร่างทันที
+      _state.attachChats(ChatInbox());
       _pack.onInstalled = (pack) => _journal.record(
         JournalKind.pack,
         pack.nameFor(_state.lang == AppLang.th),

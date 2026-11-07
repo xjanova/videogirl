@@ -58,7 +58,7 @@ void main() {
       final ask = _body(_src('$_hands/HandsService.kt'), 'fun ask(');
       expect(ask, contains('if (float) AskOverlay.show(id, title, body)'));
       final overlay = _src('$_hands/AskOverlay.kt');
-      expect(_body(overlay, 'private fun answer('), contains('HandsControl.answer(id, allow)'));
+      expect(_body(overlay, 'private fun answer('), contains('HandsControl.answer(ask.id, allow)'));
     });
 
     test('🔴 ถามจบทางไหนก็ปิดกล่อง (ตอบในแจ้งเตือน · หมดเวลา · งานจบ · บริการมือปิด)', () {

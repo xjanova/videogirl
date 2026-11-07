@@ -168,4 +168,11 @@
     <string name="sos_line_no_voice">This phone cannot speak into the call · Carrying on with messages</string>
     <string name="sos_stopped_title">Emergency watch stopped</string>
     <string name="sos_stopped_body">Tap to open Mind and bring it back</string>
+    <string name="chat_watch_label">Mind helps answer WhatsApp chats</string>
+    <string name="chat_ask_channel">Mind asks before sending a chat reply</string>
+    <string name="chat_public_title">Mind drafted a chat reply</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_edit">Edit and send</string>
+    <string name="chat_edit_label">Type the reply to send</string>
+    <string name="chat_skip">Don\'t send</string>
 </resources>

@@ -14,6 +14,7 @@ import 'brain_voice_frames.dart';
 import 'call_character_panel.dart';
 import '../i18n/enum_labels.dart';
 import '../i18n/strings.dart';
+import '../i18n/strings_chats.dart';
 import '../i18n/strings_hold.dart';
 import '../i18n/strings_ai.dart';
 import '../ai/device_capability.dart';
@@ -29,6 +30,7 @@ import '../avatar/avatar_pack.dart';
 import '../avatar/avatar_view.dart';
 import '../background/mind_watch.dart';
 import 'call_hold_panel.dart';
+import 'chat_reply_panel.dart';
 import 'call_knowledge_panel.dart';
 import 'call_lessons_panel.dart';
 import 'call_personality_panel.dart';
@@ -416,6 +418,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             _languageCard(state, mode, t),
             // เจ้าของ: "ต้องทำให้ มายด์ คอนโทรลเครื่องได้หมด เปิดได้ได้ทุกแอพ ทำแทนเราได้"
             _card(mode: mode, label: t.handsCard, child: PhoneControlPanel(accent: mode.accent)),
+            // เจ้าของ: "ทำให้เธอตอบ what app ได้ด้วย · เมื่อมีคนแชทมา"
+            _card(mode: mode, label: t.chatsCard, child: ChatReplyPanel(accent: mode.accent)),
             // เจ้าของ: "ใช้คำพิเศษเรียกเธอให้รับคำสั่งได้ เช่นน้องมายด์ เธอต้องขานทันทีที่รู้ว่าเรียก"
             _card(mode: mode, label: t.wakeCard, child: WakeWordPanel(accent: mode.accent)),
             _permissionCard(context, mode, t),

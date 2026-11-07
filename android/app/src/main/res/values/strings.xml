@@ -185,4 +185,11 @@
     <string name="sos_line_no_voice">เครื่องนี้พูดในสายไม่ได้ · ไปต่อด้วยข้อความ</string>
     <string name="sos_stopped_title">ระบบฉุกเฉินหยุดแล้ว</string>
     <string name="sos_stopped_body">แตะเพื่อเปิดมายด์ให้กลับมาเฝ้าเหตุ</string>
+    <string name="chat_watch_label">มายด์ช่วยตอบแชท WhatsApp</string>
+    <string name="chat_ask_channel">มายด์ขอส่งคำตอบแชท</string>
+    <string name="chat_public_title">มายด์ร่างคำตอบแชทไว้</string>
+    <string name="chat_send">ส่งเลย</string>
+    <string name="chat_edit">แก้แล้วส่ง</string>
+    <string name="chat_edit_label">พิมพ์คำตอบที่จะส่ง</string>
+    <string name="chat_skip">ไม่ส่ง</string>
 </resources>

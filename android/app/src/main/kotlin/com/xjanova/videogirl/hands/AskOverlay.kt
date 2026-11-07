@@ -48,7 +48,15 @@ object AskOverlay {
 
     private val main = Handler(Looper.getMainLooper())
 
-    private data class Ask(val id: Int, val title: String, val body: String)
+    /** [onAnswer] null = คำถามของงานมือ (ตอบผ่าน [HandsControl] เหมือนปุ่มในแจ้งเตือน) */
+    private data class Ask(
+        val id: Int,
+        val title: String,
+        val body: String,
+        val allow: Int,
+        val deny: Int,
+        val onAnswer: ((Context, Boolean) -> Unit)?,
+    )
 
     @Volatile private var pending: Ask? = null
     private var view: View? = null
@@ -59,15 +67,24 @@ object AskOverlay {
     /** มีกล่องถามค้างอยู่ (ขึ้นจออยู่ หรือซ่อนไว้รอปลดล็อก) · นิ้วจำลองต้องไม่แตะอะไรระหว่างนี้ */
     val showing: Boolean get() = pending != null
 
-    /** ขึ้นกล่อง · บริการมือไม่ได้เปิด = ไม่ขึ้น (แจ้งเตือนยังถามอยู่) */
-    fun show(id: Int, title: String, body: String) {
+    /** ขึ้นกล่อง · บริการมือไม่ได้เปิด = ไม่ขึ้น (แจ้งเตือนยังถามอยู่) · คืนว่าวาดได้ไหม (บอกได้แค่ว่าบริการมืออยู่) */
+    fun show(
+        id: Int,
+        title: String,
+        body: String,
+        allow: Int = R.string.hands_allow,
+        deny: Int = R.string.hands_deny,
+        onAnswer: ((Context, Boolean) -> Unit)? = null,
+    ): Boolean {
+        if (MindHands.instance == null) return false
         main.post {
             val service = MindHands.instance ?: return@post
             hideNow()
-            pending = Ask(id, title, body)
+            pending = Ask(id, title, body, allow, deny, onAnswer)
             watchScreen(service)
             attach(service)
         }
+        return true
     }
 
     /** ถามจบแล้ว (ตอบทางไหนก็ได้ / หมดเวลา / งานหยุด) · [id] null = ปิดทุกกล่อง */
@@ -152,12 +169,18 @@ object AskOverlay {
         screenOwner = null
     }
 
-    private fun answer(context: Context, id: Int, allow: Boolean) {
+    private fun answer(context: Context, ask: Ask, allow: Boolean) {
         // กดบนจอล็อก (ล็อกระหว่างที่นิ้วกำลังลง) = ไม่นับ
         if (locked(context)) return
-        HandsControl.answer(id, allow)
+        if (pending?.id != ask.id) return
+        hideNow()
+        val custom = ask.onAnswer
+        if (custom != null) {
+            custom(context.applicationContext, allow)
+            return
+        }
+        HandsControl.answer(ask.id, allow)
         NotificationManagerCompat.from(context).cancel(ASK_NOTIFICATION)
-        if (pending?.id == id) hideNow()
     }
 
     private fun build(context: Context, ask: Ask): View {
@@ -229,10 +252,10 @@ object AskOverlay {
             filterTouchesWhenObscured = true
             isEnabled = false
             alpha = 0.5f
-            setOnClickListener { answer(context, ask.id, allow) }
+            setOnClickListener { answer(context, ask, allow) }
         }
-        val deny = button(R.string.hands_deny, filled = false, allow = false)
-        val allow = button(R.string.hands_allow, filled = true, allow = true)
+        val deny = button(ask.deny, filled = false, allow = false)
+        val allow = button(ask.allow, filled = true, allow = true)
         row.addView(deny, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, dp(context, 48),
         ).apply { marginEnd = dp(context, 12) })

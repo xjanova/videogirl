@@ -21,6 +21,8 @@ import '../journal/mind_journal.dart';
 import '../memory/mind_memory.dart';
 import '../persona/mind_soul.dart';
 import '../phone/call_notes.dart';
+import '../chats/chat_inbox.dart';
+import '../chats/chat_reply.dart';
 import '../phone/call_watch.dart';
 import '../studio/studio_backdrop.dart';
 import '../system/permissions.dart';
@@ -39,6 +41,7 @@ import '../ai/mind_persona.dart';
 import '../i18n/strings.dart';
 import '../i18n/strings_ai.dart';
 import '../i18n/strings_brains.dart';
+import '../i18n/strings_chats.dart';
 import '../i18n/strings_settings.dart';
 import '../i18n/strings_voice.dart';
 import '../ai/openai_client.dart';
@@ -1149,6 +1152,96 @@ class MindState extends ChangeNotifier {
   CallNotes? _callNotes;
 
   void attachCallNotes(CallNotes c) => _callNotes = c;
+
+  // ═══ แชท WhatsApp ที่มีคนทักมา ═════════════════════════
+  //
+  // เจ้าของ: "ทำให้เธอตอบ what app ได้ด้วย · เมื่อมีคนแชทมา" · เธอร่าง เจ้าของกดส่ง (ฝั่งเนทีฟส่งเอง ไม่ผ่านที่นี่)
+
+  ChatInbox? _chats;
+  bool _chatsOn = false;
+  bool _chatsAccess = false;
+  bool get chatsOn => _chatsOn;
+  bool get chatsAccess => _chatsAccess;
+
+  /// ร่างทีละข้อความ · หลายคนทักพร้อมกัน = ไม่ยิงสมองซ้อนกัน
+  Future<void> _chatLine = Future<void>.value();
+
+  void attachChats(ChatInbox c) {
+    _chats = c
+      ..onMessage = _onChat
+      ..onAnswered = _onChatAnswer;
+    // 🔴 อ่านสวิตช์ก่อนรับของ · ไม่งั้นข้อความที่ค้างตอนเธอหลับถูกทิ้งเพราะ [_chatsOn] ยังเป็นค่าตั้งต้น (ปิด) ·
+    // ระหว่างนี้ข้อความใหม่รออยู่ในคิวฝั่งเนทีฟ ไม่หาย
+    unawaited(refreshChats().whenComplete(c.attach));
+  }
+
+  /// อ่านสวิตช์และสิทธิ์ใหม่ · สิทธิ์เปลี่ยนในหน้าของระบบตอนแอปไม่อยู่บนจอ
+  Future<void> refreshChats() async {
+    final c = _chats;
+    if (c == null) return;
+    final st = await c.status();
+    if (_disposed) return;
+    _chatsOn = st.on;
+    _chatsAccess = st.access;
+    _notify();
+  }
+
+  Future<void> setChatsOn(bool v) async {
+    _chatsOn = v;
+    _notify();
+    await _chats?.setOn(v);
+    await refreshChats();
+  }
+
+  Future<bool> openChatAccess() async => await _chats?.openAccess() ?? false;
+
+  void _onChat(IncomingChat c) {
+    _chatLine = _chatLine.then((_) => _draftChat(c)).catchError((Object _) {});
+  }
+
+  Future<void> _draftChat(IncomingChat c) async {
+    if (_disposed || !_chatsOn) return;
+    final thai = _lang == AppLang.th;
+    var draft = '';
+    try {
+      draft = cleanChatDraft(await _askBrain(
+        chatReplyPrompt(thai, her: _soul?.name ?? s.speakerHer),
+        [(fromHer: false, text: chatBlock(c, thai: thai))],
+        cap: ReplyCap.background,
+      ));
+    } on Object catch (e) {
+      // ไม่ลงข้อความหรือชื่อคน · ชนิดของความผิดพลาดพอ
+      debugPrint('แชท: ร่างไม่สำเร็จ — ${e.runtimeType}');
+    }
+    if (_disposed) return;
+    final said = _clip(c.text, 200);
+    if (draft.isEmpty) {
+      unawaited(_chats?.skip(c.id));
+      _push(ChatMessage.her(s.chatDraftFailed(c.who, said)), ephemeral: true);
+      _notify();
+      return;
+    }
+    final asked = await _chats?.ask(id: c.id, draft: draft, title: s.chatAskTitle(c.who), body: s.chatAskBody(said, draft)) ?? false;
+    // คนเดิมทักใหม่ระหว่างร่าง = ข้อความนี้ตกไปแล้ว ร่างใหม่มาแทน · ไม่ต้องบอก
+    if (!asked || _disposed) return;
+    // 🔒 ขึ้นจอแต่ไม่ลงความจำ/ไม่กลับเข้าสมองตาถัดไป · คำของคนนอกต้องไม่ค้างอยู่ใน prompt ของแชทเจ้าของ
+    _push(ChatMessage.her(s.chatDrafted(c.who, said, draft)), ephemeral: true);
+    _notify();
+  }
+
+  void _onChatAnswer(ChatAnswer a) {
+    if (_disposed) return;
+    final text = a.sent
+        ? s.chatSent(a.who, _clip(a.text, 200))
+        : switch (a.error) {
+            'skipped' => null,
+            'expired' => s.chatExpired,
+            _ => s.chatSendFailed,
+          };
+    if (text == null) return;
+    _push(ChatMessage.her(text), ephemeral: true);
+    _notify();
+  }
 
   /// ก้อน "สายเข้าวันนี้" + "ข้อความที่ฝากไว้" สำหรับ prompt
   String get _callsBlock {
