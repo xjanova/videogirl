@@ -960,19 +960,45 @@ class MindState extends ChangeNotifier {
   String _sendChatFromChat(ChatSendOrder order, String ownerText) {
     if (!SendWords.asks(ownerText)) return s.chatSendNotAsked;
     if (!_phoneControl) return s.chatSendNeedsHands;
-    unawaited(_phoneTaskFromChat(s.chatSendGoal(order.who, order.app, order.text)));
+    // 🔒 อนุญาตถาวรใช้ได้เฉพาะเมื่อเจ้าของเอ่ยชื่อคนนั้นเองในข้อความนี้ · ไม่งั้นชื่อผู้รับมาจากสมอง (อาจถูกหลอก) · ถามก่อนส่ง
+    unawaited(_phoneTaskFromChat(s.chatSendGoal(order.who, order.app, order.text),
+        fromModel: true, trusted: SendWords.names(ownerText, order.who)));
     return '';
   }
 
+  // ── ของจากคนอื่นที่เพิ่งเข้าหัวเธอ · อนุญาตถาวรพักไว้ ──
+  //
+  // 🔴 อนุญาตถาวรข้ามกล่องถาม · ถ้างานนั้นสมองเขียนขึ้นหลังอ่านหน้าเว็บ ผลค้น SMS สมุด หรือหน้าจอ
+  // ข้อความในนั้นอาจหลอกให้เขียนแท็กส่งของ แล้วส่งได้โดยไม่มีใครเห็น · ช่วงนี้งานจากสมองถามทุกขั้นเสี่ยง ·
+  // ปุ่มของเจ้าของเอง (ตรวจเมล ขั้นตอนที่สอน) ไม่เกี่ยว
+
+  /// อ่านของจากข้างนอกล่าสุดเมื่อไหร่ (แชท + คุยสด)
+  DateTime? _outsideAt;
+
+  /// หลังอ่านของจากข้างนอก อนุญาตถาวรพักไว้นานเท่านี้ (บทสนทนายังมีของนั้นค้างอยู่ในหน้าต่าง)
+  static const outsideTrustPause = Duration(minutes: 30);
+
+  void _sawOutside() => _outsideAt = _clock();
+
+  bool get _outsideRecently {
+    final at = _outsideAt;
+    return at != null && _clock().difference(at) < outsideTrustPause;
+  }
+
   /// เธอเขียน `[[ทำในเครื่อง: …]]` ในแชท → ทำ → บอกผลในแชท
-  Future<void> _phoneTaskFromChat(String goal, {PhoneMacro? routine}) async {
+  ///
+  /// [fromModel] = งานที่สมองเขียน (แท็ก / phone_task ในคุยสด) · ใช้อนุญาตถาวรได้เมื่อไม่ได้อ่านของจากข้างนอกมา ·
+  /// [trusted] false = ผู้เรียกรู้แล้วว่างานนี้ใช้อนุญาตถาวรไม่ได้ (ส่งแชทหาคนที่เจ้าของไม่ได้เอ่ยชื่อ)
+  Future<void> _phoneTaskFromChat(String goal, {PhoneMacro? routine, bool fromModel = false, bool trusted = true}) async {
+    // ตัดสินตอนสั่ง ไม่ใช่ตอนถาม · ระหว่างทำงานเธออ่านจอแอปอื่นตลอด
+    final trust = trusted && !(fromModel && _outsideRecently);
     // ให้คำตอบของเธอขึ้นจอก่อน แล้วค่อยผลของงาน
     await Future<void>.delayed(Duration.zero);
     if (routine == null && CallGoal.isPhoneCall(goal)) {
       _say(s.callNotByHands);
       return;
     }
-    final r = await runPhoneTask(goal, confirm: _confirmInChat, routine: routine);
+    final r = await runPhoneTask(goal, confirm: (ask) => _confirmInChat(ask, trust), routine: routine);
     if (_disposed) return;
     _say(r.summary);
     // เธอทำงานอยู่ในแอปอื่น เจ้าของไม่เห็นแชท · บอกผลทางแจ้งเตือนด้วย
@@ -1142,12 +1168,19 @@ class MindState extends ChangeNotifier {
 
   /// ถามเจ้าของก่อนขั้นที่ย้อนกลับไม่ได้ · ตอบได้สองทาง: กล่องในแอป (shell) หรือปุ่มในแจ้งเตือน ·
   /// ทางไหนมาก่อนใช้ทางนั้น · กดหยุด / ไม่ตอบใน [phoneAskWait] = ไม่ทำ
-  Future<bool> _confirmInChat(PhoneStepAsk ask) async {
+  ///
+  /// [trust] false = งานนี้ใช้อนุญาตถาวรไม่ได้ (ดู [_phoneTaskFromChat]) · ถามทุกขั้นเสี่ยง และบอกเจ้าของว่าทำไมถามทั้งที่อนุญาตไว้
+  Future<bool> _confirmInChat(PhoneStepAsk ask, [bool trust = true]) async {
+    final allowed = ask.package.isNotEmpty && _handsTrust.containsKey(ask.trustKey);
     // เจ้าของอนุญาตเรื่องแบบนี้ในแอปนี้ไว้ถาวร = ทำเลย แต่บอกในแชทว่าทำอะไรไป
-    if (ask.package.isNotEmpty && _handsTrust.containsKey(ask.trustKey)) {
+    if (allowed && trust) {
       _push(ChatMessage.her(s.handsTrustedDid(_clip(ask.action, 80), ask.app)), ephemeral: true);
       _notify();
       return true;
+    }
+    if (allowed) {
+      _push(ChatMessage.her(s.handsTrustPaused(ask.app)), ephemeral: true);
+      _notify();
     }
     final answer = Completer<bool>();
     _askAnswer = answer;
@@ -1157,6 +1190,7 @@ class MindState extends ChangeNotifier {
       s.handsAskBody(ask.action, ask.app),
       if (ask.why.trim().isNotEmpty) s.handsAskWhy(ask.why.trim()),
       s.handsAskGoal(ask.goal),
+      if (allowed) s.handsTrustPaused(ask.app),
     ].join('\n');
     // 🔴 เธอทำงานอยู่ในแอปอื่น = กล่องในแอปไม่ขึ้น แจ้งเตือนก็ยุบอยู่ในแถบ · ลอยกล่องเหนือแอปนั้นให้กดตรง ๆ ·
     // เจ้าของ: "ควรเป็น ป๊อบอัพเด้งเหนือทุกโปรแกรม เพื่อจะได้สั่งงานได้ตรง เช่นทำเลย หรือไม่ทำ"
@@ -4010,6 +4044,7 @@ class MindState extends ChangeNotifier {
             'read the names with the last four digits and ask which one, then call call_someone again with that '
             'exact name or number):\n$said';
       case 'phone_lookup':
+        _sawOutside();
         final kind = switch (arg('kind')) {
           'contacts' => PhoneLookupKind.contacts,
           'sms' => PhoneLookupKind.sms,
@@ -4035,10 +4070,12 @@ class MindState extends ChangeNotifier {
         return '${s.recallPacks}\n${packNotes(hits)}\n'
             'Answer from this in short spoken sentences, the most urgent step first.';
       case 'web_search':
+        _sawOutside();
         final web = _webSearch ? _webSearcher(live: true) : null;
         if (web == null) return 'Web search is not available right now. Say so briefly.';
         return webTools.run(ToolCall(WebTool.search, arg('query')), last: true, web: web);
       case 'read_url':
+        _sawOutside();
         if (!_webSearch) return 'Reading web pages is turned off by the owner. Say so briefly.';
         final url = arg('url');
         if (url.isEmpty) return 'Ask the owner which page to read.';
@@ -4053,7 +4090,7 @@ class MindState extends ChangeNotifier {
           return 'Not started: phone calls never go through phone_task or the phone app. Use call_someone; it shows the '
               'card with the SIM, and you are the one who talks on the call.';
         }
-        unawaited(_phoneTaskFromChat(goal));
+        unawaited(_phoneTaskFromChat(goal, fromModel: true));
         return 'Started. Tell the owner in one short sentence that you are doing it now; you will tell them the result.';
       case 'device_control':
         final level = args['level'];
@@ -4072,6 +4109,7 @@ class MindState extends ChangeNotifier {
             (forget: arg('action') == 'forget', app: arg('app'), what: arg('what'), where: arg('where')));
         return said == null ? _lockedResult : 'Tell the owner briefly: $said';
       case 'look_at_screen':
+        _sawOutside();
         return lookAtScreen(image: true);
       case 'open_eyes':
         final said = await openEyes(front: arg('camera') != 'back');
@@ -5163,6 +5201,7 @@ class MindState extends ChangeNotifier {
       _notify();
       final ask = history.last.text.replaceAll(RegExp(r'\S*' + RegExp.escape(link.host) + r'\S*'), ' ').trim();
       final page = await webTools.run(ToolCall(WebTool.page, '$link', focus: ask), pageChars: _pageChars);
+      _sawOutside();
       recall = [if (recall.isNotEmpty) recall, page].join('\n\n');
     }
     var answer = await _askBrain(system, history, onPartial: _showPartial, recall: recall);
@@ -5199,6 +5238,7 @@ class MindState extends ChangeNotifier {
       final result = webCall != null
           ? await webTools.run(webCall, last: last, web: web, pageChars: _pageChars)
           : await phoneLookup.run(phoneCall!, last: last);
+      _sawOutside();
       if (_disposed) break;
       turns = [
         ...turns,
@@ -5232,7 +5272,9 @@ class MindState extends ChangeNotifier {
     // สั่งให้ทำในเครื่อง → เธอทำเอง ถามเจ้าของเฉพาะขั้นที่ย้อนกลับไม่ได้ (PhonePolicy) ·
     // มีงานส่งแชทแล้ว = ไม่เริ่มงานที่สอง (มือทำได้ทีละงาน)
     final hand = HandsTag.parse(chatSend.text);
-    if (hand.goal != null && _phoneControl && chatSend.order == null) unawaited(_phoneTaskFromChat(hand.goal!));
+    if (hand.goal != null && _phoneControl && chatSend.order == null) {
+      unawaited(_phoneTaskFromChat(hand.goal!, fromModel: true));
+    }
     // เปิดแอป / เปิดเสียงสาย · ทำได้ทันที ไม่ต้องใช้มือ
     final quick = QuickTag.parse(hand.text);
     final anyQuick = quick.app != null ||

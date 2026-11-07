@@ -35,6 +35,12 @@ extension HandsStrings on S {
         'Before I go on: $action in $app. Should I? Say "do it" or "cancel".',
       );
   String handsAskWhy(String why) => pick('เหตุผล: $why', 'Why: $why');
+
+  /// อนุญาตถาวรไว้ แต่ครั้งนี้ถาม · งานนี้สมองเขียนหลังอ่านของจากข้างนอก หรือส่งหาคนที่เจ้าของไม่ได้เอ่ยชื่อ
+  String handsTrustPaused(String app) => pick(
+        'ถามครั้งนี้แม้อนุญาตใน $app ไว้แล้ว เพราะงานนี้ไม่ได้มาจากคำของคุณตรง ๆ (เพิ่งอ่านเว็บหรือข้อความของคนอื่น หรือผู้รับไม่ได้อยู่ในคำสั่งของคุณ)',
+        'Asking this time even though $app is allowed, because this task did not come straight from your words (I just read a page or someone else\'s message, or you did not name who it goes to)',
+      );
   String handsAskGoal(String goal) => pick('งานที่สั่ง: $goal', 'Task: $goal');
   String get handsAllow => pick('ทำเลย', 'Do it');
   String get handsDeny => pick('ไม่ต้อง', "Don't");
