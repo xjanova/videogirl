@@ -185,4 +185,17 @@
     <string name="sos_line_no_voice">เครื่องนี้พูดในสายไม่ได้ · ไปต่อด้วยข้อความ</string>
     <string name="sos_stopped_title">ระบบฉุกเฉินหยุดแล้ว</string>
     <string name="sos_stopped_body">แตะเพื่อเปิดมายด์ให้กลับมาเฝ้าเหตุ</string>
+    <string name="chat_watch_label">มายด์ช่วยตอบแชท WhatsApp</string>
+    <string name="chat_ask_channel">มายด์ขอส่งคำตอบแชท</string>
+    <string name="chat_public_title">มายด์ร่างคำตอบแชทไว้</string>
+    <string name="chat_send">ส่งเลย</string>
+    <string name="chat_edit">แก้แล้วส่ง</string>
+    <string name="chat_edit_label">พิมพ์คำตอบที่จะส่ง</string>
+    <string name="chat_skip">ไม่ส่ง</string>
+    <string name="chat_send_trust">ส่ง · คนนี้ไม่ต้องถามอีก</string>
+    <string name="chat_always_check">คนนี้ส่งได้เลย ไม่ต้องถามอีก</string>
+    <string name="hands_always">ทำเลย · ไม่ต้องถามอีก</string>
+    <string name="hands_always_check">เรื่องแบบนี้ในแอปนี้ ทำได้เลยไม่ต้องถามอีก</string>
+    <string name="hands_always_warn">เรื่องนี้เสี่ยง (เงิน · ลบ · ตั้งค่าเครื่อง) ถ้าอนุญาตถาวร มายด์จะทำเองทุกครั้งโดยไม่ถาม ยกเลิกได้ในตั้งค่า</string>
+    <string name="hands_always_confirm">ยืนยันอนุญาตถาวร</string>
 </resources>

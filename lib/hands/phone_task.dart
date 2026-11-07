@@ -64,6 +64,23 @@ class PhoneTaskResult {
 }
 
 /// ขั้นที่ต้องถามก่อนทำ
+/// ขั้นที่ต้องถามเป็นเรื่องอะไร · ใช้ตอนเจ้าของอนุญาตถาวร (จำเป็น "แอปนี้ + เรื่องแบบนี้")
+///
+/// เจ้าของ (2026-11-07): "ให้อนุญาตถาวรได้หมด แต่อันไหนเสี่ยง เพียงขั้นเตือนก่อนอนุญาต" · [risky] = เตือนก่อน
+enum PhoneStepKind {
+  money,
+  erase,
+  settings,
+  send,
+
+  /// โค้ดดูไม่ออกว่าปุ่มนี้คืออะไร (เธอบอกเองว่าเสี่ยง / กดบนภาพ) · ถือว่าเสี่ยงไว้ก่อน
+  unknown;
+
+  bool get risky => this != send;
+
+  static PhoneStepKind parse(String? v) => values.firstWhere((k) => k.name == v, orElse: () => unknown);
+}
+
 class PhoneStepAsk {
   const PhoneStepAsk({
     required this.id,
@@ -71,7 +88,18 @@ class PhoneStepAsk {
     required this.action,
     required this.app,
     this.why = '',
+    this.package = '',
+    this.kind = PhoneStepKind.unknown,
   });
+
+  /// แพ็กเกจของแอปที่อยู่ตอนนั้น · คู่กับ [kind] เป็นกุญแจของการอนุญาตถาวร
+  final String package;
+
+  final PhoneStepKind kind;
+
+  /// "แพ็กเกจ|เรื่อง"
+  String get trustKey => '$package|${kind.name}';
+
 
   /// เลขของคำถาม · ใช้จับคู่คำตอบจากแจ้งเตือนกับคำถามที่ถามอยู่
   final int id;

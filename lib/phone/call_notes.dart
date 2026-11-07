@@ -280,14 +280,16 @@ class CallNotes extends ChangeNotifier {
   /// [unseenTag] ต่อท้ายสายที่เจ้าของยังไม่ได้เปิดอ่าน (ในภาษาของ prompt)
   /// เธอจะได้รู้ว่าต้องบอกเรื่องนี้ก่อน
   /// [toldTag] ต่อท้ายสายที่บอกในแชทไปแล้วแต่เจ้าของยังไม่เปิดอ่าน = อย่ายกมาพูดซ้ำเอง
-  String promptBlock({int limit = 5, String unseenTag = '', String toldTag = ''}) {
+  /// [seenTag] ต่อท้ายสายที่เจ้าของเปิดอ่านเองแล้ว = เจ้าของรู้แล้ว อย่ายกมาพูดเอง ·
+  /// 🔴 ของเดิมไม่ติดป้ายอะไรเลย ใต้หัวข้อ "บอกเจ้าของได้" · เจ้าของเปิดอ่านแล้วเธอยิ่งเล่าซ้ำทุกแชทสองวัน
+  String promptBlock({int limit = 5, String unseenTag = '', String toldTag = '', String seenTag = ''}) {
     final recent = _recent(limit);
     if (recent.isEmpty) return '';
     String two(int v) => v.toString().padLeft(2, '0');
     return recent.map((n) {
       final t = '${two(n.at.day)}/${two(n.at.month)} ${two(n.at.hour)}:${two(n.at.minute)}';
       final who = n.who.isEmpty ? '?' : n.who;
-      final tag = n.seen ? '' : (_told.contains(n.id) ? toldTag : unseenTag);
+      final tag = n.seen ? seenTag : (_told.contains(n.id) ? toldTag : unseenTag);
       final flag = tag.isEmpty ? '' : ' $tag';
       return '- $t $who: ${n.summary}$flag';
     }).join('\n');

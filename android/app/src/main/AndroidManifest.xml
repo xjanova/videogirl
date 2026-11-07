@@ -179,6 +179,17 @@
         <receiver android:name=".direct.setup.BankingPauseReceiver" android:exported="false" />
         <!-- The owner answers Mai's mid-call question from the notification (OwnerAsk). -->
         <receiver android:name=".OwnerReplyReceiver" android:exported="false" />
+        <!-- WhatsApp chats: reads incoming chat notifications only after the owner switches it on and grants
+             notification access; replies go out through WhatsApp's own Reply action after the owner taps Send. -->
+        <service android:name=".chats.ChatWatch"
+            android:label="@string/chat_watch_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <receiver android:name=".chats.ChatAskReceiver" android:exported="false" />
         <service android:name=".direct.setup.DirectPairingService" android:exported="false"
             android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

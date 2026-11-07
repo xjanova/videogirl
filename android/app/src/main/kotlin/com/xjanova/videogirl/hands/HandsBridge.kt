@@ -179,7 +179,9 @@ object HandsBridge {
             "poll" -> {
                 val reply = HashMap<String, Any>()
                 reply["stop"] = HandsControl.stopRequested
-                HandsControl.takeAnswer()?.let { (id, allow) -> reply["confirm"] = mapOf("id" to id, "allow" to allow) }
+                HandsControl.takeAnswer()?.let { a ->
+                    reply["confirm"] = mapOf("id" to a.id, "allow" to a.allow, "always" to a.always)
+                }
                 reply["recordDone"] = HandsControl.recordDone
                 reply["running"] = HandsControl.running
                 reply["recording"] = HandsControl.recording
@@ -187,7 +189,11 @@ object HandsBridge {
             }
             "askConfirm" -> {
                 val id = num(call, "id")?.toInt()
-                if (id != null) HandsService.ask(app, id, str(call, "title"), str(call, "body"))
+                if (id != null) HandsService.ask(
+                    app, id, str(call, "title"), str(call, "body"),
+                    float = call.argument<Any>("float") == true,
+                    alwaysRisky = call.argument<Any>("alwaysRisky") == true,
+                )
                 result.success(true)
             }
             "confirmDone" -> {

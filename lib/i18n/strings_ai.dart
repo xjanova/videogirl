@@ -629,13 +629,15 @@ extension AiStrings on S {
         'The caller said: "$firstWords" (couldn\'t summarise — open the full conversation)',
       );
   String get callNotesPromptHeader => pick(
-        '=== ข้อความที่มายด์รับฝากไว้ทางโทรศัพท์ (บอกเจ้าของได้) ===',
-        '=== Messages Mind took on the phone (tell the owner) ===',
+        '=== ข้อความที่มายด์รับฝากไว้ทางโทรศัพท์ (บอกเจ้าของเฉพาะเรื่องที่ยังไม่ได้อ่าน ครั้งเดียว) ===',
+        '=== Messages Mind took on the phone (tell the owner only the unread ones, once) ===',
       );
   String get callNoteUnseenTag =>
       pick('(เจ้าของยังไม่ได้อ่าน)', '(not read by the owner yet)');
   String get callNoteToldTag => pick('(บอกเจ้าของในแชทไปแล้ว · อย่ายกมาพูดซ้ำเอง ตอบเมื่อเจ้าของถามถึง)',
       '(already told the owner in chat · do not bring it up again unless the owner asks)');
+  String get callNoteSeenTag => pick('(เจ้าของเปิดอ่านเองแล้ว · อย่ายกมาพูดเอง ตอบเมื่อเจ้าของถามถึง)',
+      '(the owner has read this · do not bring it up unless the owner asks)');
   String get speakerCaller => pick('คู่สาย', 'Caller');
   String get callNoteSheetTitle => pick('บันทึกสาย', 'Call note');
   String get callNoteConversation => pick('บทสนทนาเต็ม', 'Full conversation');

@@ -1235,6 +1235,11 @@ class S {
         'Kept on this phone only · play it back from the call note in Timeline · deleted with the note · she tells the caller in her greeting',
       );
   String get callNotePlay => _('ฟังเสียงสนทนา', 'Play the recording');
+  String get recordingsTitle => _('เสียงสนทนาที่บันทึกไว้', 'Recorded calls');
+  String get recordingsEmpty => _(
+        'ยังไม่มีเสียงสนทนา · สายที่เธอรับแทน (และเปิดบันทึกเสียงไว้) จะมาอยู่ที่นี่',
+        'No recordings yet · calls she answers for you (with recording on) show up here',
+      );
   String get callNoteStop => _('หยุดเล่น', 'Stop');
   String get callOnAir => _('มายด์กำลังคุยสายนี้', 'Mind is on this call');
   String get callTalking => _('กำลังพูด', 'Speaking');

@@ -449,6 +449,9 @@ void main() {
         // คำตอบของเจ้าของในสายโอน ("ได้" "ไม่สะดวก" "ประชุม") ที่ต้อง **จับให้ได้** จากคำพูด ไม่ใช่ข้อความที่ผู้ใช้เห็น
         // · บทที่เธอพูดกับเจ้าของอยู่ใน i18n (strings_hold.dart · TransferScript)
         'lib/phone/call_transfer.dart',
+        // prompt ที่สมองอ่านตอนร่างคำตอบแชท WhatsApp (กรอบห่อข้อความของคนนอก) · ไม่ใช่ข้อความที่ผู้ใช้เห็น ·
+        // ข้อความบนจอและแจ้งเตือนอยู่ใน i18n (strings_chats.dart)
+        'lib/chats/chat_reply.dart',
       };
 
       final offenders = <String>[];

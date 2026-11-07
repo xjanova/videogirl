@@ -50,12 +50,14 @@ class HandsService : Service() {
         private const val PI_ALLOW = 7065
         private const val PI_DENY = 7066
         private const val PI_DISMISS = 7067
+        private const val PI_ALWAYS = 7068
 
         private const val ACTION_SHOW = "com.xjanova.videogirl.hands.SHOW"
         private const val ACTION_STOP = "com.xjanova.videogirl.hands.STOP"
         private const val ACTION_DONE = "com.xjanova.videogirl.hands.DONE"
         private const val ACTION_ALLOW = "com.xjanova.videogirl.hands.ALLOW"
         private const val ACTION_DENY = "com.xjanova.videogirl.hands.DENY"
+        private const val ACTION_ALWAYS = "com.xjanova.videogirl.hands.ALWAYS"
         private const val EXTRA_ID = "giggok.hands.ask_id"
 
         /** จอค้างนานสุดหลังขั้นล่าสุด · ขั้นหนึ่งยาวสุดราว 2 นาที (รอเจ้าของตอบ) + สมองคิด */
@@ -162,13 +164,19 @@ class HandsService : Service() {
             val nm = NotificationManagerCompat.from(app)
             nm.cancel(NOTIFICATION)
             nm.cancel(ASK_NOTIFICATION)
+            AskOverlay.hide()
         }
 
-        /** ถามเจ้าของก่อนทำ (ทำเลย / ไม่ต้อง) */
-        fun ask(context: Context, id: Int, title: String, body: String) {
+        /** ถามเจ้าของก่อนทำ (ทำเลย / ไม่ต้อง) · [float] = แอปไม่ได้อยู่บนจอ ขึ้นกล่องลอยเหนือแอปที่เปิดอยู่ด้วย */
+        /**
+         * [alwaysRisky] = เรื่องเงิน การลบ สวิตช์ในตั้งค่าเครื่อง · อนุญาตถาวรได้ แต่ต้องผ่านขั้นเตือนก่อน ·
+         * ปุ่มในแจ้งเตือนเตือนไม่ได้ จึงไม่มีปุ่ม "ทุกครั้ง" ในแจ้งเตือนสำหรับเรื่องพวกนี้ (กล่องลอย/ในแอปเตือนได้)
+         */
+        fun ask(context: Context, id: Int, title: String, body: String, float: Boolean = false, alwaysRisky: Boolean = false) {
             val app = context.applicationContext
             ensureChannels(app)
             HandsControl.ask(id)
+            if (float) AskOverlay.show(id, title, body, always = true, alwaysRisky = alwaysRisky)
             fun action(code: Int, name: String) = PendingIntent.getService(
                 app, code,
                 Intent(app, HandsService::class.java).setAction(name).putExtra(EXTRA_ID, id),
@@ -188,12 +196,16 @@ class HandsService : Service() {
                 .setDeleteIntent(action(PI_DISMISS, ACTION_DENY))
                 .addAction(R.drawable.ic_hands, app.getString(R.string.hands_allow), action(PI_ALLOW, ACTION_ALLOW))
                 .addAction(R.drawable.ic_hands, app.getString(R.string.hands_deny), action(PI_DENY, ACTION_DENY))
+                .apply {
+                    if (!alwaysRisky) addAction(R.drawable.ic_hands, app.getString(R.string.hands_always), action(PI_ALWAYS, ACTION_ALWAYS))
+                }
                 .build()
             notify(app, ASK_NOTIFICATION, n)
         }
 
         fun askDone(context: Context, id: Int) {
             HandsControl.askDone(id)
+            AskOverlay.hide(id)
             NotificationManagerCompat.from(context.applicationContext).cancel(ASK_NOTIFICATION)
         }
 
@@ -300,10 +312,11 @@ class HandsService : Service() {
             ACTION_DONE -> {
                 if (HandsControl.recording) HandsControl.recordDone = true
             }
-            ACTION_ALLOW, ACTION_DENY -> {
+            ACTION_ALLOW, ACTION_DENY, ACTION_ALWAYS -> {
                 val id = intent.getIntExtra(EXTRA_ID, Int.MIN_VALUE)
-                HandsControl.answer(id, intent.action == ACTION_ALLOW)
+                HandsControl.answer(id, intent.action != ACTION_DENY, always = intent.action == ACTION_ALWAYS)
                 NotificationManagerCompat.from(this).cancel(ASK_NOTIFICATION)
+                AskOverlay.hide(id)
             }
             else -> goForeground()
         }
