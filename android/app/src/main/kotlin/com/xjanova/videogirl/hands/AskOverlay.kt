@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -55,7 +56,12 @@ object AskOverlay {
         val body: String,
         val allow: Int,
         val deny: Int,
-        val onAnswer: ((Context, Boolean) -> Unit)?,
+        val onAnswer: ((Context, Boolean, Boolean) -> Unit)?,
+        /** มีช่องติ๊ก "ไม่ต้องถามอีก" · [alwaysLabel] คำบนช่อง */
+        val always: Boolean,
+        val alwaysLabel: Int,
+        /** เรื่องเสี่ยง (เงิน การลบ ตั้งค่าเครื่อง) · ติ๊กแล้วกดทำ = ขึ้นคำเตือนก่อน ต้องกดยืนยันอีกครั้ง */
+        val alwaysRisky: Boolean,
     )
 
     @Volatile private var pending: Ask? = null
@@ -74,13 +80,16 @@ object AskOverlay {
         body: String,
         allow: Int = R.string.hands_allow,
         deny: Int = R.string.hands_deny,
-        onAnswer: ((Context, Boolean) -> Unit)? = null,
+        onAnswer: ((Context, Boolean, Boolean) -> Unit)? = null,
+        always: Boolean = false,
+        alwaysLabel: Int = R.string.hands_always_check,
+        alwaysRisky: Boolean = false,
     ): Boolean {
         if (MindHands.instance == null) return false
         main.post {
             val service = MindHands.instance ?: return@post
             hideNow()
-            pending = Ask(id, title, body, allow, deny, onAnswer)
+            pending = Ask(id, title, body, allow, deny, onAnswer, always, alwaysLabel, alwaysRisky)
             watchScreen(service)
             attach(service)
         }
@@ -169,17 +178,17 @@ object AskOverlay {
         screenOwner = null
     }
 
-    private fun answer(context: Context, ask: Ask, allow: Boolean) {
+    private fun answer(context: Context, ask: Ask, allow: Boolean, always: Boolean) {
         // กดบนจอล็อก (ล็อกระหว่างที่นิ้วกำลังลง) = ไม่นับ
         if (locked(context)) return
         if (pending?.id != ask.id) return
         hideNow()
         val custom = ask.onAnswer
         if (custom != null) {
-            custom(context.applicationContext, allow)
+            custom(context.applicationContext, allow, allow && always)
             return
         }
-        HandsControl.answer(ask.id, allow)
+        HandsControl.answer(ask.id, allow, always = allow && always)
         NotificationManagerCompat.from(context).cancel(ASK_NOTIFICATION)
     }
 
@@ -228,6 +237,30 @@ object AskOverlay {
             }
         }
 
+        // ช่องติ๊ก "ไม่ต้องถามอีก" · เรื่องเสี่ยงติ๊กแล้วต้องผ่านคำเตือนก่อน (เจ้าของ: "อันไหนเสี่ยง เพียงขั้นเตือนก่อนอนุญาต")
+        val check = if (ask.always) CheckBox(context).apply {
+            text = context.getString(ask.alwaysLabel)
+            setTextColor(Color.parseColor("#3C3C3C"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            filterTouchesWhenObscured = true
+        } else null
+        val warn = TextView(context).apply {
+            text = context.getString(R.string.hands_always_warn)
+            setTextColor(Color.parseColor("#C62828"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.DEFAULT_BOLD
+            visibility = View.GONE
+        }
+        if (check != null) {
+            card.addView(check, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(context, 8) })
+            card.addView(warn, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(context, 6) })
+        }
+        var warned = false
+
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
@@ -252,7 +285,6 @@ object AskOverlay {
             filterTouchesWhenObscured = true
             isEnabled = false
             alpha = 0.5f
-            setOnClickListener { answer(context, ask, allow) }
         }
         val deny = button(ask.deny, filled = false, allow = false)
         val allow = button(ask.allow, filled = true, allow = true)
@@ -260,6 +292,28 @@ object AskOverlay {
             LinearLayout.LayoutParams.WRAP_CONTENT, dp(context, 48),
         ).apply { marginEnd = dp(context, 12) })
         row.addView(allow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(context, 48)))
+        deny.setOnClickListener { answer(context, ask, allow = false, always = false) }
+        allow.setOnClickListener {
+            val always = check?.isChecked == true
+            if (always && ask.alwaysRisky && !warned) {
+                // ขั้นเตือน · ปุ่มเปลี่ยนเป็น "ยืนยันอนุญาตถาวร" แล้วรอใหม่ก่อนกดได้ · เอาติ๊กออก = ทำครั้งเดียวตามปกติ
+                warned = true
+                warn.visibility = View.VISIBLE
+                allow.text = context.getString(R.string.hands_always_confirm)
+                allow.isEnabled = false
+                allow.alpha = 0.5f
+                main.postDelayed({ allow.isEnabled = true; allow.alpha = 1f }, ARM_MS)
+                return@setOnClickListener
+            }
+            answer(context, ask, allow = true, always = always)
+        }
+        check?.setOnCheckedChangeListener { _, on ->
+            if (!on && warned) {
+                warned = false
+                warn.visibility = View.GONE
+                allow.text = context.getString(ask.allow)
+            }
+        }
         card.addView(row, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(context, 16) })

@@ -13,6 +13,7 @@ library;
 
 import 'hands_bridge.dart';
 import 'phone_action.dart';
+import 'phone_task.dart';
 
 abstract final class PhonePolicy {
   // คำอังกฤษเทียบเป็นคำ (ไม่ใช่ส่วนของคำ) · "send" ไม่ชน "sender"
@@ -84,6 +85,17 @@ abstract final class PhonePolicy {
     'เติมเงิน',
   ];
 
+  // แยกเรื่อง (ใช้ตอนอนุญาตถาวร) · เงินมาก่อน ลบตามมา ที่เหลือในรายการเสี่ยง = ส่ง/โพสต์/โทร
+  static const _moneyEn = [
+    'pay', 'payment', 'purchase', 'buy', 'order', 'checkout', 'check out', 'book now', 'reserve', 'transfer',
+    'withdraw', 'donate', 'subscribe', 'top up',
+  ];
+  static const _moneyTh = ['จ่าย', 'ชำระ', 'ซื้อ', 'สั่งอาหาร', 'จอง', 'โอน', 'ถอนเงิน', 'บริจาค', 'สมัครสมาชิก', 'เติมเงิน'];
+  static const _eraseEn = [
+    'delete', 'remove', 'uninstall', 'erase', 'reset', 'clear data', 'sign out', 'log out', 'logout', 'block', 'unfriend',
+  ];
+  static const _eraseTh = ['ลบ', 'ถอนการติดตั้ง', 'ล้างข้อมูล', 'รีเซ็ต', 'ออกจากระบบ', 'บล็อก'];
+
   // คำที่มีคำเสี่ยงอยู่ข้างในแต่ไม่ได้แปลว่าทำสิ่งนั้น (ชื่อแอปโทรศัพท์ ที่อยู่จัดส่ง)
   static const _harmlessTh = ['โทรศัพท์', 'จัดส่ง'];
 
@@ -126,6 +138,20 @@ abstract final class PhonePolicy {
   static bool _isSearchField(ScreenNode n) {
     final l = labelOf(n);
     return _searchWords.any(l.contains);
+  }
+
+  /// ขั้นที่ถามนี้เป็นเรื่องอะไร · ดูคำบนปุ่มที่จะกด (ถ้ารู้) + คำที่เธอบอก · หน้าตั้งค่าเครื่อง = ตั้งค่าเสมอ ·
+  /// ไม่เจอคำไหนเลย = [PhoneStepKind.unknown] (เตือนก่อนอนุญาตถาวร)
+  static PhoneStepKind kindOf(PhoneAction a, PhoneScreen? screen) {
+    if (screen?.package == settingsPackage) return PhoneStepKind.settings;
+    final node = a.id != null
+        ? screen?.byId(a.id!)
+        : (a.x != null && a.y != null ? screen?.at(a.x!, a.y!) : null);
+    final text = [if (node != null) labelOf(node), a.what, a.why].join(' ').toLowerCase();
+    if (_hasWord(text, _moneyEn) || _hasThai(text, _moneyTh)) return PhoneStepKind.money;
+    if (_hasWord(text, _eraseEn) || _hasThai(text, _eraseTh)) return PhoneStepKind.erase;
+    if (riskyText(text)) return PhoneStepKind.send;
+    return PhoneStepKind.unknown;
   }
 
   /// ขั้นนี้ต้องถามเจ้าของก่อนไหม

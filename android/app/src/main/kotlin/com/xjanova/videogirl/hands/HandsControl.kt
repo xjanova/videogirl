@@ -33,8 +33,10 @@ internal object HandsControl {
     @Volatile var askId: Int? = null
         private set
 
-    /** คำตอบที่ยังไม่ส่งให้ Dart · (เลขคำถาม, ทำได้ไหม) */
-    @Volatile private var pendingAnswer: Pair<Int, Boolean>? = null
+    /** คำตอบที่ยังไม่ส่งให้ Dart · always = เจ้าของติ๊ก "ไม่ต้องถามอีก" (Dart ตัดสินเองว่าเรื่องนี้จำได้ไหม) */
+    data class Answer(val id: Int, val allow: Boolean, val always: Boolean)
+
+    @Volatile private var pendingAnswer: Answer? = null
 
     val active: Boolean get() = running || recording
 
@@ -105,10 +107,10 @@ internal object HandsControl {
     }
 
     /** เจ้าของกดในแจ้งเตือน · รับเฉพาะคำถามที่ถามอยู่ */
-    @Synchronized fun answer(id: Int, allow: Boolean): Boolean {
+    @Synchronized fun answer(id: Int, allow: Boolean, always: Boolean = false): Boolean {
         if (askId != id) return false
         askId = null
-        pendingAnswer = id to allow
+        pendingAnswer = Answer(id, allow, allow && always)
         return true
     }
 
@@ -117,7 +119,7 @@ internal object HandsControl {
     }
 
     /** ส่งคำตอบให้ Dart ครั้งเดียว */
-    @Synchronized fun takeAnswer(): Pair<Int, Boolean>? {
+    @Synchronized fun takeAnswer(): Answer? {
         val a = pendingAnswer
         pendingAnswer = null
         return a

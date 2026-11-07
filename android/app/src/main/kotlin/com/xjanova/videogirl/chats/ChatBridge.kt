@@ -28,7 +28,13 @@ object ChatBridge {
         channel.setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
-                    "status" -> result.success(mapOf("on" to ChatInbox.on(app), "access" to ChatInbox.access(app)))
+                    "status" -> result.success(
+                        mapOf("on" to ChatInbox.on(app), "access" to ChatInbox.access(app), "auto" to ChatInbox.auto(app))
+                    )
+                    "setAuto" -> {
+                        ChatInbox.setAuto(app, call.argument<Boolean>("on") == true)
+                        result.success(true)
+                    }
                     "setOn" -> {
                         ChatInbox.setOn(app, call.argument<Boolean>("on") == true)
                         result.success(true)
@@ -50,6 +56,11 @@ object ChatBridge {
                         result.success(true)
                     }
                     "openAccess" -> result.success(openAccess(app))
+                    "trusted" -> result.success(ChatInbox.trustedList(app))
+                    "untrust" -> {
+                        ChatInbox.untrust(app, call.argument<String>("contact"))
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {

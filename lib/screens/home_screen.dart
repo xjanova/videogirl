@@ -26,6 +26,7 @@ import '../i18n/strings_studio.dart';
 import '../theme/tokens.dart';
 import '../widgets/ambient_clock.dart';
 import '../widgets/call_panel.dart';
+import '../widgets/call_recordings_sheet.dart';
 import '../widgets/glass.dart';
 import '../widgets/soul_status.dart';
 import '../widgets/liquid_background.dart';
@@ -602,6 +603,13 @@ class _HomeScreenState extends State<HomeScreen>
                     // ตราราศีของเธอ — เป็นทั้งปุ่มเปิดสเตตัสและตัวบอกอารมณ์
                     // ในตัวมันเอง (สีวงแหวนกับจุดมุมขวาเปลี่ยนตามอารมณ์)
                     SoulBadge(mode: mode),
+                    // เจ้าของ: "เพิ่มทางเข้าฟังเสียงบันทึกสนทนาไว้ที่หน้า อวาต้า"
+                    _StageIconButton(
+                      fallback: Icons.headphones_rounded,
+                      tooltip: S.of(context).recordingsTitle,
+                      mode: mode,
+                      onTap: () => showCallRecordingsSheet(context, mode),
+                    ),
                     // สตูดิโอ — เธอเต็มจอสำหรับแชร์หน้าจอเข้าวิดีโอคอล ไลฟ์ อัดคลิป
                     _StageIconButton(
                       fallback: Icons.videocam_rounded,

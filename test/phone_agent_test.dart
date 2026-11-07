@@ -137,7 +137,8 @@ class FakeHands implements Hands {
   }
 
   @override
-  Future<void> askConfirm({required int id, required String title, required String body, bool float = false}) async =>
+  Future<void> askConfirm(
+          {required int id, required String title, required String body, bool float = false, bool alwaysRisky = true}) async =>
       asked.add(id);
 
   @override

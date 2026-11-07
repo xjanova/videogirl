@@ -245,7 +245,15 @@ class PhoneAgent {
       }
 
       if (bad == null && PhonePolicy.needsOwner(act, screen)) {
-        final ask = PhoneStepAsk(id: ++_askSeq, goal: goal, action: what, app: screen.appName, why: action.why);
+        final ask = PhoneStepAsk(
+          id: ++_askSeq,
+          goal: goal,
+          action: what,
+          app: screen.appName,
+          why: action.why,
+          package: screen.package,
+          kind: PhonePolicy.kindOf(act, screen),
+        );
         _view = _view?.copyWith(asking: ask);
         onView?.call(_view);
         var ok = false;

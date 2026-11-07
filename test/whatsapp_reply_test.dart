@@ -68,7 +68,8 @@ void main() {
       for (final lang in AppLang.values) {
         final s = S(lang);
         for (final v in [s.chatsCard, s.chatsIntro, s.chatsNeedAccess, s.chatExpired, s.chatSendFailed,
-          s.chatAskTitle('A'), s.chatAskBody('x', 'y'), s.chatDrafted('A', 'x', 'y'), s.chatSent('A', 'y')]) {
+          s.chatAskTitle('A', 'LINE'), s.chatAskBody('x', 'y'), s.chatDrafted('A', 'LINE', 'x', 'y'), s.chatSent('A', 'y'),
+          s.chatAutoSent('A', 'x', 'y'), s.chatsAuto, s.chatsAutoWarnBody, s.chatsTrustedNone]) {
           expect(v, isNotEmpty);
         }
       }
@@ -100,6 +101,48 @@ void main() {
     });
   });
 
+  group('เลขาแนะนำตัว · ทุกภาษา', () {
+    test('ครั้งแรก = แนะนำตัวว่าเป็นเลขาชื่ออะไร ของใคร · คุยอยู่แล้ว = ไม่แนะนำซ้ำ · ตอบภาษาของเขา', () {
+      for (final thai in [true, false]) {
+        final first = chatReplyPrompt(thai, her: 'น้องมาย', boss: 'บุญ', introduce: true, app: 'LINE');
+        expect(first, contains('น้องมาย'));
+        expect(first, contains(thai ? 'คุณบุญ' : 'บุญ'));
+        expect(first, contains(thai ? 'แนะนำตัว' : 'introduction'));
+        expect(first, contains(thai ? 'ภาษาไหนก็ได้' : 'whatever it is'));
+        expect(first, contains('LINE'));
+        final again = chatReplyPrompt(thai, her: 'น้องมาย', introduce: false);
+        expect(again, contains(thai ? 'ไม่ต้องแนะนำตัวซ้ำ' : 'do not introduce yourself again'));
+        expect(again, contains(thai ? 'เจ้าของเครื่อง' : 'the phone owner'));
+        expect(chatReplyPrompt(thai, her: 'X', auto: true), contains(thai ? 'โดยไม่มีใครอ่านก่อน' : 'nobody reading it first'));
+      }
+      expect(chatReplyPrompt(true, her: 'โต้ง', male: true), contains('"ครับ"'));
+    });
+
+    test('ใช้ตัวเลขาเดียวกับตอนรับสาย · ชื่อเจ้าของจากตั้งค่าโทรออก', () {
+      final draft = _body(_src('lib/state/mind_state.dart'), 'Future<void> _draftChat(');
+      expect(draft, contains('final who = callCharacter();'));
+      expect(draft, contains('boss: _callerName'));
+      expect(draft, contains('introduce: c.introduce'));
+      expect(_src('$_chats/ChatInbox.kt'), contains('INTRO_AGAIN_MS = 24 * 60 * 60_000L'));
+    });
+
+    test('อ่านธงจากเนทีฟ · ชื่อแอปอ่านออก', () {
+      final c = IncomingChat.fromMap({'id': 1, 'app': 'jp.naver.line.android', 'text': 'hi', 'contact': 'jp.naver.line.android|x', 'auto': true, 'introduce': false})!;
+      expect(c.appName, 'LINE');
+      expect(c.auto, isTrue);
+      expect(c.introduce, isFalse);
+      expect(IncomingChat.fromMap({'id': 1, 'text': 'hi'})!.introduce, isTrue);
+      expect(ChatAnswer.fromMap({'id': 1, 'sent': true, 'auto': true})!.auto, isTrue);
+    });
+
+    test('🔒 เปิดตอบเองต้องผ่านกล่องเตือนก่อน', () {
+      final panel = _src('lib/screens/chat_reply_panel.dart');
+      final setAuto = _body(panel, 'Future<void> _setAuto(');
+      expect(setAuto, contains('showDialog<bool>'));
+      expect(setAuto, contains('if (ok != true || !mounted) return;'));
+    });
+  });
+
   group('ฝั่งแอป', () {
     test('🔴 อ่านสวิตช์ก่อนรับของที่ค้าง · ร่างทีละข้อความ · ข้อความคนนอกไม่ลงความจำ', () {
       final state = _src('lib/state/mind_state.dart');
@@ -117,7 +160,7 @@ void main() {
   group('ฝั่งเนทีฟ', () {
     test('🔒 ดูเฉพาะ WhatsApp เมื่อเจ้าของเปิด · ไม่ตอบกลุ่ม · ไม่นับข้อความของเจ้าของเอง · สรุปไม่นับ · เก่าไม่ตอบ', () {
       final inbox = _src('$_chats/ChatInbox.kt');
-      expect(inbox, contains('setOf("com.whatsapp", "com.whatsapp.w4b")'));
+      expect(inbox, contains('"com.whatsapp", "com.whatsapp.w4b",'));
       final posted = _body(inbox, 'fun onPosted(');
       expect(posted, contains('if (sbn.packageName !in APPS || !on(context)) return'));
       expect(posted, contains('FLAG_GROUP_SUMMARY'));
@@ -127,6 +170,23 @@ void main() {
       expect(read, contains('EXTRA_IS_GROUP_CONVERSATION'));
       expect(read, contains('val from = last.person ?: return null'));
       expect(inbox.contains('Log.'), isFalse, reason: 'ไม่ลงข้อความหรือชื่อคน');
+    });
+
+    test('🔒 ตอบเองตัดสินตอนข้อความเข้า: เปิดโหมด/อนุญาตรายคน · เจ้าของพิมพ์เองในห้อง = ถาม · รหัส/เงิน = ถาม · เกินโควตา = ถาม', () {
+      final inbox = _src('$_chats/ChatInbox.kt');
+      final posted = _body(inbox, 'fun onPosted(');
+      expect(posted, contains('(auto(context) || trusted(context, contact)) && !ownerSpoke &&'));
+      expect(posted, contains('!SENSITIVE.containsMatchIn(msg.text) && underQuota(contact, System.currentTimeMillis())'));
+      expect(posted, contains('msg.mine.any { mine == null || it.hashCode() !in mine }'));
+      expect(inbox, contains('AUTO_MAX = 6'));
+      final ask = _body(inbox, 'fun ask(');
+      expect(ask, contains('if (p.auto) {'));
+      expect(inbox, isNot(contains('"com.google.android.apps.messaging"')), reason: 'SMS ไม่ตอบ (OTP/ธนาคาร)');
+      expect(inbox, contains('"jp.naver.line.android"'));
+      final send = _body(inbox, 'fun send(');
+      expect(send, contains('markIntro('));
+      expect(send, contains('sent.addLast(text.trim().hashCode())'));
+      expect(_src('$_chats/ChatBridge.kt'), contains('"setAuto"'));
     });
 
     test('🔒 ส่งได้เฉพาะเมื่อถามเจ้าของแล้ว · ผ่านปุ่มตอบกลับของ WhatsApp · ข้อความเดียวส่งครั้งเดียว', () {
@@ -139,7 +199,8 @@ void main() {
       expect(_src('$_chats/ChatBridge.kt'), isNot(contains('"send"')), reason: 'Dart สั่งส่งเองไม่ได้');
       final ask = _body(inbox, 'fun ask(');
       expect(ask, contains('setPublicVersion(hidden)'), reason: 'จอล็อกเห็นแค่หัวเรื่องกลาง ๆ');
-      expect(ask, contains('AskOverlay.show(id, title, body, R.string.chat_send, R.string.chat_skip)'));
+      expect(ask, contains('id, title, body, R.string.chat_send, R.string.chat_skip,'));
+      expect(ask, contains('alwaysLabel = R.string.chat_always_check'));
     });
 
     test('ลงทะเบียนบริการแจ้งเตือนด้วยสิทธิ์ของระบบ · ปุ่มรับเฉพาะในแอป · ช่องต่อทุก engine', () {

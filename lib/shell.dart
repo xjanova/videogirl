@@ -24,6 +24,7 @@ import 'system/app_life.dart';
 import 'i18n/strings.dart';
 import 'i18n/strings_ai.dart';
 import 'i18n/strings_hands.dart';
+import 'i18n/strings_trust.dart';
 import 'theme/tokens.dart';
 import 'update/update_prompt.dart';
 import 'update/updater.dart';
@@ -341,14 +342,14 @@ class _MindShellState extends State<MindShell> {
   Future<void> _confirmPhoneStep(PhoneStepAsk ask) async {
     final state = _state;
     if (state == null || !mounted || state.phoneTask?.asking?.id != ask.id) return;
-    final allow = await showModalBottomSheet<bool>(
+    final answer = await showModalBottomSheet<({bool allow, bool always})>(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _PhoneAskSheet(ask: ask),
     );
     // ปิดกล่องเฉย ๆ = ไม่ตอบที่นี่ (ยังตอบจากแจ้งเตือนได้ · ไม่ตอบเลย = ไม่ทำ เมื่อหมดเวลา)
-    if (allow != null) state.answerPhoneAsk(ask.id, allow);
+    if (answer != null) state.answerPhoneAsk(ask.id, answer.allow, always: answer.always);
   }
 
   MindState? _state;
@@ -834,10 +835,37 @@ class _PhoneAskSheetState extends State<_PhoneAskSheet> {
   /// กดซ้ำ = pop สองครั้ง ซึ่งจะปิดจอที่อยู่ใต้กล่องไปด้วย
   bool _closed = false;
 
+  /// "ไม่ต้องถามอีก" · เจ้าของ: "ให้อนุญาตถาวรได้หมด แต่อันไหนเสี่ยง เพียงขั้นเตือนก่อนอนุญาต"
+  bool _always = false;
+
   void _close(bool? allow) {
     if (_closed || !mounted) return;
     _closed = true;
-    Navigator.pop(context, allow);
+    Navigator.pop(context, allow == null ? null : (allow: allow, always: allow && _always));
+  }
+
+  /// เรื่องเสี่ยง + ติ๊กถาวร = เตือนก่อนอีกชั้น · ไม่ยืนยัน = ยังไม่ปิดกล่อง (เลือกใหม่ได้)
+  Future<void> _allow(S t) async {
+    final a = widget.ask;
+    if (_always && a.kind.risky) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text(t.handsAlwaysWarnTitle),
+          content: Text(t.handsAlwaysWarnBody(t.handsKindLabel(a.kind), a.app)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(t.cancel)),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC62828)),
+              onPressed: () => Navigator.pop(c, true),
+              child: Text(t.handsAlwaysConfirm),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+    _close(true);
   }
 
   @override
@@ -861,6 +889,18 @@ class _PhoneAskSheetState extends State<_PhoneAskSheet> {
             if (a.why.trim().isNotEmpty)
               Text(t.handsAskWhy(a.why.trim()), style: const TextStyle(fontSize: 12, height: 1.45)),
             Text(t.handsAskGoal(a.goal), style: const TextStyle(fontSize: 11, height: 1.45, color: MindColors.ink55)),
+            if (a.package.isNotEmpty)
+              CheckboxListTile(
+                value: _always,
+                onChanged: (v) => setState(() => _always = v ?? false),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(t.handsAlwaysCheck, style: const TextStyle(fontSize: 12.5)),
+                subtitle: a.kind.risky
+                    ? Text(t.handsKindLabel(a.kind), style: const TextStyle(fontSize: 11, color: Color(0xFFB46A00)))
+                    : null,
+              ),
             const SizedBox(height: 4),
             Row(
               spacing: 10,
@@ -869,7 +909,7 @@ class _PhoneAskSheetState extends State<_PhoneAskSheet> {
                   child: OutlinedButton(onPressed: () => _close(false), child: Text(t.handsDeny)),
                 ),
                 Expanded(
-                  child: FilledButton(onPressed: () => _close(true), child: Text(t.handsAllow)),
+                  child: FilledButton(onPressed: () => _allow(t), child: Text(t.handsAllow)),
                 ),
               ],
             ),

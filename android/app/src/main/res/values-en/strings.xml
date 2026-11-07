@@ -175,4 +175,10 @@
     <string name="chat_edit">Edit and send</string>
     <string name="chat_edit_label">Type the reply to send</string>
     <string name="chat_skip">Don\'t send</string>
+    <string name="chat_send_trust">Send · don\'t ask for this person again</string>
+    <string name="chat_always_check">Send to this person without asking again</string>
+    <string name="hands_always">Do it · don\'t ask again</string>
+    <string name="hands_always_check">Do this kind of step in this app without asking again</string>
+    <string name="hands_always_warn">This is risky (money · deleting · phone settings). If you allow it for good, Mind will do it every time without asking. You can undo this in Settings.</string>
+    <string name="hands_always_confirm">Allow for good</string>
 </resources>

@@ -56,16 +56,16 @@ void main() {
       expect(confirm, contains('float: !_appVisible'));
       expect(_src('lib/hands/hands_bridge.dart'), contains("'float': float"));
       final ask = _body(_src('$_hands/HandsService.kt'), 'fun ask(');
-      expect(ask, contains('if (float) AskOverlay.show(id, title, body)'));
+      expect(ask, contains('if (float) AskOverlay.show(id, title, body, always = true, alwaysRisky = alwaysRisky)'));
       final overlay = _src('$_hands/AskOverlay.kt');
-      expect(_body(overlay, 'private fun answer('), contains('HandsControl.answer(ask.id, allow)'));
+      expect(_body(overlay, 'private fun answer('), contains('HandsControl.answer(ask.id, allow, always = allow && always)'));
     });
 
     test('🔴 ถามจบทางไหนก็ปิดกล่อง (ตอบในแจ้งเตือน · หมดเวลา · งานจบ · บริการมือปิด)', () {
       final service = _src('$_hands/HandsService.kt');
       expect(_body(service, 'fun askDone('), contains('AskOverlay.hide(id)'));
       expect(_body(service, 'fun finish('), contains('AskOverlay.hide()'));
-      final start = service.indexOf('ACTION_ALLOW, ACTION_DENY ->');
+      final start = service.indexOf('ACTION_ALLOW, ACTION_DENY, ACTION_ALWAYS ->');
       expect(service.indexOf('AskOverlay.hide(id)', start), greaterThan(start));
       expect(_body(_src('$_hands/MindHands.kt'), 'override fun onDestroy('), contains('AskOverlay.hide()'));
     });

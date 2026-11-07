@@ -155,7 +155,7 @@ class HandsReply {
 
 /// สิ่งที่ค้างจากแจ้งเตือน (เจ้าของกดหยุด / ตอบคำถาม / กดจำขั้นตอนเสร็จ)
 class HandsPoll {
-  const HandsPoll({this.stop = false, this.confirmId, this.allow = false, this.recordDone = false});
+  const HandsPoll({this.stop = false, this.confirmId, this.allow = false, this.always = false, this.recordDone = false});
 
   factory HandsPoll.fromMap(Object? raw) {
     if (raw is! Map) return const HandsPoll();
@@ -164,6 +164,7 @@ class HandsPoll {
       stop: raw['stop'] == true,
       confirmId: c is Map ? (c['id'] as num?)?.toInt() : null,
       allow: c is Map && c['allow'] == true,
+      always: c is Map && c['allow'] == true && c['always'] == true,
       recordDone: raw['recordDone'] == true,
     );
   }
@@ -171,6 +172,9 @@ class HandsPoll {
   final bool stop;
   final int? confirmId;
   final bool allow;
+
+  /// เจ้าของติ๊ก "ไม่ต้องถามอีก" แล้วกดทำ (ผ่านขั้นเตือนแล้วถ้าเป็นเรื่องเสี่ยง)
+  final bool always;
   final bool recordDone;
 }
 
@@ -251,7 +255,9 @@ abstract class Hands {
 
   /// ขึ้นแจ้งเตือนถามเจ้าของ (ทำเลย / ไม่ต้อง) · คำตอบมาทาง [poll]
   /// [float] = แอปไม่ได้อยู่บนจอ · ขึ้นกล่อง "ทำเลย / ไม่ต้อง" ลอยเหนือแอปที่เปิดอยู่ด้วย (ดู AskOverlay.kt)
-  Future<void> askConfirm({required int id, required String title, required String body, bool float = false});
+  /// [alwaysRisky] = เรื่องเสี่ยง · กล่องลอยเตือนก่อนอนุญาตถาวร · แจ้งเตือนไม่มีปุ่มอนุญาตถาวร (เตือนในนั้นไม่ได้)
+  Future<void> askConfirm(
+      {required int id, required String title, required String body, bool float = false, bool alwaysRisky = true});
   Future<void> confirmDone(int id);
 
   /// ปุ่มหยุดในแอป · ผลเหมือนปุ่มในแจ้งเตือน
@@ -346,8 +352,9 @@ class HandsBridge implements Hands {
   Future<HandsPoll> poll() async => HandsPoll.fromMap(await _call('poll'));
 
   @override
-  Future<void> askConfirm({required int id, required String title, required String body, bool float = false}) async =>
-      _call('askConfirm', {'id': id, 'title': title, 'body': body, 'float': float});
+  Future<void> askConfirm(
+          {required int id, required String title, required String body, bool float = false, bool alwaysRisky = true}) async =>
+      _call('askConfirm', {'id': id, 'title': title, 'body': body, 'float': float, 'alwaysRisky': alwaysRisky});
 
   @override
   Future<void> confirmDone(int id) async => _call('confirmDone', {'id': id});

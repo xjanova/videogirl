@@ -70,6 +70,7 @@ import '../hands/phone_agent.dart';
 import '../hands/phone_macro.dart';
 import '../hands/phone_task.dart';
 import '../i18n/strings_hands.dart';
+import '../i18n/strings_trust.dart';
 import '../phone/gemini_live_call.dart';
 import '../phone/live_call.dart';
 import '../phone/realtime_call.dart';
@@ -873,10 +874,55 @@ class MindState extends ChangeNotifier {
   }
 
   /// เจ้าของตอบ "ให้ทำขั้นนี้ไหม" ในแอป · [id] ไม่ตรงคำถามที่รออยู่ = คำตอบเก่า ทิ้ง
-  void answerPhoneAsk(int id, bool allow) {
+  /// [always] = เจ้าของติ๊ก "ไม่ต้องถามอีก" (กล่องในแอปเตือนเรื่องเสี่ยงให้แล้ว)
+  void answerPhoneAsk(int id, bool allow, {bool always = false}) {
     if (_askId != id) return;
     final a = _askAnswer;
-    if (a != null && !a.isCompleted) a.complete(allow);
+    if (a == null || a.isCompleted) return;
+    final ask = _askStep;
+    if (allow && always && ask != null) _trustHands(ask);
+    a.complete(allow);
+  }
+
+  // ── อนุญาตถาวร · เจ้าของ: "ให้อนุญาตถาวรได้หมด แต่อันไหนเสี่ยง เพียงขั้นเตือนก่อนอนุญาต" ──
+  //
+  // กุญแจ = แอป + เรื่อง (เงิน · ลบ · ตั้งค่า · ส่ง · ไม่รู้) · ให้ได้จากกล่องถามเท่านั้น (เจ้าของกดเอง) ·
+  // สมองไม่มีทางเพิ่มเอง · ดู/ยกเลิกได้ในตั้งค่า
+
+  /// กุญแจ → ชื่อแอปที่เห็น
+  Map<String, String> _handsTrust = const {};
+  Map<String, String> get handsTrust => _handsTrust;
+  PhoneStepAsk? _askStep;
+
+  static Map<String, String> decodeHandsTrust(String? raw) {
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final j = jsonDecode(raw);
+      if (j is Map) {
+        return Map.unmodifiable({
+          for (final e in j.entries)
+            if (e.key is String && (e.key as String).contains('|') && e.value is String) e.key as String: e.value as String,
+        });
+      }
+    } on FormatException {
+      // ค่าเสีย = ไม่อนุญาตอะไร (ถามทุกครั้ง ปลอดภัยกว่า)
+    }
+    return const {};
+  }
+
+  void _trustHands(PhoneStepAsk ask) {
+    if (ask.package.isEmpty) return;
+    _handsTrust = Map.unmodifiable({..._handsTrust, ask.trustKey: ask.app});
+    _save('handsTrust', jsonEncode(_handsTrust));
+    _push(ChatMessage.her(s.handsTrustGranted(ask.app, s.handsKindLabel(ask.kind))), ephemeral: true);
+    _notify();
+  }
+
+  /// [key] null = ยกเลิกทั้งหมด
+  void untrustHands(String? key) {
+    _handsTrust = key == null ? const {} : Map.unmodifiable({..._handsTrust}..remove(key));
+    _save('handsTrust', jsonEncode(_handsTrust));
+    _notify();
   }
 
   /// เจ้าของพูดตอบ "ให้ทำขั้นนี้ไหม" · true = เป็นคำตอบ (ใช้แล้ว ไม่ต้องส่งต่อ)
@@ -1084,9 +1130,16 @@ class MindState extends ChangeNotifier {
   /// ถามเจ้าของก่อนขั้นที่ย้อนกลับไม่ได้ · ตอบได้สองทาง: กล่องในแอป (shell) หรือปุ่มในแจ้งเตือน ·
   /// ทางไหนมาก่อนใช้ทางนั้น · กดหยุด / ไม่ตอบใน [phoneAskWait] = ไม่ทำ
   Future<bool> _confirmInChat(PhoneStepAsk ask) async {
+    // เจ้าของอนุญาตเรื่องแบบนี้ในแอปนี้ไว้ถาวร = ทำเลย แต่บอกในแชทว่าทำอะไรไป
+    if (ask.package.isNotEmpty && _handsTrust.containsKey(ask.trustKey)) {
+      _push(ChatMessage.her(s.handsTrustedDid(_clip(ask.action, 80), ask.app)), ephemeral: true);
+      _notify();
+      return true;
+    }
     final answer = Completer<bool>();
     _askAnswer = answer;
     _askId = ask.id;
+    _askStep = ask;
     final body = [
       s.handsAskBody(ask.action, ask.app),
       if (ask.why.trim().isNotEmpty) s.handsAskWhy(ask.why.trim()),
@@ -1094,7 +1147,8 @@ class MindState extends ChangeNotifier {
     ].join('\n');
     // 🔴 เธอทำงานอยู่ในแอปอื่น = กล่องในแอปไม่ขึ้น แจ้งเตือนก็ยุบอยู่ในแถบ · ลอยกล่องเหนือแอปนั้นให้กดตรง ๆ ·
     // เจ้าของ: "ควรเป็น ป๊อบอัพเด้งเหนือทุกโปรแกรม เพื่อจะได้สั่งงานได้ตรง เช่นทำเลย หรือไม่ทำ"
-    unawaited(hands.askConfirm(id: ask.id, title: s.handsAskTitle, body: body, float: !_appVisible));
+    unawaited(hands.askConfirm(
+        id: ask.id, title: s.handsAskTitle, body: body, float: !_appVisible, alwaysRisky: ask.kind.risky));
     // คุยด้วยเสียงอยู่ = เจ้าของอาจไม่ได้มองจอ (ขับรถ · เธออยู่ในแอปอื่น) · ถามออกเสียง ตอบด้วยเสียงได้
     if (_handsFree) onHerNotice?.call(s.handsAskVoice(_clip(ask.action, 80), _clip(ask.app, 40)));
     try {
@@ -1106,7 +1160,10 @@ class MindState extends ChangeNotifier {
           _agent?.stop();
           return false;
         }
-        if (p.confirmId == ask.id) return p.allow;
+        if (p.confirmId == ask.id) {
+          if (p.allow && p.always) _trustHands(ask);
+          return p.allow;
+        }
         await Future.any<Object?>([answer.future, Future<void>.delayed(_phoneAskPoll)]);
       }
       return answer.isCompleted ? await answer.future : false;
@@ -1114,6 +1171,7 @@ class MindState extends ChangeNotifier {
       if (identical(_askAnswer, answer)) {
         _askAnswer = null;
         _askId = null;
+        _askStep = null;
       }
       unawaited(hands.confirmDone(ask.id));
     }
@@ -1160,8 +1218,17 @@ class MindState extends ChangeNotifier {
   ChatInbox? _chats;
   bool _chatsOn = false;
   bool _chatsAccess = false;
+  bool _chatsAuto = false;
   bool get chatsOn => _chatsOn;
   bool get chatsAccess => _chatsAccess;
+
+  /// "ตอบเองทุกแชท" · เจ้าของ: "เธอตอบแทนเราได้เอง ทุกแชท เหมือนรับโทรศัพท์ได้เลย"
+  bool get chatsAuto => _chatsAuto;
+  List<TrustedChat> _chatsTrusted = const [];
+  List<TrustedChat> get chatsTrusted => _chatsTrusted;
+
+  /// ข้อความที่ทักมาของคำตอบที่ยังไม่รู้ผล · บอกเจ้าของว่าเขาพิมพ์อะไร เธอตอบอะไร
+  final Map<int, String> _chatSaid = {};
 
   /// ร่างทีละข้อความ · หลายคนทักพร้อมกัน = ไม่ยิงสมองซ้อนกัน
   Future<void> _chatLine = Future<void>.value();
@@ -1180,10 +1247,26 @@ class MindState extends ChangeNotifier {
     final c = _chats;
     if (c == null) return;
     final st = await c.status();
+    final trusted = await c.trusted();
     if (_disposed) return;
     _chatsOn = st.on;
     _chatsAccess = st.access;
+    _chatsAuto = st.auto;
+    _chatsTrusted = trusted;
     _notify();
+  }
+
+  /// หน้าตั้งค่าเตือนก่อนเปิด (ส่งจากบัญชีเจ้าของโดยไม่ถาม)
+  Future<void> setChatsAuto(bool v) async {
+    _chatsAuto = v;
+    _notify();
+    await _chats?.setAuto(v);
+    await refreshChats();
+  }
+
+  Future<void> untrustChat(String? contact) async {
+    await _chats?.untrust(contact);
+    await refreshChats();
   }
 
   Future<void> setChatsOn(bool v) async {
@@ -1204,8 +1287,18 @@ class MindState extends ChangeNotifier {
     final thai = _lang == AppLang.th;
     var draft = '';
     try {
+      // ตัวเดียวกับที่รับโทรศัพท์แทน · เจ้าของ: "ก่อนตอบต้องบอกก่อนว่าตัวเองเป็นเลขาชื่ออะไร เป็นต้นรับเรื่องแทน"
+      final who = callCharacter();
       draft = cleanChatDraft(await _askBrain(
-        chatReplyPrompt(thai, her: _soul?.name ?? s.speakerHer),
+        chatReplyPrompt(
+          thai,
+          her: who.name,
+          male: who.male,
+          boss: _callerName,
+          introduce: c.introduce,
+          auto: c.auto,
+          app: c.appName,
+        ),
         [(fromHer: false, text: chatBlock(c, thai: thai))],
         cap: ReplyCap.background,
       ));
@@ -1217,22 +1310,30 @@ class MindState extends ChangeNotifier {
     final said = _clip(c.text, 200);
     if (draft.isEmpty) {
       unawaited(_chats?.skip(c.id));
-      _push(ChatMessage.her(s.chatDraftFailed(c.who, said)), ephemeral: true);
+      _push(ChatMessage.her(s.chatDraftFailed(c.who, c.appName, said)), ephemeral: true);
       _notify();
       return;
     }
-    final asked = await _chats?.ask(id: c.id, draft: draft, title: s.chatAskTitle(c.who), body: s.chatAskBody(said, draft)) ?? false;
-    // คนเดิมทักใหม่ระหว่างร่าง = ข้อความนี้ตกไปแล้ว ร่างใหม่มาแทน · ไม่ต้องบอก
-    if (!asked || _disposed) return;
+    _chatSaid[c.id] = said;
+    while (_chatSaid.length > 40) {
+      _chatSaid.remove(_chatSaid.keys.first);
+    }
+    final asked =
+        await _chats?.ask(id: c.id, draft: draft, title: s.chatAskTitle(c.who, c.appName), body: s.chatAskBody(said, draft)) ??
+            false;
+    // คนเดิมทักใหม่ระหว่างร่าง = ข้อความนี้ตกไปแล้ว ร่างใหม่มาแทน · ไม่ต้องบอก ·
+    // ส่งเอง = เนทีฟส่งไปแล้ว ผลมาทาง [_onChatAnswer] พร้อมข้อความที่ส่ง
+    if (!asked || _disposed || c.auto) return;
     // 🔒 ขึ้นจอแต่ไม่ลงความจำ/ไม่กลับเข้าสมองตาถัดไป · คำของคนนอกต้องไม่ค้างอยู่ใน prompt ของแชทเจ้าของ
-    _push(ChatMessage.her(s.chatDrafted(c.who, said, draft)), ephemeral: true);
+    _push(ChatMessage.her(s.chatDrafted(c.who, c.appName, said, draft)), ephemeral: true);
     _notify();
   }
 
   void _onChatAnswer(ChatAnswer a) {
     if (_disposed) return;
+    final said = _chatSaid.remove(a.id);
     final text = a.sent
-        ? s.chatSent(a.who, _clip(a.text, 200))
+        ? (a.auto && said != null ? s.chatAutoSent(a.who, said, _clip(a.text, 200)) : s.chatSent(a.who, _clip(a.text, 200)))
         : switch (a.error) {
             'skipped' => null,
             'expired' => s.chatExpired,
@@ -1540,6 +1641,7 @@ class MindState extends ChangeNotifier {
     _callMaxMinutes = p.getInt('callMaxMinutes') ?? 3;
     _callStyle = p.getString('callStyle') ?? '';
     _cast = CallCast.decode(p.getString('callCast'), _maiDefault());
+    _handsTrust = decodeHandsTrust(p.getString('handsTrust'));
     _lessons = CallLessons.decode(p.getString('callLessons'));
     _callCode = await SecretStore.read(SecretStore.kCallCode);
     _codeFails = decodeCodeFails(p.getString('callCodeFails'));
@@ -4148,9 +4250,35 @@ class MindState extends ChangeNotifier {
     return null;
   }
 
+  /// บันทึกสายที่มีเสียง (ใหม่ก่อน) · หน้าอวาต้าเปิดรายการนี้
+  Future<List<CallNote>> recordedCalls() async {
+    final out = <CallNote>[];
+    for (final n in _callNotes?.notes ?? const <CallNote>[]) {
+      if (await CallRecordings.forNote(n.id) != null) out.add(n);
+    }
+    return out;
+  }
+
+  /// บันทึกที่กำลังเล่นอยู่ (ปุ่มในรายการรู้ว่าตัวไหนเล่น)
+  String? _playingNoteId;
+  String? get playingNoteId => _playingNoteId;
+
+  /// เจ้าของกดฟังเองในแอป · เล่นอยู่อีกอัน = หยุดก่อน
+  Future<void> playCallNote(CallNote note) async {
+    final f = await CallRecordings.forNote(note.id);
+    if (_disposed) return;
+    if (f == null) {
+      reportError(s.recordingFailed);
+      return;
+    }
+    await stopRecording();
+    unawaited(_playRecordingFile(f, note));
+  }
+
   Future<void> _playRecordingFile(File file, CallNote note) async {
     final seq = ++_recordingSeq;
     _playingRecording = true;
+    _playingNoteId = note.id;
     _notify();
     unawaited(_callNotes?.markSeen(note.id));
     // ให้เธอพูดประโยคสั้น ๆ จบก่อน · คุยสดเสียงเธอเริ่มหลังผลเครื่องมือกลับไป จึงรอให้เริ่มก่อนนิดหนึ่ง
@@ -4169,6 +4297,7 @@ class MindState extends ChangeNotifier {
     }
     if (seq != _recordingSeq || _disposed) return; // ถูกหยุด · [stopRecording] เก็บของแล้ว
     _playingRecording = false;
+    _playingNoteId = null;
     if (!ok) reportError(s.recordingFailed);
     _notify();
   }
@@ -4178,6 +4307,7 @@ class MindState extends ChangeNotifier {
     if (!_playingRecording) return;
     _recordingSeq++;
     _playingRecording = false;
+    _playingNoteId = null;
     _notify();
     try {
       await kSystemChannel.invokeMethod<bool>('stopAudioFile');

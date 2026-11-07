@@ -216,6 +216,8 @@ class MacroPlayer {
               goal: goal,
               action: describe(step),
               app: screen.appName,
+              package: screen.package,
+              kind: PhonePolicy.kindOf(action, screen),
             ));
             if (stopped()) return MacroRun(done: i, error: 'stopped', remaining: steps.sublist(i));
             if (!ok) return MacroRun(done: i, error: 'declined', remaining: steps.sublist(i));
