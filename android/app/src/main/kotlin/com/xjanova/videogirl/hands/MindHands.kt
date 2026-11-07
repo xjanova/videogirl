@@ -110,6 +110,7 @@ class MindHands : AccessibilityService() {
 
     override fun onDestroy() {
         if (instance === this) instance = null
+        AskOverlay.hide()
         synchronized(nodesLock) { lastNodes = emptyList() }
         super.onDestroy()
     }
@@ -620,6 +621,8 @@ class MindHands : AccessibilityService() {
     }
 
     private fun send(g: GestureDescription): Boolean {
+        // 🔒 กล่อง "ทำเลย / ไม่ต้อง" ลอยอยู่ = นิ้วจำลองแตะอะไรไม่ได้ · เธอต้องไม่กดอนุมัติตัวเอง (ดู AskOverlay)
+        if (AskOverlay.showing) return false
         val done = CountDownLatch(1)
         val ok = AtomicBoolean(false)
         val sent = try {

@@ -187,7 +187,7 @@ object HandsBridge {
             }
             "askConfirm" -> {
                 val id = num(call, "id")?.toInt()
-                if (id != null) HandsService.ask(app, id, str(call, "title"), str(call, "body"))
+                if (id != null) HandsService.ask(app, id, str(call, "title"), str(call, "body"), call.argument<Any>("float") == true)
                 result.success(true)
             }
             "confirmDone" -> {

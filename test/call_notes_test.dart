@@ -173,11 +173,32 @@ void main() {
       expect(again.told('n1'), isTrue);
     });
 
-    test('เปิดอ่านแล้ว = ไม่มีป้ายเลย', () async {
+    test('🔴 เปิดอ่านแล้ว = ป้าย "เจ้าของรู้แล้ว อย่ายกมาพูดเอง" · ไม่ใช่ไม่มีป้ายใต้หัวข้อ "บอกได้"', () async {
       final notes = await one();
       await notes.markTold(['n1']);
       await notes.markSeen('n1');
-      expect(notes.promptBlock(unseenTag: '(UNSEEN)', toldTag: '(TOLD)'), isNot(contains('(')));
+      final block = notes.promptBlock(unseenTag: '(UNSEEN)', toldTag: '(TOLD)', seenTag: '(SEEN)');
+      expect(block, contains('ฝากเรื่อง (SEEN)'));
+      expect(block, isNot(contains('(UNSEEN)')));
+      expect(block, isNot(contains('(TOLD)')));
+      expect(notes.untoldIds(), isEmpty);
+    });
+
+    test('🔴 เปิดอ่านก่อนเธอได้บอก = ไม่นับเป็นเรื่องที่ต้องบอก และติดป้ายอ่านแล้ว', () async {
+      final notes = await one();
+      await notes.markSeen('n1');
+      expect(notes.untoldIds(), isEmpty);
+      expect(notes.promptBlock(unseenTag: '(UNSEEN)', toldTag: '(TOLD)', seenTag: '(SEEN)'), contains('(SEEN)'));
+    });
+
+    test('prompt จริงส่งป้ายอ่านแล้ว · หัวข้อไม่บอกให้เล่าทุกเรื่อง', () {
+      final src = File('lib/state/mind_state.dart').readAsStringSync();
+      expect(src, contains('seenTag: s.callNoteSeenTag'));
+      for (final lang in AppLang.values) {
+        final s = S(lang);
+        expect(s.callNoteSeenTag, isNotEmpty);
+        expect(s.callNotesPromptHeader, isNot(anyOf(contains('(บอกเจ้าของได้)'), contains('(tell the owner)'))));
+      }
     });
 
     test('🔴 แชทตอบสำเร็จแล้วจึงปิดป้าย · คุยสดเปิดแล้วก็ปิด · ป้ายบอกเธอว่าอย่ายกมาพูดเอง', () {

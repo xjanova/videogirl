@@ -250,7 +250,8 @@ abstract class Hands {
   Future<HandsPoll> poll();
 
   /// ขึ้นแจ้งเตือนถามเจ้าของ (ทำเลย / ไม่ต้อง) · คำตอบมาทาง [poll]
-  Future<void> askConfirm({required int id, required String title, required String body});
+  /// [float] = แอปไม่ได้อยู่บนจอ · ขึ้นกล่อง "ทำเลย / ไม่ต้อง" ลอยเหนือแอปที่เปิดอยู่ด้วย (ดู AskOverlay.kt)
+  Future<void> askConfirm({required int id, required String title, required String body, bool float = false});
   Future<void> confirmDone(int id);
 
   /// ปุ่มหยุดในแอป · ผลเหมือนปุ่มในแจ้งเตือน
@@ -345,8 +346,8 @@ class HandsBridge implements Hands {
   Future<HandsPoll> poll() async => HandsPoll.fromMap(await _call('poll'));
 
   @override
-  Future<void> askConfirm({required int id, required String title, required String body}) async =>
-      _call('askConfirm', {'id': id, 'title': title, 'body': body});
+  Future<void> askConfirm({required int id, required String title, required String body, bool float = false}) async =>
+      _call('askConfirm', {'id': id, 'title': title, 'body': body, 'float': float});
 
   @override
   Future<void> confirmDone(int id) async => _call('confirmDone', {'id': id});

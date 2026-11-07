@@ -162,13 +162,15 @@ class HandsService : Service() {
             val nm = NotificationManagerCompat.from(app)
             nm.cancel(NOTIFICATION)
             nm.cancel(ASK_NOTIFICATION)
+            AskOverlay.hide()
         }
 
-        /** ถามเจ้าของก่อนทำ (ทำเลย / ไม่ต้อง) */
-        fun ask(context: Context, id: Int, title: String, body: String) {
+        /** ถามเจ้าของก่อนทำ (ทำเลย / ไม่ต้อง) · [float] = แอปไม่ได้อยู่บนจอ ขึ้นกล่องลอยเหนือแอปที่เปิดอยู่ด้วย */
+        fun ask(context: Context, id: Int, title: String, body: String, float: Boolean = false) {
             val app = context.applicationContext
             ensureChannels(app)
             HandsControl.ask(id)
+            if (float) AskOverlay.show(id, title, body)
             fun action(code: Int, name: String) = PendingIntent.getService(
                 app, code,
                 Intent(app, HandsService::class.java).setAction(name).putExtra(EXTRA_ID, id),
@@ -194,6 +196,7 @@ class HandsService : Service() {
 
         fun askDone(context: Context, id: Int) {
             HandsControl.askDone(id)
+            AskOverlay.hide(id)
             NotificationManagerCompat.from(context.applicationContext).cancel(ASK_NOTIFICATION)
         }
 
@@ -304,6 +307,7 @@ class HandsService : Service() {
                 val id = intent.getIntExtra(EXTRA_ID, Int.MIN_VALUE)
                 HandsControl.answer(id, intent.action == ACTION_ALLOW)
                 NotificationManagerCompat.from(this).cancel(ASK_NOTIFICATION)
+                AskOverlay.hide(id)
             }
             else -> goForeground()
         }

@@ -1089,7 +1089,9 @@ class MindState extends ChangeNotifier {
       if (ask.why.trim().isNotEmpty) s.handsAskWhy(ask.why.trim()),
       s.handsAskGoal(ask.goal),
     ].join('\n');
-    unawaited(hands.askConfirm(id: ask.id, title: s.handsAskTitle, body: body));
+    // 🔴 เธอทำงานอยู่ในแอปอื่น = กล่องในแอปไม่ขึ้น แจ้งเตือนก็ยุบอยู่ในแถบ · ลอยกล่องเหนือแอปนั้นให้กดตรง ๆ ·
+    // เจ้าของ: "ควรเป็น ป๊อบอัพเด้งเหนือทุกโปรแกรม เพื่อจะได้สั่งงานได้ตรง เช่นทำเลย หรือไม่ทำ"
+    unawaited(hands.askConfirm(id: ask.id, title: s.handsAskTitle, body: body, float: !_appVisible));
     // คุยด้วยเสียงอยู่ = เจ้าของอาจไม่ได้มองจอ (ขับรถ · เธออยู่ในแอปอื่น) · ถามออกเสียง ตอบด้วยเสียงได้
     if (_handsFree) onHerNotice?.call(s.handsAskVoice(_clip(ask.action, 80), _clip(ask.app, 40)));
     try {
@@ -1150,7 +1152,9 @@ class MindState extends ChangeNotifier {
 
   /// ก้อน "สายเข้าวันนี้" + "ข้อความที่ฝากไว้" สำหรับ prompt
   String get _callsBlock {
-    final notes = _callNotes?.promptBlock(unseenTag: s.callNoteUnseenTag, toldTag: s.callNoteToldTag) ?? '';
+    final notes = _callNotes?.promptBlock(
+            unseenTag: s.callNoteUnseenTag, toldTag: s.callNoteToldTag, seenTag: s.callNoteSeenTag) ??
+        '';
     return [
       _calls?.promptBlock() ?? '',
       if (notes.isNotEmpty) '${s.callNotesPromptHeader}\n$notes',
@@ -1321,6 +1325,11 @@ class MindState extends ChangeNotifier {
   /// ให้เธอเงียบเดี๋ยวนี้ — ทั้งประโยคที่กำลังพูดและประโยคที่ยังสังเคราะห์อยู่
   Future<void> hush() async {
     _speechSeq++;
+    await _silenceOthers();
+  }
+
+  /// หยุดเสียงที่ดังอยู่ทุกทาง (เวที + เครื่องเล่นของ Android) โดยไม่ยกเลิกประโยคที่กำลังจะพูด
+  Future<void> _silenceOthers() async {
     final h = silencer;
     if (h == null) return;
     try {
@@ -4778,6 +4787,13 @@ class MindState extends ChangeNotifier {
 
       debugPrint('เสียง: ได้ ${utterance.bytes.length} ไบต์ '
           '(${utterance.mime}) ส่งเข้าเวที');
+      // 🔴 ประโยคก่อนหน้ายังดังอยู่ = หยุดมันก่อน **ทุกทาง** · เวทีตัดเสียงเก่าของตัวเองได้ แต่ประโยคนี้อาจไปอีกทาง
+      // (แอปเพิ่งลงเบื้องหลัง → เครื่องเล่นของ Android · เวทีพัง → ทางสำรอง) แล้วสองประโยคดังซ้อนกัน ·
+      // เจ้าของ: "การแชทของมายด์มีเสียงพูดซ้อนกันหลายตัว"
+      if (_speaking) {
+        await _silenceOthers();
+        if (_disposed || seq != _speechSeq || !_voiceOut) return;
+      }
       _speaking = true;
       _speakingSeq = seq;
       // นาฬิกาที่เริ่มนับตอนข้อความมาถึงต้องหยุด · ไม่งั้นคำตอบที่สังเคราะห์

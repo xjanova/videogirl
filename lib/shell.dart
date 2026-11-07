@@ -258,6 +258,11 @@ class _MindShellState extends State<MindShell> {
     state.speaker = (u) async {
       var played = await _avatar.speakBytes(u.bytes, mime: u.mime);
       if (!played) {
+        // 🔴 เวทีหมดเวลา/บอกว่าเงียบ ≠ เวทีหยุดแล้ว · ไม่สั่งหยุดก่อน = ประโยคเดียวกันดังสองที่ซ้อนกัน
+        // (เจ้าของ: "การแชทของมายด์มีเสียงพูดซ้อนกันหลายตัว")
+        try {
+          await _avatar.stop().timeout(const Duration(seconds: 1));
+        } on Object catch (_) {}
         // ทางสำรอง: เครื่องเล่นของ Android · ปากขยับแบบประมาณระหว่างนั้น
         unawaited(_avatar.setBabble(true));
         try {
