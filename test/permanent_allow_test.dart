@@ -78,7 +78,9 @@ void main() {
 
     test('🔴 อนุญาตไว้ = ทำเลยแต่บอกในแชท · ให้สิทธิ์ได้จากคำตอบของเจ้าของเท่านั้น', () {
       final state = _src('lib/state/mind_state.dart');
-      final confirm = _body(state, 'Future<bool> _confirmInChat(');
+      // ปีกกาแรกคือพารามิเตอร์ {bool trust} · ตัดถึงปีกกาปิดของเมธอดแทน
+      final at = state.indexOf('Future<bool> _confirmInChat(');
+      final confirm = state.substring(at, state.indexOf('\n  }\n', at));
       expect(confirm, contains('_handsTrust.containsKey(ask.trustKey)'));
       expect(confirm, contains('s.handsTrustedDid('));
       expect(confirm, contains('alwaysRisky: ask.kind.risky'));

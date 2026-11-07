@@ -20,6 +20,7 @@ import 'package:videogirl/hands/phone_task.dart';
 import 'package:videogirl/i18n/strings.dart';
 import 'package:videogirl/i18n/strings_ai.dart';
 import 'package:videogirl/i18n/strings_chats.dart';
+import 'package:videogirl/i18n/strings_hands.dart';
 import 'package:videogirl/state/mind_state.dart';
 import 'package:videogirl/system/permissions.dart';
 import 'package:videogirl/theme/tokens.dart';
@@ -993,6 +994,76 @@ void main() {
       await settle(s);
       expect(h.began, 0);
       expect(s.messages.last.text, s.s.chatSendNeedsHands);
+    });
+
+    // ── อนุญาตถาวรกับงานที่สมองเขียน · ใช้ได้เมื่องานมาจากคำของเจ้าของจริง ──
+
+    /// งานแรกเจ้าของติ๊ก "ไม่ต้องถามอีก" (ส่งใน LINE) · คืนหลังงานแรกจบ
+    Future<void> grantSend(MindState s, String said) async {
+      await s.send(said);
+      for (var i = 0; i < 50 && s.phoneTask?.asking == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      s.answerPhoneAsk(s.phoneTask!.asking!.id, true, always: true);
+      await settle(s);
+      expect(s.handsTrust, contains('jp.naver.line.android|send'));
+    }
+
+    Future<void> waitAskOrDone(MindState s) async {
+      for (var i = 0; i < 80 && s.phoneTask?.asking == null && (s.phoneTask != null || i < 5); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    }
+
+    const sendSteps = ['{"do":"tap","id":2}', '{"do":"done","summary":"ส่งแล้วค่ะ"}'];
+
+    test('อนุญาตถาวร + เจ้าของเอ่ยชื่อผู้รับเอง = ส่งเลยไม่ถาม', () async {
+      final (s, h, _) = await chatWith(
+          'ได้ค่ะ [[ส่งแชท: แม่ | LINE | ถึงบ้านแล้วค่ะ]]', [...sendSteps, ...sendSteps], [chat, chat, chat, chat]);
+      await grantSend(s, 'ทักแม่ทางไลน์ว่าถึงบ้านแล้ว');
+      await s.send('ทักคุณแม่อีกทีว่าถึงบ้านแล้ว');
+      await waitAskOrDone(s);
+      await settle(s);
+      expect(h.asked, hasLength(1), reason: 'ถามแค่งานแรก');
+      expect(h.acts, ['tap:2', 'tap:2']);
+    });
+
+    test('🔒 อนุญาตถาวร แต่ผู้รับในแท็กไม่ใช่คนที่เจ้าของเอ่ยชื่อ = ถามก่อนส่ง บอกเหตุผล', () async {
+      final (s, h, _) = await chatWith(
+          'ได้ค่ะ [[ส่งแชท: แม่ | LINE | ถึงบ้านแล้วค่ะ]]', [...sendSteps, ...sendSteps], [chat, chat, chat, chat]);
+      await grantSend(s, 'ทักแม่ทางไลน์ว่าถึงบ้านแล้ว');
+      await s.send('ส่งไลน์หาบอสว่าพรุ่งนี้ลา');
+      await waitAskOrDone(s);
+      expect(s.phoneTask?.asking, isNotNull, reason: 'ต้องถาม ไม่ใช่ส่งเอง');
+      expect(h.acts, ['tap:2'], reason: 'งานที่สองยังไม่กดส่ง');
+      expect(s.messages.any((m) => m.text == s.s.handsTrustPaused('LINE')), isTrue);
+      s.answerPhoneAsk(s.phoneTask!.asking!.id, false);
+      await settle(s);
+      expect(h.acts, ['tap:2']);
+    });
+
+    test('🔒 อนุญาตถาวร แต่เพิ่งอ่านของจากข้างนอก (ค้นในเครื่อง/เว็บ/จอ) = งานจากสมองถามทุกขั้นเสี่ยง', () async {
+      final (s, h, _) = await chatWith(
+          'ได้ค่ะ [[ส่งแชท: แม่ | LINE | ถึงบ้านแล้วค่ะ]]', [...sendSteps, ...sendSteps], [chat, chat, chat, chat]);
+      await grantSend(s, 'ทักแม่ทางไลน์ว่าถึงบ้านแล้ว');
+      await s.runVoiceTool('phone_lookup', {'kind': 'sms', 'query': ''});
+      await s.send('ทักแม่ว่าถึงบ้านแล้ว');
+      await waitAskOrDone(s);
+      expect(s.phoneTask?.asking, isNotNull);
+      expect(h.acts, ['tap:2']);
+      s.answerPhoneAsk(s.phoneTask!.asking!.id, true);
+      await settle(s);
+      expect(h.acts, ['tap:2', 'tap:2']);
+    });
+
+    test('🔒 แท็กทำในเครื่องหลังอ่านของจากข้างนอก ก็ถามเหมือนกัน', () async {
+      final (s, h, _) = await chatWith('ได้ค่ะ [[ทำในเครื่อง: ส่งหาแม่]]', [...sendSteps, ...sendSteps], [chat, chat, chat, chat]);
+      await grantSend(s, 'ส่งหาแม่ว่าถึงบ้านแล้ว');
+      await s.runVoiceTool('web_search', {'query': 'ข่าว'});
+      await s.send('ส่งหาแม่ว่าถึงบ้านแล้ว');
+      await waitAskOrDone(s);
+      expect(s.phoneTask?.asking, isNotNull);
+      expect(h.acts, ['tap:2']);
     });
   });
 }

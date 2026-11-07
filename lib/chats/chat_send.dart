@@ -3,11 +3,15 @@
 /// เจ้าของ (2026-11-07): "เพิ่มเครื่องมือ แขนขา หูตา ให้เธอ มากที่สุด" · ตอบแชทที่ทักมาแล้ว ต่อไปคือทักไปเองเมื่อเจ้าของสั่ง
 ///
 /// 🔒 ไม่มีทางส่งตรง · แท็กนี้กลายเป็นงานของมือ (PhoneAgent) แล้วปุ่ม "ส่ง" ผ่านด่าน PhonePolicy + กล่องถามของเจ้าของ
-/// (หรืออนุญาตถาวรที่เจ้าของกดเองไว้) เหมือนงานในเครื่องอื่น ๆ · แท็กจากสมองใช้ได้เฉพาะเมื่อคำของเจ้าของเองขอให้ส่ง
-/// ([SendWords]) · ข้อความที่ทักมาจากคนนอกไม่มีทางสร้างแท็กนี้ (cleanChatDraft ตัดแท็กทิ้ง)
+/// เหมือนงานในเครื่องอื่น ๆ · แท็กจากสมองใช้ได้เฉพาะเมื่อคำของเจ้าของเองขอให้ส่ง ([SendWords.asks]) ·
+/// อนุญาตถาวรที่เจ้าของกดไว้ข้ามกล่องถามได้เฉพาะเมื่อเจ้าของเอ่ยชื่อผู้รับเอง ([SendWords.names]) และ 30 นาทีที่ผ่านมา
+/// เธอไม่ได้อ่านเว็บ ผลค้นในเครื่อง หรือหน้าจอ (MindState._outsideRecently) · ไม่งั้นถามก่อนส่งเสมอ ·
+/// ข้อความที่ทักมาจากคนนอกไม่มีทางสร้างแท็กนี้ (cleanChatDraft ตัดแท็กทิ้ง)
 library;
 
 import 'package:flutter/foundation.dart';
+
+import '../phone/call_target.dart';
 
 /// ส่งหาใคร ทางไหน ว่าอะไร (ตรงตัว)
 @immutable
@@ -49,4 +53,23 @@ abstract final class SendWords {
   );
 
   static bool asks(String ownerText) => _ask.hasMatch(ownerText);
+
+  /// เจ้าของเอ่ยชื่อผู้รับ [who] เองในข้อความนี้ไหม · ตัดคำนำหน้า (คุณ พี่ น้อง Mr.) · ชื่อหลายคำ = คำไหนก็ได้ ·
+  /// ไม่เจอ = งานยังทำได้ แต่อนุญาตถาวรไม่นับ (ถามก่อนส่ง)
+  static bool names(String ownerText, String who) {
+    final owner = _norm(ownerText);
+    if (owner.isEmpty) return false;
+    final names = {
+      _norm(CallNameMatch.core(who)),
+      _norm(who),
+      for (final t in who.split(RegExp(r'[\s,·/|]+'))) _norm(CallNameMatch.core(t)),
+    }..removeWhere((n) => n.length < 2 || _titles.contains(n));
+    return names.any(owner.contains);
+  }
+
+  static const _titles = {'คุณ', 'พี่', 'นอง', 'mr', 'mrs', 'ms', 'khun'};
+
+  /// ตัวเล็ก · ไม่มีช่องว่าง/เครื่องหมาย · ไม่มีวรรณยุกต์ ("แม่" = "แม")
+  static String _norm(String s) =>
+      s.toLowerCase().replaceAll(RegExp('[็-๋์]'), '').replaceAll(RegExp(r"[\s.\-_'’,·()]"), '');
 }
